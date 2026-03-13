@@ -92,17 +92,17 @@
 > This is the foundational data model — get it right before building any UI.
 > Inspired by Bruno's approach.
 
-- [ ] Define the on-disk file format for a request (e.g. `.callsmith` or `.json` file per request)
+- [x] Define the on-disk file format for a request (e.g. `.callsmith` or `.json` file per request)
   - Must store: method, URL, headers, body type, body content, description
   - Must be human-readable and git-diff-friendly (plain text / JSON, not binary)
-- [ ] Define the folder structure convention:
+- [x] Define the folder structure convention:
   - A collection is a folder
   - Sub-folders are sub-collections
   - Each request is a single file in the folder
   - An optional `environment/` sub-folder holds environment files
-- [ ] Define `ICollectionService` interface — open folder, list requests, load request, save request
-- [ ] Implement `FileSystemCollectionService` — reads/writes directly from disk, no database
-- [ ] Write unit tests for `FileSystemCollectionService`
+- [x] Define `ICollectionService` interface — open folder, list requests, load request, save request
+- [x] Implement `FileSystemCollectionService` — reads/writes directly from disk, no database
+- [x] Write unit tests for `FileSystemCollectionService`
 
 ---
 
