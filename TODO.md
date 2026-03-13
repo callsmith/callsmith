@@ -68,21 +68,21 @@
 > Implement the `ITransport` abstraction first so all future transports (gRPC,
 > WebSocket, etc.) slot in without touching existing code.
 
-- [ ] Define `RequestModel` — transport-agnostic: method/verb, URL, headers, body, timeout
-- [ ] Define `ResponseModel` — transport-agnostic: status, headers, body, elapsed time, size
-- [ ] Define `ITransport` interface — `string Protocol { get; }` + `SendAsync(RequestModel, ct)`
-- [ ] Define `TransportRegistry` — resolves the correct `ITransport` by protocol at runtime
-- [ ] Implement `HttpTransport` using `HttpClient`
-  - [ ] Support all common HTTP methods (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS)
-  - [ ] Capture response headers
-  - [ ] Capture response body as string and raw bytes
-  - [ ] Measure elapsed time
-  - [ ] Handle timeouts via `CancellationToken`
-  - [ ] Handle redirects (configurable: follow or do not follow)
-  - [ ] Capture the final resolved URL after redirects
-- [ ] Register `HttpTransport` in `TransportRegistry` under protocol `"http"` and `"https"`
-- [ ] Write unit tests for `HttpTransport` (mock the `HttpMessageHandler`)
-- [ ] Write unit tests for `TransportRegistry`
+- [x] Define `RequestModel` — transport-agnostic: method/verb, URL, headers, body, timeout
+- [x] Define `ResponseModel` — transport-agnostic: status, headers, body, elapsed time, size
+- [x] Define `ITransport` interface — `string Protocol { get; }` + `SendAsync(RequestModel, ct)`
+- [x] Define `TransportRegistry` — resolves the correct `ITransport` by protocol at runtime
+- [x] Implement `HttpTransport` using `HttpClient`
+  - [x] Support all common HTTP methods (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS)
+  - [x] Capture response headers
+  - [x] Capture response body as string and raw bytes
+  - [x] Measure elapsed time
+  - [x] Handle timeouts via `CancellationToken`
+  - [x] Handle redirects (configurable: follow or do not follow)
+  - [x] Capture the final resolved URL after redirects
+- [x] Register `HttpTransport` in `TransportRegistry` under protocol `"http"` and `"https"`
+- [x] Write unit tests for `HttpTransport` (mock the `HttpMessageHandler`)
+- [x] Write unit tests for `TransportRegistry`
 
 ---
 
