@@ -49,6 +49,7 @@ public sealed partial class RequestViewModel : ObservableRecipient,
     private string _selectedMethod = "GET";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PreviewUrl))]
     private string _url = string.Empty;
 
     [ObservableProperty]
@@ -173,6 +174,33 @@ public sealed partial class RequestViewModel : ObservableRecipient,
     /// <summary>Whether a request file is currently loaded into the editor.</summary>
     public bool HasSourceRequest => _sourceRequest is not null;
 
+    /// <summary>
+    /// The fully-resolved URL that will be sent: path params filled, query string
+    /// appended, and environment variables substituted. Updates live as the user edits.
+    /// </summary>
+    public string PreviewUrl
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(Url))
+                return string.Empty;
+
+            var pathParamValues = PathParams.GetEnabledPairs()
+                .ToDictionary(p => p.Key, p => p.Value);
+
+            var baseUrl = GetBaseUrl(Url);
+            var resolved = PathTemplateHelper.ApplyPathParams(baseUrl, pathParamValues);
+            resolved = QueryStringHelper.ApplyQueryParams(resolved, QueryParams.GetEnabledPairs().ToList());
+
+            var vars = _activeEnvironment is not null
+                ? (IReadOnlyDictionary<string, string>)_activeEnvironment.Variables
+                    .ToDictionary(v => v.Name, v => v.Value)
+                : new Dictionary<string, string>();
+
+            return VariableSubstitutionService.Substitute(resolved, vars) ?? resolved;
+        }
+    }
+
     /// <summary>Whether the body text editor should be visible (body type is not "none").</summary>
     public bool ShowBodyEditor => SelectedBodyType != CollectionRequest.BodyTypes.None;
 
@@ -243,7 +271,7 @@ public sealed partial class RequestViewModel : ObservableRecipient,
                 nameof(Response) or nameof(IsSending) or nameof(ErrorMessage) or
                 nameof(StatusDisplay) or nameof(ElapsedDisplay) or nameof(SizeDisplay) or
                 nameof(StatusClass) or nameof(StatusBadgeColor) or nameof(MethodColor) or
-                nameof(ShowBodyEditor) or
+                nameof(ShowBodyEditor) or nameof(PreviewUrl) or
                 nameof(IsAuthBearer) or nameof(IsAuthBasic) or nameof(IsAuthApiKey))
                 return;
             HasUnsavedChanges = true;
@@ -260,6 +288,7 @@ public sealed partial class RequestViewModel : ObservableRecipient,
             if (!_loading && _sourceRequest is not null)
                 HasUnsavedChanges = true;
             RebuildUrlFromParams();
+            OnPropertyChanged(nameof(PreviewUrl));
         };
 
         PathParams.Changed += (_, _) =>
@@ -268,6 +297,7 @@ public sealed partial class RequestViewModel : ObservableRecipient,
                 HasUnsavedChanges = true;
 
             RebuildUrlFromPathParamNames();
+            OnPropertyChanged(nameof(PreviewUrl));
         };
     }
 
@@ -279,6 +309,7 @@ public sealed partial class RequestViewModel : ObservableRecipient,
     public void Receive(EnvironmentChangedMessage message)
     {
         _activeEnvironment = message.Value;
+        OnPropertyChanged(nameof(PreviewUrl));
     }
 
     /// <summary>

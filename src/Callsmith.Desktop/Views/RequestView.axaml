@@ -26,7 +26,7 @@
     <Border Grid.Row="0"
             Background="#252526"
             Padding="12,10">
-      <Grid RowDefinitions="Auto,Auto,*,Auto">
+      <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
 
         <!-- Title bar: request name + unsaved indicator + Save button -->
         <Grid Grid.Row="0"
@@ -111,8 +111,46 @@
 
         </Grid>
 
+        <!-- URL Preview bar -->
+        <Border Grid.Row="2"
+                Background="#1e1e1e"
+                BorderBrush="#3a3a3a"
+                BorderThickness="0,1,0,0"
+                Padding="0,5,0,5"
+                Margin="0,4,0,0">
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <TextBlock Grid.Column="0"
+                       Text="PREVIEW"
+                       Foreground="#5a5a5a"
+                       FontSize="10"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center"
+                       Margin="8,0,8,0"/>
+            <TextBlock Grid.Column="1"
+                       x:Name="PreviewUrlText"
+                       Text="{Binding PreviewUrl}"
+                       Foreground="#888"
+                       FontFamily="Consolas,Menlo,monospace"
+                       FontSize="12"
+                       VerticalAlignment="Center"
+                       TextWrapping="NoWrap"
+                       TextTrimming="CharacterEllipsis"/>
+            <Button Grid.Column="2"
+                    x:Name="CopyPreviewUrlButton"
+                    Content="&#x2398;"
+                    ToolTip.Tip="Copy URL to clipboard"
+                    Background="Transparent"
+                    Foreground="#888"
+                    BorderThickness="0"
+                    Padding="6,2"
+                    FontSize="14"
+                    Cursor="Hand"
+                    Margin="6,0,0,0"/>
+          </Grid>
+        </Border>
+
         <!-- Tabs: Params | Headers | Body | Auth -->
-        <TabControl Grid.Row="2"
+        <TabControl Grid.Row="3"
                     Classes="request-tabs"
                     Margin="0,8,0,0"
                     Background="Transparent">
@@ -255,7 +293,7 @@
         </TabControl>
 
         <!-- Error message (below tabs) -->
-        <Border Grid.Row="3"
+        <Border Grid.Row="4"
                 IsVisible="{Binding ErrorMessage, Converter={x:Static vm:StringNotEmptyConverter.Instance}}"
                 Background="#3a1414"
                 CornerRadius="3"
