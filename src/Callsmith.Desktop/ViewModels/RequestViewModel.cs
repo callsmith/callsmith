@@ -4,6 +4,7 @@ using Callsmith.Core;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Helpers;
 using Callsmith.Core.Models;
+using Callsmith.Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
@@ -17,13 +18,18 @@ namespace Callsmith.Desktop.ViewModels;
 /// allows the user to edit and send it, and exposes the response for display.
 /// Tracks unsaved changes and provides an explicit Save command.
 /// </summary>
-public sealed partial class RequestViewModel : ObservableRecipient, IRecipient<RequestSelectedMessage>
+public sealed partial class RequestViewModel : ObservableRecipient,
+    IRecipient<RequestSelectedMessage>,
+    IRecipient<EnvironmentChangedMessage>
 {
     private readonly TransportRegistry _transportRegistry;
     private readonly ICollectionService _collectionService;
 
     /// <summary>The request file currently loaded into the editor; null when nothing is open.</summary>
     private CollectionRequest? _sourceRequest;
+
+    /// <summary>The currently active environment; null when none is selected.</summary>
+    private EnvironmentModel? _activeEnvironment;
 
     /// <summary>Suppresses dirty-tracking while populating the editor from a loaded request.</summary>
     private bool _loading;
@@ -221,8 +227,14 @@ public sealed partial class RequestViewModel : ObservableRecipient, IRecipient<R
     }
 
     // -------------------------------------------------------------------------
-    // Messenger receiver
+    // Messenger receivers
     // -------------------------------------------------------------------------
+
+    /// <summary>Tracks the active environment for variable substitution at send time.</summary>
+    public void Receive(EnvironmentChangedMessage message)
+    {
+        _activeEnvironment = message.Value;
+    }
 
     /// <summary>
     /// Called when the user selects a request in the collections sidebar.
@@ -300,14 +312,26 @@ public sealed partial class RequestViewModel : ObservableRecipient, IRecipient<R
 
             ApplyAuthHeaders(headers, out var requestUrl);
 
+            // Apply variable substitution if an environment is active.
+            var vars = _activeEnvironment is not null
+                ? (IReadOnlyDictionary<string, string>)_activeEnvironment.Variables
+                    .ToDictionary(v => v.Name, v => v.Value)
+                : new Dictionary<string, string>();
+
+            requestUrl = VariableSubstitutionService.Substitute(requestUrl, vars) ?? requestUrl;
+            foreach (var key in headers.Keys.ToList())
+                headers[key] = VariableSubstitutionService.Substitute(headers[key], vars) ?? headers[key];
+
+            var resolvedBody = SelectedBodyType != CollectionRequest.BodyTypes.None && !string.IsNullOrEmpty(Body)
+                ? VariableSubstitutionService.Substitute(Body, vars) ?? Body
+                : null;
+
             var request = new RequestModel
             {
                 Method = new HttpMethod(SelectedMethod),
                 Url = requestUrl,
                 Headers = headers,
-                Body = SelectedBodyType != CollectionRequest.BodyTypes.None && !string.IsNullOrEmpty(Body)
-                    ? Body
-                    : null,
+                Body = resolvedBody,
                 ContentType = GetContentType(),
             };
 

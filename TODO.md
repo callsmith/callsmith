@@ -124,7 +124,7 @@
   - Status code badge + elapsed time + response size (always visible)
   - Response headers (always visible, collapsible)
   - Response body with syntax highlighting (always visible)
-- [ ] Top toolbar: environment switcher — deferred to Phase 6
+- [x] Top toolbar: environment switcher — implemented in Phase 6
 - [ ] Status bar: current collection path, active environment name — deferred to Phase 6
 - [x] `RequestViewModel` wired to `ITransport` via `TransportRegistry`
 - [x] Send a GET request and see the full response without changing any view
@@ -154,26 +154,28 @@
 
 > Goal: Swappable environments with dynamic, scriptable variables.
 > This is a core differentiator — treat it with appropriate depth.
+>
+> **Phase 6 complete (static + secret variables). Script/chained variables are deferred to a later phase.**
 
-- [ ] Define the on-disk environment file format (one file per environment, in `environment/` folder)
-- [ ] Define `EnvironmentVariable` model:
-  - Static value (plain string)
-  - Script value (JavaScript expression evaluated at request time)
-  - Chained value (result of another request + JSONPath/XPath extraction)
-- [ ] Define `IEnvironmentService` interface
-- [ ] Implement `FileSystemEnvironmentService`
-- [ ] Environment editor UI:
+- [x] Define the on-disk environment file format (`.env.callsmith` JSON files in `environment/` folder)
+- [x] Define `EnvironmentVariable` model:
+  - [x] Static value (plain string)
+  - [ ] Script value (JavaScript expression evaluated at request time) — **deferred (needs Jint)**
+  - [ ] Chained value (result of another request + JSONPath/XPath extraction) — **deferred**
+- [x] Define `IEnvironmentService` interface
+- [x] Implement `FileSystemEnvironmentService`
+- [x] Environment selector UI toolbar strip (environment switcher — single click to swap)
+- [x] Variable substitution engine:
+  - [x] Replace `{{variableName}}` in URL, headers, and body at send time
+  - [ ] Evaluate JavaScript expressions — **deferred**
+  - [ ] Execute chained requests — **deferred**
+- [ ] Environment editor UI (full CRUD from within the app):
   - [ ] List environments (dev, staging, production, etc.)
   - [ ] Add, rename, delete environments
   - [ ] Per-variable: choose type (static / script / chained), edit value
   - [ ] Secret variables — masked in UI, excluded from logs, never written to history in plaintext
-- [ ] Variable substitution engine:
-  - [ ] Replace `{{variableName}}` in URL, headers, and body at send time
-  - [ ] Evaluate JavaScript expressions (embedded JS engine — consider Jint)
-  - [ ] Execute chained requests and extract values via JSONPath or XPath
-- [ ] Environment switcher in toolbar — single click to swap all variables
 - [ ] Resolved variable values shown in the request preview before sending
-- [ ] Write unit tests for the substitution engine
+- [x] Write unit tests for the substitution engine and file service
 
 ---
 

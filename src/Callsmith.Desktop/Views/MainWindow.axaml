@@ -32,10 +32,24 @@
                       HorizontalAlignment="Stretch"/>
 
         <!-- ================================================================
-             Right pane — Request editor + Response viewer
+             Right pane — thin env toolbar + request/response editor
              ================================================================ -->
-        <views:RequestView Grid.Column="2"
-                           DataContext="{Binding Request}"/>
+        <Grid Grid.Column="2" RowDefinitions="Auto,*">
+
+            <!-- Environment selector toolbar -->
+            <Border Grid.Row="0"
+                    Background="#2d2d30"
+                    BorderBrush="#444"
+                    BorderThickness="0,0,0,1"
+                    Padding="12,6">
+                <views:EnvironmentSelectorView DataContext="{Binding Environment}"/>
+            </Border>
+
+            <!-- Request editor + Response viewer -->
+            <views:RequestView Grid.Row="1"
+                               DataContext="{Binding Request}"/>
+
+        </Grid>
 
     </Grid>
 

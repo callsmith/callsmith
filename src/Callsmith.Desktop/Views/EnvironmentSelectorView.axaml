@@ -1,0 +1,53 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Callsmith.Desktop.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="34"
+             x:Class="Callsmith.Desktop.Views.EnvironmentSelectorView"
+             x:DataType="vm:EnvironmentViewModel">
+
+  <!-- Compact toolbar strip: label + environment chooser -->
+  <DockPanel>
+
+    <TextBlock DockPanel.Dock="Left"
+               Text="ENV"
+               Foreground="#888888"
+               FontSize="11"
+               FontWeight="SemiBold"
+               LetterSpacing="1"
+               VerticalAlignment="Center"
+               Margin="0,0,8,0"/>
+
+    <!-- Environment picker -->
+    <ComboBox ItemsSource="{Binding Environments}"
+              SelectedItem="{Binding ActiveEnvironment, Mode=TwoWay}"
+              PlaceholderText="(no environment)"
+              MinWidth="160"
+              FontSize="13"
+              Background="#2d2d30"
+              Foreground="#cccccc"
+              BorderBrush="#444"
+              VerticalAlignment="Center">
+      <ComboBox.ItemTemplate>
+        <DataTemplate>
+          <TextBlock Text="{Binding Name}" Foreground="#cccccc"/>
+        </DataTemplate>
+      </ComboBox.ItemTemplate>
+    </ComboBox>
+
+    <!-- Clear button — visible only when an environment is selected -->
+    <Button Content="✕"
+            FontSize="11"
+            Background="Transparent"
+            Foreground="#888888"
+            Padding="6,2"
+            Margin="4,0,0,0"
+            VerticalAlignment="Center"
+            ToolTip.Tip="Clear active environment"
+            Command="{Binding SetActiveCommand}"
+            CommandParameter="{x:Null}"
+            IsVisible="{Binding ActiveEnvironment, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+
+  </DockPanel>
+</UserControl>

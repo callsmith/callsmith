@@ -83,5 +83,6 @@ public sealed partial class CollectionsViewModel : ObservableObject
         HasCollection = true;
         TreeRoots = [CollectionTreeItemViewModel.FromFolder(root)];
         RefreshCommand.NotifyCanExecuteChanged();
+        _messenger.Send(new CollectionOpenedMessage(path));
     }
 }
