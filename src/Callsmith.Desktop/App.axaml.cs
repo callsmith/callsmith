@@ -1,11 +1,17 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Data.Core.Plugins;
 using System.Linq;
 using Avalonia.Markup.Xaml;
+using Callsmith.Core.Abstractions;
+using Callsmith.Core.Services;
+using Callsmith.Core.Transports.Http;
+using Callsmith.Core;
 using Callsmith.Desktop.ViewModels;
 using Callsmith.Desktop.Views;
+using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Callsmith.Desktop;
 
@@ -43,8 +49,28 @@ public partial class App : Application
     {
         var services = new ServiceCollection();
 
+        // Logging
+        services.AddLogging(b => b.AddDebug().SetMinimumLevel(LogLevel.Debug));
+
+        // Messaging (single shared instance for cross-ViewModel communication)
+        services.AddSingleton<IMessenger>(WeakReferenceMessenger.Default);
+
+        // Core -- transport
+        services.AddSingleton<HttpTransport>();
+        services.AddSingleton<TransportRegistry>(sp =>
+        {
+            var registry = new TransportRegistry();
+            registry.Register(sp.GetRequiredService<HttpTransport>());
+            return registry;
+        });
+
+        // Core -- collection service
+        services.AddSingleton<ICollectionService, FileSystemCollectionService>();
+
         // ViewModels
-        services.AddTransient<MainWindowViewModel>();
+        services.AddSingleton<CollectionsViewModel>();
+        services.AddSingleton<RequestViewModel>();
+        services.AddSingleton<MainWindowViewModel>();
 
         return services;
     }

@@ -1,0 +1,171 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Callsmith.Desktop.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="750"
+             x:Class="Callsmith.Desktop.Views.RequestView"
+             x:DataType="vm:RequestViewModel"
+             Background="#1e1e1e">
+
+  <!-- Request pane (top) + Response pane (bottom) — both always visible -->
+  <Grid RowDefinitions="Auto,4,*">
+
+    <!-- ==================================================================
+         REQUEST EDITOR
+         ================================================================== -->
+    <Border Grid.Row="0"
+            Background="#252526"
+            Padding="16,12">
+      <StackPanel Spacing="10">
+
+        <!-- Request name (populated when loaded from a collection) -->
+        <TextBlock Text="{Binding RequestName}"
+                   IsVisible="{Binding RequestName, Converter={x:Static vm:StringNotEmptyConverter.Instance}}"
+                   Foreground="#888"
+                   FontSize="11"
+                   FontStyle="Italic"/>
+
+        <!-- Method selector + URL bar + Send/Cancel -->
+        <Grid ColumnDefinitions="Auto,8,*,8,Auto">
+
+          <ComboBox Grid.Column="0"
+                    ItemsSource="{Binding HttpMethods}"
+                    SelectedItem="{Binding SelectedMethod}"
+                    MinWidth="100"
+                    Foreground="#4ec9b0"
+                    FontWeight="SemiBold"
+                    FontSize="13"/>
+
+          <TextBox Grid.Column="2"
+                   Text="{Binding Url}"
+                   Watermark="https://api.example.com/endpoint"
+                   FontSize="13"
+                   Foreground="#d4d4d4"
+                   Background="#3c3c3c"
+                   BorderBrush="#555"
+                   Padding="8,6"
+                   FontFamily="Consolas,Menlo,monospace"/>
+
+          <!-- Show Send when idle, Cancel when in-flight -->
+          <Button Grid.Column="4"
+                  IsVisible="{Binding !IsSending}"
+                  Content="Send"
+                  Command="{Binding SendCommand}"
+                  Background="#0e639c"
+                  Foreground="White"
+                  FontWeight="SemiBold"
+                  Padding="20,6"/>
+
+          <Button Grid.Column="4"
+                  IsVisible="{Binding IsSending}"
+                  Content="Cancel"
+                  Command="{Binding SendCancelCommand}"
+                  Background="#6c2020"
+                  Foreground="White"
+                  FontWeight="SemiBold"
+                  Padding="20,6"/>
+
+        </Grid>
+
+        <!-- Error message -->
+        <Border IsVisible="{Binding ErrorMessage, Converter={x:Static vm:StringNotEmptyConverter.Instance}}"
+                Background="#3a1414"
+                CornerRadius="3"
+                Padding="10,6">
+          <TextBlock Text="{Binding ErrorMessage}"
+                     Foreground="#f48771"
+                     FontSize="12"
+                     TextWrapping="Wrap"/>
+        </Border>
+
+      </StackPanel>
+    </Border>
+
+    <!-- Splitter -->
+    <GridSplitter Grid.Row="1"
+                  ResizeDirection="Rows"
+                  Background="#3c3c3c"
+                  HorizontalAlignment="Stretch"/>
+
+    <!-- ==================================================================
+         RESPONSE VIEWER
+         ================================================================== -->
+    <Grid Grid.Row="2" RowDefinitions="Auto,*">
+
+      <!-- Response meta bar — always visible once a response exists -->
+      <Border Grid.Row="0"
+              Background="#2d2d30"
+              Padding="16,8"
+              IsVisible="{Binding Response, Converter={x:Static vm:NotNullConverter.Instance}}">
+        <StackPanel Orientation="Horizontal" Spacing="16">
+
+          <!-- Status badge -->
+          <Border CornerRadius="3" Padding="8,3"
+                  Background="#0e639c">
+            <TextBlock Text="{Binding StatusDisplay}"
+                       Foreground="White"
+                       FontWeight="SemiBold"
+                       FontSize="12"/>
+          </Border>
+
+          <TextBlock Text="{Binding ElapsedDisplay}"
+                     Foreground="#888"
+                     FontSize="12"
+                     VerticalAlignment="Center"/>
+
+          <TextBlock Text="{Binding SizeDisplay}"
+                     Foreground="#888"
+                     FontSize="12"
+                     VerticalAlignment="Center"/>
+
+        </StackPanel>
+      </Border>
+
+      <!-- Loading spinner -->
+      <StackPanel Grid.Row="1"
+                  IsVisible="{Binding IsSending}"
+                  VerticalAlignment="Center"
+                  HorizontalAlignment="Center"
+                  Spacing="8">
+        <TextBlock Text="Sending…"
+                   Foreground="#888"
+                   FontSize="13"
+                   HorizontalAlignment="Center"/>
+      </StackPanel>
+
+      <!-- Empty state -->
+      <StackPanel Grid.Row="1"
+                  IsVisible="{Binding Response, Converter={x:Static vm:NullConverter.Instance}}"
+                  VerticalAlignment="Center"
+                  HorizontalAlignment="Center"
+                  Spacing="4">
+        <TextBlock IsVisible="{Binding !IsSending}"
+                   Text="Enter a URL and click Send"
+                   Foreground="#555"
+                   FontSize="13"
+                   HorizontalAlignment="Center"/>
+      </StackPanel>
+
+      <!-- Response body -->
+      <ScrollViewer Grid.Row="1"
+                    IsVisible="{Binding Response, Converter={x:Static vm:NotNullConverter.Instance}}"
+                    HorizontalScrollBarVisibility="Auto"
+                    VerticalScrollBarVisibility="Auto">
+        <TextBox Text="{Binding Response.Body, FallbackValue=''}"
+                 IsReadOnly="True"
+                 AcceptsReturn="True"
+                 TextWrapping="NoWrap"
+                 FontFamily="Consolas,Menlo,monospace"
+                 FontSize="12"
+                 Foreground="#d4d4d4"
+                 Background="#1e1e1e"
+                 BorderThickness="0"
+                 Padding="16"/>
+      </ScrollViewer>
+
+    </Grid>
+
+  </Grid>
+
+</UserControl>

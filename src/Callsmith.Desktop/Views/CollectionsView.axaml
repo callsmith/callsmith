@@ -1,0 +1,93 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Callsmith.Desktop.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="750"
+             x:Class="Callsmith.Desktop.Views.CollectionsView"
+             x:DataType="vm:CollectionsViewModel"
+             Background="#252526">
+
+  <!-- Sidebar layout: header toolbar + tree -->
+  <DockPanel>
+
+    <!-- ── Header ── -->
+    <Border DockPanel.Dock="Top"
+            Background="#2d2d30"
+            Padding="12,8">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Left"
+                   Text="COLLECTIONS"
+                   Foreground="#cccccc"
+                   FontSize="11"
+                   FontWeight="SemiBold"
+                   LetterSpacing="1"
+                   VerticalAlignment="Center"/>
+
+        <!-- Open folder button -->
+        <Button DockPanel.Dock="Right"
+                Content="⊕"
+                FontSize="16"
+                Foreground="#cccccc"
+                Background="Transparent"
+                BorderThickness="0"
+                Padding="4,0"
+                ToolTip.Tip="Open collection folder"
+                Command="{Binding OpenFolderCommand}"
+                CommandParameter="{Binding $parent[Window].StorageProvider}"/>
+      </DockPanel>
+    </Border>
+
+    <!-- ── Empty state ── -->
+    <StackPanel IsVisible="{Binding !HasCollection}"
+                VerticalAlignment="Center"
+                HorizontalAlignment="Center"
+                Spacing="8"
+                Margin="16">
+      <TextBlock Text="No collection open"
+                 Foreground="#888"
+                 FontSize="13"
+                 HorizontalAlignment="Center"/>
+      <TextBlock Text="Click ⊕ to open a folder"
+                 Foreground="#666"
+                 FontSize="11"
+                 HorizontalAlignment="Center"/>
+    </StackPanel>
+
+    <!-- ── Collection path label ── -->
+    <TextBlock DockPanel.Dock="Bottom"
+               IsVisible="{Binding HasCollection}"
+               Text="{Binding CollectionPath}"
+               Foreground="#666"
+               FontSize="10"
+               TextTrimming="LeadingEllipsis"
+               Padding="8,4"
+               ToolTip.Tip="{Binding CollectionPath}"/>
+
+    <!-- ── Tree view ── -->
+    <TreeView IsVisible="{Binding HasCollection}"
+              ItemsSource="{Binding TreeRoots}"
+              SelectedItem="{Binding SelectedItem}"
+              Background="Transparent"
+              Margin="0,4,0,0">
+      <TreeView.ItemTemplate>
+        <TreeDataTemplate ItemsSource="{Binding Children}"
+                          x:DataType="vm:CollectionTreeItemViewModel">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <!-- Folder or request icon -->
+            <TextBlock Text="{Binding IsFolder, Converter={x:Static vm:BoolToIconConverter.FolderOrRequest}}"
+                       Foreground="#cccccc"
+                       FontSize="12"
+                       VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding Name}"
+                       Foreground="#cccccc"
+                       FontSize="13"
+                       VerticalAlignment="Center"/>
+          </StackPanel>
+        </TreeDataTemplate>
+      </TreeView.ItemTemplate>
+    </TreeView>
+
+  </DockPanel>
+
+</UserControl>

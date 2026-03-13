@@ -1,20 +1,42 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Callsmith.Desktop.ViewModels"
+        xmlns:views="using:Callsmith.Desktop.Views"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="750"
         x:Class="Callsmith.Desktop.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="Callsmith.Desktop">
+        Title="Callsmith"
+        MinWidth="800" MinHeight="500"
+        Background="#1e1e1e">
 
     <Design.DataContext>
-        <!-- This only sets the DataContext for the previewer in an IDE,
-             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
         <vm:MainWindowViewModel/>
     </Design.DataContext>
 
-    <TextBlock Text="{Binding Greeting}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    <!-- Root layout: sidebar | main content -->
+    <Grid ColumnDefinitions="280,4,*">
+
+        <!-- ================================================================
+             Left sidebar — Collections
+             ================================================================ -->
+        <views:CollectionsView Grid.Column="0"
+                               DataContext="{Binding Collections}"/>
+
+        <!-- Splitter -->
+        <GridSplitter Grid.Column="1"
+                      ResizeDirection="Columns"
+                      Background="#3c3c3c"
+                      HorizontalAlignment="Stretch"/>
+
+        <!-- ================================================================
+             Right pane — Request editor + Response viewer
+             ================================================================ -->
+        <views:RequestView Grid.Column="2"
+                           DataContext="{Binding Request}"/>
+
+    </Grid>
 
 </Window>
