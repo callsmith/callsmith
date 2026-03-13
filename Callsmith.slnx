@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Callsmith.Core/Callsmith.Core.csproj" />
+    <Project Path="src/Callsmith.Data/Callsmith.Data.csproj" />
+    <Project Path="src/Callsmith.Desktop/Callsmith.Desktop.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Callsmith.Core.Tests/Callsmith.Core.Tests.csproj" />
+    <Project Path="tests/Callsmith.Desktop.Tests/Callsmith.Desktop.Tests.csproj" />
+  </Folder>
+</Solution>

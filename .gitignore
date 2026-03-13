@@ -1,0 +1,29 @@
+## Ignore build outputs
+bin/
+obj/
+
+## Ignore user-specific VS/Rider files
+.vs/
+.idea/
+*.user
+*.suo
+*.userprefs
+
+## Ignore local publish output
+publish/
+
+## Ignore OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+## Ignore secrets / local config overrides
+*.env
+appsettings.Local.json
+secrets.json
+
+## Ignore test results
+TestResults/
+coverage/
+*.trx
+*.coverage
