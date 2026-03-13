@@ -111,25 +111,25 @@
 > Goal: A visible, usable app window. Full-visibility layout where the user sees
 > everything at once — no tab-switching required to see request and response together.
 
-- [ ] Main window layout:
+- [x] Main window layout:
   - Left sidebar: collection folder tree
   - Right pane split vertically: request editor (top) and response viewer (bottom)
   - Both halves visible simultaneously — no tabs hiding information
-- [ ] Request editor section:
+- [x] Request editor section:
   - Method selector + URL bar + Send button
   - Resolved URL preview (shows URL after variable substitution, always visible)
-  - Headers panel (key/value editor, always visible)
-  - Body panel (always visible, collapses gracefully when empty)
-- [ ] Response viewer section:
+  - Headers panel (key/value editor, always visible) — implemented in Phase 5
+  - Body panel (always visible, collapses gracefully when empty) — implemented in Phase 5
+- [x] Response viewer section:
   - Status code badge + elapsed time + response size (always visible)
   - Response headers (always visible, collapsible)
   - Response body with syntax highlighting (always visible)
-- [ ] Top toolbar: environment switcher
-- [ ] Status bar: current collection path, active environment name
-- [ ] `RequestViewModel` wired to `ITransport` via `TransportRegistry`
-- [ ] Send a GET request and see the full response without changing any view
-- [ ] Collections sidebar: folder tree view reflecting the real filesystem layout
-- [ ] Open a folder as a collection (folder picker dialog)
+- [ ] Top toolbar: environment switcher — deferred to Phase 6
+- [ ] Status bar: current collection path, active environment name — deferred to Phase 6
+- [x] `RequestViewModel` wired to `ITransport` via `TransportRegistry`
+- [x] Send a GET request and see the full response without changing any view
+- [x] Collections sidebar: folder tree view reflecting the real filesystem layout
+- [x] Open a folder as a collection (folder picker dialog)
 - [ ] Remember recently opened collection folders
 - [ ] Create, rename, delete requests and sub-folders in the sidebar
 - [ ] Changes on disk (external edits, git pull) are reflected without restart
@@ -140,13 +140,13 @@
 
 > Goal: Full request editing — headers, query params, body, auth.
 
-- [ ] Reusable `KeyValueEditor` control (used for headers, query params, env vars)
-- [ ] Query param editor (syncs bidirectionally with the URL bar)
-- [ ] Request body editor:
-  - [ ] Body type selector: None, JSON, plain text, XML, form-urlencoded, multipart
+- [x] Reusable `KeyValueEditor` control (used for headers, query params, env vars)
+- [x] Query param editor (syncs bidirectionally with the URL bar)
+- [x] Request body editor:
+  - [x] Body type selector: None, JSON, plain text, XML, form-urlencoded, multipart
   - [ ] Syntax-highlighted editor for JSON and XML body types
-- [ ] Auth tab: None, Bearer token, Basic auth, API key (header or query param)
-- [ ] Save request changes back to disk automatically (or with explicit save — decide)
+- [x] Auth tab: None, Bearer token, Basic auth, API key (header or query param)
+- [x] Save request changes back to disk with explicit Save (● dirty indicator in title bar)
 
 ---
 
