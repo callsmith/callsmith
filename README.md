@@ -1,12 +1,8 @@
-# Callsmith 🐹
+# Callsmith
 
 **A native, cross-platform API client for developers who want more.**
 
 Callsmith is a desktop HTTP API testing tool built with C# and .NET. Think Postman — but without the bloat, without Electron, and with every feature you've always wished existed.
-
-> **Development note:** This project uses an **AI-first development workflow** — meaning
-> AI coding agents (GitHub Copilot, etc.) are used to *build* this app. The app itself
-> has no AI features and requires no API keys. See [AGENTS.md](./AGENTS.md).
 
 ---
 
