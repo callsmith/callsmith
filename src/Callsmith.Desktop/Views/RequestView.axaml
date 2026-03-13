@@ -170,7 +170,7 @@
                            Padding="8,6"/>
                   <TextBlock Text="Password" Foreground="#888" FontSize="11"/>
                   <TextBox Text="{Binding AuthPassword}"
-                           PasswordChar="â—"
+                           PasswordChar="*"
                            Foreground="#d4d4d4"
                            Background="#3c3c3c"
                            BorderBrush="#555"
