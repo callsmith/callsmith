@@ -142,13 +142,13 @@
 
 - [x] Reusable `KeyValueEditor` control (used for headers, query params, env vars)
 - [x] Query param editor (syncs bidirectionally with the URL bar)
-- [~] Path param editor (in Params section) with URL-template discovery:
+- [x] Path param editor (in Params section) with URL-template discovery:
   - [x] Detect placeholders in URL path (e.g., `/users/{id}/orders/{orderId}`)
   - [x] Auto-populate path params list from detected placeholders
   - [x] Keep list in sync as URL template changes (add/remove/rename placeholders)
   - [x] Resolve path placeholders at send time before query-string composition
   - [x] Path param values support static text, env variables, or mixed values (e.g., `{{tenant}}-{id}`)
-  - [ ] Preserve unresolved placeholders in preview/send with clear validation feedback
+  - [x] Preserve unresolved placeholders in preview/send with clear validation feedback
 - [x] Request body editor:
   - [x] Body type selector: None, JSON, plain text, XML, form-urlencoded, multipart
   - [ ] Syntax-highlighted editor for JSON and XML body types

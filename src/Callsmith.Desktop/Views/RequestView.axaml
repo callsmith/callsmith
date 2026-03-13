@@ -129,7 +129,7 @@
             <TextBlock Grid.Column="1"
                        x:Name="PreviewUrlText"
                        Text="{Binding PreviewUrl}"
-                       Foreground="#888"
+                       Foreground="{Binding PreviewUrlForeground, Converter={x:Static vm:HexColorToBrushConverter.Instance}}"
                        FontFamily="Consolas,Menlo,monospace"
                        FontSize="12"
                        VerticalAlignment="Center"
@@ -157,7 +157,7 @@
 
           <!-- PARAMS -->
           <TabItem Header="Params">
-            <Grid RowDefinitions="Auto,Auto,Auto,*"
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,*"
                   Margin="0,4">
               <TextBlock Grid.Row="0"
                          Text="Path Params"
@@ -165,17 +165,33 @@
                          FontSize="11"
                          FontWeight="SemiBold"
                          Margin="0,0,0,4"/>
-              <views:KeyValueEditorView Grid.Row="1"
+
+              <!-- Warning: shown when any path param has no value -->
+              <Border Grid.Row="1"
+                      IsVisible="{Binding HasUnresolvedPathParams}"
+                      Background="#2d1e00"
+                      BorderBrush="#7a5010"
+                      BorderThickness="1"
+                      CornerRadius="3"
+                      Padding="8,5"
+                      Margin="30,0,30,6">
+                <TextBlock Text="&#x26A0;  One or more path params have no value. The placeholder will be sent literally in the URL (e.g. /users/{id})."
+                           Foreground="#c07a20"
+                           FontSize="11"
+                           TextWrapping="Wrap"/>
+              </Border>
+
+              <views:KeyValueEditorView Grid.Row="2"
                                         DataContext="{Binding PathParams}"
                                         Margin="0,0,0,10"/>
 
-              <TextBlock Grid.Row="2"
+              <TextBlock Grid.Row="3"
                          Text="Query Params"
                          Foreground="#9a9a9a"
                          FontSize="11"
                          FontWeight="SemiBold"
                          Margin="0,0,0,4"/>
-              <views:KeyValueEditorView Grid.Row="3"
+              <views:KeyValueEditorView Grid.Row="4"
                                         DataContext="{Binding QueryParams}"/>
             </Grid>
           </TabItem>

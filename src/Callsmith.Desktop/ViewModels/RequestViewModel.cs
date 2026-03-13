@@ -50,6 +50,8 @@ public sealed partial class RequestViewModel : ObservableRecipient,
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PreviewUrl))]
+    [NotifyPropertyChangedFor(nameof(HasUnresolvedPathParams))]
+    [NotifyPropertyChangedFor(nameof(PreviewUrlForeground))]
     private string _url = string.Empty;
 
     [ObservableProperty]
@@ -178,6 +180,18 @@ public sealed partial class RequestViewModel : ObservableRecipient,
     /// The fully-resolved URL that will be sent: path params filled, query string
     /// appended, and environment variables substituted. Updates live as the user edits.
     /// </summary>
+    /// <summary>
+    /// Returns true when any URL path placeholder has no value assigned,
+    /// meaning the preview URL will still contain a literal <c>{placeholder}</c>.
+    /// </summary>
+    public bool HasUnresolvedPathParams =>
+        PathParams.Items.Any(item =>
+            !string.IsNullOrWhiteSpace(item.Key) &&
+            string.IsNullOrWhiteSpace(item.Value));
+
+    /// <summary>Amber when there are unresolved path params; muted grey otherwise.</summary>
+    public string PreviewUrlForeground => HasUnresolvedPathParams ? "#c07a20" : "#888888";
+
     public string PreviewUrl
     {
         get
@@ -185,7 +199,9 @@ public sealed partial class RequestViewModel : ObservableRecipient,
             if (string.IsNullOrWhiteSpace(Url))
                 return string.Empty;
 
+            // Filter out empty values so placeholders like {id} are preserved as-is in the URL.
             var pathParamValues = PathParams.GetEnabledPairs()
+                .Where(p => !string.IsNullOrWhiteSpace(p.Value))
                 .ToDictionary(p => p.Key, p => p.Value);
 
             var baseUrl = GetBaseUrl(Url);
@@ -272,6 +288,7 @@ public sealed partial class RequestViewModel : ObservableRecipient,
                 nameof(StatusDisplay) or nameof(ElapsedDisplay) or nameof(SizeDisplay) or
                 nameof(StatusClass) or nameof(StatusBadgeColor) or nameof(MethodColor) or
                 nameof(ShowBodyEditor) or nameof(PreviewUrl) or
+                nameof(HasUnresolvedPathParams) or nameof(PreviewUrlForeground) or
                 nameof(IsAuthBearer) or nameof(IsAuthBasic) or nameof(IsAuthApiKey))
                 return;
             HasUnsavedChanges = true;
@@ -298,6 +315,8 @@ public sealed partial class RequestViewModel : ObservableRecipient,
 
             RebuildUrlFromPathParamNames();
             OnPropertyChanged(nameof(PreviewUrl));
+            OnPropertyChanged(nameof(HasUnresolvedPathParams));
+            OnPropertyChanged(nameof(PreviewUrlForeground));
         };
     }
 
@@ -387,7 +406,10 @@ public sealed partial class RequestViewModel : ObservableRecipient,
                 Headers.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
                 StringComparer.OrdinalIgnoreCase);
 
+            // Filter out empty values so unfilled placeholders stay as {name} in the URL,
+            // making the resulting failure transparent and debuggable.
             var pathParamValues = PathParams.GetEnabledPairs()
+                .Where(p => !string.IsNullOrWhiteSpace(p.Value))
                 .ToDictionary(p => p.Key, p => p.Value);
 
             var baseUrl = GetBaseUrl(Url);
