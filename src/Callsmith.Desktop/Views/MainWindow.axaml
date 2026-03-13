@@ -17,7 +17,7 @@
     </Design.DataContext>
 
     <!-- Root layout: sidebar | main content -->
-    <Grid ColumnDefinitions="280,4,*">
+    <Grid ColumnDefinitions="280,6,*">
 
         <!-- ================================================================
              Left sidebar — Collections
@@ -28,7 +28,7 @@
         <!-- Splitter -->
         <GridSplitter Grid.Column="1"
                       ResizeDirection="Columns"
-                      Background="#3c3c3c"
+                      Background="#4a4a4a"
                       HorizontalAlignment="Stretch"/>
 
         <!-- ================================================================

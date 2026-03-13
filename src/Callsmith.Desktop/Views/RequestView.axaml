@@ -9,8 +9,8 @@
              x:DataType="vm:RequestViewModel"
              Background="#1e1e1e">
 
-  <!-- Request pane (top 45%) + Response pane (bottom 55%) â€” both always visible -->
-  <Grid RowDefinitions="0.45*,4,0.55*">
+  <!-- Request pane (top 45%) + Response pane (bottom 55%) — both always visible -->
+  <Grid RowDefinitions="0.45*,6,0.55*">
 
     <!-- ==================================================================
          REQUEST EDITOR
@@ -28,13 +28,13 @@
           <StackPanel Orientation="Horizontal"
                       Spacing="6"
                       VerticalAlignment="Center">
-            <TextBlock Text="â—"
+            <TextBlock Text="&#x25CF;"
                        Foreground="#f48771"
                        FontSize="10"
                        VerticalAlignment="Center"
                        IsVisible="{Binding HasUnsavedChanges}"/>
             <TextBlock Text="{Binding RequestName}"
-                       Foreground="#888"
+                       Foreground="#bbb"
                        FontSize="11"
                        FontStyle="Italic"
                        VerticalAlignment="Center"/>
@@ -46,7 +46,8 @@
                   Background="#1e7340"
                   Foreground="White"
                   Padding="12,3"
-                  FontSize="11"/>
+                  FontSize="11"
+                  CornerRadius="4"/>
         </Grid>
 
         <!-- Method selector + URL bar + Send / Cancel -->
@@ -79,7 +80,8 @@
                   Background="#0e639c"
                   Foreground="White"
                   FontWeight="SemiBold"
-                  Padding="20,6"/>
+                  Padding="20,6"
+                  CornerRadius="4"/>
 
           <Button Grid.Column="4"
                   IsVisible="{Binding IsSending}"
@@ -88,7 +90,8 @@
                   Background="#6c2020"
                   Foreground="White"
                   FontWeight="SemiBold"
-                  Padding="20,6"/>
+                  Padding="20,6"
+                  CornerRadius="4"/>
 
         </Grid>
 
@@ -116,6 +119,9 @@
                         ItemsSource="{Binding BodyTypes}"
                         SelectedItem="{Binding SelectedBodyType}"
                         MinWidth="150"
+                        Foreground="#d4d4d4"
+                        Background="#3c3c3c"
+                        BorderBrush="#555"
                         Margin="0,0,0,8"/>
               <TextBox Grid.Row="1"
                        Text="{Binding Body}"
@@ -131,7 +137,7 @@
               <TextBlock Grid.Row="1"
                          IsVisible="{Binding !ShowBodyEditor}"
                          Text="No body"
-                         Foreground="#555"
+                         Foreground="#888"
                          FontSize="12"
                          HorizontalAlignment="Center"
                          VerticalAlignment="Center"/>
@@ -146,7 +152,10 @@
 
                 <ComboBox ItemsSource="{Binding AuthTypes}"
                           SelectedItem="{Binding AuthType}"
-                          MinWidth="160"/>
+                          MinWidth="160"
+                          Foreground="#d4d4d4"
+                          Background="#3c3c3c"
+                          BorderBrush="#555"/>
 
                 <!-- Bearer token -->
                 <StackPanel IsVisible="{Binding IsAuthBearer}" Spacing="6">
@@ -197,7 +206,10 @@
                   <TextBlock Text="Add to" Foreground="#888" FontSize="11"/>
                   <ComboBox ItemsSource="{Binding ApiKeyLocations}"
                             SelectedItem="{Binding AuthApiKeyIn}"
-                            MinWidth="120"/>
+                            MinWidth="120"
+                            Foreground="#d4d4d4"
+                            Background="#3c3c3c"
+                            BorderBrush="#555"/>
                 </StackPanel>
 
               </StackPanel>
@@ -225,7 +237,7 @@
     <!-- Splitter -->
     <GridSplitter Grid.Row="1"
                   ResizeDirection="Rows"
-                  Background="#3c3c3c"
+                  Background="#4a4a4a"
                   HorizontalAlignment="Stretch"/>
 
     <!-- ==================================================================
@@ -262,7 +274,7 @@
                   VerticalAlignment="Center"
                   HorizontalAlignment="Center"
                   Spacing="8">
-        <TextBlock Text="Sendingâ€¦"
+        <TextBlock Text="Sending&#x2026;"
                    Foreground="#888"
                    FontSize="13"
                    HorizontalAlignment="Center"/>
@@ -276,7 +288,7 @@
                   Spacing="4">
         <TextBlock IsVisible="{Binding !IsSending}"
                    Text="Enter a URL and click Send"
-                   Foreground="#555"
+                   Foreground="#777"
                    FontSize="13"
                    HorizontalAlignment="Center"/>
       </StackPanel>

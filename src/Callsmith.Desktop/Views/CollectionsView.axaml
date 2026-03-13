@@ -49,7 +49,7 @@
                  FontSize="13"
                  HorizontalAlignment="Center"/>
       <TextBlock Text="Click ⊕ to open a folder"
-                 Foreground="#666"
+                 Foreground="#999"
                  FontSize="11"
                  HorizontalAlignment="Center"/>
     </StackPanel>
@@ -58,7 +58,7 @@
     <TextBlock DockPanel.Dock="Bottom"
                IsVisible="{Binding HasCollection}"
                Text="{Binding CollectionPath}"
-               Foreground="#666"
+               Foreground="#888"
                FontSize="10"
                TextTrimming="CharacterEllipsis"
                Padding="8,4"
