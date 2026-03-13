@@ -2,6 +2,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.Helpers;
 using Callsmith.Core.Models;
 using Microsoft.Extensions.Logging;
 
@@ -138,8 +139,10 @@ public sealed class FileSystemCollectionService : ICollectionService
             Url = existing.Url,
             Description = existing.Description,
             Headers = existing.Headers,
+            QueryParams = existing.QueryParams,
             BodyType = existing.BodyType,
             Body = existing.Body,
+            Auth = existing.Auth,
         };
 
         _logger.LogDebug("Renamed request '{OldPath}' → '{NewPath}'", filePath, newFilePath);
@@ -195,18 +198,50 @@ public sealed class FileSystemCollectionService : ICollectionService
     // Private — mapping between domain model and on-disk DTO
     // -------------------------------------------------------------------------
 
-    private static CollectionRequest DtoToRequest(RequestFileDto dto, string filePath) =>
-        new()
+    private static CollectionRequest DtoToRequest(RequestFileDto dto, string filePath)
+    {
+        // Separate base URL from query params.
+        // New files store them separately; old files have the full URL in the url field.
+        var rawUrl = dto.Url ?? string.Empty;
+        string baseUrl;
+        Dictionary<string, string> queryParams;
+
+        if (dto.QueryParams is not null)
+        {
+            baseUrl = rawUrl;
+            queryParams = dto.QueryParams;
+        }
+        else
+        {
+            // Backwards compat: derive query params by parsing the legacy URL field.
+            baseUrl = rawUrl.Contains('?') ? rawUrl[..rawUrl.IndexOf('?')] : rawUrl;
+            var parsed = QueryStringHelper.ParseQueryParams(rawUrl);
+            queryParams = new Dictionary<string, string>(parsed);
+        }
+
+        return new CollectionRequest
         {
             FilePath = filePath,
             Name = Path.GetFileNameWithoutExtension(filePath),
             Method = new HttpMethod(dto.Method ?? HttpMethod.Get.Method),
-            Url = dto.Url ?? string.Empty,
+            Url = baseUrl,
             Description = dto.Description,
             Headers = dto.Headers ?? new Dictionary<string, string>(),
+            QueryParams = queryParams,
             BodyType = dto.BodyType ?? CollectionRequest.BodyTypes.None,
             Body = dto.Body,
+            Auth = new AuthConfig
+            {
+                AuthType = dto.AuthType ?? AuthConfig.AuthTypes.None,
+                Token = dto.AuthToken,
+                Username = dto.AuthUsername,
+                Password = dto.AuthPassword,
+                ApiKeyName = dto.AuthApiKeyName,
+                ApiKeyValue = dto.AuthApiKeyValue,
+                ApiKeyIn = dto.AuthApiKeyIn ?? AuthConfig.ApiKeyLocations.Header,
+            },
         };
+    }
 
     private static RequestFileDto RequestToDto(CollectionRequest request) =>
         new()
@@ -217,10 +252,24 @@ public sealed class FileSystemCollectionService : ICollectionService
             Headers = request.Headers.Count > 0
                 ? request.Headers.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
                 : null,
+            QueryParams = request.QueryParams.Count > 0
+                ? request.QueryParams.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
+                : null,
             BodyType = request.BodyType == CollectionRequest.BodyTypes.None
                 ? null
                 : request.BodyType,
             Body = request.Body,
+            AuthType = request.Auth.AuthType == AuthConfig.AuthTypes.None
+                ? null
+                : request.Auth.AuthType,
+            AuthToken = request.Auth.Token,
+            AuthUsername = request.Auth.Username,
+            AuthPassword = request.Auth.Password,
+            AuthApiKeyName = request.Auth.ApiKeyName,
+            AuthApiKeyValue = request.Auth.ApiKeyValue,
+            AuthApiKeyIn = request.Auth.ApiKeyIn == AuthConfig.ApiKeyLocations.Header
+                ? null
+                : request.Auth.ApiKeyIn,
         };
 
     // -------------------------------------------------------------------------
@@ -237,7 +286,15 @@ public sealed class FileSystemCollectionService : ICollectionService
         public string? Url { get; set; }
         public string? Description { get; set; }
         public Dictionary<string, string>? Headers { get; set; }
+        public Dictionary<string, string>? QueryParams { get; set; }
         public string? BodyType { get; set; }
         public string? Body { get; set; }
+        public string? AuthType { get; set; }
+        public string? AuthToken { get; set; }
+        public string? AuthUsername { get; set; }
+        public string? AuthPassword { get; set; }
+        public string? AuthApiKeyName { get; set; }
+        public string? AuthApiKeyValue { get; set; }
+        public string? AuthApiKeyIn { get; set; }
     }
 }

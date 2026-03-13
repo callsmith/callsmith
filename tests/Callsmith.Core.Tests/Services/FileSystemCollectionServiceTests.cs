@@ -427,6 +427,132 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
     }
 
     // -------------------------------------------------------------------------
+    // SaveRequestAsync / LoadRequestAsync — new fields (QueryParams, Auth)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task SaveAndLoad_WithQueryParams_RoundTrips()
+    {
+        var folder = _temp.CreateSubDirectory("col");
+        var request = new CollectionRequest
+        {
+            FilePath = Path.Combine(folder, "req.callsmith"),
+            Name = "req",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com",
+            QueryParams = new Dictionary<string, string> { ["limit"] = "10", ["offset"] = "0" },
+        };
+
+        await _sut.SaveRequestAsync(request);
+        var loaded = await _sut.LoadRequestAsync(request.FilePath);
+
+        loaded.QueryParams.Should().BeEquivalentTo(request.QueryParams);
+        loaded.Url.Should().Be("https://api.example.com");
+    }
+
+    [Fact]
+    public async Task SaveAndLoad_BearerAuth_RoundTrips()
+    {
+        var folder = _temp.CreateSubDirectory("col");
+        var request = new CollectionRequest
+        {
+            FilePath = Path.Combine(folder, "req.callsmith"),
+            Name = "req",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com",
+            Auth = new AuthConfig { AuthType = AuthConfig.AuthTypes.Bearer, Token = "my-token" },
+        };
+
+        await _sut.SaveRequestAsync(request);
+        var loaded = await _sut.LoadRequestAsync(request.FilePath);
+
+        loaded.Auth.AuthType.Should().Be(AuthConfig.AuthTypes.Bearer);
+        loaded.Auth.Token.Should().Be("my-token");
+    }
+
+    [Fact]
+    public async Task SaveAndLoad_BasicAuth_RoundTrips()
+    {
+        var folder = _temp.CreateSubDirectory("col");
+        var request = new CollectionRequest
+        {
+            FilePath = Path.Combine(folder, "req.callsmith"),
+            Name = "req",
+            Method = HttpMethod.Post,
+            Url = "https://api.example.com",
+            Auth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.Basic,
+                Username = "user",
+                Password = "pass",
+            },
+        };
+
+        await _sut.SaveRequestAsync(request);
+        var loaded = await _sut.LoadRequestAsync(request.FilePath);
+
+        loaded.Auth.AuthType.Should().Be(AuthConfig.AuthTypes.Basic);
+        loaded.Auth.Username.Should().Be("user");
+        loaded.Auth.Password.Should().Be("pass");
+    }
+
+    [Fact]
+    public async Task SaveAndLoad_ApiKeyAuthInQuery_RoundTrips()
+    {
+        var folder = _temp.CreateSubDirectory("col");
+        var request = new CollectionRequest
+        {
+            FilePath = Path.Combine(folder, "req.callsmith"),
+            Name = "req",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com",
+            Auth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.ApiKey,
+                ApiKeyName = "api_key",
+                ApiKeyValue = "secret",
+                ApiKeyIn = AuthConfig.ApiKeyLocations.Query,
+            },
+        };
+
+        await _sut.SaveRequestAsync(request);
+        var loaded = await _sut.LoadRequestAsync(request.FilePath);
+
+        loaded.Auth.AuthType.Should().Be(AuthConfig.AuthTypes.ApiKey);
+        loaded.Auth.ApiKeyName.Should().Be("api_key");
+        loaded.Auth.ApiKeyValue.Should().Be("secret");
+        loaded.Auth.ApiKeyIn.Should().Be(AuthConfig.ApiKeyLocations.Query);
+    }
+
+    [Fact]
+    public async Task SaveAndLoad_NoAuth_DefaultsToNone()
+    {
+        var folder = _temp.CreateSubDirectory("col");
+        var filePath = WriteRequestFile(folder, "req");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+
+        loaded.Auth.AuthType.Should().Be(AuthConfig.AuthTypes.None);
+        loaded.Auth.Token.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task LegacyFile_WithQueryParamsInUrl_ParsedIntoQueryParamsCollection()
+    {
+        var folder = _temp.CreateSubDirectory("col");
+        // Legacy format: full URL including query params, no separate queryParams field
+        var json = """{"method": "GET", "url": "https://api.example.com?foo=bar&limit=5"}""";
+        var filePath = Path.Combine(folder, "legacy.callsmith");
+        await File.WriteAllTextAsync(filePath, json);
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+
+        loaded.Url.Should().Be("https://api.example.com");
+        loaded.QueryParams.Should().ContainKey("foo").WhoseValue.Should().Be("bar");
+        loaded.QueryParams.Should().ContainKey("limit").WhoseValue.Should().Be("5");
+    }
+
+    // -------------------------------------------------------------------------
     // TempDirectory helper
     // -------------------------------------------------------------------------
 

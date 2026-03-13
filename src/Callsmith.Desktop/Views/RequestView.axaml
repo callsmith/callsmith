@@ -1,6 +1,7 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Callsmith.Desktop.ViewModels"
+             xmlns:views="using:Callsmith.Desktop.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="750"
@@ -8,31 +9,55 @@
              x:DataType="vm:RequestViewModel"
              Background="#1e1e1e">
 
-  <!-- Request pane (top) + Response pane (bottom) — both always visible -->
-  <Grid RowDefinitions="Auto,4,*">
+  <!-- Request pane (top 45%) + Response pane (bottom 55%) â€” both always visible -->
+  <Grid RowDefinitions="0.45*,4,0.55*">
 
     <!-- ==================================================================
          REQUEST EDITOR
          ================================================================== -->
     <Border Grid.Row="0"
             Background="#252526"
-            Padding="16,12">
-      <StackPanel Spacing="10">
+            Padding="12,10">
+      <Grid RowDefinitions="Auto,Auto,*,Auto">
 
-        <!-- Request name (populated when loaded from a collection) -->
-        <TextBlock Text="{Binding RequestName}"
-                   IsVisible="{Binding RequestName, Converter={x:Static vm:StringNotEmptyConverter.Instance}}"
-                   Foreground="#888"
-                   FontSize="11"
-                   FontStyle="Italic"/>
+        <!-- Title bar: request name + unsaved indicator + Save button -->
+        <Grid Grid.Row="0"
+              ColumnDefinitions="*,Auto"
+              IsVisible="{Binding HasSourceRequest}"
+              Margin="0,0,0,8">
+          <StackPanel Orientation="Horizontal"
+                      Spacing="6"
+                      VerticalAlignment="Center">
+            <TextBlock Text="â—"
+                       Foreground="#f48771"
+                       FontSize="10"
+                       VerticalAlignment="Center"
+                       IsVisible="{Binding HasUnsavedChanges}"/>
+            <TextBlock Text="{Binding RequestName}"
+                       Foreground="#888"
+                       FontSize="11"
+                       FontStyle="Italic"
+                       VerticalAlignment="Center"/>
+          </StackPanel>
+          <Button Grid.Column="1"
+                  Content="Save"
+                  Command="{Binding SaveCommand}"
+                  IsVisible="{Binding HasUnsavedChanges}"
+                  Background="#1e7340"
+                  Foreground="White"
+                  Padding="12,3"
+                  FontSize="11"/>
+        </Grid>
 
-        <!-- Method selector + URL bar + Send/Cancel -->
-        <Grid ColumnDefinitions="Auto,8,*,8,Auto">
+        <!-- Method selector + URL bar + Send / Cancel -->
+        <Grid Grid.Row="1"
+              ColumnDefinitions="Auto,8,*,8,Auto"
+              Margin="0,0,0,0">
 
           <ComboBox Grid.Column="0"
                     ItemsSource="{Binding HttpMethods}"
                     SelectedItem="{Binding SelectedMethod}"
-                    MinWidth="100"
+                    MinWidth="110"
                     Foreground="#4ec9b0"
                     FontWeight="SemiBold"
                     FontSize="13"/>
@@ -47,7 +72,6 @@
                    Padding="8,6"
                    FontFamily="Consolas,Menlo,monospace"/>
 
-          <!-- Show Send when idle, Cancel when in-flight -->
           <Button Grid.Column="4"
                   IsVisible="{Binding !IsSending}"
                   Content="Send"
@@ -68,18 +92,134 @@
 
         </Grid>
 
-        <!-- Error message -->
-        <Border IsVisible="{Binding ErrorMessage, Converter={x:Static vm:StringNotEmptyConverter.Instance}}"
+        <!-- Tabs: Params | Headers | Body | Auth -->
+        <TabControl Grid.Row="2"
+                    Margin="0,8,0,0"
+                    Background="Transparent">
+
+          <!-- PARAMS -->
+          <TabItem Header="Params">
+            <views:KeyValueEditorView DataContext="{Binding QueryParams}"
+                                      Margin="0,4"/>
+          </TabItem>
+
+          <!-- HEADERS -->
+          <TabItem Header="Headers">
+            <views:KeyValueEditorView DataContext="{Binding Headers}"
+                                      Margin="0,4"/>
+          </TabItem>
+
+          <!-- BODY -->
+          <TabItem Header="Body">
+            <Grid RowDefinitions="Auto,*" Margin="0,8">
+              <ComboBox Grid.Row="0"
+                        ItemsSource="{Binding BodyTypes}"
+                        SelectedItem="{Binding SelectedBodyType}"
+                        MinWidth="150"
+                        Margin="0,0,0,8"/>
+              <TextBox Grid.Row="1"
+                       Text="{Binding Body}"
+                       IsVisible="{Binding ShowBodyEditor}"
+                       AcceptsReturn="True"
+                       TextWrapping="Wrap"
+                       FontFamily="Consolas,Menlo,monospace"
+                       FontSize="12"
+                       Foreground="#d4d4d4"
+                       Background="#1e1e1e"
+                       BorderBrush="#444"
+                       Padding="8"/>
+              <TextBlock Grid.Row="1"
+                         IsVisible="{Binding !ShowBodyEditor}"
+                         Text="No body"
+                         Foreground="#555"
+                         FontSize="12"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center"/>
+            </Grid>
+          </TabItem>
+
+          <!-- AUTH -->
+          <TabItem Header="Auth">
+            <ScrollViewer Margin="0,8"
+                          VerticalScrollBarVisibility="Auto">
+              <StackPanel Spacing="8">
+
+                <ComboBox ItemsSource="{Binding AuthTypes}"
+                          SelectedItem="{Binding AuthType}"
+                          MinWidth="160"/>
+
+                <!-- Bearer token -->
+                <StackPanel IsVisible="{Binding IsAuthBearer}" Spacing="6">
+                  <TextBlock Text="Token" Foreground="#888" FontSize="11"/>
+                  <TextBox Text="{Binding AuthToken}"
+                           Watermark="Enter bearer token..."
+                           Foreground="#d4d4d4"
+                           Background="#3c3c3c"
+                           BorderBrush="#555"
+                           Padding="8,6"
+                           FontFamily="Consolas,Menlo,monospace"/>
+                </StackPanel>
+
+                <!-- Basic auth -->
+                <StackPanel IsVisible="{Binding IsAuthBasic}" Spacing="6">
+                  <TextBlock Text="Username" Foreground="#888" FontSize="11"/>
+                  <TextBox Text="{Binding AuthUsername}"
+                           Foreground="#d4d4d4"
+                           Background="#3c3c3c"
+                           BorderBrush="#555"
+                           Padding="8,6"/>
+                  <TextBlock Text="Password" Foreground="#888" FontSize="11"/>
+                  <TextBox Text="{Binding AuthPassword}"
+                           PasswordChar="â—"
+                           Foreground="#d4d4d4"
+                           Background="#3c3c3c"
+                           BorderBrush="#555"
+                           Padding="8,6"/>
+                </StackPanel>
+
+                <!-- API key -->
+                <StackPanel IsVisible="{Binding IsAuthApiKey}" Spacing="6">
+                  <TextBlock Text="Key name" Foreground="#888" FontSize="11"/>
+                  <TextBox Text="{Binding AuthApiKeyName}"
+                           Watermark="X-Api-Key"
+                           Foreground="#d4d4d4"
+                           Background="#3c3c3c"
+                           BorderBrush="#555"
+                           Padding="8,6"
+                           FontFamily="Consolas,Menlo,monospace"/>
+                  <TextBlock Text="Key value" Foreground="#888" FontSize="11"/>
+                  <TextBox Text="{Binding AuthApiKeyValue}"
+                           Foreground="#d4d4d4"
+                           Background="#3c3c3c"
+                           BorderBrush="#555"
+                           Padding="8,6"
+                           FontFamily="Consolas,Menlo,monospace"/>
+                  <TextBlock Text="Add to" Foreground="#888" FontSize="11"/>
+                  <ComboBox ItemsSource="{Binding ApiKeyLocations}"
+                            SelectedItem="{Binding AuthApiKeyIn}"
+                            MinWidth="120"/>
+                </StackPanel>
+
+              </StackPanel>
+            </ScrollViewer>
+          </TabItem>
+
+        </TabControl>
+
+        <!-- Error message (below tabs) -->
+        <Border Grid.Row="3"
+                IsVisible="{Binding ErrorMessage, Converter={x:Static vm:StringNotEmptyConverter.Instance}}"
                 Background="#3a1414"
                 CornerRadius="3"
-                Padding="10,6">
+                Padding="10,6"
+                Margin="0,4,0,0">
           <TextBlock Text="{Binding ErrorMessage}"
                      Foreground="#f48771"
                      FontSize="12"
                      TextWrapping="Wrap"/>
         </Border>
 
-      </StackPanel>
+      </Grid>
     </Border>
 
     <!-- Splitter -->
@@ -93,42 +233,36 @@
          ================================================================== -->
     <Grid Grid.Row="2" RowDefinitions="Auto,*">
 
-      <!-- Response meta bar — always visible once a response exists -->
+      <!-- Response meta bar -->
       <Border Grid.Row="0"
               Background="#2d2d30"
               Padding="16,8"
               IsVisible="{Binding Response, Converter={x:Static vm:NotNullConverter.Instance}}">
         <StackPanel Orientation="Horizontal" Spacing="16">
-
-          <!-- Status badge -->
-          <Border CornerRadius="3" Padding="8,3"
-                  Background="#0e639c">
+          <Border CornerRadius="3" Padding="8,3" Background="#0e639c">
             <TextBlock Text="{Binding StatusDisplay}"
                        Foreground="White"
                        FontWeight="SemiBold"
                        FontSize="12"/>
           </Border>
-
           <TextBlock Text="{Binding ElapsedDisplay}"
                      Foreground="#888"
                      FontSize="12"
                      VerticalAlignment="Center"/>
-
           <TextBlock Text="{Binding SizeDisplay}"
                      Foreground="#888"
                      FontSize="12"
                      VerticalAlignment="Center"/>
-
         </StackPanel>
       </Border>
 
-      <!-- Loading spinner -->
+      <!-- Sending indicator -->
       <StackPanel Grid.Row="1"
                   IsVisible="{Binding IsSending}"
                   VerticalAlignment="Center"
                   HorizontalAlignment="Center"
                   Spacing="8">
-        <TextBlock Text="Sending…"
+        <TextBlock Text="Sendingâ€¦"
                    Foreground="#888"
                    FontSize="13"
                    HorizontalAlignment="Center"/>

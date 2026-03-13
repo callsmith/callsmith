@@ -1,4 +1,5 @@
 using System.Net.Http;
+using Callsmith.Core.Helpers;
 
 namespace Callsmith.Core.Models;
 
@@ -36,6 +37,24 @@ public sealed class CollectionRequest
 
     /// <summary>Raw body content. Null when <see cref="BodyType"/> is <c>"none"</c>.</summary>
     public string? Body { get; init; }
+
+    /// <summary>
+    /// Query parameters stored separately from the base URL.
+    /// The full request URL is the base <see cref="Url"/> with these parameters appended.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> QueryParams { get; init; }
+        = new Dictionary<string, string>();
+
+    /// <summary>Authentication configuration for this request.</summary>
+    public AuthConfig Auth { get; init; } = new();
+
+    /// <summary>
+    /// The full URL including any query parameters from <see cref="QueryParams"/>.
+    /// Use this when building a <c>RequestModel</c> to send.
+    /// </summary>
+    public string FullUrl => QueryParams.Count > 0
+        ? QueryStringHelper.ApplyQueryParams(Url, QueryParams)
+        : Url;
 
     /// <summary>Well-known body type constants to avoid magic strings.</summary>
     public static class BodyTypes
