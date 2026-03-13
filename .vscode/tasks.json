@@ -1,0 +1,25 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "type": "shell",
+            "command": "dotnet build ${workspaceFolder}/src/Callsmith.Desktop/Callsmith.Desktop.csproj --configuration Debug",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "test",
+            "type": "shell",
+            "command": "dotnet test ${workspaceFolder} --configuration Debug",
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "problemMatcher": "$msCompile"
+        }
+    ]
+}

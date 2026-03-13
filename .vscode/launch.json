@@ -1,0 +1,34 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run Callsmith",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/src/Callsmith.Desktop/bin/Debug/net10.0/Callsmith.Desktop.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}/src/Callsmith.Desktop",
+            "stopAtEntry": false,
+            "console": "internalConsole",
+            "env": {
+                "DOTNET_ENVIRONMENT": "Development"
+            }
+        },
+        {
+            "name": "Debug Callsmith",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/src/Callsmith.Desktop/bin/Debug/net10.0/Callsmith.Desktop.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}/src/Callsmith.Desktop",
+            "stopAtEntry": false,
+            "console": "internalConsole",
+            "justMyCode": false,
+            "env": {
+                "DOTNET_ENVIRONMENT": "Development"
+            }
+        }
+    ]
+}

@@ -60,7 +60,7 @@
                Text="{Binding CollectionPath}"
                Foreground="#666"
                FontSize="10"
-               TextTrimming="LeadingEllipsis"
+               TextTrimming="CharacterEllipsis"
                Padding="8,4"
                ToolTip.Tip="{Binding CollectionPath}"/>
 
