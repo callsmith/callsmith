@@ -14,6 +14,18 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
     /// <summary>The editable rows.</summary>
     public ObservableCollection<KeyValueItemViewModel> Items { get; } = [];
 
+    /// <summary>Whether the "+ Add" button is shown.</summary>
+    [ObservableProperty]
+    private bool _showAddButton = true;
+
+    /// <summary>Whether row-level delete (x) buttons are shown.</summary>
+    [ObservableProperty]
+    private bool _showDeleteButton = true;
+    
+        /// <summary>Whether row enabled/disabled checkboxes are shown.</summary>
+        [ObservableProperty]
+        private bool _showEnabledToggle = true;
+
     /// <summary>Raised whenever the collection or any item's key/value/enabled state changes.</summary>
     public event EventHandler? Changed;
 
@@ -24,7 +36,7 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
 
     /// <summary>Adds a new empty row to the editor.</summary>
     [RelayCommand]
-    private void AddItem() => Items.Add(new KeyValueItemViewModel(RemoveItem));
+    private void AddItem() => Items.Add(CreateItem(string.Empty, string.Empty));
 
     private void RemoveItem(KeyValueItemViewModel item) => Items.Remove(item);
 
@@ -41,14 +53,15 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
         Items.Clear();
 
         foreach (var (k, v) in dict)
-            Items.Add(new KeyValueItemViewModel(RemoveItem) { Key = k, Value = v });
+            Items.Add(CreateItem(k, v));
     }
 
     /// <summary>Returns all enabled rows that have a non-empty key.</summary>
     public IEnumerable<KeyValuePair<string, string>> GetEnabledPairs()
-        => Items
-            .Where(i => i.IsEnabled && !string.IsNullOrWhiteSpace(i.Key))
-            .Select(i => new KeyValuePair<string, string>(i.Key, i.Value));
+            => Items
+                .Where(i => !string.IsNullOrWhiteSpace(i.Key))
+                .Where(i => !ShowEnabledToggle || i.IsEnabled)
+                .Select(i => new KeyValuePair<string, string>(i.Key, i.Value));
 
     private void OnItemsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
@@ -65,4 +78,32 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
 
     private void OnItemPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         => Changed?.Invoke(this, EventArgs.Empty);
+
+    partial void OnShowDeleteButtonChanged(bool value)
+    {
+        foreach (var item in Items)
+            item.ShowDeleteButton = value;
+    }
+    
+        partial void OnShowEnabledToggleChanged(bool value)
+        {
+            // When toggle visibility is disabled, treat all rows as active.
+            if (!value)
+            {
+                foreach (var item in Items)
+                    item.IsEnabled = true;
+            }
+
+            foreach (var item in Items)
+                item.ShowEnabledToggle = value;
+        }
+
+    private KeyValueItemViewModel CreateItem(string key, string value) =>
+        new(RemoveItem)
+        {
+            Key = key,
+            Value = value,
+            ShowDeleteButton = ShowDeleteButton,
+            ShowEnabledToggle = ShowEnabledToggle,
+        };
 }

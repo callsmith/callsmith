@@ -2,8 +2,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Callsmith.Desktop.App"
              xmlns:local="using:Callsmith.Desktop"
-             RequestedThemeVariant="Default">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+             RequestedThemeVariant="Dark">
+             <!-- Force native Fluent dark theme for consistent desktop UX. -->
 
     <Application.DataTemplates>
         <local:ViewLocator/>

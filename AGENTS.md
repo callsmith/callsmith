@@ -136,6 +136,11 @@ These are final. Do not suggest or introduce alternatives.
 9. **Tests are required** for all Core and Data logic before a feature is
    considered complete.
 
+10. **Theme-first UI styling.** Prefer Avalonia Fluent theme defaults.
+    Keep style overrides minimal and local. Avoid deep template-part selectors or
+    large global control-state override blocks unless there is a verified bug that
+    cannot be solved with built-in theme behavior.
+
 ---
 
 ## 6. How to Implement a New Feature

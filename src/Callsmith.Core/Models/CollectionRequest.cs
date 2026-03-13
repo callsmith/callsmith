@@ -45,6 +45,13 @@ public sealed class CollectionRequest
     public IReadOnlyDictionary<string, string> QueryParams { get; init; }
         = new Dictionary<string, string>();
 
+    /// <summary>
+    /// Path parameters keyed by placeholder name (for URL templates such as <c>/users/{id}</c>).
+    /// Values are substituted into the URL path at send time.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> PathParams { get; init; }
+        = new Dictionary<string, string>();
+
     /// <summary>Authentication configuration for this request.</summary>
     public AuthConfig Auth { get; init; } = new();
 

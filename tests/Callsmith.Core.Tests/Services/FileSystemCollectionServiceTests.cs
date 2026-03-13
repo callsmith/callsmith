@@ -451,6 +451,30 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAndLoad_WithPathParams_RoundTrips()
+    {
+        var folder = _temp.CreateSubDirectory("col");
+        var request = new CollectionRequest
+        {
+            FilePath = Path.Combine(folder, "req.callsmith"),
+            Name = "req",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com/users/{id}/orders/{orderId}",
+            PathParams = new Dictionary<string, string>
+            {
+                ["id"] = "42",
+                ["orderId"] = "abc-123",
+            },
+        };
+
+        await _sut.SaveRequestAsync(request);
+        var loaded = await _sut.LoadRequestAsync(request.FilePath);
+
+        loaded.PathParams.Should().BeEquivalentTo(request.PathParams);
+        loaded.Url.Should().Be("https://api.example.com/users/{id}/orders/{orderId}");
+    }
+
+    [Fact]
     public async Task SaveAndLoad_BearerAuth_RoundTrips()
     {
         var folder = _temp.CreateSubDirectory("col");

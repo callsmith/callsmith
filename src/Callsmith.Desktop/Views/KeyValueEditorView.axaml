@@ -8,22 +8,10 @@
              x:DataType="vm:KeyValueEditorViewModel"
              Background="Transparent">
 
-  <DockPanel>
-
-    <!-- Add row button -->
-    <Button DockPanel.Dock="Bottom"
-            Content="+ Add"
-            Command="{Binding AddItemCommand}"
-            Background="Transparent"
-            Foreground="#4ec9b0"
-            BorderThickness="0"
-            Padding="0,6,0,0"
-            HorizontalAlignment="Left"
-            FontSize="12"/>
+  <StackPanel>
 
     <!-- Column headers -->
-    <Grid DockPanel.Dock="Top"
-          ColumnDefinitions="28,*,*,28"
+    <Grid ColumnDefinitions="28,*,*,28"
           Margin="0,4,0,4">
       <TextBlock Grid.Column="1"
                  Text="Key"
@@ -41,57 +29,72 @@
                  Margin="6,0"/>
     </Grid>
 
-    <!-- Rows -->
+    <!-- Rows + add button (add appears where the new row will be inserted) -->
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-      <ItemsControl ItemsSource="{Binding Items}">
-        <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="vm:KeyValueItemViewModel">
-            <Grid ColumnDefinitions="28,*,*,28" Margin="0,2">
+      <StackPanel>
+        <ItemsControl ItemsSource="{Binding Items}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:KeyValueItemViewModel">
+              <Grid ColumnDefinitions="28,*,*,28" Margin="0,2">
 
-              <CheckBox Grid.Column="0"
-                        IsChecked="{Binding IsEnabled}"
+                <CheckBox Grid.Column="0"
+                          IsChecked="{Binding IsEnabled}"
+                          IsVisible="{Binding ShowEnabledToggle}"
+                          VerticalAlignment="Center"
+                          HorizontalAlignment="Center"/>
+
+                <TextBox Grid.Column="1"
+                         Text="{Binding Key}"
+                         Watermark="key"
+                         FontSize="12"
+                         Foreground="#d4d4d4"
+                         Background="#2d2d30"
+                         BorderBrush="#444"
+                         Padding="6,4"
+                         Margin="2,0"
+                         FontFamily="Consolas,Menlo,monospace"/>
+
+                <TextBox Grid.Column="2"
+                         Text="{Binding Value}"
+                         Watermark="value"
+                         FontSize="12"
+                         Foreground="#d4d4d4"
+                         Background="#2d2d30"
+                         BorderBrush="#444"
+                         Padding="6,4"
+                         Margin="2,0"
+                         FontFamily="Consolas,Menlo,monospace"/>
+
+                <Button Grid.Column="3"
+                        Content="×"
+                        Command="{Binding DeleteCommand}"
+                        IsVisible="{Binding ShowDeleteButton}"
+                        Background="Transparent"
+                        Foreground="#aaa"
+                        BorderThickness="0"
+                        Padding="4,0"
+                        FontSize="14"
                         VerticalAlignment="Center"
                         HorizontalAlignment="Center"/>
 
-              <TextBox Grid.Column="1"
-                       Text="{Binding Key}"
-                       Watermark="key"
-                       FontSize="12"
-                       Foreground="#d4d4d4"
-                       Background="#2d2d30"
-                       BorderBrush="#444"
-                       Padding="6,4"
-                       Margin="2,0"
-                       FontFamily="Consolas,Menlo,monospace"/>
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
 
-              <TextBox Grid.Column="2"
-                       Text="{Binding Value}"
-                       Watermark="value"
-                       FontSize="12"
-                       Foreground="#d4d4d4"
-                       Background="#2d2d30"
-                       BorderBrush="#444"
-                       Padding="6,4"
-                       Margin="2,0"
-                       FontFamily="Consolas,Menlo,monospace"/>
-
-              <Button Grid.Column="3"
-                      Content="×"
-                      Command="{Binding DeleteCommand}"
-                      Background="Transparent"
-                      Foreground="#aaa"
-                      BorderThickness="0"
-                      Padding="4,0"
-                      FontSize="14"
-                      VerticalAlignment="Center"
-                      HorizontalAlignment="Center"/>
-
-            </Grid>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
+        <Button Content="+ Add"
+                Command="{Binding AddItemCommand}"
+                IsVisible="{Binding ShowAddButton}"
+                Background="Transparent"
+                Foreground="#4ec9b0"
+                BorderThickness="0"
+                Padding="0,6,0,0"
+                HorizontalAlignment="Left"
+                FontSize="12"
+                Margin="0,2,0,0"/>
+      </StackPanel>
     </ScrollViewer>
 
-  </DockPanel>
+  </StackPanel>
 
 </UserControl>

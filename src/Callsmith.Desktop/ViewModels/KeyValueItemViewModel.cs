@@ -20,6 +20,12 @@ public sealed partial class KeyValueItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _isEnabled = true;
 
+    [ObservableProperty]
+    private bool _showDeleteButton = true;
+
+    [ObservableProperty]
+    private bool _showEnabledToggle = true;
+
     /// <summary>Removes this row from its parent editor when executed.</summary>
     public IRelayCommand DeleteCommand { get; }
 

@@ -139,6 +139,7 @@ public sealed class FileSystemCollectionService : ICollectionService
             Url = existing.Url,
             Description = existing.Description,
             Headers = existing.Headers,
+            PathParams = existing.PathParams,
             QueryParams = existing.QueryParams,
             BodyType = existing.BodyType,
             Body = existing.Body,
@@ -227,6 +228,7 @@ public sealed class FileSystemCollectionService : ICollectionService
             Url = baseUrl,
             Description = dto.Description,
             Headers = dto.Headers ?? new Dictionary<string, string>(),
+            PathParams = dto.PathParams ?? new Dictionary<string, string>(),
             QueryParams = queryParams,
             BodyType = dto.BodyType ?? CollectionRequest.BodyTypes.None,
             Body = dto.Body,
@@ -251,6 +253,9 @@ public sealed class FileSystemCollectionService : ICollectionService
             Description = request.Description,
             Headers = request.Headers.Count > 0
                 ? request.Headers.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
+                : null,
+            PathParams = request.PathParams.Count > 0
+                ? request.PathParams.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
                 : null,
             QueryParams = request.QueryParams.Count > 0
                 ? request.QueryParams.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
@@ -286,6 +291,7 @@ public sealed class FileSystemCollectionService : ICollectionService
         public string? Url { get; set; }
         public string? Description { get; set; }
         public Dictionary<string, string>? Headers { get; set; }
+        public Dictionary<string, string>? PathParams { get; set; }
         public Dictionary<string, string>? QueryParams { get; set; }
         public string? BodyType { get; set; }
         public string? Body { get; set; }

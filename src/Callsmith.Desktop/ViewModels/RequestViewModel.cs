@@ -37,6 +37,9 @@ public sealed partial class RequestViewModel : ObservableRecipient,
     /// <summary>Prevents infinite feedback between the URL bar and the query-param editor.</summary>
     private bool _syncingUrl;
 
+    /// <summary>Prevents URL/path-param feedback loops while synchronising placeholders.</summary>
+    private bool _syncingPathParams;
+
     // -------------------------------------------------------------------------
     // Request editor state
     // -------------------------------------------------------------------------
@@ -112,6 +115,9 @@ public sealed partial class RequestViewModel : ObservableRecipient,
 
     /// <summary>Query parameter editor -- stays bidirectionally in sync with the URL bar.</summary>
     public KeyValueEditorViewModel QueryParams { get; } = new();
+
+    /// <summary>Path parameter editor discovered from URL placeholders like <c>{id}</c>.</summary>
+    public KeyValueEditorViewModel PathParams { get; } = new();
 
     // -------------------------------------------------------------------------
     // Derived display properties
@@ -221,6 +227,12 @@ public sealed partial class RequestViewModel : ObservableRecipient,
         _collectionService = collectionService;
         IsActive = true;
 
+        // Path params are derived from URL placeholders; users should rename/edit values,
+        // but not manually add/remove rows.
+        PathParams.ShowAddButton = false;
+        PathParams.ShowDeleteButton = false;
+        PathParams.ShowEnabledToggle = false;
+
         // Dirty tracking: any property change while not loading marks the editor dirty.
         // Exclude internal/computed properties that are not user edits.
         PropertyChanged += (_, e) =>
@@ -248,6 +260,14 @@ public sealed partial class RequestViewModel : ObservableRecipient,
             if (!_loading && _sourceRequest is not null)
                 HasUnsavedChanges = true;
             RebuildUrlFromParams();
+        };
+
+        PathParams.Changed += (_, _) =>
+        {
+            if (!_loading && _sourceRequest is not null)
+                HasUnsavedChanges = true;
+
+            RebuildUrlFromPathParamNames();
         };
     }
 
@@ -285,6 +305,7 @@ public sealed partial class RequestViewModel : ObservableRecipient,
                     ? QueryStringHelper.ApplyQueryParams(req.Url, req.QueryParams)
                     : req.Url;
                 QueryParams.LoadFrom(req.QueryParams);
+                SyncPathParamsWithUrl(Url, req.PathParams);
             }
             finally
             {
@@ -335,7 +356,14 @@ public sealed partial class RequestViewModel : ObservableRecipient,
                 Headers.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
                 StringComparer.OrdinalIgnoreCase);
 
-            ApplyAuthHeaders(headers, out var requestUrl);
+            var pathParamValues = PathParams.GetEnabledPairs()
+                .ToDictionary(p => p.Key, p => p.Value);
+
+            var baseUrl = GetBaseUrl(Url);
+            var requestUrl = PathTemplateHelper.ApplyPathParams(baseUrl, pathParamValues);
+            requestUrl = QueryStringHelper.ApplyQueryParams(requestUrl, QueryParams.GetEnabledPairs().ToList());
+
+            ApplyAuthHeaders(headers, requestUrl, out requestUrl);
 
             // Apply variable substitution if an environment is active.
             var vars = _activeEnvironment is not null
@@ -399,6 +427,7 @@ public sealed partial class RequestViewModel : ObservableRecipient,
             Url = baseUrl,
             Description = _sourceRequest.Description,
             Headers = Headers.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
+            PathParams = PathParams.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
             QueryParams = QueryParams.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
             BodyType = SelectedBodyType,
             Body = string.IsNullOrEmpty(Body) ? null : Body,
@@ -431,6 +460,11 @@ public sealed partial class RequestViewModel : ObservableRecipient,
         {
             var parsed = QueryStringHelper.ParseQueryParams(value);
             QueryParams.LoadFrom(parsed);
+
+            var existingPathValues = PathParams.Items
+                .Where(i => !string.IsNullOrWhiteSpace(i.Key))
+                .ToDictionary(i => i.Key, i => i.Value);
+            SyncPathParamsWithUrl(value, existingPathValues);
         }
         finally
         {
@@ -453,13 +487,61 @@ public sealed partial class RequestViewModel : ObservableRecipient,
         }
     }
 
+    private void RebuildUrlFromPathParamNames()
+    {
+        if (_syncingUrl || _syncingPathParams || _loading)
+            return;
+
+        var currentBaseUrl = GetBaseUrl(Url);
+        var existingNames = PathTemplateHelper.ExtractPathParamNames(currentBaseUrl);
+        if (existingNames.Count == 0)
+            return;
+
+        var editedNames = PathParams.Items
+            .Where(i => !string.IsNullOrWhiteSpace(i.Key))
+            .Select(i => i.Key)
+            .ToList();
+
+        if (editedNames.Count != existingNames.Count)
+            return;
+
+        var updatedBaseUrl = currentBaseUrl;
+        for (var i = 0; i < existingNames.Count; i++)
+        {
+            var oldName = existingNames[i];
+            var newName = editedNames[i];
+
+            if (string.Equals(oldName, newName, StringComparison.Ordinal))
+                continue;
+
+            updatedBaseUrl = updatedBaseUrl.Replace(
+                $"{{{oldName}}}",
+                $"{{{newName}}}",
+                StringComparison.Ordinal);
+        }
+
+        if (string.Equals(updatedBaseUrl, currentBaseUrl, StringComparison.Ordinal))
+            return;
+
+        _syncingUrl = true;
+        try
+        {
+            var queryPairs = QueryParams.GetEnabledPairs().ToList();
+            Url = QueryStringHelper.ApplyQueryParams(updatedBaseUrl, queryPairs);
+        }
+        finally
+        {
+            _syncingUrl = false;
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Auth helpers
     // -------------------------------------------------------------------------
 
-    private void ApplyAuthHeaders(Dictionary<string, string> headers, out string url)
+    private void ApplyAuthHeaders(Dictionary<string, string> headers, string requestUrl, out string url)
     {
-        url = Url;
+        url = requestUrl;
         switch (AuthType)
         {
             case AuthConfig.AuthTypes.Bearer when !string.IsNullOrEmpty(AuthToken):
@@ -477,9 +559,34 @@ public sealed partial class RequestViewModel : ObservableRecipient,
                     headers[AuthApiKeyName] = AuthApiKeyValue;
                 else
                     url = QueryStringHelper.ApplyQueryParams(
-                        Url,
+                        requestUrl,
                         [new KeyValuePair<string, string>(AuthApiKeyName, AuthApiKeyValue)]);
                 break;
+        }
+    }
+
+    private static string GetBaseUrl(string value)
+    {
+        var index = value.IndexOf('?');
+        return index >= 0 ? value[..index] : value;
+    }
+
+    private void SyncPathParamsWithUrl(string url, IReadOnlyDictionary<string, string> existingValues)
+    {
+        _syncingPathParams = true;
+        try
+        {
+        var names = PathTemplateHelper.ExtractPathParamNames(url);
+        var merged = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var name in names)
+            merged[name] = existingValues.TryGetValue(name, out var value) ? value : string.Empty;
+
+        PathParams.LoadFrom(merged);
+        }
+        finally
+        {
+            _syncingPathParams = false;
         }
     }
 

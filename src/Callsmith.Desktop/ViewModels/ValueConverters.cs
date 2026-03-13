@@ -56,3 +56,30 @@ public sealed class HexColorToBrushConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();
 }
+
+/// <summary>Converts HTTP method names (GET, POST, etc.) to accent brushes.</summary>
+public sealed class HttpMethodToBrushConverter : IValueConverter
+{
+    public static readonly HttpMethodToBrushConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var method = value as string;
+        var hex = method?.ToUpperInvariant() switch
+        {
+            "GET" => "#4ec9b0",
+            "POST" => "#dda756",
+            "PUT" => "#4fc1ff",
+            "PATCH" => "#b8d7a3",
+            "DELETE" => "#f48771",
+            "HEAD" => "#c586c0",
+            "OPTIONS" => "#9a9a9a",
+            _ => "#d4d4d4",
+        };
+
+        return new SolidColorBrush(Color.Parse(hex));
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}

@@ -142,6 +142,13 @@
 
 - [x] Reusable `KeyValueEditor` control (used for headers, query params, env vars)
 - [x] Query param editor (syncs bidirectionally with the URL bar)
+- [~] Path param editor (in Params section) with URL-template discovery:
+  - [x] Detect placeholders in URL path (e.g., `/users/{id}/orders/{orderId}`)
+  - [x] Auto-populate path params list from detected placeholders
+  - [x] Keep list in sync as URL template changes (add/remove/rename placeholders)
+  - [x] Resolve path placeholders at send time before query-string composition
+  - [x] Path param values support static text, env variables, or mixed values (e.g., `{{tenant}}-{id}`)
+  - [ ] Preserve unresolved placeholders in preview/send with clear validation feedback
 - [x] Request body editor:
   - [x] Body type selector: None, JSON, plain text, XML, form-urlencoded, multipart
   - [ ] Syntax-highlighted editor for JSON and XML body types
@@ -207,7 +214,37 @@
 
 ---
 
-## Phase 8 — Response Viewer Polish
+## Phase 8 — UI Polish and Usability
+
+> Goal: Dedicate a full phase to iterative visual quality and UX improvements.
+> Work item style: small, observable UI fixes shipped continuously.
+
+- [ ] Establish a UI polish checklist and triage labels (contrast, spacing, sizing, discoverability, keyboard)
+- [ ] Contrast pass across all primary screens:
+  - [ ] Verify text/background contrast in dark theme for headers, tabs, dropdowns, placeholders, and status text
+  - [ ] Ensure selected/focused/disabled states remain readable
+  - [ ] Audit warning/error/success colors for clarity and consistency
+- [ ] Consistency pass:
+  - [ ] Normalize control sizing (buttons, dropdowns, tabs, inputs) across views
+  - [ ] Align spacing scale (margins/padding/gaps) and border radii
+  - [ ] Standardize typography scale for labels/body/metadata
+- [ ] Usability pass:
+  - [ ] Reduce friction for common actions (send, save, switch environment, open collection)
+  - [ ] Improve empty states and inline guidance text
+  - [ ] Improve error message clarity and placement
+- [ ] Interaction pass:
+  - [ ] Validate hover/focus/pressed states for all interactive controls
+  - [ ] Ensure keyboard navigation order is logical in all primary panes
+  - [ ] Add or refine keyboard shortcuts for high-frequency actions
+- [ ] Resizable layout pass:
+  - [ ] Verify usability at small window sizes
+  - [ ] Verify split panes and toolbars remain usable under constrained widths
+- [ ] Cross-platform visual sanity checks (Windows/macOS/Linux)
+- [ ] Add/expand UI tests for critical interaction flows where practical
+
+---
+
+## Phase 9 — Response Viewer Polish
 
 > Goal: Make reading responses fast and pleasant.
 
@@ -221,7 +258,7 @@
 
 ---
 
-## Phase 9 — Additional Transports and Advanced Features
+## Phase 10 — Additional Transports and Advanced Features
 
 - [ ] `WebSocketTransport` — implement `ITransport` for WebSocket connections
   - [ ] Connect, send messages, receive a stream of messages
@@ -236,7 +273,7 @@
 
 ---
 
-## Phase 10 — Distribution and Polish
+## Phase 11 — Distribution and Polish
 
 - [ ] Application icon and branding
 - [ ] Settings screen: default timeout, font size, proxy configuration
