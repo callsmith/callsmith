@@ -42,6 +42,7 @@ public sealed partial class RequestViewModel : ObservableRecipient,
     // -------------------------------------------------------------------------
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MethodColor))]
     private string _selectedMethod = "GET";
 
     [ObservableProperty]
@@ -140,6 +141,29 @@ public sealed partial class RequestViewModel : ObservableRecipient,
         _ => string.Empty,
     };
 
+    /// <summary>Background color for the HTTP status badge, keyed to the response status range.</summary>
+    public string StatusBadgeColor => Response?.StatusCode switch
+    {
+        >= 200 and < 300 => "#1a5c33",
+        >= 300 and < 400 => "#6b5800",
+        >= 400 and < 500 => "#7a1e1e",
+        >= 500 => "#5a1414",
+        _ => "#0e639c",
+    };
+
+    /// <summary>Foreground color for the method ComboBox, color-coded by HTTP verb.</summary>
+    public string MethodColor => SelectedMethod switch
+    {
+        "GET"     => "#4ec9b0",
+        "POST"    => "#dda756",
+        "PUT"     => "#4fc1ff",
+        "PATCH"   => "#b8d7a3",
+        "DELETE"  => "#f48771",
+        "HEAD"    => "#c586c0",
+        "OPTIONS" => "#9a9a9a",
+        _         => "#d4d4d4",
+    };
+
     /// <summary>Whether a request file is currently loaded into the editor.</summary>
     public bool HasSourceRequest => _sourceRequest is not null;
 
@@ -205,7 +229,8 @@ public sealed partial class RequestViewModel : ObservableRecipient,
             if (e.PropertyName is
                 nameof(HasUnsavedChanges) or nameof(HasSourceRequest) or
                 nameof(Response) or nameof(IsSending) or nameof(ErrorMessage) or
-                nameof(StatusDisplay) or nameof(ElapsedDisplay) or nameof(SizeDisplay) or nameof(StatusClass) or
+                nameof(StatusDisplay) or nameof(ElapsedDisplay) or nameof(SizeDisplay) or
+                nameof(StatusClass) or nameof(StatusBadgeColor) or nameof(MethodColor) or
                 nameof(ShowBodyEditor) or
                 nameof(IsAuthBearer) or nameof(IsAuthBasic) or nameof(IsAuthApiKey))
                 return;
@@ -353,6 +378,7 @@ public sealed partial class RequestViewModel : ObservableRecipient,
             OnPropertyChanged(nameof(ElapsedDisplay));
             OnPropertyChanged(nameof(SizeDisplay));
             OnPropertyChanged(nameof(StatusClass));
+            OnPropertyChanged(nameof(StatusBadgeColor));
         }
     }
 

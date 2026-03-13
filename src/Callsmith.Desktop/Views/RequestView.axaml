@@ -59,7 +59,7 @@
                     ItemsSource="{Binding HttpMethods}"
                     SelectedItem="{Binding SelectedMethod}"
                     MinWidth="110"
-                    Foreground="#4ec9b0"
+                    Foreground="{Binding MethodColor, Converter={x:Static vm:HexColorToBrushConverter.Instance}}"
                     FontWeight="SemiBold"
                     FontSize="13"/>
 
@@ -251,7 +251,7 @@
               Padding="16,8"
               IsVisible="{Binding Response, Converter={x:Static vm:NotNullConverter.Instance}}">
         <StackPanel Orientation="Horizontal" Spacing="16">
-          <Border CornerRadius="3" Padding="8,3" Background="#0e639c">
+          <Border CornerRadius="3" Padding="8,3" Background="{Binding StatusBadgeColor, Converter={x:Static vm:HexColorToBrushConverter.Instance}}">
             <TextBlock Text="{Binding StatusDisplay}"
                        Foreground="White"
                        FontWeight="SemiBold"
