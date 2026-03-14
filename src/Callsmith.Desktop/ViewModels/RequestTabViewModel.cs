@@ -1,4 +1,4 @@
-﻿using System.Net.Http;
+using System.Net.Http;
 using System.Text;
 using Callsmith.Core;
 using Callsmith.Core.Abstractions;
@@ -13,42 +13,59 @@ using Callsmith.Desktop.Messages;
 namespace Callsmith.Desktop.ViewModels;
 
 /// <summary>
-/// ViewModel for the request editor and response viewer pane.
-/// Receives a selected request from the sidebar via <see cref="RequestSelectedMessage"/>,
-/// allows the user to edit and send it, and exposes the response for display.
-/// Tracks unsaved changes and provides an explicit Save command.
+/// State for a single open request tab. Each tab is an independent editor instance.
+/// <see cref="RequestEditorViewModel"/> manages the collection of open tabs and
+/// handles cross-tab concerns (environment changes, collection events).
 /// </summary>
-public sealed partial class RequestViewModel : ObservableRecipient,
-    IRecipient<RequestSelectedMessage>,
-    IRecipient<EnvironmentChangedMessage>,
-    IRecipient<CollectionItemDeletedMessage>
+public sealed partial class RequestTabViewModel : ObservableObject
 {
     private readonly TransportRegistry _transportRegistry;
     private readonly ICollectionService _collectionService;
+    private readonly IMessenger _messenger;
+    private readonly Action<RequestTabViewModel> _requestClose;
 
-    /// <summary>The request file currently loaded into the editor; null when nothing is open.</summary>
+    /// <summary>Source request loaded from disk. Null for brand-new unsaved tabs.</summary>
     private CollectionRequest? _sourceRequest;
 
-    /// <summary>The currently active environment; null when none is selected.</summary>
     private EnvironmentModel? _activeEnvironment;
-
-    /// <summary>Suppresses dirty-tracking while populating the editor from a loaded request.</summary>
     private bool _loading;
-
-    /// <summary>Prevents infinite feedback between the URL bar and the query-param editor.</summary>
     private bool _syncingUrl;
-
-    /// <summary>Prevents URL/path-param feedback loops while synchronising placeholders.</summary>
     private bool _syncingPathParams;
 
     // -------------------------------------------------------------------------
-    // Navigation guard state
+    // Tab identity
     // -------------------------------------------------------------------------
 
+    /// <summary>Stable identity across the tab's lifetime.</summary>
+    public Guid TabId { get; } = Guid.NewGuid();
+
+    /// <summary>True when this tab is the currently selected/active tab.</summary>
+    [ObservableProperty]
+    private bool _isActive;
+
     /// <summary>
-    /// A request that is waiting to be loaded after the user resolves the unsaved-changes guard.
+    /// True for tabs that have never been saved to disk.
+    /// Cleared once the user completes Save As.
     /// </summary>
-    private CollectionRequest? _pendingRequest;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TabTitle))]
+    [NotifyPropertyChangedFor(nameof(SaveButtonLabel))]
+    private bool _isNew;
+
+    /// <summary>File path of the loaded request, or empty string if the tab is new.</summary>
+    public string SourceFilePath => _sourceRequest?.FilePath ?? string.Empty;
+
+    /// <summary>Text shown on the tab chip: request name or "New Request".</summary>
+    public string TabTitle => string.IsNullOrWhiteSpace(RequestName) ? "New Request" : RequestName;
+
+    /// <summary>
+    /// True when the tab needs a save action: either has disk changes, or is a new unsaved tab.
+    /// Drives the tab dirty-dot and the Save button's enabled state.
+    /// </summary>
+    public bool TabIsDirty => HasUnsavedChanges || IsNew;
+
+    /// <summary>Label for the Save button: "Save" for existing requests, "Save As…" for new tabs.</summary>
+    public string SaveButtonLabel => IsNew ? "Save As…" : "Save";
 
     // -------------------------------------------------------------------------
     // Request editor state
@@ -59,12 +76,14 @@ public sealed partial class RequestViewModel : ObservableRecipient,
     private string _selectedMethod = "GET";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TabTitle))]
     [NotifyPropertyChangedFor(nameof(PreviewUrl))]
     [NotifyPropertyChangedFor(nameof(HasUnresolvedPathParams))]
     [NotifyPropertyChangedFor(nameof(PreviewUrlForeground))]
     private string _url = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TabTitle))]
     private string _requestName = string.Empty;
 
     [ObservableProperty]
@@ -80,72 +99,68 @@ public sealed partial class RequestViewModel : ObservableRecipient,
     [NotifyPropertyChangedFor(nameof(IsAuthApiKey))]
     private string _authType = AuthConfig.AuthTypes.None;
 
-    [ObservableProperty]
-    private string _authToken = string.Empty;
-
-    [ObservableProperty]
-    private string _authUsername = string.Empty;
-
-    [ObservableProperty]
-    private string _authPassword = string.Empty;
-
-    [ObservableProperty]
-    private string _authApiKeyName = string.Empty;
-
-    [ObservableProperty]
-    private string _authApiKeyValue = string.Empty;
-
-    [ObservableProperty]
-    private string _authApiKeyIn = AuthConfig.ApiKeyLocations.Header;
+    [ObservableProperty] private string _authToken = string.Empty;
+    [ObservableProperty] private string _authUsername = string.Empty;
+    [ObservableProperty] private string _authPassword = string.Empty;
+    [ObservableProperty] private string _authApiKeyName = string.Empty;
+    [ObservableProperty] private string _authApiKeyValue = string.Empty;
+    [ObservableProperty] private string _authApiKeyIn = AuthConfig.ApiKeyLocations.Header;
 
     // -------------------------------------------------------------------------
     // Save state
     // -------------------------------------------------------------------------
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
+    [NotifyPropertyChangedFor(nameof(TabIsDirty))]
     private bool _hasUnsavedChanges;
 
     // -------------------------------------------------------------------------
-    // Navigation guard observable state
+    // Save As panel (new tabs only)
     // -------------------------------------------------------------------------
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(PendingRequestName))]
-    [NotifyPropertyChangedFor(nameof(PendingNavigationSaveLabel))]
-    private bool _hasPendingNavigation;
+    private bool _showSaveAsPanel;
 
-    /// <summary>The name of the request the user wants to navigate to.</summary>
-    public string PendingRequestName => _pendingRequest?.Name ?? string.Empty;
+    [ObservableProperty]
+    private string _saveAsName = "New Request";
 
-    /// <summary>Label for the "save and open" guard button, e.g. "Save &amp; open &quot;New Request&quot;".</summary>
-    public string PendingNavigationSaveLabel =>
-        _pendingRequest is null ? "Save & open" : $"Save & open \"{_pendingRequest.Name}\"";
+    /// <summary>
+    /// The folder path the user has selected in the Save As panel.
+    /// Defaults to the collection root; the user can change it via the dropdown.
+    /// </summary>
+    [ObservableProperty]
+    private string _saveAsFolderPath = string.Empty;
+
+    [ObservableProperty]
+    private string? _saveAsError;
+
+    /// <summary>Available folder paths for the Save As location dropdown, set by the editor VM.</summary>
+    public IReadOnlyList<string> AvailableFolders { get; internal set; } = [];
+
+    /// <summary>Absolute path of the open collection root. Used to resolve relative SaveAsFolderPath values.</summary>
+    public string CollectionRootPath { get; internal set; } = string.Empty;
+
+    // -------------------------------------------------------------------------
+    // Close guard (shown when closing a dirty existing tab)
+    // -------------------------------------------------------------------------
+
+    [ObservableProperty]
+    private bool _pendingClose;
 
     // -------------------------------------------------------------------------
     // Response state
     // -------------------------------------------------------------------------
 
-    [ObservableProperty]
-    private ResponseModel? _response;
-
-    [ObservableProperty]
-    private bool _isSending;
-
-    [ObservableProperty]
-    private string? _errorMessage;
+    [ObservableProperty] private ResponseModel? _response;
+    [ObservableProperty] private bool _isSending;
+    [ObservableProperty] private string? _errorMessage;
 
     // -------------------------------------------------------------------------
     // Key-value editors
     // -------------------------------------------------------------------------
 
-    /// <summary>Request headers editor.</summary>
     public KeyValueEditorViewModel Headers { get; } = new();
-
-    /// <summary>Query parameter editor -- stays bidirectionally in sync with the URL bar.</summary>
     public KeyValueEditorViewModel QueryParams { get; } = new();
-
-    /// <summary>Path parameter editor discovered from URL placeholders like <c>{id}</c>.</summary>
     public KeyValueEditorViewModel PathParams { get; } = new();
 
     // -------------------------------------------------------------------------
@@ -167,16 +182,6 @@ public sealed partial class RequestViewModel : ObservableRecipient,
             _ => $"{Response.BodySizeBytes / (1024.0 * 1024):F1} MB",
         };
 
-    public string StatusClass => Response?.StatusCode switch
-    {
-        >= 200 and < 300 => "success",
-        >= 300 and < 400 => "redirect",
-        >= 400 and < 500 => "client-error",
-        >= 500 => "server-error",
-        _ => string.Empty,
-    };
-
-    /// <summary>Background color for the HTTP status badge, keyed to the response status range.</summary>
     public string StatusBadgeColor => Response?.StatusCode switch
     {
         >= 200 and < 300 => "#1a5c33",
@@ -186,7 +191,6 @@ public sealed partial class RequestViewModel : ObservableRecipient,
         _ => "#0e639c",
     };
 
-    /// <summary>Foreground color for the method ComboBox, color-coded by HTTP verb.</summary>
     public string MethodColor => SelectedMethod switch
     {
         "GET"     => "#4ec9b0",
@@ -199,23 +203,11 @@ public sealed partial class RequestViewModel : ObservableRecipient,
         _         => "#d4d4d4",
     };
 
-    /// <summary>Whether a request file is currently loaded into the editor.</summary>
-    public bool HasSourceRequest => _sourceRequest is not null;
-
-    /// <summary>
-    /// The fully-resolved URL that will be sent: path params filled, query string
-    /// appended, and environment variables substituted. Updates live as the user edits.
-    /// </summary>
-    /// <summary>
-    /// Returns true when any URL path placeholder has no value assigned,
-    /// meaning the preview URL will still contain a literal <c>{placeholder}</c>.
-    /// </summary>
     public bool HasUnresolvedPathParams =>
         PathParams.Items.Any(item =>
             !string.IsNullOrWhiteSpace(item.Key) &&
             string.IsNullOrWhiteSpace(item.Value));
 
-    /// <summary>Amber when there are unresolved path params; muted grey otherwise.</summary>
     public string PreviewUrlForeground => HasUnresolvedPathParams ? "#c07a20" : "#888888";
 
     public string PreviewUrl
@@ -225,7 +217,6 @@ public sealed partial class RequestViewModel : ObservableRecipient,
             if (string.IsNullOrWhiteSpace(Url))
                 return string.Empty;
 
-            // Filter out empty values so placeholders like {id} are preserved as-is in the URL.
             var pathParamValues = PathParams.GetEnabledPairs()
                 .Where(p => !string.IsNullOrWhiteSpace(p.Value))
                 .ToDictionary(p => p.Key, p => p.Value);
@@ -243,15 +234,13 @@ public sealed partial class RequestViewModel : ObservableRecipient,
         }
     }
 
-    /// <summary>Whether the body text editor should be visible (body type is not "none").</summary>
     public bool ShowBodyEditor => SelectedBodyType != CollectionRequest.BodyTypes.None;
-
     public bool IsAuthBearer => AuthType == AuthConfig.AuthTypes.Bearer;
-    public bool IsAuthBasic => AuthType == AuthConfig.AuthTypes.Basic;
+    public bool IsAuthBasic  => AuthType == AuthConfig.AuthTypes.Basic;
     public bool IsAuthApiKey => AuthType == AuthConfig.AuthTypes.ApiKey;
 
     // -------------------------------------------------------------------------
-    // Lists for ComboBox controls
+    // ComboBox source lists
     // -------------------------------------------------------------------------
 
     public IReadOnlyList<string> HttpMethods { get; } =
@@ -285,36 +274,38 @@ public sealed partial class RequestViewModel : ObservableRecipient,
     // Constructor
     // -------------------------------------------------------------------------
 
-    public RequestViewModel(
+    public RequestTabViewModel(
         TransportRegistry transportRegistry,
         ICollectionService collectionService,
-        IMessenger messenger)
-        : base(messenger)
+        IMessenger messenger,
+        Action<RequestTabViewModel> requestClose)
     {
         ArgumentNullException.ThrowIfNull(transportRegistry);
         ArgumentNullException.ThrowIfNull(collectionService);
+        ArgumentNullException.ThrowIfNull(messenger);
+        ArgumentNullException.ThrowIfNull(requestClose);
+
         _transportRegistry = transportRegistry;
         _collectionService = collectionService;
-        IsActive = true;
+        _messenger = messenger;
+        _requestClose = requestClose;
 
-        // Path params are derived from URL placeholders; users should rename/edit values,
-        // but not manually add/remove rows.
         PathParams.ShowAddButton = false;
         PathParams.ShowDeleteButton = false;
         PathParams.ShowEnabledToggle = false;
 
-        // Dirty tracking: any property change while not loading marks the editor dirty.
-        // Exclude internal/computed properties that are not user edits.
+        // Dirty tracking — only fires for changes to existing requests.
         PropertyChanged += (_, e) =>
         {
             if (_loading || _sourceRequest is null) return;
             if (e.PropertyName is
-                nameof(HasUnsavedChanges) or nameof(HasSourceRequest) or
-                nameof(HasPendingNavigation) or nameof(PendingRequestName) or
-                nameof(PendingNavigationSaveLabel) or
+                nameof(HasUnsavedChanges) or nameof(IsNew) or nameof(IsActive) or nameof(TabTitle) or
+                nameof(TabIsDirty) or nameof(SaveButtonLabel) or
+                nameof(ShowSaveAsPanel) or nameof(SaveAsName) or nameof(SaveAsFolderPath) or
+                nameof(SaveAsError) or nameof(PendingClose) or
                 nameof(Response) or nameof(IsSending) or nameof(ErrorMessage) or
                 nameof(StatusDisplay) or nameof(ElapsedDisplay) or nameof(SizeDisplay) or
-                nameof(StatusClass) or nameof(StatusBadgeColor) or nameof(MethodColor) or
+                nameof(StatusBadgeColor) or nameof(MethodColor) or
                 nameof(ShowBodyEditor) or nameof(PreviewUrl) or
                 nameof(HasUnresolvedPathParams) or nameof(PreviewUrlForeground) or
                 nameof(IsAuthBearer) or nameof(IsAuthBasic) or nameof(IsAuthApiKey))
@@ -324,23 +315,19 @@ public sealed partial class RequestViewModel : ObservableRecipient,
 
         Headers.Changed += (_, _) =>
         {
-            if (!_loading && _sourceRequest is not null)
-                HasUnsavedChanges = true;
+            if (!_loading && _sourceRequest is not null) HasUnsavedChanges = true;
         };
 
         QueryParams.Changed += (_, _) =>
         {
-            if (!_loading && _sourceRequest is not null)
-                HasUnsavedChanges = true;
+            if (!_loading && _sourceRequest is not null) HasUnsavedChanges = true;
             RebuildUrlFromParams();
             OnPropertyChanged(nameof(PreviewUrl));
         };
 
         PathParams.Changed += (_, _) =>
         {
-            if (!_loading && _sourceRequest is not null)
-                HasUnsavedChanges = true;
-
+            if (!_loading && _sourceRequest is not null) HasUnsavedChanges = true;
             RebuildUrlFromPathParamNames();
             OnPropertyChanged(nameof(PreviewUrl));
             OnPropertyChanged(nameof(HasUnresolvedPathParams));
@@ -349,76 +336,69 @@ public sealed partial class RequestViewModel : ObservableRecipient,
     }
 
     // -------------------------------------------------------------------------
-    // Messenger receivers
+    // Public API called by RequestEditorViewModel
     // -------------------------------------------------------------------------
 
-    /// <summary>Tracks the active environment for variable substitution at send time.</summary>
-    public void Receive(EnvironmentChangedMessage message)
+    /// <summary>Loads a saved request into this tab.</summary>
+    public void LoadRequest(CollectionRequest req)
     {
-        _activeEnvironment = message.Value;
+        _sourceRequest = req;
+        _loading = true;
+        try
+        {
+            RequestName = req.Name;
+            SelectedMethod = req.Method.Method;
+
+            _syncingUrl = true;
+            try
+            {
+                Url = req.QueryParams.Count > 0
+                    ? QueryStringHelper.ApplyQueryParams(req.Url, req.QueryParams)
+                    : req.Url;
+                QueryParams.LoadFrom(req.QueryParams);
+                SyncPathParamsWithUrl(Url, req.PathParams);
+            }
+            finally
+            {
+                _syncingUrl = false;
+            }
+
+            Headers.LoadFrom(req.Headers);
+            SelectedBodyType = req.BodyType;
+            Body = req.Body ?? string.Empty;
+            AuthType = req.Auth.AuthType;
+            AuthToken = req.Auth.Token ?? string.Empty;
+            AuthUsername = req.Auth.Username ?? string.Empty;
+            AuthPassword = req.Auth.Password ?? string.Empty;
+            AuthApiKeyName = req.Auth.ApiKeyName ?? string.Empty;
+            AuthApiKeyValue = req.Auth.ApiKeyValue ?? string.Empty;
+            AuthApiKeyIn = req.Auth.ApiKeyIn;
+            Response = null;
+            ErrorMessage = null;
+        }
+        finally
+        {
+            _loading = false;
+            HasUnsavedChanges = false;
+            IsNew = false;
+        }
+    }
+
+    /// <summary>Updates the active environment for variable substitution.</summary>
+    public void SetEnvironment(EnvironmentModel? environment)
+    {
+        _activeEnvironment = environment;
         OnPropertyChanged(nameof(PreviewUrl));
     }
 
-    /// <summary>
-    /// Called when the user selects a request in the sidebar. If the editor is dirty,
-    /// the navigation is held pending until the user resolves the unsaved-changes guard.
-    /// </summary>
-    public void Receive(RequestSelectedMessage message)
-    {
-        var incoming = message.Value;
-
-        // If the same file is selected again (e.g. after a navigation revert), just reload.
-        var isSameRequest = _sourceRequest is not null &&
-            string.Equals(_sourceRequest.FilePath, incoming.FilePath, StringComparison.OrdinalIgnoreCase);
-
-        if (HasUnsavedChanges && !isSameRequest && _sourceRequest is not null)
-        {
-            // Show the guard; RequestView will display the inline confirmation panel.
-            _pendingRequest = incoming;
-            HasPendingNavigation = true;
-            return;
-        }
-
-        // No guard needed — clear any stale guard state and load directly.
-        _pendingRequest = null;
-        HasPendingNavigation = false;
-        LoadRequest(incoming);
-    }
-
-    /// <summary>
-    /// Called when a collection item is deleted from disk.
-    /// Clears the editor if the currently-open request was inside the deleted path.
-    /// </summary>
-    public void Receive(CollectionItemDeletedMessage message)
-    {
-        if (_sourceRequest is null) return;
-
-        var hint = message.Value;
-        var filePath = _sourceRequest.FilePath;
-
-        var affected =
-            string.Equals(filePath, hint, StringComparison.OrdinalIgnoreCase) ||
-            filePath.StartsWith(hint, StringComparison.OrdinalIgnoreCase);
-
-        if (affected)
-        {
-            _sourceRequest = null;
-            _pendingRequest = null;
-            HasPendingNavigation = false;
-            ClearEditor();
-        }
-    }
-
     // -------------------------------------------------------------------------
-    // Commands
+    // Commands — Send
     // -------------------------------------------------------------------------
 
-    /// <summary>Sends the current request and populates the response viewer.</summary>
     [RelayCommand(IncludeCancelCommand = true)]
     private async Task SendAsync(CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(Url))
-            return;
+        if (string.IsNullOrWhiteSpace(Url)) return;
 
         IsSending = true;
         Response = null;
@@ -430,8 +410,6 @@ public sealed partial class RequestViewModel : ObservableRecipient,
                 Headers.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
                 StringComparer.OrdinalIgnoreCase);
 
-            // Filter out empty values so unfilled placeholders stay as {name} in the URL,
-            // making the resulting failure transparent and debuggable.
             var pathParamValues = PathParams.GetEnabledPairs()
                 .Where(p => !string.IsNullOrWhiteSpace(p.Value))
                 .ToDictionary(p => p.Key, p => p.Value);
@@ -442,7 +420,6 @@ public sealed partial class RequestViewModel : ObservableRecipient,
 
             ApplyAuthHeaders(headers, requestUrl, out requestUrl);
 
-            // Apply variable substitution if an environment is active.
             var vars = _activeEnvironment is not null
                 ? (IReadOnlyDictionary<string, string>)_activeEnvironment.Variables
                     .ToDictionary(v => v.Name, v => v.Value)
@@ -482,65 +459,154 @@ public sealed partial class RequestViewModel : ObservableRecipient,
             OnPropertyChanged(nameof(StatusDisplay));
             OnPropertyChanged(nameof(ElapsedDisplay));
             OnPropertyChanged(nameof(SizeDisplay));
-            OnPropertyChanged(nameof(StatusClass));
             OnPropertyChanged(nameof(StatusBadgeColor));
         }
     }
 
-    /// <summary>Saves the current editor state back to disk, clearing the unsaved-changes flag.</summary>
-    [RelayCommand(CanExecute = nameof(HasUnsavedChanges))]
-    private Task SaveAsync(CancellationToken ct) => PerformSaveAsync(ct);
+    // -------------------------------------------------------------------------
+    // Commands — Save
+    // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Saves the current request then loads the pending navigation target.
-    /// Called when the user picks "Save &amp; open" in the unsaved-changes guard.
+    /// Saves the current tab. For existing requests, writes to disk immediately.
+    /// For new (unsaved) tabs, opens the Save As panel.
+    /// Always enabled so Ctrl+S works on both tab types.
     /// </summary>
     [RelayCommand]
-    private async Task SaveAndNavigateAsync(CancellationToken ct)
+    private Task SaveAsync(CancellationToken ct)
     {
+        if (IsNew)
+        {
+            // Restore any previously-entered name into the panel.
+            if (string.IsNullOrWhiteSpace(SaveAsName) || SaveAsName == "New Request")
+                SaveAsName = string.IsNullOrWhiteSpace(RequestName) ? "New Request" : RequestName;
+
+            // Auto-select the first available folder if none is chosen yet.
+            if (string.IsNullOrEmpty(SaveAsFolderPath) && AvailableFolders.Count > 0)
+                SaveAsFolderPath = AvailableFolders[0];
+
+            SaveAsError = null;
+            ShowSaveAsPanel = true;
+            return Task.CompletedTask;
+        }
+
+        return PerformSaveAsync(ct);
+    }
+
+    [RelayCommand]
+    private async Task CommitSaveAsAsync(CancellationToken ct)
+    {
+        var name = SaveAsName.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            SaveAsError = "Please enter a name.";
+            return;
+        }
+
+        if (string.IsNullOrEmpty(CollectionRootPath))
+        {
+            SaveAsError = "Please open a collection before saving.";
+            return;
+        }
+
+        // Sanitize filename
+        var invalid = Path.GetInvalidFileNameChars();
+        if (name.Any(c => invalid.Contains(c)))
+        {
+            SaveAsError = "Name contains invalid characters.";
+            return;
+        }
+
+        var absoluteFolder = string.IsNullOrEmpty(SaveAsFolderPath)
+            ? CollectionRootPath
+            : Path.Combine(CollectionRootPath, SaveAsFolderPath);
+        var filePath = Path.Combine(absoluteFolder, name + Core.Services.FileSystemCollectionService.RequestFileExtension);
+        if (File.Exists(filePath))
+        {
+            SaveAsError = $"\"{name}\" already exists in this folder.";
+            return;
+        }
+
+        // Bootstrap _sourceRequest with the target path so PerformSaveAsync writes there.
+        _sourceRequest = new CollectionRequest
+        {
+            FilePath = filePath,
+            Name = name,
+            Method = new HttpMethod(SelectedMethod),
+            Url = string.Empty, // PerformSaveAsync will overwrite from editor state
+            Headers = new Dictionary<string, string>(),
+            PathParams = new Dictionary<string, string>(),
+            QueryParams = new Dictionary<string, string>(),
+            BodyType = CollectionRequest.BodyTypes.None,
+            Auth = new AuthConfig(),
+        };
+
+        RequestName = name;
+        SaveAsError = null;
+        ShowSaveAsPanel = false;
+        IsNew = false;
+
         await PerformSaveAsync(ct);
-        NavigateToPending();
+
+        // Tell the sidebar to refresh so the new file appears in the tree.
+        _messenger.Send(new CollectionRefreshRequestedMessage());
     }
 
-    /// <summary>
-    /// Discards unsaved changes and immediately loads the pending navigation target.
-    /// </summary>
     [RelayCommand]
-    private void DiscardAndNavigate()
+    private void CancelSaveAs()
     {
-        HasUnsavedChanges = false;
-        NavigateToPending();
-    }
-
-    /// <summary>
-    /// Cancels the pending navigation. The tree selection reverts via
-    /// <see cref="NavigationCancelledMessage"/>.
-    /// </summary>
-    [RelayCommand]
-    private void CancelNavigation()
-    {
-        _pendingRequest = null;
-        HasPendingNavigation = false;
-        Messenger.Send(new NavigationCancelledMessage());
-    }
-
-    private void NavigateToPending()
-    {
-        if (_pendingRequest is not { } next) return;
-        _pendingRequest = null;
-        HasPendingNavigation = false;
-        LoadRequest(next);
+        ShowSaveAsPanel = false;
+        SaveAsError = null;
     }
 
     // -------------------------------------------------------------------------
-    // Save logic (shared by SaveCommand and SaveAndNavigate)
+    // Commands — Close + close guard
     // -------------------------------------------------------------------------
 
-    private async Task PerformSaveAsync(CancellationToken ct)
+    /// <summary>
+    /// Requests closing this tab. If the tab has unsaved changes to an existing
+    /// request, shows the inline close guard. New tabs (never saved) close immediately.
+    /// </summary>
+    [RelayCommand]
+    private void Close()
+    {
+        if (HasUnsavedChanges && !IsNew)
+        {
+            PendingClose = true;
+            return;
+        }
+        _requestClose(this);
+    }
+
+    [RelayCommand]
+    private async Task SaveAndCloseAsync(CancellationToken ct)
+    {
+        PendingClose = false;
+        await PerformSaveAsync(ct);
+        _requestClose(this);
+    }
+
+    [RelayCommand]
+    private void DiscardAndClose()
+    {
+        PendingClose = false;
+        _requestClose(this);
+    }
+
+    [RelayCommand]
+    private void CancelClose()
+    {
+        PendingClose = false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Shared save logic
+    // -------------------------------------------------------------------------
+
+    internal async Task PerformSaveAsync(CancellationToken ct = default)
     {
         if (_sourceRequest is null) return;
 
-        // Store base URL (no query string) and params separately for a clean file format.
         var baseUrl = Url.Contains('?') ? Url[..Url.IndexOf('?')] : Url;
 
         var updated = new CollectionRequest
@@ -573,96 +639,7 @@ public sealed partial class RequestViewModel : ObservableRecipient,
     }
 
     // -------------------------------------------------------------------------
-    // LoadRequest / ClearEditor (internal helpers)
-    // -------------------------------------------------------------------------
-
-    private void LoadRequest(CollectionRequest req)
-    {
-        _sourceRequest = req;
-        _loading = true;
-        try
-        {
-            RequestName = req.Name;
-            SelectedMethod = req.Method.Method;
-
-            _syncingUrl = true;
-            try
-            {
-                Url = req.QueryParams.Count > 0
-                    ? QueryStringHelper.ApplyQueryParams(req.Url, req.QueryParams)
-                    : req.Url;
-                QueryParams.LoadFrom(req.QueryParams);
-                SyncPathParamsWithUrl(Url, req.PathParams);
-            }
-            finally
-            {
-                _syncingUrl = false;
-            }
-
-            Headers.LoadFrom(req.Headers);
-            SelectedBodyType = req.BodyType;
-            Body = req.Body ?? string.Empty;
-            AuthType = req.Auth.AuthType;
-            AuthToken = req.Auth.Token ?? string.Empty;
-            AuthUsername = req.Auth.Username ?? string.Empty;
-            AuthPassword = req.Auth.Password ?? string.Empty;
-            AuthApiKeyName = req.Auth.ApiKeyName ?? string.Empty;
-            AuthApiKeyValue = req.Auth.ApiKeyValue ?? string.Empty;
-            AuthApiKeyIn = req.Auth.ApiKeyIn;
-
-            Response = null;
-            ErrorMessage = null;
-        }
-        finally
-        {
-            _loading = false;
-            HasUnsavedChanges = false;
-        }
-
-        OnPropertyChanged(nameof(HasSourceRequest));
-    }
-
-    private void ClearEditor()
-    {
-        _loading = true;
-        try
-        {
-            RequestName = string.Empty;
-            SelectedMethod = "GET";
-            _syncingUrl = true;
-            try
-            {
-                Url = string.Empty;
-                QueryParams.LoadFrom(new Dictionary<string, string>());
-                PathParams.LoadFrom(new Dictionary<string, string>());
-            }
-            finally
-            {
-                _syncingUrl = false;
-            }
-            Headers.LoadFrom(new Dictionary<string, string>());
-            SelectedBodyType = CollectionRequest.BodyTypes.None;
-            Body = string.Empty;
-            AuthType = AuthConfig.AuthTypes.None;
-            AuthToken = string.Empty;
-            AuthUsername = string.Empty;
-            AuthPassword = string.Empty;
-            AuthApiKeyName = string.Empty;
-            AuthApiKeyValue = string.Empty;
-            AuthApiKeyIn = AuthConfig.ApiKeyLocations.Header;
-            Response = null;
-            ErrorMessage = null;
-        }
-        finally
-        {
-            _loading = false;
-            HasUnsavedChanges = false;
-        }
-        OnPropertyChanged(nameof(HasSourceRequest));
-    }
-
-    // -------------------------------------------------------------------------
-    // URL <-> query param sync
+    // URL <-> param sync
     // -------------------------------------------------------------------------
 
     partial void OnUrlChanged(string value)
@@ -673,7 +650,6 @@ public sealed partial class RequestViewModel : ObservableRecipient,
         {
             var parsed = QueryStringHelper.ParseQueryParams(value);
             QueryParams.LoadFrom(parsed);
-
             var existingPathValues = PathParams.Items
                 .Where(i => !string.IsNullOrWhiteSpace(i.Key))
                 .ToDictionary(i => i.Key, i => i.Value);
@@ -702,45 +678,35 @@ public sealed partial class RequestViewModel : ObservableRecipient,
 
     private void RebuildUrlFromPathParamNames()
     {
-        if (_syncingUrl || _syncingPathParams || _loading)
-            return;
+        if (_syncingUrl || _syncingPathParams || _loading) return;
 
         var currentBaseUrl = GetBaseUrl(Url);
         var existingNames = PathTemplateHelper.ExtractPathParamNames(currentBaseUrl);
-        if (existingNames.Count == 0)
-            return;
+        if (existingNames.Count == 0) return;
 
         var editedNames = PathParams.Items
             .Where(i => !string.IsNullOrWhiteSpace(i.Key))
             .Select(i => i.Key)
             .ToList();
 
-        if (editedNames.Count != existingNames.Count)
-            return;
+        if (editedNames.Count != existingNames.Count) return;
 
         var updatedBaseUrl = currentBaseUrl;
         for (var i = 0; i < existingNames.Count; i++)
         {
-            var oldName = existingNames[i];
-            var newName = editedNames[i];
-
-            if (string.Equals(oldName, newName, StringComparison.Ordinal))
+            if (string.Equals(existingNames[i], editedNames[i], StringComparison.Ordinal))
                 continue;
-
             updatedBaseUrl = updatedBaseUrl.Replace(
-                $"{{{oldName}}}",
-                $"{{{newName}}}",
+                $"{{{existingNames[i]}}}", $"{{{editedNames[i]}}}",
                 StringComparison.Ordinal);
         }
 
-        if (string.Equals(updatedBaseUrl, currentBaseUrl, StringComparison.Ordinal))
-            return;
+        if (string.Equals(updatedBaseUrl, currentBaseUrl, StringComparison.Ordinal)) return;
 
         _syncingUrl = true;
         try
         {
-            var queryPairs = QueryParams.GetEnabledPairs().ToList();
-            Url = QueryStringHelper.ApplyQueryParams(updatedBaseUrl, queryPairs);
+            Url = QueryStringHelper.ApplyQueryParams(updatedBaseUrl, QueryParams.GetEnabledPairs().ToList());
         }
         finally
         {
@@ -760,13 +726,11 @@ public sealed partial class RequestViewModel : ObservableRecipient,
             case AuthConfig.AuthTypes.Bearer when !string.IsNullOrEmpty(AuthToken):
                 headers["Authorization"] = $"Bearer {AuthToken}";
                 break;
-
             case AuthConfig.AuthTypes.Basic:
                 var encoded = Convert.ToBase64String(
                     Encoding.UTF8.GetBytes($"{AuthUsername}:{AuthPassword}"));
                 headers["Authorization"] = $"Basic {encoded}";
                 break;
-
             case AuthConfig.AuthTypes.ApiKey when !string.IsNullOrEmpty(AuthApiKeyName):
                 if (AuthApiKeyIn == AuthConfig.ApiKeyLocations.Header)
                     headers[AuthApiKeyName] = AuthApiKeyValue;
@@ -789,13 +753,11 @@ public sealed partial class RequestViewModel : ObservableRecipient,
         _syncingPathParams = true;
         try
         {
-        var names = PathTemplateHelper.ExtractPathParamNames(url);
-        var merged = new Dictionary<string, string>(StringComparer.Ordinal);
-
-        foreach (var name in names)
-            merged[name] = existingValues.TryGetValue(name, out var value) ? value : string.Empty;
-
-        PathParams.LoadFrom(merged);
+            var names = PathTemplateHelper.ExtractPathParamNames(url);
+            var merged = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var name in names)
+                merged[name] = existingValues.TryGetValue(name, out var value) ? value : string.Empty;
+            PathParams.LoadFrom(merged);
         }
         finally
         {
@@ -807,7 +769,7 @@ public sealed partial class RequestViewModel : ObservableRecipient,
     {
         CollectionRequest.BodyTypes.Json => "application/json",
         CollectionRequest.BodyTypes.Text => "text/plain",
-        CollectionRequest.BodyTypes.Xml => "application/xml",
+        CollectionRequest.BodyTypes.Xml  => "application/xml",
         CollectionRequest.BodyTypes.Form => "application/x-www-form-urlencoded",
         CollectionRequest.BodyTypes.Multipart => "multipart/form-data",
         _ => null,

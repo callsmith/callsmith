@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Callsmith.Desktop.ViewModels"
+             xmlns:views="using:Callsmith.Desktop.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="750"
@@ -8,7 +9,28 @@
              x:DataType="vm:CollectionsViewModel"
              Background="#252526">
 
-  <!-- Sidebar layout: header toolbar + tree -->
+  <UserControl.Styles>
+
+    <!-- Tree item: remove default selection chrome and give our own hover/active state -->
+    <Style Selector="TreeViewItem">
+      <Setter Property="Padding" Value="4,2"/>
+    </Style>
+
+    <!-- Inline rename TextBox inside the tree node -->
+    <Style Selector="TextBox.rename-box">
+      <Setter Property="Background" Value="#3c3c3c"/>
+      <Setter Property="Foreground" Value="#f0f0f0"/>
+      <Setter Property="BorderBrush" Value="#0e639c"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Padding" Value="3,1"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="MinWidth" Value="140"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+  </UserControl.Styles>
+
+  <!-- Sidebar layout: header toolbar + tree + path footer -->
   <DockPanel>
 
     <!-- ── Header ── -->
@@ -38,21 +60,41 @@
       </DockPanel>
     </Border>
 
-    <!-- ── Empty state ── -->
-    <StackPanel IsVisible="{Binding !HasCollection}"
-                VerticalAlignment="Center"
-                HorizontalAlignment="Center"
-                Spacing="8"
-                Margin="16">
-      <TextBlock Text="No collection open"
-                 Foreground="#888"
-                 FontSize="13"
-                 HorizontalAlignment="Center"/>
-      <TextBlock Text="Click ⊕ to open a folder"
-                 Foreground="#999"
-                 FontSize="11"
-                 HorizontalAlignment="Center"/>
-    </StackPanel>
+    <!-- ── Delete confirmation strip (inline, non-modal) ── -->
+    <Border DockPanel.Dock="Bottom"
+            IsVisible="{Binding PendingDeleteNode, Converter={x:Static vm:NotNullConverter.Instance}}"
+            Background="#3a1e00"
+            BorderBrush="#7a3c00"
+            BorderThickness="0,1,0,0"
+            Padding="10,7">
+      <Grid ColumnDefinitions="*,Auto,Auto">
+        <TextBlock Grid.Column="0"
+                   Foreground="#f0c060"
+                   FontSize="11"
+                   VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis"
+                   Text="{Binding PendingDeleteNode.Name, StringFormat='Delete &quot;{0}&quot;?', FallbackValue=''}"/>
+        <Button Grid.Column="1"
+                Content="Delete"
+                Command="{Binding ConfirmDeleteCommand}"
+                Background="#922"
+                Foreground="White"
+                BorderThickness="0"
+                Padding="10,3"
+                FontSize="11"
+                CornerRadius="3"
+                Margin="6,0,4,0"/>
+        <Button Grid.Column="2"
+                Content="Cancel"
+                Command="{Binding CancelDeleteCommand}"
+                Background="#444"
+                Foreground="#ccc"
+                BorderThickness="0"
+                Padding="10,3"
+                FontSize="11"
+                CornerRadius="3"/>
+      </Grid>
+    </Border>
 
     <!-- ── Collection path label ── -->
     <TextBlock DockPanel.Dock="Bottom"
@@ -61,11 +103,62 @@
                Foreground="#888"
                FontSize="10"
                TextTrimming="CharacterEllipsis"
-               Padding="8,4"
+               Padding="10,4"
                ToolTip.Tip="{Binding CollectionPath}"/>
+
+    <!-- ── Empty state with recent collections ── -->
+    <ScrollViewer IsVisible="{Binding !HasCollection}"
+                  VerticalScrollBarVisibility="Auto">
+      <StackPanel VerticalAlignment="Center"
+                  HorizontalAlignment="Center"
+                  Spacing="8"
+                  Margin="16">
+        <TextBlock Text="No collection open"
+                   Foreground="#888"
+                   FontSize="13"
+                   HorizontalAlignment="Center"/>
+        <TextBlock Text="Click ⊕ to open a folder"
+                   Foreground="#999"
+                   FontSize="11"
+                   HorizontalAlignment="Center"/>
+
+        <!-- Recent collections -->
+        <StackPanel IsVisible="{Binding HasRecentCollections}"
+                    Spacing="2"
+                    Margin="0,12,0,0">
+          <TextBlock Text="RECENT"
+                     Foreground="#606060"
+                     FontSize="10"
+                     FontWeight="SemiBold"
+                     LetterSpacing="1"
+                     Margin="0,0,0,4"/>
+          <!-- Items bound via code-behind button list -->
+          <ItemsControl ItemsSource="{Binding RecentCollections}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Button Content="{Binding .}"
+                        Command="{Binding $parent[UserControl].((vm:CollectionsViewModel)DataContext).OpenRecentCommand}"
+                        CommandParameter="{Binding .}"
+                        Background="Transparent"
+                        Foreground="#4ec9b0"
+                        BorderThickness="0"
+                        Padding="4,3"
+                        HorizontalAlignment="Left"
+                        FontSize="11"
+                        TextBlock.TextTrimming="CharacterEllipsis"
+                        MaxWidth="240"
+                        ToolTip.Tip="{Binding .}"/>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+
+      </StackPanel>
+    </ScrollViewer>
 
     <!-- ── Tree view ── -->
     <TreeView IsVisible="{Binding HasCollection}"
+              x:Name="CollectionTree"
               ItemsSource="{Binding TreeRoots}"
               SelectedItem="{Binding SelectedItem}"
               Background="Transparent"
@@ -73,19 +166,43 @@
       <TreeView.ItemTemplate>
         <TreeDataTemplate ItemsSource="{Binding Children}"
                           x:DataType="vm:CollectionTreeItemViewModel">
-          <StackPanel Orientation="Horizontal" Spacing="6">
-            <!-- Folder or request icon -->
-            <TextBlock Text="{Binding IsFolder, Converter={x:Static vm:BoolToIconConverter.FolderOrRequest}}"
-                       Foreground="#cccccc"
-                       FontSize="12"
-                       VerticalAlignment="Center"/>
-            <TextBlock Text="{Binding Name}"
-                       Foreground="#cccccc"
-                       FontSize="13"
-                       VerticalAlignment="Center"/>
-          </StackPanel>
+
+          <Grid ColumnDefinitions="Auto,*">
+
+            <!-- ── Normal display label (not renaming) ── -->
+            <StackPanel Grid.Column="0"
+                        Orientation="Horizontal"
+                        Spacing="6"
+                        IsVisible="{Binding !IsRenaming}">
+              <!-- Folder or request icon -->
+              <TextBlock Text="{Binding IsFolder, Converter={x:Static vm:BoolToIconConverter.FolderOrRequest}}"
+                         Foreground="#cccccc"
+                         FontSize="12"
+                         VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding Name}"
+                         Foreground="#cccccc"
+                         FontSize="13"
+                         VerticalAlignment="Center"/>
+            </StackPanel>
+
+            <!-- ── Inline rename TextBox (renaming mode) ── -->
+            <TextBox Grid.Column="0"
+                     Classes="rename-box"
+                     IsVisible="{Binding IsRenaming}"
+                     Text="{Binding EditingName}"
+                     views:FocusHelper.FocusOnVisible="True"
+                     x:Name="RenameBox"/>
+
+          </Grid>
+
         </TreeDataTemplate>
       </TreeView.ItemTemplate>
+
+      <!-- Context menu bound in code-behind to avoid AXAML binding complexity -->
+      <TreeView.ContextMenu>
+        <ContextMenu x:Name="TreeContextMenu"/>
+      </TreeView.ContextMenu>
+
     </TreeView>
 
   </DockPanel>

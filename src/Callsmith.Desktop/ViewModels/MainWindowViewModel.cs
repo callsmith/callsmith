@@ -9,19 +9,19 @@ namespace Callsmith.Desktop.ViewModels;
 public partial class MainWindowViewModel : ViewModelBase
 {
     public CollectionsViewModel Collections { get; }
-    public RequestViewModel Request { get; }
+    public RequestEditorViewModel RequestEditor { get; }
     public EnvironmentViewModel Environment { get; }
 
     public MainWindowViewModel(
         CollectionsViewModel collections,
-        RequestViewModel request,
+        RequestEditorViewModel requestEditor,
         EnvironmentViewModel environment)
     {
         ArgumentNullException.ThrowIfNull(collections);
-        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(requestEditor);
         ArgumentNullException.ThrowIfNull(environment);
         Collections = collections;
-        Request = request;
+        RequestEditor = requestEditor;
         Environment = environment;
     }
 }

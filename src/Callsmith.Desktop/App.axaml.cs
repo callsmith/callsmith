@@ -67,12 +67,15 @@ public partial class App : Application
         // Core -- collection service
         services.AddSingleton<ICollectionService, FileSystemCollectionService>();
 
+        // Core -- recent collections
+        services.AddSingleton<RecentCollectionsService>();
+
         // Core -- environment service
         services.AddSingleton<IEnvironmentService, FileSystemEnvironmentService>();
 
         // ViewModels
         services.AddSingleton<CollectionsViewModel>();
-        services.AddSingleton<RequestViewModel>();
+        services.AddSingleton<RequestEditorViewModel>();
         services.AddSingleton<EnvironmentViewModel>();
         services.AddSingleton<MainWindowViewModel>();
 

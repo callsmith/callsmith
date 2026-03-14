@@ -46,8 +46,8 @@
             </Border>
 
             <!-- Request editor + Response viewer -->
-            <views:RequestView Grid.Row="1"
-                               DataContext="{Binding Request}"/>
+            <views:RequestEditorView Grid.Row="1"
+                                     DataContext="{Binding RequestEditor}"/>
 
         </Grid>
 

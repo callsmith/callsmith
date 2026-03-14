@@ -130,9 +130,17 @@
 - [x] Send a GET request and see the full response without changing any view
 - [x] Collections sidebar: folder tree view reflecting the real filesystem layout
 - [x] Open a folder as a collection (folder picker dialog)
-- [ ] Remember recently opened collection folders
-- [ ] Create, rename, delete requests and sub-folders in the sidebar
-- [ ] Changes on disk (external edits, git pull) are reflected without restart
+- [x] Remember recently opened collection folders
+- [x] Create, rename, delete requests and sub-folders in the sidebar
+  - Right-click context menu on any node (folder or request)
+  - F2 / double-click for inline rename directly in the tree
+  - Delete key or context menu → non-modal inline confirmation strip
+  - Phantom "new node" appears in tree immediately; Enter creates file, Esc cancels
+- [x] Changes on disk (external edits, git pull) are reflected without restart
+  - `FileSystemWatcher` with 500 ms debounce; preserves expanded state and selection
+- [x] Unsaved-changes navigation guard (inline panel — no modal dialogs)
+  - Ctrl+S global keyboard shortcut for Save
+  - Save button always visible; dims when clean, highlights when dirty
 
 ---
 

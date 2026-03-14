@@ -47,4 +47,41 @@ public interface ICollectionService
     /// <param name="newName">The new display name (without extension).</param>
     /// <param name="ct">Cancellation token.</param>
     Task<CollectionRequest> RenameRequestAsync(string filePath, string newName, CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates a new request file with default content in the specified folder.
+    /// Returns the newly-created request.
+    /// </summary>
+    /// <param name="folderPath">Absolute path to the folder that will contain the new file.</param>
+    /// <param name="name">Display name for the new request (used as the filename without extension).</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<CollectionRequest> CreateRequestAsync(string folderPath, string name, CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates a new sub-folder inside the specified parent folder.
+    /// Returns an empty <see cref="CollectionFolder"/> representing the new folder.
+    /// </summary>
+    /// <param name="parentPath">Absolute path to the parent folder.</param>
+    /// <param name="name">Name for the new sub-folder.</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<CollectionFolder> CreateFolderAsync(string parentPath, string name, CancellationToken ct = default);
+
+    /// <summary>
+    /// Renames a folder on disk. Returns an updated (empty) <see cref="CollectionFolder"/>
+    /// with the new path and name. Callers should reload the folder's contents separately.
+    /// </summary>
+    Task<CollectionFolder> RenameFolderAsync(string folderPath, string newName, CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes a folder and all of its contents from disk.
+    /// </summary>
+    Task DeleteFolderAsync(string folderPath, CancellationToken ct = default);
+
+    /// <summary>
+    /// Persists the display order for items inside a folder by writing a <c>_order.json</c> file.
+    /// <paramref name="orderedNames"/> should list every item's entry name in the desired display order:
+    /// filenames (including <c>.callsmith</c> extension) for requests, and directory names for sub-folders.
+    /// Passing an empty list removes any existing order file, restoring default (alphabetical) ordering.
+    /// </summary>
+    Task SaveFolderOrderAsync(string folderPath, IReadOnlyList<string> orderedNames, CancellationToken ct = default);
 }

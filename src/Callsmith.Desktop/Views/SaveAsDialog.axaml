@@ -1,0 +1,56 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Callsmith.Desktop.ViewModels"
+        x:Class="Callsmith.Desktop.Views.SaveAsDialog"
+        x:DataType="vm:RequestTabViewModel"
+        Title="Save Request"
+        Width="460" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="#252526"
+        ShowInTaskbar="False">
+
+  <StackPanel Spacing="14" Margin="24,20">
+
+    <TextBlock Text="Save request" Foreground="#d4d4d4" FontSize="14" FontWeight="SemiBold"/>
+
+    <Grid ColumnDefinitions="60,10,*">
+      <TextBlock Grid.Column="0" Text="Folder" Foreground="#888" FontSize="12" VerticalAlignment="Center"/>
+      <ComboBox Grid.Column="2"
+                ItemsSource="{Binding AvailableFolders}"
+                SelectedItem="{Binding SaveAsFolderPath}"
+                HorizontalAlignment="Stretch"
+                Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"
+                FontFamily="Consolas,Menlo,monospace" FontSize="11">
+        <ComboBox.ItemTemplate>
+          <DataTemplate>
+            <TextBlock Text="{Binding ., Converter={x:Static vm:FolderPathDisplayConverter.Instance}}"/>
+          </DataTemplate>
+        </ComboBox.ItemTemplate>
+      </ComboBox>
+    </Grid>
+
+    <Grid ColumnDefinitions="60,10,*">
+      <TextBlock Grid.Column="0" Text="Name" Foreground="#888" FontSize="12" VerticalAlignment="Center"/>
+      <TextBox Grid.Column="2"
+               Text="{Binding SaveAsName}"
+               Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"
+               Padding="8,5" FontSize="12"/>
+    </Grid>
+
+    <TextBlock Text="{Binding SaveAsError}"
+               IsVisible="{Binding SaveAsError, Converter={x:Static vm:StringNotEmptyConverter.Instance}}"
+               Foreground="#f48771" FontSize="11"/>
+
+    <Grid ColumnDefinitions="*,Auto,10,Auto" Margin="0,4,0,4">
+      <Button Grid.Column="1" Content="Save" Command="{Binding CommitSaveAsCommand}"
+              Background="#1e7340" Foreground="White" BorderThickness="0"
+              Padding="20,7" FontSize="12" CornerRadius="4"/>
+      <Button Grid.Column="3" Content="Cancel" Command="{Binding CancelSaveAsCommand}"
+              Background="#3a3a3a" Foreground="#ccc" BorderThickness="0"
+              Padding="14,7" FontSize="12" CornerRadius="4"/>
+    </Grid>
+
+  </StackPanel>
+
+</Window>

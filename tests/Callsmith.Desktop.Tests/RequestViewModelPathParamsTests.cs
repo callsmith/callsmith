@@ -2,7 +2,6 @@ using System.Net.Http;
 using Callsmith.Core;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
-using Callsmith.Desktop.Messages;
 using Callsmith.Desktop.ViewModels;
 using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
@@ -18,10 +17,11 @@ public sealed class RequestViewModelPathParamsTests
         var collectionService = Substitute.For<ICollectionService>();
         var messenger = WeakReferenceMessenger.Default;
 
-        var sut = new RequestViewModel(
+        var sut = new RequestTabViewModel(
             new TransportRegistry(),
             collectionService,
-            messenger);
+            messenger,
+            _ => { });
 
         var request = new CollectionRequest
         {
@@ -33,7 +33,7 @@ public sealed class RequestViewModelPathParamsTests
             PathParams = new Dictionary<string, string> { ["id"] = "42" },
         };
 
-        sut.Receive(new RequestSelectedMessage(request));
+        sut.LoadRequest(request);
         sut.PathParams.Items.Should().HaveCount(1);
 
         // Simulate editing the path-param key directly in the Params table.

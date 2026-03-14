@@ -24,6 +24,9 @@ public sealed class FileSystemCollectionService : ICollectionService
     /// </summary>
     public const string EnvironmentFolderName = "environment";
 
+    /// <summary>File name of the optional display-order manifest written in each folder.</summary>
+    public const string OrderFileName = "_order.json";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -151,12 +154,123 @@ public sealed class FileSystemCollectionService : ICollectionService
         return renamed;
     }
 
+    /// <inheritdoc/>
+    public async Task<CollectionRequest> CreateRequestAsync(
+        string folderPath, string name, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(folderPath);
+        ArgumentNullException.ThrowIfNull(name);
+
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("Name must not be empty.", nameof(name));
+
+        Directory.CreateDirectory(folderPath);
+
+        var filePath = Path.Combine(folderPath, name + RequestFileExtension);
+        if (File.Exists(filePath))
+            throw new InvalidOperationException($"A request named '{name}' already exists in this folder.");
+
+        var newRequest = new CollectionRequest
+        {
+            FilePath = filePath,
+            Name = name,
+            Method = System.Net.Http.HttpMethod.Get,
+            Url = string.Empty,
+            Headers = new Dictionary<string, string>(),
+            PathParams = new Dictionary<string, string>(),
+            QueryParams = new Dictionary<string, string>(),
+            BodyType = CollectionRequest.BodyTypes.None,
+            Auth = new AuthConfig(),
+        };
+
+        await SaveRequestAsync(newRequest, ct);
+        _logger.LogDebug("Created request '{FilePath}'", filePath);
+        return newRequest;
+    }
+
+    /// <inheritdoc/>
+    public Task<CollectionFolder> CreateFolderAsync(
+        string parentPath, string name, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(parentPath);
+        ArgumentNullException.ThrowIfNull(name);
+
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("Name must not be empty.", nameof(name));
+
+        var newPath = Path.Combine(parentPath, name);
+        if (Directory.Exists(newPath))
+            throw new InvalidOperationException($"A folder named '{name}' already exists.");
+
+        ct.ThrowIfCancellationRequested();
+        Directory.CreateDirectory(newPath);
+        _logger.LogDebug("Created folder '{FolderPath}'", newPath);
+
+        return Task.FromResult(new CollectionFolder
+        {
+            FolderPath = newPath,
+            Name = name,
+            Requests = [],
+            SubFolders = [],
+        });
+    }
+
+    /// <inheritdoc/>
+    public Task<CollectionFolder> RenameFolderAsync(
+        string folderPath, string newName, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(folderPath);
+        ArgumentNullException.ThrowIfNull(newName);
+
+        if (string.IsNullOrWhiteSpace(newName))
+            throw new ArgumentException("New name must not be empty.", nameof(newName));
+
+        if (!Directory.Exists(folderPath))
+            throw new DirectoryNotFoundException($"Folder not found: '{folderPath}'");
+
+        var parent = Path.GetDirectoryName(folderPath)
+            ?? throw new InvalidOperationException("Cannot determine parent directory.");
+
+        var newPath = Path.Combine(parent, newName);
+        if (Directory.Exists(newPath))
+            throw new InvalidOperationException($"A folder named '{newName}' already exists.");
+
+        ct.ThrowIfCancellationRequested();
+        Directory.Move(folderPath, newPath);
+        _logger.LogDebug("Renamed folder '{OldPath}' → '{NewPath}'", folderPath, newPath);
+
+        return Task.FromResult(new CollectionFolder
+        {
+            FolderPath = newPath,
+            Name = newName,
+            Requests = [],
+            SubFolders = [],
+        });
+    }
+
+    /// <inheritdoc/>
+    public Task DeleteFolderAsync(string folderPath, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(folderPath);
+
+        if (!Directory.Exists(folderPath))
+            throw new DirectoryNotFoundException($"Folder not found: '{folderPath}'");
+
+        ct.ThrowIfCancellationRequested();
+        Directory.Delete(folderPath, recursive: true);
+        _logger.LogDebug("Deleted folder '{FolderPath}'", folderPath);
+
+        return Task.CompletedTask;
+    }
+
     // -------------------------------------------------------------------------
     // Private — folder traversal
     // -------------------------------------------------------------------------
 
     private CollectionFolder ReadFolder(string folderPath)
     {
+        var itemOrder = ReadOrderFile(Path.Combine(folderPath, OrderFileName));
+
         var requests = Directory
             .EnumerateFiles(folderPath, $"*{RequestFileExtension}", SearchOption.TopDirectoryOnly)
             .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
@@ -192,7 +306,47 @@ public sealed class FileSystemCollectionService : ICollectionService
             Name = Path.GetFileName(folderPath),
             Requests = requests,
             SubFolders = subFolders,
+            ItemOrder = itemOrder,
         };
+    }
+
+    private static IReadOnlyList<string> ReadOrderFile(string orderFilePath)
+    {
+        if (!File.Exists(orderFilePath))
+            return [];
+        try
+        {
+            var json = File.ReadAllText(orderFilePath);
+            return JsonSerializer.Deserialize<List<string>>(json) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task SaveFolderOrderAsync(
+        string folderPath, IReadOnlyList<string> orderedNames, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(folderPath);
+        ArgumentNullException.ThrowIfNull(orderedNames);
+
+        var orderFilePath = Path.Combine(folderPath, OrderFileName);
+
+        if (orderedNames.Count == 0)
+        {
+            if (File.Exists(orderFilePath))
+            {
+                File.Delete(orderFilePath);
+                _logger.LogDebug("Removed order file for '{FolderPath}'", folderPath);
+            }
+            return;
+        }
+
+        var json = JsonSerializer.Serialize(orderedNames, JsonOptions);
+        await File.WriteAllTextAsync(orderFilePath, json, ct);
+        _logger.LogDebug("Saved folder order for '{FolderPath}'", folderPath);
     }
 
     // -------------------------------------------------------------------------

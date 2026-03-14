@@ -17,4 +17,11 @@ public sealed class CollectionFolder
 
     /// <summary>Immediate sub-folders of this folder.</summary>
     public IReadOnlyList<CollectionFolder> SubFolders { get; init; } = [];
+
+    /// <summary>
+    /// Ordered item entry names from the folder's <c>_order.json</c> file.
+    /// Filenames (with extension) for requests; directory names for sub-folders.
+    /// Empty = use default ordering (sub-folders first, then requests, both alphabetical).
+    /// </summary>
+    public IReadOnlyList<string> ItemOrder { get; init; } = [];
 }
