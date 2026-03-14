@@ -31,7 +31,8 @@
   </UserControl.Styles>
 
   <!-- Sidebar layout: header toolbar + tree + path footer -->
-  <DockPanel>
+  <Grid>
+    <DockPanel>
 
     <!-- ── Header ── -->
     <Border DockPanel.Dock="Top"
@@ -58,42 +59,6 @@
                 Command="{Binding OpenFolderCommand}"
                 CommandParameter="{Binding $parent[Window].StorageProvider}"/>
       </DockPanel>
-    </Border>
-
-    <!-- ── Delete confirmation strip (inline, non-modal) ── -->
-    <Border DockPanel.Dock="Bottom"
-            IsVisible="{Binding PendingDeleteNode, Converter={x:Static vm:NotNullConverter.Instance}}"
-            Background="#3a1e00"
-            BorderBrush="#7a3c00"
-            BorderThickness="0,1,0,0"
-            Padding="10,7">
-      <Grid ColumnDefinitions="*,Auto,Auto">
-        <TextBlock Grid.Column="0"
-                   Foreground="#f0c060"
-                   FontSize="11"
-                   VerticalAlignment="Center"
-                   TextTrimming="CharacterEllipsis"
-                   Text="{Binding PendingDeleteNode.Name, StringFormat='Delete &quot;{0}&quot;?', FallbackValue=''}"/>
-        <Button Grid.Column="1"
-                Content="Delete"
-                Command="{Binding ConfirmDeleteCommand}"
-                Background="#922"
-                Foreground="White"
-                BorderThickness="0"
-                Padding="10,3"
-                FontSize="11"
-                CornerRadius="3"
-                Margin="6,0,4,0"/>
-        <Button Grid.Column="2"
-                Content="Cancel"
-                Command="{Binding CancelDeleteCommand}"
-                Background="#444"
-                Foreground="#ccc"
-                BorderThickness="0"
-                Padding="10,3"
-                FontSize="11"
-                CornerRadius="3"/>
-      </Grid>
     </Border>
 
     <!-- ── Collection path label ── -->
@@ -205,6 +170,54 @@
 
     </TreeView>
 
-  </DockPanel>
+    </DockPanel>
+
+    <!-- ── Delete confirmation popup ── -->
+    <Border IsVisible="{Binding PendingDeleteNode, Converter={x:Static vm:NotNullConverter.Instance}}"
+            Background="#66000000">
+      <Border HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Width="230"
+              Background="#2d2d30"
+              BorderBrush="#555"
+              BorderThickness="1"
+              CornerRadius="6"
+              Padding="14,12"
+              BoxShadow="0 4 20 0 #CC000000">
+        <StackPanel Spacing="10">
+          <TextBlock Foreground="#f0c060"
+                     FontSize="13"
+                     FontWeight="SemiBold"
+                     TextWrapping="Wrap"
+                     Text="{Binding PendingDeleteNode.Name, StringFormat='Delete &quot;{0}&quot;?', FallbackValue=''}"/>
+          <TextBlock Foreground="#999"
+                     FontSize="11"
+                     TextWrapping="Wrap"
+                     Text="This cannot be undone."/>
+          <StackPanel Orientation="Horizontal"
+                      HorizontalAlignment="Right"
+                      Spacing="6">
+            <Button Content="Cancel"
+                    Command="{Binding CancelDeleteCommand}"
+                    Background="#3a3a3a"
+                    Foreground="#ccc"
+                    BorderThickness="0"
+                    Padding="12,4"
+                    FontSize="11"
+                    CornerRadius="3"/>
+            <Button Content="Delete"
+                    Command="{Binding ConfirmDeleteCommand}"
+                    Background="#922"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Padding="12,4"
+                    FontSize="11"
+                    CornerRadius="3"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
+
+  </Grid>
 
 </UserControl>
