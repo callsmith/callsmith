@@ -131,7 +131,7 @@
                       <!-- Method badge -->
                       <Border Classes="method-chip"
                               Background="{Binding MethodColor, Converter={x:Static conv:HexColorToBrushConverter.Instance}}">
-                        <TextBlock Text="{Binding SelectedMethod}"
+                        <TextBlock Text="{Binding MethodPillLabel}"
                                    Foreground="White"
                                    FontSize="9"
                                    FontWeight="Bold"/>

@@ -73,6 +73,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(MethodColor))]
+    [NotifyPropertyChangedFor(nameof(MethodPillLabel))]
     private string _selectedMethod = "GET";
 
     [ObservableProperty]
@@ -191,6 +192,14 @@ public sealed partial class RequestTabViewModel : ObservableObject
     };
 
     public string MethodColor => HttpMethodColors.Hex(SelectedMethod);
+
+    public string MethodPillLabel => SelectedMethod switch
+    {
+        "DELETE"  => "DEL",
+        "OPTIONS" => "OPT",
+        "PATCH"   => "PTCH",
+        var m     => m,
+    };
 
     public bool HasUnresolvedPathParams =>
         PathParams.Items.Any(item =>
