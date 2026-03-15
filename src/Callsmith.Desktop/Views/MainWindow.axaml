@@ -12,6 +12,12 @@
         MinWidth="800" MinHeight="500"
         Background="#1e1e1e">
 
+    <!-- Window-level Ctrl+S so saving works even when focus is in the sidebar
+         or any other element outside RequestView / RequestEditorView. -->
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Ctrl+S" Command="{Binding RequestEditor.ActiveTab.SaveCommand}"/>
+    </Window.KeyBindings>
+
     <Design.DataContext>
         <vm:MainWindowViewModel/>
     </Design.DataContext>

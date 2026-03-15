@@ -9,6 +9,12 @@
              x:DataType="vm:RequestEditorViewModel"
              Background="#1e1e1e">
 
+  <!-- Ctrl+S here catches the case where focus leaves RequestView (e.g. after
+       deleting a key-value row whose button was removed from the visual tree). -->
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Ctrl+S" Command="{Binding ActiveTab.SaveCommand}"/>
+  </UserControl.KeyBindings>
+
   <UserControl.Styles>
 
     <!-- Tab chip — the clickable item in the tab strip -->
