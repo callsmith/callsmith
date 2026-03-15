@@ -16,7 +16,6 @@ namespace Callsmith.Desktop.ViewModels;
 /// rename, delete, and navigation between requests.
 /// </summary>
 public sealed partial class CollectionsViewModel : ObservableRecipient,
-    IRecipient<NavigationCancelledMessage>,
     IRecipient<CollectionRefreshRequestedMessage>,
     IRecipient<RequestSavedMessage>
 {
@@ -25,18 +24,14 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     private readonly ILogger<CollectionsViewModel> _logger;
 
     // -------------------------------------------------------------------------
-    // Selection tracking (for navigation-guard revert)
+    // Rename / create-folder dialog state
     // -------------------------------------------------------------------------
 
-    /// <summary>The item that was selected before the current (potentially pending) selection.</summary>
-    private CollectionTreeItemViewModel? _previousSelectedItem;
+    /// <summary>Non-null while the rename dialog is open for an existing node.</summary>
+    private CollectionTreeItemViewModel? _renameTargetNode;
 
-    /// <summary>
-    /// When true, the next <see cref="OnSelectedItemChanged"/> call will be suppressed
-    /// (no message sent, no previous-item update). Used to revert the tree selection
-    /// after a "stay here" navigation-cancel without triggering a load.
-    /// </summary>
-    private bool _suppressNextSelectionMessage;
+    /// <summary>Non-null while the create-folder dialog is open; holds the parent folder.</summary>
+    private CollectionTreeItemViewModel? _renameParentFolder;
 
     // -------------------------------------------------------------------------
     // File watcher
@@ -59,9 +54,6 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     private IReadOnlyList<CollectionTreeItemViewModel> _treeRoots = [];
 
     [ObservableProperty]
-    private CollectionTreeItemViewModel? _selectedItem;
-
-    [ObservableProperty]
     private string _collectionPath = string.Empty;
 
     [ObservableProperty]
@@ -79,6 +71,21 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     /// <summary>Non-null while an inline delete confirmation is being shown for this node.</summary>
     [ObservableProperty]
     private CollectionTreeItemViewModel? _pendingDeleteNode;
+
+    [ObservableProperty]
+    private bool _isRenameDialogOpen;
+
+    [ObservableProperty]
+    private string _renameDialogTitle = string.Empty;
+
+    [ObservableProperty]
+    private string _renameDialogValue = string.Empty;
+
+    [ObservableProperty]
+    private string _renameDialogError = string.Empty;
+
+    [ObservableProperty]
+    private string _renameDialogConfirmLabel = string.Empty;
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -107,17 +114,6 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Called when <see cref="RequestEditorViewModel"/> signals that the user cancelled
-    /// navigation away from a dirty request. We revert the sidebar selection to the
-    /// previously-open item.
-    /// </summary>
-    public void Receive(NavigationCancelledMessage message)
-    {
-        _suppressNextSelectionMessage = true;
-        SelectedItem = _previousSelectedItem;
-    }
-
-    /// <summary>
     /// Called when a tab saves a new request to disk. Refreshes the tree so the new file appears.
     /// </summary>
     public void Receive(CollectionRefreshRequestedMessage message)
@@ -134,29 +130,6 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         if (TreeRoots is not [var root]) return;
         var node = FindNodeByFilePath(root, message.Value.FilePath);
         node?.UpdateRequest(message.Value);
-    }
-
-    // -------------------------------------------------------------------------
-    // Selection tracking
-    // -------------------------------------------------------------------------
-
-    partial void OnSelectedItemChanging(CollectionTreeItemViewModel? value)
-    {
-        // Capture the outgoing item unless we are in a programmatic suppress/revert.
-        if (!_suppressNextSelectionMessage)
-            _previousSelectedItem = SelectedItem;
-    }
-
-    partial void OnSelectedItemChanged(CollectionTreeItemViewModel? value)
-    {
-        if (_suppressNextSelectionMessage)
-        {
-            _suppressNextSelectionMessage = false;
-            return;
-        }
-
-        if (value?.Request is CollectionRequest request)
-            Messenger.Send(new RequestSelectedMessage(request));
     }
 
     // -------------------------------------------------------------------------
@@ -188,7 +161,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     public async Task RefreshAsync()
     {
         if (!string.IsNullOrEmpty(CollectionPath))
-            await LoadCollectionAsync(CollectionPath, retainSelection: true);
+            await LoadCollectionAsync(CollectionPath, retainExpansion: true);
     }
 
     [RelayCommand]
@@ -198,147 +171,144 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
             await LoadCollectionAsync(path);
     }
 
+    /// <summary>Opens a request node — called directly from the sidebar on every click.</summary>
+    [RelayCommand]
+    public void OpenRequest(CollectionTreeItemViewModel node)
+    {
+        if (node.Request is CollectionRequest request)
+            Messenger.Send(new RequestSelectedMessage(request));
+    }
+
     // -------------------------------------------------------------------------
-    // Inline rename
+    // Rename dialog (modal)
     // -------------------------------------------------------------------------
 
+    /// <summary>Opens the rename/create dialog for an existing node.</summary>
     [RelayCommand]
     public void BeginRename(CollectionTreeItemViewModel node)
     {
         if (node.IsRoot) return;
-        node.EditingName = node.Name;
-        node.IsRenaming = true;
+        _renameTargetNode = node;
+        _renameParentFolder = null;
+        RenameDialogTitle = node.IsFolder ? "Rename Folder" : "Rename Request";
+        RenameDialogValue = node.Name;
+        RenameDialogError = string.Empty;
+        RenameDialogConfirmLabel = "Rename";
+        IsRenameDialogOpen = true;
     }
 
     [RelayCommand]
-    public async Task CommitRenameAsync(CollectionTreeItemViewModel node)
+    public async Task CommitRenameDialogAsync()
     {
-        var newName = node.EditingName.Trim();
+        var newName = RenameDialogValue.Trim();
         if (string.IsNullOrEmpty(newName))
         {
-            CancelRename(node);
+            RenameDialogError = "Name cannot be empty.";
             return;
         }
 
-        // Creating a brand-new item (phantom node)
-        if (node.IsNewNode)
-        {
-            await CommitNewNodeAsync(node, newName);
-            return;
-        }
+        IsRenameDialogOpen = false;
+        RenameDialogError = string.Empty;
 
-        // Renaming an existing item
-        _suppressWatcher = true;
-        try
+        if (_renameTargetNode is { } node)
         {
-            node.IsRenaming = false;
-
-            if (!node.IsFolder)
+            _suppressWatcher = true;
+            try
             {
-                var updated = await _collectionService.RenameRequestAsync(node.Request!.FilePath, newName);
-                node.ApplyRename(newName, updated);
+                if (!node.IsFolder)
+                {
+                    var updated = await _collectionService.RenameRequestAsync(node.Request!.FilePath, newName);
+                    node.ApplyRename(newName, updated);
+                }
+                else
+                {
+                    var updated = await _collectionService.RenameFolderAsync(node.FolderPath!, newName);
+                    node.ApplyFolderRename(newName, updated.FolderPath);
+                }
             }
-            else
+            catch (Exception ex)
             {
-                var updated = await _collectionService.RenameFolderAsync(node.FolderPath!, newName);
-                node.ApplyFolderRename(newName, updated.FolderPath);
+                _logger.LogWarning(ex, "Rename failed for node '{Name}'", node.Name);
+            }
+            finally
+            {
+                _suppressWatcher = false;
             }
         }
-        catch (Exception ex)
+        else if (_renameParentFolder is { } parentFolder)
         {
-            // Revert name on failure
-            _logger.LogWarning(ex, "Rename failed for node '{Name}'", node.Name);
-            node.IsRenaming = false;
-        }
-        finally
-        {
-            _suppressWatcher = false;
+            _suppressWatcher = true;
+            try
+            {
+                var folder = await _collectionService.CreateFolderAsync(parentFolder.FolderPath!, newName);
+                var newNode = CollectionTreeItemViewModel.FromFolder(folder, parent: parentFolder);
+                parentFolder.IsExpanded = true;
+                parentFolder.Children.Add(newNode);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to create folder '{Name}'", newName);
+            }
+            finally
+            {
+                _suppressWatcher = false;
+            }
         }
     }
 
     [RelayCommand]
-    public void CancelRename(CollectionTreeItemViewModel node)
+    public void CancelRenameDialog()
     {
-        if (node.IsNewNode)
-        {
-            // Remove the phantom node from its parent
-            node.Parent?.Children.Remove(node);
-            return;
-        }
-
-        node.IsRenaming = false;
-        node.EditingName = node.Name;
-    }
-
-    private async Task CommitNewNodeAsync(CollectionTreeItemViewModel phantom, string newName)
-    {
-        _suppressWatcher = true;
-        try
-        {
-            phantom.IsRenaming = false;
-
-            var parentFolderPath = phantom.Parent!.FolderPath!;
-
-            if (!phantom.IsFolder)
-            {
-                var request = await _collectionService.CreateRequestAsync(parentFolderPath, newName);
-                phantom.PromoteFromPhantom(newName, request: request);
-
-                // Auto-select and open the newly-created request
-                _suppressNextSelectionMessage = false;
-                SelectedItem = phantom;
-                Messenger.Send(new RequestSelectedMessage(request));
-            }
-            else
-            {
-                var folder = await _collectionService.CreateFolderAsync(parentFolderPath, newName);
-                phantom.PromoteFromPhantom(newName, folderPath: folder.FolderPath);
-            }
-        }
-        catch (Exception ex)
-        {
-            // Creation failed — remove the phantom
-            _logger.LogWarning(ex, "Failed to create node '{Name}'", newName);
-            phantom.Parent?.Children.Remove(phantom);
-        }
-        finally
-        {
-            _suppressWatcher = false;
-        }
+        IsRenameDialogOpen = false;
+        RenameDialogError = string.Empty;
     }
 
     // -------------------------------------------------------------------------
     // Create new request / folder
     // -------------------------------------------------------------------------
 
+    /// <summary>Directly creates a request with a default name and opens it immediately.</summary>
     [RelayCommand]
-    public void CreateRequest(CollectionTreeItemViewModel folder)
+    public async Task CreateRequestAsync(CollectionTreeItemViewModel folder)
     {
         if (!folder.IsFolder) return;
 
-        var baseName = "New Request";
-        var finalName = PickUniqueRequestName(folder.FolderPath!, baseName);
+        var finalName = PickUniqueRequestName(folder.FolderPath!, "New Request");
 
-        var phantom = CollectionTreeItemViewModel.NewPhantom(
-            isFolder: false, defaultName: finalName, parent: folder);
+        _suppressWatcher = true;
+        try
+        {
+            var request = await _collectionService.CreateRequestAsync(folder.FolderPath!, finalName);
+            var newNode = CollectionTreeItemViewModel.FromRequest(request, parent: folder);
+            folder.IsExpanded = true;
+            folder.Children.Add(newNode);
 
-        folder.IsExpanded = true;
-        folder.Children.Add(phantom);
+            // Open the newly-created request immediately
+            Messenger.Send(new RequestSelectedMessage(request));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to create request '{Name}'", finalName);
+        }
+        finally
+        {
+            _suppressWatcher = false;
+        }
     }
 
+    /// <summary>Opens the create-folder dialog with a unique default name.</summary>
     [RelayCommand]
     public void CreateFolder(CollectionTreeItemViewModel folder)
     {
         if (!folder.IsFolder) return;
 
-        var baseName = "New Folder";
-        var finalName = PickUniqueFolderName(folder.FolderPath!, baseName);
-
-        var phantom = CollectionTreeItemViewModel.NewPhantom(
-            isFolder: true, defaultName: finalName, parent: folder);
-
-        folder.IsExpanded = true;
-        folder.Children.Add(phantom);
+        _renameTargetNode = null;
+        _renameParentFolder = folder;
+        RenameDialogTitle = "New Folder";
+        RenameDialogValue = PickUniqueFolderName(folder.FolderPath!, "New Folder");
+        RenameDialogError = string.Empty;
+        RenameDialogConfirmLabel = "Create";
+        IsRenameDialogOpen = true;
     }
 
     // -------------------------------------------------------------------------
@@ -380,17 +350,10 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
                 Messenger.Send(new CollectionItemDeletedMessage(deletedPath));
             }
 
-            // Clear the sidebar selection if the deleted item was selected
-            if (SelectedItem == node || IsAncestor(node, SelectedItem))
-            {
-                _suppressNextSelectionMessage = true;
-                SelectedItem = null;
-            }
-
             // Reload the tree to guarantee disk/UI consistency.
             // This also restarts the watcher via LoadCollectionAsync → StartWatcher.
             if (HasCollection)
-                await LoadCollectionAsync(CollectionPath, retainSelection: true);
+                await LoadCollectionAsync(CollectionPath, retainExpansion: true);
         }
         catch (Exception ex)
         {
@@ -417,7 +380,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     /// </summary>
     public async Task MoveItemAsync(CollectionTreeItemViewModel item, int targetIndex)
     {
-        if (item.IsRoot || item.IsNewNode || item.IsRenaming) return;
+        if (item.IsRoot) return;
 
         var parent = item.Parent;
         if (parent?.FolderPath is null) return;
@@ -431,7 +394,6 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
 
         // Compute the ordered entry names from the updated children list.
         var orderedNames = parent.Children
-            .Where(c => !c.IsNewNode)
             .Select(c => c.IsFolder ? c.Name : Path.GetFileName(c.Request!.FilePath))
             .ToList();
 
@@ -474,11 +436,9 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     // Private helpers
     // -------------------------------------------------------------------------
 
-    private async Task LoadCollectionAsync(string path, bool retainSelection = false)
+    private async Task LoadCollectionAsync(string path, bool retainExpansion = false)
     {
-        // Remember which request was open so we can restore selection after rebuild.
-        var openFilePath = retainSelection ? SelectedItem?.Request?.FilePath : null;
-        var expandedPaths = retainSelection ? CollectExpandedFolderPaths(TreeRoots) : null;
+        var expandedPaths = retainExpansion ? CollectExpandedFolderPaths(TreeRoots) : null;
 
         var root = await _collectionService.OpenFolderAsync(path);
         CollectionPath = path;
@@ -492,17 +452,6 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         TreeRoots = [rootNode];
         RefreshCommand.NotifyCanExecuteChanged();
         Messenger.Send(new CollectionOpenedMessage(path));
-
-        // Restore the previously-open request selection silently (no reload).
-        if (openFilePath is not null)
-        {
-            var found = FindNodeByFilePath(rootNode, openFilePath);
-            if (found is not null)
-            {
-                _suppressNextSelectionMessage = true;
-                SelectedItem = found;
-            }
-        }
 
         // Track recently opened (non-blocking)
         _ = UpdateRecentCollectionsAfterPushAsync(path);
@@ -657,7 +606,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
                 Dispatcher.UIThread.Post(async () =>
                 {
                     if (!ct.IsCancellationRequested)
-                        await LoadCollectionAsync(CollectionPath, retainSelection: true);
+                        await LoadCollectionAsync(CollectionPath, retainExpansion: true);
                 });
             }, TaskScheduler.Default);
         });

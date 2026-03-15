@@ -98,34 +98,21 @@ public partial class CollectionsView : UserControl
     private void OnTreeKeyDown(object? sender, KeyEventArgs e)
     {
         if (DataContext is not CollectionsViewModel vm) return;
-        var node = CollectionTree.SelectedItem as CollectionTreeItemViewModel;
+
+        // Find the focused TreeViewItem to know which node to act on.
+        var node = (e.Source as Visual)?.FindAncestorOfType<TreeViewItem>(includeSelf: true)?.DataContext
+                   as CollectionTreeItemViewModel;
         if (node is null) return;
 
-        if (node.IsRenaming)
+        if (e.Key == Key.F2 && !node.IsRoot)
         {
-            if (e.Key == Key.Enter)
-            {
-                vm.CommitRenameCommand.Execute(node);
-                e.Handled = true;
-            }
-            else if (e.Key == Key.Escape)
-            {
-                vm.CancelRenameCommand.Execute(node);
-                e.Handled = true;
-            }
+            vm.BeginRenameCommand.Execute(node);
+            e.Handled = true;
         }
-        else
+        else if (e.Key == Key.Delete && !node.IsRoot)
         {
-            if (e.Key == Key.F2 && !node.IsRoot)
-            {
-                vm.BeginRenameCommand.Execute(node);
-                e.Handled = true;
-            }
-            else if (e.Key == Key.Delete && !node.IsRoot)
-            {
-                vm.DeleteNodeCommand.Execute(node);
-                e.Handled = true;
-            }
+            vm.DeleteNodeCommand.Execute(node);
+            e.Handled = true;
         }
     }
 
@@ -135,15 +122,21 @@ public partial class CollectionsView : UserControl
 
     private void OnTreeTapped(object? sender, RoutedEventArgs e)
     {
-        // If the tap originated on the expander toggle button (the chevron), skip —
-        // the TreeViewItem's built-in handler already toggled IsExpanded.
+        // If the tap originated on the expander toggle button (the chevron), skip.
         if ((e.Source as Visual)?.FindAncestorOfType<ToggleButton>(includeSelf: true) is not null) return;
 
         var tvi = (e.Source as Visual)?.FindAncestorOfType<TreeViewItem>(includeSelf: true);
         if (tvi?.DataContext is not CollectionTreeItemViewModel node) return;
-        if (!node.IsFolder || node.IsRenaming) return;
 
-        tvi.IsExpanded = !tvi.IsExpanded;
+        if (node.IsFolder)
+        {
+            tvi.IsExpanded = !tvi.IsExpanded;
+        }
+        else if (DataContext is CollectionsViewModel vm)
+        {
+            // Always open the request, regardless of whether it was previously "selected".
+            vm.OpenRequestCommand.Execute(node);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -153,8 +146,9 @@ public partial class CollectionsView : UserControl
     private void OnTreeDoubleTapped(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not CollectionsViewModel vm) return;
-        var node = CollectionTree.SelectedItem as CollectionTreeItemViewModel;
-        if (node is null || node.IsRoot || node.IsRenaming) return;
+        var tvi = (e.Source as Visual)?.FindAncestorOfType<TreeViewItem>(includeSelf: true);
+        var node = tvi?.DataContext as CollectionTreeItemViewModel;
+        if (node is null || node.IsRoot) return;
 
         vm.BeginRenameCommand.Execute(node);
         e.Handled = true;
@@ -175,8 +169,7 @@ public partial class CollectionsView : UserControl
         // content is hosted inside TreeViewItem's control template; logical Parent
         // traversal does not reliably reach the TreeViewItem container.
         var tvi = (e.Source as Visual)?.FindAncestorOfType<TreeViewItem>(includeSelf: true);
-        if (tvi?.DataContext is CollectionTreeItemViewModel node
-            && !node.IsRoot && !node.IsNewNode && !node.IsRenaming)
+        if (tvi?.DataContext is CollectionTreeItemViewModel node && !node.IsRoot)
         {
             _draggedNode = node;
             _dragStartPoint = e.GetPosition(CollectionTree);

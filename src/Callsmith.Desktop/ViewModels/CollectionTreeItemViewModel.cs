@@ -7,8 +7,6 @@ namespace Callsmith.Desktop.ViewModels;
 /// <summary>
 /// Represents a single node in the collections sidebar tree.
 /// A node is either a folder (with children) or a request leaf.
-/// Supports inline rename and phantom "new node" creation so the tree never
-/// needs a full rebuild for individual CRUD operations.
 /// </summary>
 public sealed partial class CollectionTreeItemViewModel : ObservableObject
 {
@@ -25,18 +23,11 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
     /// <summary>True for the root folder of the collection. Root nodes cannot be renamed or deleted.</summary>
     public bool IsRoot { get; }
 
-    /// <summary>
-    /// True while this is a phantom "new" node being named before the file exists on disk.
-    /// Set to false once the file is created and the node becomes a real persisted item.
-    /// </summary>
-    public bool IsNewNode { get; private set; }
-
     /// <summary>Child nodes (sub-folders + requests). Mutable so CRUD doesn't require tree rebuilds.</summary>
     public ObservableCollection<CollectionTreeItemViewModel> Children { get; }
 
     /// <summary>
-    /// The underlying request. Null for folder nodes and null for phantom request nodes before
-    /// the file is saved to disk.
+    /// The underlying request. Null for folder nodes.
     /// </summary>
     public CollectionRequest? Request { get; private set; }
 
@@ -53,14 +44,6 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _isExpanded = true;
 
-    /// <summary>True while the inline rename TextBox is active.</summary>
-    [ObservableProperty]
-    private bool _isRenaming;
-
-    /// <summary>Text currently in the rename TextBox.</summary>
-    [ObservableProperty]
-    private string _editingName = string.Empty;
-
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
@@ -72,7 +55,6 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
         string? folderPath,
         CollectionTreeItemViewModel? parent,
         bool isRoot,
-        bool isNewNode,
         IEnumerable<CollectionTreeItemViewModel> children)
     {
         Name = name;
@@ -81,7 +63,6 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
         FolderPath = folderPath;
         Parent = parent;
         IsRoot = isRoot;
-        IsNewNode = isNewNode;
         Children = new ObservableCollection<CollectionTreeItemViewModel>(children);
     }
 
@@ -115,19 +96,6 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
         OnPropertyChanged(nameof(Name));
     }
 
-    /// <summary>
-    /// Promotes a phantom "new" node to a real persisted node after the file is saved.
-    /// </summary>
-    internal void PromoteFromPhantom(string realName, CollectionRequest? request = null, string? folderPath = null)
-    {
-        IsNewNode = false;
-        Name = realName;
-        Request = request;
-        FolderPath = folderPath;
-        OnPropertyChanged(nameof(Name));
-        OnPropertyChanged(nameof(IsNewNode));
-    }
-
     // -------------------------------------------------------------------------
     // Factory methods
     // -------------------------------------------------------------------------
@@ -145,7 +113,6 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
             folderPath: folder.FolderPath,
             parent: parent,
             isRoot: isRoot,
-            isNewNode: false,
             children: Enumerable.Empty<CollectionTreeItemViewModel>());
 
         if (folder.ItemOrder.Count > 0)
@@ -193,32 +160,6 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
             folderPath: null,
             parent: parent,
             isRoot: false,
-            isNewNode: false,
             children: Enumerable.Empty<CollectionTreeItemViewModel>());
-
-    /// <summary>
-    /// Creates a phantom "new" node that immediately enters rename mode.
-    /// The node is added to the parent's <see cref="Children"/> collection so it
-    /// appears in the tree before the file exists on disk.
-    /// </summary>
-    public static CollectionTreeItemViewModel NewPhantom(
-        bool isFolder,
-        string defaultName,
-        CollectionTreeItemViewModel parent)
-    {
-        var node = new CollectionTreeItemViewModel(
-            name: defaultName,
-            isFolder: isFolder,
-            request: null,
-            folderPath: null,
-            parent: parent,
-            isRoot: false,
-            isNewNode: true,
-            children: Enumerable.Empty<CollectionTreeItemViewModel>());
-
-        node.EditingName = defaultName;
-        node.IsRenaming = true;
-        return node;
-    }
 }
 
