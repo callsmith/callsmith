@@ -48,6 +48,21 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _isActive;
 
+    /// <summary>The HTTP method string (e.g. "GET") for request nodes; null for folder nodes.</summary>
+    public string? MethodName => Request?.Method.Method;
+
+    /// <summary>
+    /// Abbreviated method label used in the sidebar pill.
+    /// Long verbs are shortened so the pill stays compact; the full name is used everywhere else.
+    /// </summary>
+    public string? MethodPillLabel => MethodName switch
+    {
+        "DELETE"  => "DEL",
+        "OPTIONS" => "OPT",
+        "PATCH"   => "PTCH",
+        var m     => m,
+    };
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------

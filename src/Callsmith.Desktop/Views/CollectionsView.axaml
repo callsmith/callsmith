@@ -173,14 +173,32 @@
                       Classes.active-accent="{Binding IsActive}"
                       CornerRadius="2,0,0,2"
                       IsVisible="{Binding IsActive}"/>
-              <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
-                <TextBlock Classes="tree-icon"
-                           Classes.active-item="{Binding IsActive}"
-                           Text="{Binding IsFolder, Converter={x:Static conv:BoolToIconConverter.FolderOrRequest}}"/>
-                <TextBlock Classes="tree-label"
-                           Classes.active-item="{Binding IsActive}"
-                           Text="{Binding Name}"/>
+              <!-- Fixed-width slot for the pill keeps request names aligned regardless of verb length -->
+              <Border Grid.Column="2"
+                      Width="42"
+                      IsVisible="{Binding !IsFolder}"
+                      VerticalAlignment="Center"
+                      HorizontalAlignment="Left">
+                <Border Background="{Binding MethodName, Converter={x:Static conv:HttpMethodToBrushConverter.Instance}}"
+                        CornerRadius="3"
+                        Padding="5,2"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center">
+                  <TextBlock Text="{Binding MethodPillLabel}"
+                             Foreground="#1a1a1a"
+                             FontSize="9"
+                             FontWeight="Bold"
+                             VerticalAlignment="Center"/>
+                </Border>
+              </Border>
+              <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
+                          IsVisible="{Binding IsFolder}">
               </StackPanel>
+              <TextBlock Grid.Column="3"
+                         Classes="tree-label"
+                         Classes.active-item="{Binding IsActive}"
+                         Text="{Binding Name}"
+                         VerticalAlignment="Center"/>
             </Grid>
           </Border>
 
