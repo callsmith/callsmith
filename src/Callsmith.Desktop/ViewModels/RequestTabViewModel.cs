@@ -640,6 +640,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             _sourceRequest = updated;
             HasUnsavedChanges = false;
             ErrorMessage = null;
+            _messenger.Send(new RequestSavedMessage(updated));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

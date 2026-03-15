@@ -101,6 +101,12 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
         OnPropertyChanged(nameof(Name));
     }
 
+    /// <summary>Updates the in-memory request snapshot after a save, without touching the display name.</summary>
+    internal void UpdateRequest(CollectionRequest updated)
+    {
+        Request = updated;
+    }
+
     /// <summary>Applies a folder rename, updating path and display name.</summary>
     internal void ApplyFolderRename(string newName, string newFolderPath)
     {

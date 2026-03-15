@@ -18,7 +18,8 @@ namespace Callsmith.Desktop.ViewModels;
 /// </summary>
 public sealed partial class CollectionsViewModel : ObservableRecipient,
     IRecipient<NavigationCancelledMessage>,
-    IRecipient<CollectionRefreshRequestedMessage>
+    IRecipient<CollectionRefreshRequestedMessage>,
+    IRecipient<RequestSavedMessage>
 {
     private readonly ICollectionService _collectionService;
     private readonly RecentCollectionsService _recentCollectionsService;
@@ -122,6 +123,17 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     public void Receive(CollectionRefreshRequestedMessage message)
     {
         _ = RefreshAsync();
+    }
+
+    /// <summary>
+    /// Called when a tab saves an existing request. Updates the matching tree node's
+    /// in-memory snapshot so re-opening the tab shows the latest data.
+    /// </summary>
+    public void Receive(RequestSavedMessage message)
+    {
+        if (TreeRoots is not [var root]) return;
+        var node = FindNodeByFilePath(root, message.Value.FilePath);
+        node?.UpdateRequest(message.Value);
     }
 
     // -------------------------------------------------------------------------
