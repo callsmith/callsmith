@@ -9,6 +9,9 @@ namespace Callsmith.Core.Abstractions;
 /// </summary>
 public interface ICollectionService
 {
+    /// <summary>File extension used for all request files (e.g. <c>.callsmith</c>).</summary>
+    string RequestFileExtension { get; }
+
     /// <summary>
     /// Opens a folder on disk as a collection and returns the full folder tree,
     /// including all requests and sub-folders discovered recursively.

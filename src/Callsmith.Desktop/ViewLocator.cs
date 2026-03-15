@@ -19,12 +19,13 @@ public class ViewLocator : IDataTemplate
         if (param is null)
             return null;
         
-        var name = param.GetType().FullName!.Replace("ViewModel", "View", StringComparison.Ordinal);
+        var name = param.GetType().FullName! // FullName is null only for generic type parameters; inapplicable here
+            .Replace("ViewModel", "View", StringComparison.Ordinal);
         var type = Type.GetType(name);
 
         if (type != null)
         {
-            return (Control)Activator.CreateInstance(type)!;
+            return (Control)Activator.CreateInstance(type)!; // type is a known, concrete Avalonia Control subclass
         }
         
         return new TextBlock { Text = "Not Found: " + name };

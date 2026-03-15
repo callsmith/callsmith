@@ -1,10 +1,10 @@
 using Avalonia.Data.Converters;
 using System.Globalization;
 
-namespace Callsmith.Desktop.ViewModels;
+namespace Callsmith.Desktop.Converters;
 
 /// <summary>
-/// Returns a folder or file icon character based on a boolean value.
+/// Returns a folder or request icon character based on a boolean value.
 /// Used in the collections tree to distinguish folder nodes from request nodes.
 /// </summary>
 public sealed class BoolToIconConverter : IValueConverter
@@ -13,7 +13,7 @@ public sealed class BoolToIconConverter : IValueConverter
     public static readonly BoolToIconConverter FolderOrRequest = new();
 
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-        value is true ? "📁" : "→";
+        value is true ? "\u25a0" : "\u2192"; // filled square for folder, right arrow for request
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();

@@ -1,6 +1,5 @@
 using System.Net.Http;
 using System.Text;
-using Callsmith.Core;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Helpers;
 using Callsmith.Core.Models;
@@ -19,7 +18,7 @@ namespace Callsmith.Desktop.ViewModels;
 /// </summary>
 public sealed partial class RequestTabViewModel : ObservableObject
 {
-    private readonly TransportRegistry _transportRegistry;
+    private readonly ITransportRegistry _transportRegistry;
     private readonly ICollectionService _collectionService;
     private readonly IMessenger _messenger;
     private readonly Action<RequestTabViewModel> _requestClose;
@@ -191,17 +190,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _ => "#0e639c",
     };
 
-    public string MethodColor => SelectedMethod switch
-    {
-        "GET"     => "#4ec9b0",
-        "POST"    => "#dda756",
-        "PUT"     => "#4fc1ff",
-        "PATCH"   => "#b8d7a3",
-        "DELETE"  => "#f48771",
-        "HEAD"    => "#c586c0",
-        "OPTIONS" => "#9a9a9a",
-        _         => "#d4d4d4",
-    };
+    public string MethodColor => HttpMethodColors.Hex(SelectedMethod);
 
     public bool HasUnresolvedPathParams =>
         PathParams.Items.Any(item =>
@@ -275,7 +264,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     // -------------------------------------------------------------------------
 
     public RequestTabViewModel(
-        TransportRegistry transportRegistry,
+        ITransportRegistry transportRegistry,
         ICollectionService collectionService,
         IMessenger messenger,
         Action<RequestTabViewModel> requestClose)
@@ -522,7 +511,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         var absoluteFolder = string.IsNullOrEmpty(SaveAsFolderPath)
             ? CollectionRootPath
             : Path.Combine(CollectionRootPath, SaveAsFolderPath);
-        var filePath = Path.Combine(absoluteFolder, name + Core.Services.FileSystemCollectionService.RequestFileExtension);
+        var filePath = Path.Combine(absoluteFolder, name + _collectionService.RequestFileExtension);
         if (File.Exists(filePath))
         {
             SaveAsError = $"\"{name}\" already exists in this folder.";
@@ -747,12 +736,13 @@ public sealed partial class RequestTabViewModel : ObservableObject
             case AuthConfig.AuthTypes.Bearer when !string.IsNullOrEmpty(AuthToken):
                 headers["Authorization"] = $"Bearer {AuthToken}";
                 break;
-            case AuthConfig.AuthTypes.Basic:
+            case AuthConfig.AuthTypes.Basic when !string.IsNullOrEmpty(AuthUsername):
                 var encoded = Convert.ToBase64String(
                     Encoding.UTF8.GetBytes($"{AuthUsername}:{AuthPassword}"));
                 headers["Authorization"] = $"Basic {encoded}";
                 break;
-            case AuthConfig.AuthTypes.ApiKey when !string.IsNullOrEmpty(AuthApiKeyName):
+            case AuthConfig.AuthTypes.ApiKey when !string.IsNullOrEmpty(AuthApiKeyName)
+                                               && !string.IsNullOrEmpty(AuthApiKeyValue):
                 if (AuthApiKeyIn == AuthConfig.ApiKeyLocations.Header)
                     headers[AuthApiKeyName] = AuthApiKeyValue;
                 else
@@ -763,11 +753,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         }
     }
 
-    private static string GetBaseUrl(string value)
-    {
-        var index = value.IndexOf('?');
-        return index >= 0 ? value[..index] : value;
-    }
+    private static string GetBaseUrl(string value) => QueryStringHelper.GetBaseUrl(value);
 
     private void SyncPathParamsWithUrl(string url, IReadOnlyDictionary<string, string> existingValues)
     {

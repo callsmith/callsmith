@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using Avalonia.Threading;
-using Callsmith.Core;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
 using Callsmith.Desktop.Messages;
@@ -21,7 +20,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     IRecipient<CollectionItemDeletedMessage>,
     IRecipient<CollectionOpenedMessage>
 {
-    private readonly TransportRegistry _transportRegistry;
+    private readonly ITransportRegistry _transportRegistry;
     private readonly ICollectionService _collectionService;
 
     private EnvironmentModel? _activeEnvironment;
@@ -53,7 +52,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     // -------------------------------------------------------------------------
 
     public RequestEditorViewModel(
-        TransportRegistry transportRegistry,
+        ITransportRegistry transportRegistry,
         ICollectionService collectionService,
         IMessenger messenger)
         : base(messenger)

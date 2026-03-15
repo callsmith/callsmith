@@ -1,6 +1,7 @@
 using System.Net.Http;
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
+using Callsmith.Core.Tests.TestHelpers;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -574,32 +575,5 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
         loaded.Url.Should().Be("https://api.example.com");
         loaded.QueryParams.Should().ContainKey("foo").WhoseValue.Should().Be("bar");
         loaded.QueryParams.Should().ContainKey("limit").WhoseValue.Should().Be("5");
-    }
-
-    // -------------------------------------------------------------------------
-    // TempDirectory helper
-    // -------------------------------------------------------------------------
-
-    /// <summary>
-    /// Creates a uniquely-named temporary directory and deletes it on disposal.
-    /// Keeps test isolation without needing a mocking framework for the filesystem.
-    /// </summary>
-    private sealed class TempDirectory : IDisposable
-    {
-        public string Path { get; } =
-            Directory.CreateTempSubdirectory("callsmith-tests-").FullName;
-
-        public string CreateSubDirectory(string name)
-        {
-            var path = System.IO.Path.Combine(Path, name);
-            Directory.CreateDirectory(path);
-            return path;
-        }
-
-        public void Dispose()
-        {
-            if (Directory.Exists(Path))
-                Directory.Delete(Path, recursive: true);
-        }
     }
 }

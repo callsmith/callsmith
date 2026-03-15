@@ -2,7 +2,6 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
-using Callsmith.Core.Services;
 using Callsmith.Desktop.Messages;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -22,7 +21,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     IRecipient<RequestSavedMessage>
 {
     private readonly ICollectionService _collectionService;
-    private readonly RecentCollectionsService _recentCollectionsService;
+    private readonly IRecentCollectionsService _recentCollectionsService;
     private readonly ILogger<CollectionsViewModel> _logger;
 
     // -------------------------------------------------------------------------
@@ -87,7 +86,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
 
     public CollectionsViewModel(
         ICollectionService collectionService,
-        RecentCollectionsService recentCollectionsService,
+        IRecentCollectionsService recentCollectionsService,
         IMessenger messenger,
         ILogger<CollectionsViewModel> logger)
         : base(messenger)
@@ -108,8 +107,9 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Called when RequestViewModel signals that the user cancelled navigation away
-    /// from a dirty request. We revert the sidebar selection to the previously-open item.
+    /// Called when <see cref="RequestEditorViewModel"/> signals that the user cancelled
+    /// navigation away from a dirty request. We revert the sidebar selection to the
+    /// previously-open item.
     /// </summary>
     public void Receive(NavigationCancelledMessage message)
     {
@@ -456,11 +456,18 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
 
     private async Task LoadRecentCollectionsAsync()
     {
-        RecentCollections = await _recentCollectionsService.LoadAsync();
-        RecentCollectionsCount = RecentCollections.Count;
+        try
+        {
+            RecentCollections = await _recentCollectionsService.LoadAsync();
+            RecentCollectionsCount = RecentCollections.Count;
 
-        if (RecentCollections.Count > 0)
-            await LoadCollectionAsync(RecentCollections[0]);
+            if (RecentCollections.Count > 0)
+                await LoadCollectionAsync(RecentCollections[0]);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load recent collections");
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -498,24 +505,35 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         }
 
         // Track recently opened (non-blocking)
-        _ = _recentCollectionsService.PushAsync(path).ContinueWith(async _ =>
+        _ = UpdateRecentCollectionsAfterPushAsync(path);
+
+        StartWatcher(path);
+    }
+
+    private async Task UpdateRecentCollectionsAfterPushAsync(string path)
+    {
+        try
         {
-            var updated = await _recentCollectionsService.LoadAsync();
+            await _recentCollectionsService.PushAsync(path).ConfigureAwait(false);
+            var updated = await _recentCollectionsService.LoadAsync().ConfigureAwait(false);
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 RecentCollections = updated;
                 RecentCollectionsCount = updated.Count;
             });
-        }, TaskScheduler.Default);
-
-        StartWatcher(path);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to update recent collections");
+        }
     }
 
-    private static string PickUniqueRequestName(string folderPath, string baseName)
+    private string PickUniqueRequestName(string folderPath, string baseName)
     {
+        var ext = _collectionService.RequestFileExtension;
         var name = baseName;
         var counter = 1;
-        while (File.Exists(Path.Combine(folderPath, name + Core.Services.FileSystemCollectionService.RequestFileExtension)))
+        while (File.Exists(Path.Combine(folderPath, name + ext)))
             name = $"{baseName} {++counter}";
         return name;
     }
@@ -624,19 +642,25 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     {
         if (_suppressWatcher) return;
 
-        _watcherDebounce?.Cancel();
-        _watcherDebounce = new CancellationTokenSource();
-        var ct = _watcherDebounce.Token;
-
-        Task.Delay(600, ct).ContinueWith(t =>
+        // Marshal entirely to the UI thread so no locking is needed for the
+        // CancellationTokenSource swap.
+        Dispatcher.UIThread.Post(() =>
         {
-            if (t.IsCanceled) return;
-            Dispatcher.UIThread.Post(async () =>
+            _watcherDebounce?.Cancel();
+            _watcherDebounce?.Dispose();
+            _watcherDebounce = new CancellationTokenSource();
+            var ct = _watcherDebounce.Token;
+
+            Task.Delay(600, ct).ContinueWith(t =>
             {
-                if (!ct.IsCancellationRequested)
-                    await LoadCollectionAsync(CollectionPath, retainSelection: true);
-            });
-        }, TaskScheduler.Default);
+                if (t.IsCanceled) return;
+                Dispatcher.UIThread.Post(async () =>
+                {
+                    if (!ct.IsCancellationRequested)
+                        await LoadCollectionAsync(CollectionPath, retainSelection: true);
+                });
+            }, TaskScheduler.Default);
+        });
     }
 }
 

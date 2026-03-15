@@ -33,6 +33,5 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Callsmith.Core\Callsmith.Core.csproj" />
-    <ProjectReference Include="..\Callsmith.Data\Callsmith.Data.csproj" />
   </ItemGroup>
 </Project>

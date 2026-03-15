@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Text;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
 using Microsoft.Extensions.Logging;
@@ -11,7 +12,7 @@ namespace Callsmith.Core.Transports.Http;
 /// <see cref="ITransport"/> implementation for HTTP and HTTPS using
 /// <see cref="System.Net.Http.HttpClient"/>.
 /// </summary>
-public sealed class HttpTransport : ITransport
+public sealed class HttpTransport : ITransport, IDisposable
 {
     // HttpClient is intentionally reused across requests to avoid socket exhaustion.
     private readonly HttpClient _followRedirectsClient;
@@ -89,7 +90,11 @@ public sealed class HttpTransport : ITransport
             stopwatch.Stop();
 
             var bodyBytes = await httpResponse.Content.ReadAsByteArrayAsync(ct);
-            var bodyString = await httpResponse.Content.ReadAsStringAsync(ct);
+            var charset = httpResponse.Content.Headers.ContentType?.CharSet;
+            var encoding = charset is not null
+                ? Encoding.GetEncoding(charset)
+                : Encoding.UTF8;
+            var bodyString = encoding.GetString(bodyBytes);
             var headers = ReadHeaders(httpResponse);
             var finalUrl = httpResponse.RequestMessage?.RequestUri?.ToString() ?? request.Url;
 
@@ -145,5 +150,12 @@ public sealed class HttpTransport : ITransport
             headers[header.Key] = string.Join(", ", header.Value);
 
         return headers;
+    }
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        _followRedirectsClient.Dispose();
+        _noRedirectsClient.Dispose();
     }
 }

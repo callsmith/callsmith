@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
@@ -47,7 +48,7 @@ public static class FocusHelper
     private sealed class RelayObserver<T>(Action<T> onNext) : IObserver<T>
     {
         public void OnNext(T value) => onNext(value);
-        public void OnError(Exception error) { }
+        public void OnError(Exception error) => ExceptionDispatchInfo.Capture(error).Throw();
         public void OnCompleted() { }
     }
 }

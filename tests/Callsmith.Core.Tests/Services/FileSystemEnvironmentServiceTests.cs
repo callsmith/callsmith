@@ -1,5 +1,6 @@
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
+using Callsmith.Core.Tests.TestHelpers;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -208,26 +209,5 @@ public sealed class FileSystemEnvironmentServiceTests : IDisposable
         loaded.Variables.Should().HaveCount(1);
         loaded.Variables[0].Name.Should().Be("Key");
         loaded.Variables[0].Value.Should().Be("Val");
-    }
-
-    // ─── Helpers ────────────────────────────────────────────────────────────
-
-    private sealed class TempDirectory : IDisposable
-    {
-        public string Path { get; } =
-            Directory.CreateTempSubdirectory("callsmith-env-tests-").FullName;
-
-        public string CreateSubDirectory(string name)
-        {
-            var path = System.IO.Path.Combine(Path, name);
-            Directory.CreateDirectory(path);
-            return path;
-        }
-
-        public void Dispose()
-        {
-            if (Directory.Exists(Path))
-                Directory.Delete(Path, recursive: true);
-        }
     }
 }

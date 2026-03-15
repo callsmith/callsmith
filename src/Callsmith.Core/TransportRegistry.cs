@@ -8,7 +8,7 @@ namespace Callsmith.Core;
 /// on the URI scheme of the request URL. Transports are registered at startup via
 /// <see cref="Register"/>.
 /// </summary>
-public sealed class TransportRegistry
+public sealed class TransportRegistry : ITransportRegistry
 {
     private readonly Dictionary<string, ITransport> _transports = new(StringComparer.OrdinalIgnoreCase);
 

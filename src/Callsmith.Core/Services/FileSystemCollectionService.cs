@@ -18,6 +18,9 @@ public sealed class FileSystemCollectionService : ICollectionService
     /// <summary>File extension used for all request files.</summary>
     public const string RequestFileExtension = ".callsmith";
 
+    // Exposed via ICollectionService so consumers don't need to reference the concrete type.
+    string ICollectionService.RequestFileExtension => RequestFileExtension;
+
     /// <summary>
     /// Reserved sub-folder name inside a collection folder that holds environment files.
     /// This folder is excluded from request discovery.
@@ -44,7 +47,7 @@ public sealed class FileSystemCollectionService : ICollectionService
     }
 
     /// <inheritdoc/>
-    public Task<CollectionFolder> OpenFolderAsync(string folderPath, CancellationToken ct = default)
+    public async Task<CollectionFolder> OpenFolderAsync(string folderPath, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(folderPath);
 
@@ -53,10 +56,10 @@ public sealed class FileSystemCollectionService : ICollectionService
 
         ct.ThrowIfCancellationRequested();
 
-        var folder = ReadFolder(folderPath);
+        var folder = await Task.Run(() => ReadFolder(folderPath), ct);
         _logger.LogDebug("Opened collection at '{FolderPath}'", folderPath);
 
-        return Task.FromResult(folder);
+        return folder;
     }
 
     /// <inheritdoc/>
@@ -319,7 +322,7 @@ public sealed class FileSystemCollectionService : ICollectionService
             var json = File.ReadAllText(orderFilePath);
             return JsonSerializer.Deserialize<List<string>>(json) ?? [];
         }
-        catch
+        catch (JsonException)
         {
             return [];
         }

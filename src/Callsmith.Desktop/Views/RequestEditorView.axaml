@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Callsmith.Desktop.ViewModels"
+             xmlns:conv="using:Callsmith.Desktop.Converters"
              xmlns:views="using:Callsmith.Desktop.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -129,7 +130,7 @@
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                       <!-- Method badge -->
                       <Border Classes="method-chip"
-                              Background="{Binding MethodColor, Converter={x:Static vm:HexColorToBrushConverter.Instance}}">
+                              Background="{Binding MethodColor, Converter={x:Static conv:HexColorToBrushConverter.Instance}}">
                         <TextBlock Text="{Binding SelectedMethod}"
                                    Foreground="White"
                                    FontSize="9"

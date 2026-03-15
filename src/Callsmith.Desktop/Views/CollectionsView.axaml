@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Callsmith.Desktop.ViewModels"
+             xmlns:conv="using:Callsmith.Desktop.Converters"
              xmlns:views="using:Callsmith.Desktop.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -140,7 +141,7 @@
                         Spacing="6"
                         IsVisible="{Binding !IsRenaming}">
               <!-- Folder or request icon -->
-              <TextBlock Text="{Binding IsFolder, Converter={x:Static vm:BoolToIconConverter.FolderOrRequest}}"
+              <TextBlock Text="{Binding IsFolder, Converter={x:Static conv:BoolToIconConverter.FolderOrRequest}}"
                          Foreground="#cccccc"
                          FontSize="12"
                          VerticalAlignment="Center"/>
@@ -173,7 +174,7 @@
     </DockPanel>
 
     <!-- ── Delete confirmation popup ── -->
-    <Border IsVisible="{Binding PendingDeleteNode, Converter={x:Static vm:NotNullConverter.Instance}}"
+    <Border IsVisible="{Binding PendingDeleteNode, Converter={x:Static conv:NotNullConverter.Instance}}"
             Background="#66000000">
       <Border HorizontalAlignment="Center"
               VerticalAlignment="Center"

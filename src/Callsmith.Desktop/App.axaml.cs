@@ -37,6 +37,7 @@ public partial class App : Application
             {
                 DataContext = _services.GetRequiredService<MainWindowViewModel>(),
             };
+            desktop.ShutdownRequested += (_, _) => _services?.Dispose();
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -57,7 +58,7 @@ public partial class App : Application
 
         // Core -- transport
         services.AddSingleton<HttpTransport>();
-        services.AddSingleton<TransportRegistry>(sp =>
+        services.AddSingleton<ITransportRegistry>(sp =>
         {
             var registry = new TransportRegistry();
             registry.Register(sp.GetRequiredService<HttpTransport>());
@@ -68,7 +69,7 @@ public partial class App : Application
         services.AddSingleton<ICollectionService, FileSystemCollectionService>();
 
         // Core -- recent collections
-        services.AddSingleton<RecentCollectionsService>();
+        services.AddSingleton<IRecentCollectionsService, RecentCollectionsService>();
 
         // Core -- environment service
         services.AddSingleton<IEnvironmentService, FileSystemEnvironmentService>();

@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Callsmith.Desktop.ViewModels"
+             xmlns:conv="using:Callsmith.Desktop.Converters"
              xmlns:views="using:Callsmith.Desktop.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -34,12 +35,12 @@
                     ItemsSource="{Binding HttpMethods}"
                     SelectedItem="{Binding SelectedMethod}"
                     MinWidth="120"
-                    Foreground="{Binding MethodColor, Converter={x:Static vm:HexColorToBrushConverter.Instance}}"
+                    Foreground="{Binding MethodColor, Converter={x:Static conv:HexColorToBrushConverter.Instance}}"
                     FontWeight="SemiBold" FontSize="13">
             <ComboBox.ItemTemplate>
               <DataTemplate>
                 <TextBlock Text="{Binding .}"
-                           Foreground="{Binding ., Converter={x:Static vm:HttpMethodToBrushConverter.Instance}}"
+                           Foreground="{Binding ., Converter={x:Static conv:HttpMethodToBrushConverter.Instance}}"
                            FontWeight="SemiBold"/>
               </DataTemplate>
             </ComboBox.ItemTemplate>
@@ -80,7 +81,7 @@
             <TextBlock Grid.Column="1"
                        x:Name="PreviewUrlText"
                        Text="{Binding PreviewUrl}"
-                       Foreground="{Binding PreviewUrlForeground, Converter={x:Static vm:HexColorToBrushConverter.Instance}}"
+                       Foreground="{Binding PreviewUrlForeground, Converter={x:Static conv:HexColorToBrushConverter.Instance}}"
                        FontFamily="Consolas,Menlo,monospace" FontSize="12"
                        VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
             <Button Grid.Column="2"
@@ -173,7 +174,7 @@
 
         <!-- Row 3: Send error -->
         <Border Grid.Row="3"
-                IsVisible="{Binding ErrorMessage, Converter={x:Static vm:StringNotEmptyConverter.Instance}}"
+                IsVisible="{Binding ErrorMessage, Converter={x:Static conv:StringNotEmptyConverter.Instance}}"
                 Background="#3a1414" CornerRadius="3" Padding="10,6" Margin="0,4,0,0">
           <TextBlock Text="{Binding ErrorMessage}" Foreground="#f48771" FontSize="12" TextWrapping="Wrap"/>
         </Border>
@@ -224,10 +225,10 @@
     <Grid Grid.Row="2" RowDefinitions="Auto,*">
 
       <Border Grid.Row="0" Background="#2d2d30" Padding="16,8"
-              IsVisible="{Binding Response, Converter={x:Static vm:NotNullConverter.Instance}}">
+              IsVisible="{Binding Response, Converter={x:Static conv:NotNullConverter.Instance}}">
         <StackPanel Orientation="Horizontal" Spacing="16">
           <Border CornerRadius="3" Padding="8,3"
-                  Background="{Binding StatusBadgeColor, Converter={x:Static vm:HexColorToBrushConverter.Instance}}">
+                  Background="{Binding StatusBadgeColor, Converter={x:Static conv:HexColorToBrushConverter.Instance}}">
             <TextBlock Text="{Binding StatusDisplay}" Foreground="White" FontWeight="SemiBold" FontSize="12"/>
           </Border>
           <TextBlock Text="{Binding ElapsedDisplay}" Foreground="#888" FontSize="12" VerticalAlignment="Center"/>
@@ -241,7 +242,7 @@
       </StackPanel>
 
       <StackPanel Grid.Row="1"
-                  IsVisible="{Binding Response, Converter={x:Static vm:NullConverter.Instance}}"
+                  IsVisible="{Binding Response, Converter={x:Static conv:NullConverter.Instance}}"
                   VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="4">
         <TextBlock IsVisible="{Binding !IsSending}"
                    Text="Enter a URL and click Send"
@@ -249,7 +250,7 @@
       </StackPanel>
 
       <ScrollViewer Grid.Row="1"
-                    IsVisible="{Binding Response, Converter={x:Static vm:NotNullConverter.Instance}}"
+                    IsVisible="{Binding Response, Converter={x:Static conv:NotNullConverter.Instance}}"
                     HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
         <TextBox Text="{Binding Response.Body, FallbackValue=''}"
                  IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"

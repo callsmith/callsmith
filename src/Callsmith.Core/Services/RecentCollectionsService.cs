@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Callsmith.Core.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace Callsmith.Core.Services;
 
@@ -7,20 +9,36 @@ namespace Callsmith.Core.Services;
 /// data directory. Paths are ordered most-recently-used first; stale paths (where the
 /// directory no longer exists) are silently dropped on load.
 /// </summary>
-public sealed class RecentCollectionsService
+public sealed class RecentCollectionsService : IRecentCollectionsService
 {
     private const int MaxEntries = 10;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     private readonly string _storePath;
+    private readonly ILogger<RecentCollectionsService> _logger;
 
-    public RecentCollectionsService()
+    public RecentCollectionsService(ILogger<RecentCollectionsService> logger)
+        : this(GetDefaultStoreDirectory(), logger)
+    {
+    }
+
+    /// <summary>
+    /// Internal constructor for testing — accepts a custom store directory so tests
+    /// do not write to the real application data folder.
+    /// </summary>
+    internal RecentCollectionsService(string storeDirectory, ILogger<RecentCollectionsService> logger)
+    {
+        ArgumentNullException.ThrowIfNull(logger);
+        _logger = logger;
+        Directory.CreateDirectory(storeDirectory);
+        _storePath = Path.Combine(storeDirectory, "recent.json");
+    }
+
+    private static string GetDefaultStoreDirectory()
     {
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var appDir = Path.Combine(appData, "Callsmith");
-        Directory.CreateDirectory(appDir);
-        _storePath = Path.Combine(appDir, "recent.json");
+        return Path.Combine(appData, "Callsmith");
     }
 
     /// <summary>
@@ -38,8 +56,9 @@ public sealed class RecentCollectionsService
             var list = JsonSerializer.Deserialize<List<string>>(json, JsonOptions) ?? [];
             return list.Where(Directory.Exists).ToList().AsReadOnly();
         }
-        catch
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
         {
+            _logger.LogWarning(ex, "Failed to load recent collections from '{StorePath}'", _storePath);
             return [];
         }
     }

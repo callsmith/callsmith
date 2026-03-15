@@ -14,11 +14,10 @@ namespace Callsmith.Desktop.ViewModels;
 /// tracks which one is currently active, broadcasting changes via
 /// <see cref="EnvironmentChangedMessage"/>.
 /// </summary>
-public sealed partial class EnvironmentViewModel : ObservableObject,
+public sealed partial class EnvironmentViewModel : ObservableRecipient,
     IRecipient<CollectionOpenedMessage>
 {
     private readonly IEnvironmentService _environmentService;
-    private readonly IMessenger _messenger;
     private readonly ILogger<EnvironmentViewModel> _logger;
 
     private string? _collectionFolderPath;
@@ -33,15 +32,13 @@ public sealed partial class EnvironmentViewModel : ObservableObject,
         IEnvironmentService environmentService,
         IMessenger messenger,
         ILogger<EnvironmentViewModel> logger)
+        : base(messenger)
     {
         ArgumentNullException.ThrowIfNull(environmentService);
-        ArgumentNullException.ThrowIfNull(messenger);
         ArgumentNullException.ThrowIfNull(logger);
         _environmentService = environmentService;
-        _messenger = messenger;
         _logger = logger;
-
-        messenger.RegisterAll(this);
+        IsActive = true;
     }
 
     // ─── Commands ────────────────────────────────────────────────────────────
@@ -66,7 +63,7 @@ public sealed partial class EnvironmentViewModel : ObservableObject,
 
     partial void OnActiveEnvironmentChanged(EnvironmentModel? value)
     {
-        _messenger.Send(new EnvironmentChangedMessage(value));
+        Messenger.Send(new EnvironmentChangedMessage(value));
     }
 
     // ─── Private helpers ─────────────────────────────────────────────────────

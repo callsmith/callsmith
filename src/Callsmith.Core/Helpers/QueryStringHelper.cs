@@ -33,6 +33,16 @@ public static class QueryStringHelper
     }
 
     /// <summary>
+    /// Returns the base URL with the query string stripped.
+    /// If the URL has no query string, the original value is returned unchanged.
+    /// </summary>
+    public static string GetBaseUrl(string url)
+    {
+        var index = url.IndexOf('?');
+        return index >= 0 ? url[..index] : url;
+    }
+
+    /// <summary>
     /// Returns the URL with its query string replaced by the supplied key/value pairs.
     /// Any existing query string in <paramref name="url"/> is stripped first.
     /// Keys and values are URL-encoded. If <paramref name="queryParams"/> is empty the

@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Callsmith.Desktop.ViewModels"
+        xmlns:conv="using:Callsmith.Desktop.Converters"
         x:Class="Callsmith.Desktop.Views.SaveAsDialog"
         x:DataType="vm:RequestTabViewModel"
         Title="Save Request"
@@ -24,7 +25,7 @@
                 FontFamily="Consolas,Menlo,monospace" FontSize="11">
         <ComboBox.ItemTemplate>
           <DataTemplate>
-            <TextBlock Text="{Binding ., Converter={x:Static vm:FolderPathDisplayConverter.Instance}}"/>
+            <TextBlock Text="{Binding ., Converter={x:Static conv:FolderPathDisplayConverter.Instance}}"/>
           </DataTemplate>
         </ComboBox.ItemTemplate>
       </ComboBox>
@@ -39,7 +40,7 @@
     </Grid>
 
     <TextBlock Text="{Binding SaveAsError}"
-               IsVisible="{Binding SaveAsError, Converter={x:Static vm:StringNotEmptyConverter.Instance}}"
+               IsVisible="{Binding SaveAsError, Converter={x:Static conv:StringNotEmptyConverter.Instance}}"
                Foreground="#f48771" FontSize="11"/>
 
     <Grid ColumnDefinitions="*,Auto,10,Auto" Margin="0,4,0,4">
