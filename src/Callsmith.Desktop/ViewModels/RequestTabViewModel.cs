@@ -581,8 +581,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [RelayCommand]
     private async Task SaveAndCloseAsync(CancellationToken ct)
     {
-        PendingClose = false;
         await PerformSaveAsync(ct);
+        if (HasUnsavedChanges) return;  // save failed — keep the modal open
+        PendingClose = false;
         _requestClose(this);
     }
 
@@ -633,9 +634,17 @@ public sealed partial class RequestTabViewModel : ObservableObject
             },
         };
 
-        await _collectionService.SaveRequestAsync(updated, ct);
-        _sourceRequest = updated;
-        HasUnsavedChanges = false;
+        try
+        {
+            await _collectionService.SaveRequestAsync(updated, ct);
+            _sourceRequest = updated;
+            HasUnsavedChanges = false;
+            ErrorMessage = null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            ErrorMessage = $"Save failed: {ex.Message}";
+        }
     }
 
     // -------------------------------------------------------------------------
