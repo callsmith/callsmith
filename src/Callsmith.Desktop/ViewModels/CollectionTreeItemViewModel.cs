@@ -44,6 +44,10 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _isExpanded = true;
 
+    /// <summary>True when this node's request is the currently active tab.</summary>
+    [ObservableProperty]
+    private bool _isActive;
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------

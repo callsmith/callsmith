@@ -72,7 +72,15 @@ public sealed class RecentCollectionsService : IRecentCollectionsService
         ArgumentNullException.ThrowIfNull(folderPath);
 
         var existing = (await LoadAsync(ct)).ToList();
-        var updated = new List<string>(MaxEntries + 1) { folderPath };
+
+        // If the incoming path is a case-insensitive duplicate of an entry already in the
+        // list, prefer the casing that was already stored (which was valid on disk when
+        // first added). This matters on case-sensitive file systems (Linux) where an
+        // upper-cased variant of a real path would fail Directory.Exists.
+        var canonicalPath = existing.FirstOrDefault(p =>
+            string.Equals(p, folderPath, StringComparison.OrdinalIgnoreCase)) ?? folderPath;
+
+        var updated = new List<string>(MaxEntries + 1) { canonicalPath };
         updated.AddRange(existing.Where(p =>
             !string.Equals(p, folderPath, StringComparison.OrdinalIgnoreCase)));
 

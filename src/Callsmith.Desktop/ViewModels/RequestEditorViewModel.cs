@@ -40,6 +40,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     {
         if (oldValue is not null) oldValue.IsActive = false;
         if (newValue is not null) newValue.IsActive = true;
+        Messenger.Send(new ActiveTabChangedMessage(newValue?.SourceFilePath ?? string.Empty));
     }
 
     [ObservableProperty]

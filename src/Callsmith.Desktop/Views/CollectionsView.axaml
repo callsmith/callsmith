@@ -17,6 +17,35 @@
       <Setter Property="Padding" Value="4,2"/>
     </Style>
 
+    <!-- Tree node label: default appearance -->
+    <Style Selector="TextBlock.tree-icon">
+      <Setter Property="Foreground" Value="#cccccc"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="TextBlock.tree-label">
+      <Setter Property="Foreground" Value="#cccccc"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- Active request node: brighter text -->
+    <Style Selector="TextBlock.tree-icon.active-item">
+      <Setter Property="Foreground" Value="#4ec9b0"/>
+    </Style>
+    <Style Selector="TextBlock.tree-label.active-item">
+      <Setter Property="Foreground" Value="#ffffff"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+
+    <!-- Active request node: highlight background with left accent bar -->
+    <Style Selector="Border.active-row">
+      <Setter Property="Background" Value="#1a3a30"/>
+    </Style>
+    <Style Selector="Border.active-accent">
+      <Setter Property="Background" Value="#4ec9b0"/>
+    </Style>
+
     <!-- Suppress selection highlight: no blue background when an item is clicked -->
     <Style Selector="TreeViewItem:selected /template/ Border#PART_LayoutRoot">
       <Setter Property="Background" Value="Transparent"/>
@@ -134,16 +163,26 @@
         <TreeDataTemplate ItemsSource="{Binding Children}"
                           x:DataType="vm:CollectionTreeItemViewModel">
 
-          <StackPanel Orientation="Horizontal" Spacing="6">
-            <TextBlock Text="{Binding IsFolder, Converter={x:Static conv:BoolToIconConverter.FolderOrRequest}}"
-                       Foreground="#cccccc"
-                       FontSize="12"
-                       VerticalAlignment="Center"/>
-            <TextBlock Text="{Binding Name}"
-                       Foreground="#cccccc"
-                       FontSize="13"
-                       VerticalAlignment="Center"/>
-          </StackPanel>
+          <Border Classes.active-row="{Binding IsActive}"
+                  CornerRadius="3"
+                  Padding="0,1"
+                  Margin="-4,-1,-2,-1">
+            <Grid ColumnDefinitions="3,6,Auto,*">
+              <!-- Left accent bar, only visible when active -->
+              <Border Grid.Column="0"
+                      Classes.active-accent="{Binding IsActive}"
+                      CornerRadius="2,0,0,2"
+                      IsVisible="{Binding IsActive}"/>
+              <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                <TextBlock Classes="tree-icon"
+                           Classes.active-item="{Binding IsActive}"
+                           Text="{Binding IsFolder, Converter={x:Static conv:BoolToIconConverter.FolderOrRequest}}"/>
+                <TextBlock Classes="tree-label"
+                           Classes.active-item="{Binding IsActive}"
+                           Text="{Binding Name}"/>
+              </StackPanel>
+            </Grid>
+          </Border>
 
         </TreeDataTemplate>
       </TreeView.ItemTemplate>

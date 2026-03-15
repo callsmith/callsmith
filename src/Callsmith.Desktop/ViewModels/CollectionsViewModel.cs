@@ -17,11 +17,19 @@ namespace Callsmith.Desktop.ViewModels;
 /// </summary>
 public sealed partial class CollectionsViewModel : ObservableRecipient,
     IRecipient<CollectionRefreshRequestedMessage>,
-    IRecipient<RequestSavedMessage>
+    IRecipient<RequestSavedMessage>,
+    IRecipient<ActiveTabChangedMessage>
 {
     private readonly ICollectionService _collectionService;
     private readonly IRecentCollectionsService _recentCollectionsService;
     private readonly ILogger<CollectionsViewModel> _logger;
+
+    // -------------------------------------------------------------------------
+    // Active request tracking
+    // -------------------------------------------------------------------------
+
+    /// <summary>File path of the request currently open in the active tab. Empty when none.</summary>
+    private string _activeFilePath = string.Empty;
 
     // -------------------------------------------------------------------------
     // Rename / create-folder dialog state
@@ -112,6 +120,15 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     // -------------------------------------------------------------------------
     // Message receivers
     // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Called when the active tab changes. Updates the sidebar active-node indicator.
+    /// </summary>
+    public void Receive(ActiveTabChangedMessage message)
+    {
+        _activeFilePath = message.Value;
+        ApplyActiveState();
+    }
 
     /// <summary>
     /// Called when a tab saves a new request to disk. Refreshes the tree so the new file appears.
@@ -453,10 +470,31 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         RefreshCommand.NotifyCanExecuteChanged();
         Messenger.Send(new CollectionOpenedMessage(path));
 
+        // Re-apply active indicator after tree rebuild.
+        ApplyActiveState();
+
         // Track recently opened (non-blocking)
         _ = UpdateRecentCollectionsAfterPushAsync(path);
 
         StartWatcher(path);
+    }
+
+    private void ApplyActiveState()
+    {
+        if (TreeRoots is not [var root]) return;
+        SetActiveNode(root, _activeFilePath);
+    }
+
+    private static void SetActiveNode(CollectionTreeItemViewModel node, string activeFilePath)
+    {
+        if (!node.IsFolder)
+        {
+            node.IsActive = !string.IsNullOrEmpty(activeFilePath) &&
+                            string.Equals(node.Request?.FilePath, activeFilePath,
+                                          StringComparison.OrdinalIgnoreCase);
+        }
+        foreach (var child in node.Children)
+            SetActiveNode(child, activeFilePath);
     }
 
     private async Task UpdateRecentCollectionsAfterPushAsync(string path)
