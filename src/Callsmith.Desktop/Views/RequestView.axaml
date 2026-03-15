@@ -28,8 +28,8 @@
     <Border Background="#252526" Padding="12,10">
       <Grid RowDefinitions="Auto,Auto,*,Auto">
 
-        <!-- Row 0: Method + URL + Send/Cancel -->
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,8,*,8,Auto">
+        <!-- Row 0: Method + URL + Send/Cancel + Save -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,8,*,8,Auto,8,Auto">
           <ComboBox Grid.Column="0"
                     ItemsSource="{Binding HttpMethods}"
                     SelectedItem="{Binding SelectedMethod}"
@@ -59,6 +59,14 @@
                   Content="Cancel" Command="{Binding SendCancelCommand}"
                   Background="#6c2020" Foreground="White" FontWeight="SemiBold"
                   Padding="20,6" CornerRadius="4"/>
+          <!-- Save button — visible whenever the tab has unsaved changes -->
+          <Button Grid.Column="6"
+                  Content="{Binding SaveButtonLabel}"
+                  Command="{Binding SaveCommand}"
+                  IsVisible="{Binding TabIsDirty}"
+                  Background="#1e7340" Foreground="White" FontWeight="SemiBold"
+                  Padding="16,6" CornerRadius="4"
+                  ToolTip.Tip="Save changes (Ctrl+S)"/>
         </Grid>
 
         <!-- Row 1: Preview URL bar -->

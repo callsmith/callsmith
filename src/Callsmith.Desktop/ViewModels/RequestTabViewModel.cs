@@ -29,6 +29,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     private EnvironmentModel? _activeEnvironment;
     private bool _loading;
+    private bool _saving;
     private bool _syncingUrl;
     private bool _syncingPathParams;
 
@@ -76,7 +77,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private string _selectedMethod = "GET";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(TabTitle))]
     [NotifyPropertyChangedFor(nameof(PreviewUrl))]
     [NotifyPropertyChangedFor(nameof(HasUnresolvedPathParams))]
     [NotifyPropertyChangedFor(nameof(PreviewUrlForeground))]
@@ -294,10 +294,12 @@ public sealed partial class RequestTabViewModel : ObservableObject
         PathParams.ShowDeleteButton = false;
         PathParams.ShowEnabledToggle = false;
 
-        // Dirty tracking — only fires for changes to existing requests.
+        // Dirty tracking — only fires for deliberate user edits to existing requests.
+        // The _saving guard prevents reactive URL/param sync that occurs during PerformSaveAsync
+        // from spuriously re-marking the request as dirty after HasUnsavedChanges is cleared.
         PropertyChanged += (_, e) =>
         {
-            if (_loading || _sourceRequest is null) return;
+            if (_loading || _saving || _sourceRequest is null) return;
             if (e.PropertyName is
                 nameof(HasUnsavedChanges) or nameof(IsNew) or nameof(IsActive) or nameof(TabTitle) or
                 nameof(TabIsDirty) or nameof(SaveButtonLabel) or
@@ -315,19 +317,19 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
         Headers.Changed += (_, _) =>
         {
-            if (!_loading && _sourceRequest is not null) HasUnsavedChanges = true;
+            if (!_loading && !_saving && _sourceRequest is not null) HasUnsavedChanges = true;
         };
 
         QueryParams.Changed += (_, _) =>
         {
-            if (!_loading && _sourceRequest is not null) HasUnsavedChanges = true;
+            if (!_loading && !_saving && _sourceRequest is not null) HasUnsavedChanges = true;
             RebuildUrlFromParams();
             OnPropertyChanged(nameof(PreviewUrl));
         };
 
         PathParams.Changed += (_, _) =>
         {
-            if (!_loading && _sourceRequest is not null) HasUnsavedChanges = true;
+            if (!_loading && !_saving && _sourceRequest is not null) HasUnsavedChanges = true;
             RebuildUrlFromPathParamNames();
             OnPropertyChanged(nameof(PreviewUrl));
             OnPropertyChanged(nameof(HasUnresolvedPathParams));
@@ -634,6 +636,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             },
         };
 
+        _saving = true;
         try
         {
             await _collectionService.SaveRequestAsync(updated, ct);
@@ -642,9 +645,17 @@ public sealed partial class RequestTabViewModel : ObservableObject
             ErrorMessage = null;
             _messenger.Send(new RequestSavedMessage(updated));
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException)
+        {
+            // Save was cancelled — leave HasUnsavedChanges as-is so the user can retry.
+        }
+        catch (Exception ex)
         {
             ErrorMessage = $"Save failed: {ex.Message}";
+        }
+        finally
+        {
+            _saving = false;
         }
     }
 
