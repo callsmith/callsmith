@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
@@ -18,6 +19,7 @@ public partial class CollectionsView : UserControl
     {
         InitializeComponent();
         CollectionTree.AddHandler(InputElement.KeyDownEvent, OnTreeKeyDown, RoutingStrategies.Tunnel);
+        CollectionTree.AddHandler(InputElement.TappedEvent, OnTreeTapped, RoutingStrategies.Bubble);
         CollectionTree.AddHandler(InputElement.DoubleTappedEvent, OnTreeDoubleTapped, RoutingStrategies.Bubble);
         CollectionTree.AddHandler(InputElement.PointerPressedEvent, OnTreePointerPressed, RoutingStrategies.Tunnel);
 
@@ -125,6 +127,23 @@ public partial class CollectionsView : UserControl
                 e.Handled = true;
             }
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Single-click on a folder = toggle expand/collapse
+    // -------------------------------------------------------------------------
+
+    private void OnTreeTapped(object? sender, RoutedEventArgs e)
+    {
+        // If the tap originated on the expander toggle button (the chevron), skip —
+        // the TreeViewItem's built-in handler already toggled IsExpanded.
+        if ((e.Source as Visual)?.FindAncestorOfType<ToggleButton>(includeSelf: true) is not null) return;
+
+        var tvi = (e.Source as Visual)?.FindAncestorOfType<TreeViewItem>(includeSelf: true);
+        if (tvi?.DataContext is not CollectionTreeItemViewModel node) return;
+        if (!node.IsFolder || node.IsRenaming) return;
+
+        tvi.IsExpanded = !tvi.IsExpanded;
     }
 
     // -------------------------------------------------------------------------
