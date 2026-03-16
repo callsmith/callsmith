@@ -6,6 +6,7 @@ using Callsmith.Desktop.Messages;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
+using Microsoft.Extensions.Logging;
 
 namespace Callsmith.Desktop.ViewModels;
 
@@ -22,9 +23,12 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
 {
     private readonly ITransportRegistry _transportRegistry;
     private readonly ICollectionService _collectionService;
+    private readonly ICollectionPreferencesService _preferencesService;
+    private readonly ILogger<RequestEditorViewModel> _logger;
 
     private EnvironmentModel? _activeEnvironment;
     private string _collectionPath = string.Empty;
+    private bool _restoringTabs;
 
     // -------------------------------------------------------------------------
     // Observable state
@@ -41,6 +45,8 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         if (oldValue is not null) oldValue.IsActive = false;
         if (newValue is not null) newValue.IsActive = true;
         Messenger.Send(new ActiveTabChangedMessage(newValue?.SourceFilePath ?? string.Empty));
+        if (!_restoringTabs)
+            _ = PersistTabsAsync();
     }
 
     [ObservableProperty]
@@ -55,16 +61,27 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     public RequestEditorViewModel(
         ITransportRegistry transportRegistry,
         ICollectionService collectionService,
-        IMessenger messenger)
+        ICollectionPreferencesService preferencesService,
+        IMessenger messenger,
+        ILogger<RequestEditorViewModel> logger)
         : base(messenger)
     {
         ArgumentNullException.ThrowIfNull(transportRegistry);
         ArgumentNullException.ThrowIfNull(collectionService);
+        ArgumentNullException.ThrowIfNull(preferencesService);
+        ArgumentNullException.ThrowIfNull(logger);
         _transportRegistry = transportRegistry;
         _collectionService = collectionService;
+        _preferencesService = preferencesService;
+        _logger = logger;
         IsActive = true;
 
-        Tabs.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasTabs));
+        Tabs.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasTabs));
+            if (!_restoringTabs)
+                _ = PersistTabsAsync();
+        };
     }
 
     // -------------------------------------------------------------------------
@@ -155,8 +172,15 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
 
     public void Receive(CollectionOpenedMessage message)
     {
+        // Clear tabs from the previous collection without triggering persistence.
+        _restoringTabs = true;
+        Tabs.Clear();
+        ActiveTab = null;
+        _restoringTabs = false;
+
         _collectionPath = message.Value;
         _ = UpdateAvailableFoldersAsync(message.Value);
+        _ = RestoreTabsAsync(message.Value);
     }
 
     // -------------------------------------------------------------------------
@@ -235,5 +259,97 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         accumulator.Add(relative == "." ? string.Empty : relative);
         foreach (var sub in folder.SubFolders)
             CollectFolderPaths(sub, rootPath, accumulator);
+    }
+
+    private async Task RestoreTabsAsync(string collectionPath)
+    {
+        try
+        {
+            // Load prefs and all referenced request files off the UI thread.
+            var (prefs, requests) = await Task.Run(async () =>
+            {
+                var p = await _preferencesService.LoadAsync(collectionPath).ConfigureAwait(false);
+                var reqs = new List<(string relPath, CollectionRequest req)>();
+
+                if (p.OpenTabPaths is { Count: > 0 })
+                {
+                    foreach (var relPath in p.OpenTabPaths)
+                    {
+                        var absPath = Path.GetFullPath(Path.Combine(collectionPath, relPath));
+                        if (!File.Exists(absPath)) continue;
+                        try
+                        {
+                            var req = await _collectionService.LoadRequestAsync(absPath).ConfigureAwait(false);
+                            reqs.Add((relPath, req));
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Could not restore tab for '{Path}'", absPath);
+                        }
+                    }
+                }
+
+                return (p, reqs);
+            }).ConfigureAwait(true); // resume on UI thread to manipulate Tabs
+
+            _restoringTabs = true;
+            try
+            {
+                RequestTabViewModel? tabToActivate = null;
+
+                foreach (var (relPath, request) in requests)
+                {
+                    var tab = BuildTab(request);
+                    Tabs.Add(tab);
+
+                    if (prefs.ActiveTabPath is not null &&
+                        string.Equals(relPath, prefs.ActiveTabPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        tabToActivate = tab;
+                    }
+                }
+
+                ActiveTab = tabToActivate ?? Tabs.FirstOrDefault();
+            }
+            finally
+            {
+                _restoringTabs = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to restore tabs for '{Path}'", collectionPath);
+        }
+    }
+
+    private async Task PersistTabsAsync()
+    {
+        if (string.IsNullOrEmpty(_collectionPath)) return;
+        try
+        {
+            var collectionPath = _collectionPath;
+
+            var tabPaths = Tabs
+                .Where(t => !t.IsNew && !string.IsNullOrEmpty(t.SourceFilePath))
+                .Select(t => Path.GetRelativePath(collectionPath, t.SourceFilePath))
+                .ToList();
+
+            var activePath = ActiveTab is { IsNew: false } active && !string.IsNullOrEmpty(active.SourceFilePath)
+                ? Path.GetRelativePath(collectionPath, active.SourceFilePath)
+                : null;
+
+            // Read-modify-write: preserve prefs owned by other ViewModels (e.g. active environment).
+            var current = await _preferencesService.LoadAsync(collectionPath).ConfigureAwait(false);
+            await _preferencesService.SaveAsync(collectionPath, new()
+            {
+                LastActiveEnvironmentFile = current.LastActiveEnvironmentFile,
+                OpenTabPaths = tabPaths.Count > 0 ? tabPaths.AsReadOnly() : null,
+                ActiveTabPath = activePath,
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist open tabs for '{Path}'", _collectionPath);
+        }
     }
 }
