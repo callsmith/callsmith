@@ -121,4 +121,61 @@ public sealed class VariableSubstitutionServiceTests
         // Only {{...}} pattern matches; the partial one doesn't close properly
         result.Should().Be(template);
     }
+
+    // ─── Nested / transitive variable resolution ─────────────────────────────
+
+    [Fact]
+    public void Substitute_VariableValueReferencesAnotherVariable_IsTransitivelyExpanded()
+    {
+        // {{security}} references {{core}}, which must be resolved first
+        var result = VariableSubstitutionService.Substitute(
+            "{{security}}",
+            Vars(("core", "https://api.example.com/"), ("security", "{{core}}security/")));
+
+        result.Should().Be("https://api.example.com/security/");
+    }
+
+    [Fact]
+    public void Substitute_DeepChainOfVariables_IsFullyResolved()
+    {
+        // a → b → c → literal
+        var result = VariableSubstitutionService.Substitute(
+            "{{a}}",
+            Vars(("a", "{{b}}/end"), ("b", "{{c}}/middle"), ("c", "start")));
+
+        result.Should().Be("start/middle/end");
+    }
+
+    [Fact]
+    public void Substitute_SelfReferentialVariable_IsLeftIntact()
+    {
+        // {{loop}} = "prefix-{{loop}}" — must not cause infinite expansion
+        var result = VariableSubstitutionService.Substitute(
+            "{{loop}}",
+            Vars(("loop", "prefix-{{loop}}")));
+
+        result.Should().Be("prefix-{{loop}}");
+    }
+
+    [Fact]
+    public void Substitute_CircularVariableReference_DoesNotThrow()
+    {
+        // {{a}} → {{b}} → {{a}} — circular; neither should infinite-loop
+        var act = () => VariableSubstitutionService.Substitute(
+            "{{a}}",
+            Vars(("a", "{{b}}"), ("b", "{{a}}")));
+
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void Substitute_NestedVariableInTemplateAndValue_BothResolved()
+    {
+        // Template itself also has a direct token alongside one resolved via nesting
+        var result = VariableSubstitutionService.Substitute(
+            "{{auth}} uses {{base}}",
+            Vars(("base", "https://id.example.com"), ("auth", "{{base}}/oauth")));
+
+        result.Should().Be("https://id.example.com/oauth uses https://id.example.com");
+    }
 }
