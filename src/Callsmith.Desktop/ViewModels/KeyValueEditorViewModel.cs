@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using Callsmith.Desktop.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -96,6 +97,21 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
             item.ShowEnabledToggle = value;
     }
 
+    // ─── Environment variable suggestions ───────────────────────────────────
+
+    private IReadOnlyList<EnvVarSuggestion> _suggestions = [];
+
+    /// <summary>
+    /// Updates the variable suggestions shown in every row's value TextBox.
+    /// Called by the parent ViewModel when the active environment changes.
+    /// </summary>
+    public void SetSuggestions(IReadOnlyList<EnvVarSuggestion> suggestions)
+    {
+        _suggestions = suggestions;
+        foreach (var item in Items)
+            item.SuggestionNames = suggestions;
+    }
+
     private KeyValueItemViewModel CreateItem(string key, string value) =>
         new(RemoveItem)
         {
@@ -103,5 +119,6 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
             Value = value,
             ShowDeleteButton = ShowDeleteButton,
             ShowEnabledToggle = ShowEnabledToggle,
+            SuggestionNames = _suggestions,
         };
 }

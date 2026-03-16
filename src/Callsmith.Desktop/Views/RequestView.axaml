@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Callsmith.Desktop.ViewModels"
              xmlns:conv="using:Callsmith.Desktop.Converters"
+             xmlns:controls="using:Callsmith.Desktop.Controls"
              xmlns:views="using:Callsmith.Desktop.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -49,7 +50,8 @@
                    Text="{Binding Url}"
                    Watermark="https://api.example.com/endpoint"
                    FontSize="13" Foreground="#d4d4d4" Background="#3c3c3c"
-                   BorderBrush="#555" Padding="8,6" FontFamily="Consolas,Menlo,monospace"/>
+                   BorderBrush="#555" Padding="8,6" FontFamily="Consolas,Menlo,monospace"
+                   controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
           <Button Grid.Column="4"
                   IsVisible="{Binding !IsSending}"
                   Content="Send" Command="{Binding SendCommand}"
@@ -127,7 +129,8 @@
                        Text="{Binding Body}" IsVisible="{Binding ShowBodyEditor}"
                        AcceptsReturn="True" TextWrapping="Wrap"
                        FontFamily="Consolas,Menlo,monospace" FontSize="12"
-                       Foreground="#d4d4d4" Background="#1e1e1e" BorderBrush="#444" Padding="8"/>
+                       Foreground="#d4d4d4" Background="#1e1e1e" BorderBrush="#444" Padding="8"
+                       controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
               <TextBlock Grid.Row="1" IsVisible="{Binding !ShowBodyEditor}"
                          Text="No body" Foreground="#888" FontSize="12"
                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -143,7 +146,8 @@
                   <TextBlock Text="Token" Foreground="#888" FontSize="11"/>
                   <TextBox Text="{Binding AuthToken}" Watermark="Enter bearer token..."
                            Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"
-                           Padding="8,6" FontFamily="Consolas,Menlo,monospace"/>
+                           Padding="8,6" FontFamily="Consolas,Menlo,monospace"
+                           controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
                 </StackPanel>
                 <StackPanel IsVisible="{Binding IsAuthBasic}" Spacing="6">
                   <TextBlock Text="Username" Foreground="#888" FontSize="11"/>
@@ -161,7 +165,8 @@
                   <TextBlock Text="Key value" Foreground="#888" FontSize="11"/>
                   <TextBox Text="{Binding AuthApiKeyValue}"
                            Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"
-                           Padding="8,6" FontFamily="Consolas,Menlo,monospace"/>
+                           Padding="8,6" FontFamily="Consolas,Menlo,monospace"
+                           controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
                   <TextBlock Text="Add to" Foreground="#888" FontSize="11"/>
                   <ComboBox ItemsSource="{Binding ApiKeyLocations}" SelectedItem="{Binding AuthApiKeyIn}"
                             MinWidth="160" Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"/>

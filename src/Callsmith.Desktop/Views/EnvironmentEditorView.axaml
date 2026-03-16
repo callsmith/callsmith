@@ -1,0 +1,465 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Callsmith.Desktop.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             x:Class="Callsmith.Desktop.Views.EnvironmentEditorView"
+             x:DataType="vm:EnvironmentEditorViewModel"
+             Background="#1e1e1e">
+
+  <Grid RowDefinitions="Auto,*">
+
+    <!-- ======================================================================
+         Header bar
+         ====================================================================== -->
+    <Border Grid.Row="0"
+            Background="#252526"
+            BorderBrush="#444"
+            BorderThickness="0,0,0,1"
+            Padding="16,10">
+      <Grid ColumnDefinitions="*,Auto">
+
+        <StackPanel Grid.Column="0"
+                    Orientation="Horizontal"
+                    Spacing="10"
+                    VerticalAlignment="Center">
+          <TextBlock Text="Environments"
+                     Foreground="#d4d4d4"
+                     FontSize="14"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center"/>
+          <!-- Error banner (transient) -->
+          <Border Background="#5a1a1a"
+                  CornerRadius="4"
+                  Padding="8,3"
+                  IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding ErrorMessage}"
+                       Foreground="#f48771"
+                       FontSize="12"
+                       VerticalAlignment="Center"/>
+          </Border>
+        </StackPanel>
+
+      </Grid>
+    </Border>
+
+    <!-- ======================================================================
+         Main body: environment list (left) + variable editor (right)
+         ====================================================================== -->
+    <Grid Grid.Row="1"
+          ColumnDefinitions="220,1,*">
+
+      <!-- ────────────────────────────────────────────────────────────────────
+           Left panel — environment list
+           ──────────────────────────────────────────────────────────────────── -->
+      <Grid Grid.Column="0"
+            RowDefinitions="*,Auto"
+            Background="#252526">
+
+        <!-- Environment list -->
+        <ScrollViewer Grid.Row="0"
+                      VerticalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding Environments}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:EnvironmentListItemViewModel">
+
+                <!-- Each item is a selection-aware row -->
+                <Border x:Name="ItemRow"
+                        Padding="0">
+                  <Border.Styles>
+                    <Style Selector="Border.selected">
+                      <Setter Property="Background" Value="#37373d"/>
+                    </Style>
+                    <Style Selector="Border:pointerover">
+                      <Setter Property="Background" Value="#2d2d30"/>
+                    </Style>
+                  </Border.Styles>
+
+                  <Grid ColumnDefinitions="*,Auto"
+                        Margin="0">
+
+                    <!-- Display mode: name label + hover actions -->
+                    <Grid Grid.Column="0"
+                          ColumnDefinitions="*,Auto"
+                          IsVisible="{Binding !IsRenaming}">
+
+                      <!-- Clicking label selects the environment -->
+                      <TextBlock Grid.Column="0"
+                                 Text="{Binding Name}"
+                                 Foreground="#cccccc"
+                                 FontSize="13"
+                                 Padding="12,8"
+                                 VerticalAlignment="Center"/>
+
+                      <!-- Row action buttons (rename / delete) — always accessible via icons -->
+                      <StackPanel Grid.Column="1"
+                                  Orientation="Horizontal"
+                                  Spacing="2"
+                                  Margin="0,0,4,0"
+                                  VerticalAlignment="Center">
+
+                        <Button Content="✎"
+                                Command="{Binding BeginRenameCommand}"
+                                Background="Transparent"
+                                Foreground="#888"
+                                BorderThickness="0"
+                                Padding="4,2"
+                                FontSize="12"
+                                ToolTip.Tip="Rename"/>
+
+                        <Button Content="×"
+                                Command="{Binding DeleteCommand}"
+                                Background="Transparent"
+                                Foreground="#888"
+                                BorderThickness="0"
+                                Padding="4,2"
+                                FontSize="14"
+                                ToolTip.Tip="Delete"/>
+                      </StackPanel>
+                    </Grid>
+
+                    <!-- Rename mode: text box + confirm / cancel -->
+                    <Grid Grid.Column="0"
+                          ColumnDefinitions="*,Auto,Auto"
+                          IsVisible="{Binding IsRenaming}"
+                          Margin="4,4">
+
+                      <StackPanel Grid.Column="0">
+                        <TextBox Text="{Binding PendingName}"
+                                 FontSize="12"
+                                 Padding="6,3"
+                                 Background="#3c3c3c"
+                                 Foreground="#d4d4d4"
+                                 BorderBrush="#555"
+                                 x:Name="RenameBox"/>
+                        <TextBlock Text="{Binding RenameError}"
+                                   Foreground="#f48771"
+                                   FontSize="10"
+                                   IsVisible="{Binding RenameError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Margin="2,2,0,0"/>
+                      </StackPanel>
+
+                      <Button Grid.Column="1"
+                              Content="✓"
+                              Command="{Binding CommitRenameCommand}"
+                              Background="Transparent"
+                              Foreground="#4ec9b0"
+                              BorderThickness="0"
+                              Padding="6,3"
+                              FontSize="13"
+                              ToolTip.Tip="Confirm rename"
+                              Margin="4,0,0,0"/>
+
+                      <Button Grid.Column="2"
+                              Content="✕"
+                              Command="{Binding CancelRenameCommand}"
+                              Background="Transparent"
+                              Foreground="#888"
+                              BorderThickness="0"
+                              Padding="4,3"
+                              FontSize="11"
+                              ToolTip.Tip="Cancel rename"/>
+                    </Grid>
+
+                  </Grid>
+                </Border>
+
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+
+        <!-- Add environment area (bottom of left panel) -->
+        <Border Grid.Row="1"
+                BorderBrush="#444"
+                BorderThickness="0,1,0,0"
+                Padding="8,8">
+          <StackPanel>
+
+            <!-- "Add" button — normal state -->
+            <Button Content="+ Add Environment"
+                    Command="{Binding BeginAddEnvironmentCommand}"
+                    IsVisible="{Binding !IsAddingEnvironment}"
+                    Background="Transparent"
+                    Foreground="#4ec9b0"
+                    BorderThickness="0"
+                    Padding="0"
+                    HorizontalAlignment="Left"
+                    FontSize="12"/>
+
+            <!-- Inline new-name entry — shown when IsAddingEnvironment -->
+            <StackPanel IsVisible="{Binding IsAddingEnvironment}"
+                        Spacing="4">
+              <TextBox Text="{Binding NewEnvironmentName}"
+                       Watermark="Environment name…"
+                       FontSize="12"
+                       Padding="6,4"
+                       Background="#3c3c3c"
+                       Foreground="#d4d4d4"
+                       BorderBrush="#555"/>
+              <TextBlock Text="{Binding NewEnvironmentError}"
+                         Foreground="#f48771"
+                         FontSize="10"
+                         IsVisible="{Binding NewEnvironmentError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <Button Content="Create"
+                        Command="{Binding CommitAddEnvironmentCommand}"
+                        Background="#0d7a5f"
+                        Foreground="#ffffff"
+                        BorderThickness="0"
+                        Padding="10,4"
+                        FontSize="12"
+                        CornerRadius="3"/>
+                <Button Content="Cancel"
+                        Command="{Binding CancelAddEnvironmentCommand}"
+                        Background="Transparent"
+                        Foreground="#888"
+                        BorderThickness="0"
+                        Padding="6,4"
+                        FontSize="12"/>
+              </StackPanel>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </Grid>
+
+      <!-- Divider -->
+      <Border Grid.Column="1"
+              Background="#444"/>
+
+      <!-- ────────────────────────────────────────────────────────────────────
+           Right panel — variable editor for the selected environment
+           ──────────────────────────────────────────────────────────────────── -->
+      <Grid Grid.Column="2"
+            RowDefinitions="Auto,*,Auto"
+            Background="#1e1e1e">
+
+        <!-- Variable editor header -->
+        <Border Grid.Row="0"
+                Background="#252526"
+                BorderBrush="#444"
+                BorderThickness="0,0,0,1"
+                Padding="12,8">
+          <Grid ColumnDefinitions="*,Auto">
+
+            <StackPanel Grid.Column="0"
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        VerticalAlignment="Center">
+              <TextBlock Text="{Binding SelectedEnvironment.Name, FallbackValue='No environment selected'}"
+                         Foreground="#d4d4d4"
+                         FontSize="13"
+                         FontWeight="SemiBold"
+                         VerticalAlignment="Center"/>
+              <!-- Dirty indicator -->
+              <Border Background="#6a4f00"
+                      CornerRadius="3"
+                      Padding="6,2"
+                      IsVisible="{Binding SelectedEnvironment.IsDirty, FallbackValue=False}">
+                <TextBlock Text="UNSAVED"
+                           Foreground="#ffc107"
+                           FontSize="10"
+                           FontWeight="SemiBold"
+                           LetterSpacing="1"/>
+              </Border>
+            </StackPanel>
+
+            <!-- Save button -->
+            <Button Grid.Column="1"
+                    Content="Save"
+                    Command="{Binding SaveSelectedCommand}"
+                    IsEnabled="{Binding SelectedEnvironment.IsDirty, FallbackValue=False}"
+                    Background="#0d7a5f"
+                    Foreground="#ffffff"
+                    BorderThickness="0"
+                    Padding="14,5"
+                    CornerRadius="3"
+                    FontSize="12"
+                    IsVisible="{Binding SelectedEnvironment, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+          </Grid>
+        </Border>
+
+        <!-- Variable rows -->
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      IsVisible="{Binding SelectedEnvironment, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <StackPanel Margin="12,8">
+
+            <!-- Column headers -->
+            <Grid ColumnDefinitions="*,*,Auto,Auto,28"
+                  Margin="0,0,0,4">
+              <TextBlock Grid.Column="0"
+                         Text="NAME"
+                         Foreground="#666"
+                         FontSize="10"
+                         FontWeight="SemiBold"
+                         LetterSpacing="1"/>
+              <TextBlock Grid.Column="1"
+                         Text="VALUE"
+                         Foreground="#666"
+                         FontSize="10"
+                         FontWeight="SemiBold"
+                         LetterSpacing="1"
+                         Margin="6,0"/>
+              <TextBlock Grid.Column="2"
+                         Text="SECRET"
+                         Foreground="#666"
+                         FontSize="10"
+                         FontWeight="SemiBold"
+                         LetterSpacing="1"
+                         HorizontalAlignment="Center"
+                         ToolTip.Tip="Secret variables are masked in the UI and excluded from history"
+                         Margin="4,0"/>
+            </Grid>
+
+            <ItemsControl ItemsSource="{Binding SelectedEnvironment.Variables}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:EnvironmentVariableItemViewModel">
+                  <Grid ColumnDefinitions="*,*,Auto,Auto,28"
+                        Margin="0,2">
+
+                    <!-- Name -->
+                    <TextBox Grid.Column="0"
+                             Text="{Binding Name}"
+                             Watermark="name"
+                             FontSize="12"
+                             Foreground="#d4d4d4"
+                             Background="#2d2d30"
+                             BorderBrush="#444"
+                             Padding="6,4"
+                             Margin="0,0,6,0"
+                             VerticalContentAlignment="Center"
+                             FontFamily="Consolas,Menlo,monospace"/>
+
+                    <!-- Value (plain text when not secret or when revealed) -->
+                    <TextBox Grid.Column="1"
+                             Text="{Binding Value}"
+                             Watermark="value"
+                             FontSize="12"
+                             Foreground="#d4d4d4"
+                             Background="#2d2d30"
+                             BorderBrush="#444"
+                             Padding="6,4"
+                             Margin="0,0,6,0"
+                             VerticalContentAlignment="Center"
+                             FontFamily="Consolas,Menlo,monospace"
+                             PasswordChar="•"
+                             RevealPassword="{Binding IsValueRevealed}"
+                             IsVisible="{Binding IsSecret}"/>
+
+                    <!-- Value (always-visible when not secret) -->
+                    <TextBox Grid.Column="1"
+                             Text="{Binding Value}"
+                             Watermark="value"
+                             FontSize="12"
+                             Foreground="#d4d4d4"
+                             Background="#2d2d30"
+                             BorderBrush="#444"
+                             Padding="6,4"
+                             Margin="0,0,6,0"
+                             VerticalContentAlignment="Center"
+                             FontFamily="Consolas,Menlo,monospace"
+                             IsVisible="{Binding !IsSecret}"/>
+
+                    <!-- Secret toggle -->
+                    <ToggleButton Grid.Column="2"
+                                  IsChecked="{Binding IsSecret}"
+                                  Width="32" Height="26"
+                                  Background="Transparent"
+                                  BorderBrush="#444"
+                                  BorderThickness="1"
+                                  CornerRadius="3"
+                                  Margin="0,0,4,0"
+                                  ToolTip.Tip="Mark as secret — masks the value in the UI">
+                      <TextBlock Text="🔒"
+                                 FontSize="11"
+                                 HorizontalAlignment="Center"
+                                 VerticalAlignment="Center"/>
+                    </ToggleButton>
+
+                    <!-- Reveal toggle (only meaningful when IsSecret) -->
+                    <ToggleButton Grid.Column="3"
+                                  IsChecked="{Binding IsValueRevealed}"
+                                  Width="32" Height="26"
+                                  Background="Transparent"
+                                  BorderBrush="#444"
+                                  BorderThickness="1"
+                                  CornerRadius="3"
+                                  Margin="0,0,4,0"
+                                  IsVisible="{Binding IsSecret}"
+                                  ToolTip.Tip="Reveal / hide value">
+                      <TextBlock Text="👁"
+                                 FontSize="11"
+                                 HorizontalAlignment="Center"
+                                 VerticalAlignment="Center"/>
+                    </ToggleButton>
+
+                    <!-- Placeholder for reveal column when not secret -->
+                    <Border Grid.Column="3"
+                            Width="36"
+                            IsVisible="{Binding !IsSecret}"/>
+
+                    <!-- Delete -->
+                    <Button Grid.Column="4"
+                            Content="×"
+                            Command="{Binding DeleteCommand}"
+                            Background="Transparent"
+                            Foreground="#aaa"
+                            BorderThickness="0"
+                            Padding="4,0"
+                            FontSize="14"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            ToolTip.Tip="Remove variable"/>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Add variable button -->
+            <Button Content="+ Add Variable"
+                    Command="{Binding SelectedEnvironment.AddVariableCommand}"
+                    Background="Transparent"
+                    Foreground="#4ec9b0"
+                    BorderThickness="0"
+                    Padding="0,6,0,0"
+                    HorizontalAlignment="Left"
+                    FontSize="12"
+                    Margin="0,4,0,0"/>
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- Empty-state placeholder when nothing is selected -->
+        <TextBlock Grid.Row="1"
+                   Text="Select an environment from the list to edit its variables."
+                   Foreground="#555"
+                   FontSize="13"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   IsVisible="{Binding SelectedEnvironment, Converter={x:Static ObjectConverters.IsNull}}"/>
+
+        <!-- Footer: delete button for selected environment -->
+        <Border Grid.Row="2"
+                BorderBrush="#444"
+                BorderThickness="0,1,0,0"
+                Padding="12,8"
+                IsVisible="{Binding SelectedEnvironment, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <Button Content="Delete Environment"
+                  Command="{Binding DeleteEnvironmentCommand}"
+                  Background="Transparent"
+                  Foreground="#f48771"
+                  BorderBrush="#f48771"
+                  BorderThickness="1"
+                  CornerRadius="3"
+                  Padding="10,4"
+                  FontSize="12"
+                  HorizontalAlignment="Left"
+                  ToolTip.Tip="Permanently delete this environment and all its variables"/>
+        </Border>
+      </Grid>
+
+    </Grid>
+  </Grid>
+
+</UserControl>

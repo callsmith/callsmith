@@ -3,11 +3,11 @@
              xmlns:vm="using:Callsmith.Desktop.ViewModels"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="34"
+             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="34"
              x:Class="Callsmith.Desktop.Views.EnvironmentSelectorView"
              x:DataType="vm:EnvironmentViewModel">
 
-  <!-- Compact toolbar strip: label + environment chooser -->
+  <!-- Compact toolbar strip: label + environment chooser + manage button -->
   <DockPanel>
 
     <TextBlock DockPanel.Dock="Left"
@@ -19,22 +19,36 @@
                VerticalAlignment="Center"
                Margin="0,0,8,0"/>
 
-    <!-- Environment picker -->
-    <ComboBox ItemsSource="{Binding Environments}"
-              SelectedItem="{Binding ActiveEnvironment, Mode=TwoWay}"
-              PlaceholderText="(no environment)"
-              MinWidth="160"
-              FontSize="13"
-              VerticalAlignment="Center">
-      <ComboBox.ItemTemplate>
-        <DataTemplate>
-          <TextBlock Text="{Binding Name}"/>
-        </DataTemplate>
-      </ComboBox.ItemTemplate>
-    </ComboBox>
+    <!-- Manage / Close editor buttons (right-aligned, mutually exclusive) -->
+    <Button DockPanel.Dock="Right"
+            Content="Manage Environments"
+            Command="{Binding OpenEditorCommand}"
+            IsVisible="{Binding !IsEditorOpen}"
+            FontSize="11"
+            Background="Transparent"
+            Foreground="#4ec9b0"
+            BorderThickness="0"
+            Padding="8,2"
+            Margin="8,0,0,0"
+            VerticalAlignment="Center"
+            ToolTip.Tip="Open the environment variable editor"/>
 
-    <!-- Clear button — visible only when an environment is selected -->
-    <Button Content="✕"
+    <Button DockPanel.Dock="Right"
+            Content="← Back to Editor"
+            Command="{Binding CloseEditorCommand}"
+            IsVisible="{Binding IsEditorOpen}"
+            FontSize="11"
+            Background="Transparent"
+            Foreground="#4ec9b0"
+            BorderThickness="0"
+            Padding="8,2"
+            Margin="8,0,0,0"
+            VerticalAlignment="Center"
+            ToolTip.Tip="Return to the request editor"/>
+
+    <!-- Clear button — visible only when an environment is selected (and editor is closed) -->
+    <Button DockPanel.Dock="Right"
+            Content="✕"
             FontSize="11"
             Background="Transparent"
             Foreground="#888888"
@@ -45,6 +59,21 @@
             Command="{Binding SetActiveCommand}"
             CommandParameter="{x:Null}"
             IsVisible="{Binding ActiveEnvironment, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+
+    <!-- Environment picker (hidden when editor is open to avoid confusion) -->
+    <ComboBox ItemsSource="{Binding Environments}"
+              SelectedItem="{Binding ActiveEnvironment, Mode=TwoWay}"
+              PlaceholderText="(no environment)"
+              MinWidth="160"
+              FontSize="13"
+              VerticalAlignment="Center"
+              IsVisible="{Binding !IsEditorOpen}">
+      <ComboBox.ItemTemplate>
+        <DataTemplate>
+          <TextBlock Text="{Binding Name}"/>
+        </DataTemplate>
+      </ComboBox.ItemTemplate>
+    </ComboBox>
 
   </DockPanel>
 </UserControl>

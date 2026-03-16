@@ -185,10 +185,10 @@
   - [ ] Evaluate JavaScript expressions — **deferred**
   - [ ] Execute chained requests — **deferred**
 - [ ] Environment editor UI (full CRUD from within the app):
-  - [ ] List environments (dev, staging, production, etc.)
-  - [ ] Add, rename, delete environments
-  - [ ] Per-variable: choose type (static / script / chained), edit value
-  - [ ] Secret variables — masked in UI, excluded from logs, never written to history in plaintext
+  - [x] List environments (dev, staging, production, etc.)
+  - [x] Add, rename, delete environments
+  - [x] Per-variable: choose type (static), edit value
+  - [x] Secret variables — masked in UI, excluded from logs, never written to history in plaintext
 - [ ] Resolved variable values shown in the request preview before sending
 - [x] Write unit tests for the substitution engine and file service
 

@@ -1,3 +1,4 @@
+using Callsmith.Desktop.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -25,6 +26,13 @@ public sealed partial class KeyValueItemViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _showEnabledToggle = true;
+
+    /// <summary>
+    /// Variable suggestions offered by the active environment. Bound to
+    /// <c>controls:EnvVarCompletion.Suggestions</c> on the value TextBox.
+    /// </summary>
+    [ObservableProperty]
+    private IReadOnlyList<EnvVarSuggestion> _suggestionNames = [];
 
     /// <summary>Removes this row from its parent editor when executed.</summary>
     public IRelayCommand DeleteCommand { get; }

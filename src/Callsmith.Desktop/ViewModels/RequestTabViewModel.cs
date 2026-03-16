@@ -4,6 +4,7 @@ using Callsmith.Core.Abstractions;
 using Callsmith.Core.Helpers;
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
+using Callsmith.Desktop.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
@@ -164,6 +165,17 @@ public sealed partial class RequestTabViewModel : ObservableObject
     public KeyValueEditorViewModel PathParams { get; } = new();
 
     // -------------------------------------------------------------------------
+    // Environment variable completions
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Names of all variables in the currently active environment.
+    /// Bound to <c>EnvVarCompletion.Suggestions</c> on URL, body, and auth TextBoxes.
+    /// </summary>
+    [ObservableProperty]
+    private IReadOnlyList<EnvVarSuggestion> _envVarNames = [];
+
+    // -------------------------------------------------------------------------
     // Derived display properties
     // -------------------------------------------------------------------------
 
@@ -308,7 +320,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(StatusBadgeColor) or nameof(MethodColor) or
                 nameof(ShowBodyEditor) or nameof(PreviewUrl) or
                 nameof(HasUnresolvedPathParams) or nameof(PreviewUrlForeground) or
-                nameof(IsAuthBearer) or nameof(IsAuthBasic) or nameof(IsAuthApiKey))
+                nameof(IsAuthBearer) or nameof(IsAuthBasic) or nameof(IsAuthApiKey) or
+                nameof(EnvVarNames))
                 return;
             HasUnsavedChanges = true;
         };
@@ -388,6 +401,21 @@ public sealed partial class RequestTabViewModel : ObservableObject
     public void SetEnvironment(EnvironmentModel? environment)
     {
         _activeEnvironment = environment;
+
+        var suggestions = environment is not null
+            ? (IReadOnlyList<EnvVarSuggestion>)environment.Variables
+                .Where(v => !string.IsNullOrWhiteSpace(v.Name))
+                .Select(v => new EnvVarSuggestion(
+                    v.Name,
+                    v.IsSecret ? "\u2022\u2022\u2022\u2022\u2022" : v.Value))
+                .ToList()
+            : [];
+
+        EnvVarNames = suggestions;
+        Headers.SetSuggestions(suggestions);
+        QueryParams.SetSuggestions(suggestions);
+        PathParams.SetSuggestions(suggestions);
+
         OnPropertyChanged(nameof(PreviewUrl));
     }
 

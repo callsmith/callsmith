@@ -51,9 +51,18 @@
                 <views:EnvironmentSelectorView DataContext="{Binding Environment}"/>
             </Border>
 
-            <!-- Request editor + Response viewer -->
-            <views:RequestEditorView Grid.Row="1"
-                                     DataContext="{Binding RequestEditor}"/>
+            <!-- Request editor + Response viewer (shown when editor is closed) -->
+            <!-- Wrapper Border keeps MainWindowViewModel DataContext for IsVisible -->
+            <Border Grid.Row="1"
+                    IsVisible="{Binding !Environment.IsEditorOpen}">
+                <views:RequestEditorView DataContext="{Binding RequestEditor}"/>
+            </Border>
+
+            <!-- Environment editor panel (shown when editor is open) -->
+            <Border Grid.Row="1"
+                    IsVisible="{Binding Environment.IsEditorOpen}">
+                <views:EnvironmentEditorView DataContext="{Binding EnvironmentEditor}"/>
+            </Border>
 
         </Grid>
 

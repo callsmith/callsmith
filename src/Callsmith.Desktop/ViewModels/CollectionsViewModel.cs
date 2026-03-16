@@ -629,6 +629,14 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     {
         if (_suppressWatcher) return;
 
+        // Only react to actual collection files (*.callsmith requests, *.env.callsmith
+        // environments, and directory events which have no extension).
+        // Metadata files such as .callsmith-prefs.json must not trigger a reload.
+        var ext = Path.GetExtension(e.FullPath);
+        if (!string.IsNullOrEmpty(ext) &&
+            !e.FullPath.EndsWith(".callsmith", StringComparison.OrdinalIgnoreCase))
+            return;
+
         // Marshal entirely to the UI thread so no locking is needed for the
         // CancellationTokenSource swap.
         Dispatcher.UIThread.Post(() =>
