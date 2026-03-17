@@ -210,4 +210,57 @@ public sealed class FileSystemEnvironmentServiceTests : IDisposable
         loaded.Variables[0].Name.Should().Be("Key");
         loaded.Variables[0].Value.Should().Be("Val");
     }
+
+    // ─── CloneEnvironmentAsync ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task CloneEnvironmentAsync_CreatesNewFileWithNewName()
+    {
+        var collection = _temp.CreateSubDirectory("col");
+        var source = await _sut.CreateEnvironmentAsync(collection, "Dev");
+
+        var cloned = await _sut.CloneEnvironmentAsync(source.FilePath, "Staging");
+
+        cloned.Name.Should().Be("Staging");
+        cloned.FilePath.Should().NotBe(source.FilePath);
+        File.Exists(cloned.FilePath).Should().BeTrue();
+        File.Exists(source.FilePath).Should().BeTrue();  // source is untouched
+    }
+
+    [Fact]
+    public async Task CloneEnvironmentAsync_CopiesVariablesFromSource()
+    {
+        var collection = _temp.CreateSubDirectory("col");
+        var source = await _sut.CreateEnvironmentAsync(collection, "Dev");
+        var withVars = source with
+        {
+            Variables =
+            [
+                new EnvironmentVariable { Name = "BASE_URL", Value = "https://dev.example.com" },
+                new EnvironmentVariable { Name = "TOKEN", Value = "secret", IsSecret = true },
+            ],
+        };
+        await _sut.SaveEnvironmentAsync(withVars);
+
+        var cloned = await _sut.CloneEnvironmentAsync(source.FilePath, "Staging");
+
+        cloned.Variables.Should().HaveCount(2);
+        cloned.Variables[0].Name.Should().Be("BASE_URL");
+        cloned.Variables[0].Value.Should().Be("https://dev.example.com");
+        cloned.Variables[1].Name.Should().Be("TOKEN");
+        cloned.Variables[1].IsSecret.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task CloneEnvironmentAsync_WhenNameAlreadyExists_Throws()
+    {
+        var collection = _temp.CreateSubDirectory("col");
+        var source = await _sut.CreateEnvironmentAsync(collection, "Dev");
+        await _sut.CreateEnvironmentAsync(collection, "Staging");
+
+        var act = async () => await _sut.CloneEnvironmentAsync(source.FilePath, "Staging");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Staging*");
+    }
 }

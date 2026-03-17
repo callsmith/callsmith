@@ -14,4 +14,10 @@ public sealed record EnvironmentModel
 
     /// <summary>The ordered list of variables in this environment.</summary>
     public IReadOnlyList<EnvironmentVariable> Variables { get; init; } = [];
+
+    /// <summary>
+    /// Optional display color for this environment (hex format, e.g. "#4ec9b0").
+    /// Null means no color indicator is shown.
+    /// </summary>
+    public string? Color { get; init; }
 }

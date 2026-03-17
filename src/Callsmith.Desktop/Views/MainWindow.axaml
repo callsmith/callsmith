@@ -12,10 +12,10 @@
         MinWidth="800" MinHeight="500"
         Background="#1e1e1e">
 
-    <!-- Window-level Ctrl+S so saving works even when focus is in the sidebar
-         or any other element outside RequestView / RequestEditorView. -->
+    <!-- Window-level Ctrl+S routes to the environment editor when it is open,
+         otherwise falls through to the active request tab. -->
     <Window.KeyBindings>
-        <KeyBinding Gesture="Ctrl+S" Command="{Binding RequestEditor.ActiveTab.SaveCommand}"/>
+        <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}"/>
     </Window.KeyBindings>
 
     <Design.DataContext>
@@ -27,20 +27,25 @@
 
         <!-- ================================================================
              Left sidebar — Collections
+             Hidden when any editor panel is open.
              ================================================================ -->
-        <views:CollectionsView Grid.Column="0"
-                               DataContext="{Binding Collections}"/>
+        <Panel Grid.Column="0" IsVisible="{Binding !Environment.IsAnyEditorOpen}">
+            <views:CollectionsView DataContext="{Binding Collections}"/>
+        </Panel>
 
-        <!-- Splitter -->
+        <!-- Splitter — hidden alongside the sidebar -->
         <GridSplitter Grid.Column="1"
                       ResizeDirection="Columns"
                       Background="#4a4a4a"
-                      HorizontalAlignment="Stretch"/>
+                      HorizontalAlignment="Stretch"
+                      IsVisible="{Binding !Environment.IsAnyEditorOpen}"/>
 
         <!-- ================================================================
-             Right pane — thin env toolbar + request/response editor
+             Right pane — env toolbar + request/response editor
+             Hidden when any editor panel is open.
              ================================================================ -->
-        <Grid Grid.Column="2" RowDefinitions="Auto,*">
+        <Grid Grid.Column="2" RowDefinitions="Auto,*"
+              IsVisible="{Binding !Environment.IsAnyEditorOpen}">
 
             <!-- Environment selector toolbar -->
             <Border Grid.Row="0"
@@ -51,18 +56,31 @@
                 <views:EnvironmentSelectorView DataContext="{Binding Environment}"/>
             </Border>
 
-            <!-- Request editor + Response viewer (shown when editor is closed) -->
-            <!-- Wrapper Border keeps MainWindowViewModel DataContext for IsVisible -->
-            <Border Grid.Row="1"
-                    IsVisible="{Binding !Environment.IsEditorOpen}">
-                <views:RequestEditorView DataContext="{Binding RequestEditor}"/>
+            <!-- Request editor + Response viewer -->
+            <views:RequestEditorView Grid.Row="1"
+                                     DataContext="{Binding RequestEditor}"/>
+
+        </Grid>
+
+        <!-- ================================================================
+             Full-width collection environment editor panel
+             Spans all columns so the collection sidebar is not visible.
+             ================================================================ -->
+        <Grid Grid.Column="0" Grid.ColumnSpan="3" RowDefinitions="Auto,*"
+              IsVisible="{Binding Environment.IsEditorOpen}">
+
+            <!-- Same env toolbar strip so the user can switch back -->
+            <Border Grid.Row="0"
+                    Background="#2d2d30"
+                    BorderBrush="#444"
+                    BorderThickness="0,0,0,1"
+                    Padding="12,6">
+                <views:EnvironmentSelectorView DataContext="{Binding Environment}"/>
             </Border>
 
-            <!-- Environment editor panel (shown when editor is open) -->
-            <Border Grid.Row="1"
-                    IsVisible="{Binding Environment.IsEditorOpen}">
-                <views:EnvironmentEditorView DataContext="{Binding EnvironmentEditor}"/>
-            </Border>
+            <!-- Environment editor fills the remaining height -->
+            <views:EnvironmentEditorView Grid.Row="1"
+                                         DataContext="{Binding EnvironmentEditor}"/>
 
         </Grid>
 

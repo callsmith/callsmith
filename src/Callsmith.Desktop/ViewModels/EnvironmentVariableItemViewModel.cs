@@ -1,3 +1,4 @@
+using Callsmith.Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -13,6 +14,7 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
 {
     private readonly Action<EnvironmentVariableItemViewModel> _onDelete;
     private readonly Action _onChanged;
+    private readonly Func<IReadOnlyDictionary<string, string>> _getVariables;
 
     [ObservableProperty]
     private string _name = string.Empty;
@@ -38,13 +40,42 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
 
     public EnvironmentVariableItemViewModel(
         Action<EnvironmentVariableItemViewModel> onDelete,
-        Action onChanged)
+        Action onChanged,
+        Func<IReadOnlyDictionary<string, string>> getVariables)
     {
         ArgumentNullException.ThrowIfNull(onDelete);
         ArgumentNullException.ThrowIfNull(onChanged);
+        ArgumentNullException.ThrowIfNull(getVariables);
         _onDelete = onDelete;
         _onChanged = onChanged;
+        _getVariables = getVariables;
         DeleteCommand = new RelayCommand(() => _onDelete(this));
+    }
+
+    /// <summary>
+    /// Resolved preview of <see cref="Value"/> with <c>{{VAR}}</c> tokens substituted.
+    /// Returns <see langword="null"/> when the value contains no token references.
+    /// </summary>
+    public string? PreviewValue
+    {
+        get
+        {
+            if (!Value.Contains("{{")) return null;
+            return VariableSubstitutionService.Substitute(Value, _getVariables());
+        }
+    }
+
+    /// <summary>
+    /// True when the value contains variable references and a preview is available to show.
+    /// Secret values are excluded to avoid leaking resolved secrets in plain text.
+    /// </summary>
+    public bool HasPreview => !IsSecret && Value.Contains("{{");
+
+    /// <summary>Notifies bindings that <see cref="PreviewValue"/> and <see cref="HasPreview"/> may have changed.</summary>
+    public void NotifyPreviewChanged()
+    {
+        OnPropertyChanged(nameof(PreviewValue));
+        OnPropertyChanged(nameof(HasPreview));
     }
 
     partial void OnNameChanged(string value) => _onChanged();

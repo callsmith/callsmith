@@ -43,4 +43,30 @@ public interface IEnvironmentService
     /// </summary>
     Task<EnvironmentModel> RenameEnvironmentAsync(
         string filePath, string newName, CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates a copy of the environment at <paramref name="sourceFilePath"/> with a new
+    /// <paramref name="newName"/>, preserving all variables from the source.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when an environment with the same name already exists.
+    /// </exception>
+    Task<EnvironmentModel> CloneEnvironmentAsync(
+        string sourceFilePath, string newName, CancellationToken ct = default);
+
+    // ─── Global (collection-scoped) environment ───────────────────────────────
+
+    /// <summary>
+    /// Loads the global environment for the collection at <paramref name="collectionFolderPath"/>.
+    /// The global environment is always active regardless of which collection environment is selected.
+    /// Returns an empty environment model if the file does not yet exist.
+    /// </summary>
+    Task<EnvironmentModel> LoadGlobalEnvironmentAsync(
+        string collectionFolderPath, CancellationToken ct = default);
+
+    /// <summary>
+    /// Saves the global environment for a collection, creating the backing file if needed.
+    /// </summary>
+    Task SaveGlobalEnvironmentAsync(
+        EnvironmentModel globalEnvironment, CancellationToken ct = default);
 }

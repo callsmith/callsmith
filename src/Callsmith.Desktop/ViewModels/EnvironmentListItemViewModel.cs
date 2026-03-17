@@ -16,6 +16,8 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     private EnvironmentModel _model;
     private readonly Func<EnvironmentListItemViewModel, string, CancellationToken, Task> _onRenameCommit;
     private readonly Func<EnvironmentListItemViewModel, CancellationToken, Task> _onDeleteRequest;
+    private readonly Func<EnvironmentListItemViewModel, CancellationToken, Task>? _onCloneRequest;
+    private readonly Action? _onCancelRename;
 
     // ─── Observable state ────────────────────────────────────────────────────
 
@@ -39,6 +41,16 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _isDirty;
 
+    /// <summary>Display color for this environment (hex string, e.g. "#4ec9b0") or null for no color.</summary>
+    [ObservableProperty]
+    private string? _color;
+
+    /// <summary>
+    /// <see langword="true"/> when this is the pinned collection-scoped global environment.
+    /// Global environments cannot be renamed, deleted, cloned, or reordered.
+    /// </summary>
+    public bool IsGlobal { get; }
+
     // ─── Variable rows ───────────────────────────────────────────────────────
 
     /// <summary>Editable variable rows for this environment.</summary>
@@ -54,7 +66,10 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     public EnvironmentListItemViewModel(
         EnvironmentModel model,
         Func<EnvironmentListItemViewModel, string, CancellationToken, Task> onRenameCommit,
-        Func<EnvironmentListItemViewModel, CancellationToken, Task> onDeleteRequest)
+        Func<EnvironmentListItemViewModel, CancellationToken, Task> onDeleteRequest,
+        Func<EnvironmentListItemViewModel, CancellationToken, Task>? onCloneRequest = null,
+        Action? onCancelRename = null,
+        bool isGlobal = false)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(onRenameCommit);
@@ -62,8 +77,12 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
 
         _model = model;
         _name = model.Name;
+        _color = model.Color;
         _onRenameCommit = onRenameCommit;
         _onDeleteRequest = onDeleteRequest;
+        _onCloneRequest = onCloneRequest;
+        _onCancelRename = onCancelRename;
+        IsGlobal = isGlobal;
 
         LoadVariables(model.Variables);
     }
@@ -71,7 +90,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     // ─── Commands ────────────────────────────────────────────────────────────
 
     /// <summary>Starts inline rename mode, pre-filling the text box with the current name.</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanModify))]
     private void BeginRename()
     {
         PendingName = Name;
@@ -110,14 +129,26 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         PendingName = string.Empty;
         RenameError = string.Empty;
         IsRenaming = false;
+        _onCancelRename?.Invoke();
     }
 
     /// <summary>Requests that the parent ViewModel deletes this environment.</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanModify))]
     private async Task DeleteAsync()
     {
         await _onDeleteRequest(this, CancellationToken.None).ConfigureAwait(true);
     }
+
+    /// <summary>Requests that the parent ViewModel clones this environment.</summary>
+    [RelayCommand(CanExecute = nameof(CanClone))]
+    private async Task CloneAsync()
+    {
+        if (_onCloneRequest is not null)
+            await _onCloneRequest(this, CancellationToken.None).ConfigureAwait(true);
+    }
+
+    private bool CanModify => !IsGlobal;
+    private bool CanClone => !IsGlobal && _onCloneRequest is not null;
 
     /// <summary>Adds a new empty variable row.</summary>
     [RelayCommand]
@@ -132,6 +163,16 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     }
 
     // ─── Internal helpers ────────────────────────────────────────────────────
+
+    partial void OnColorChanged(string? value) => IsDirty = true;
+
+    [RelayCommand]
+    private void ClearColor()
+    {
+        Color = null;
+        IsDirty = true;
+    }
+
 
     /// <summary>
     /// Updates the backing model reference after a successful disk rename.
@@ -160,7 +201,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
             })
             .ToList();
 
-        return _model with { Variables = variables };
+        return _model with { Variables = variables, Color = Color };
     }
 
     private void LoadVariables(IReadOnlyList<EnvironmentVariable> variables)
@@ -175,8 +216,9 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     private EnvironmentVariableItemViewModel CreateVariableItem(EnvironmentVariable variable)
     {
         var item = new EnvironmentVariableItemViewModel(
-            onDelete: v => { Variables.Remove(v); IsDirty = true; },
-            onChanged: () => { IsDirty = true; })
+            onDelete: v => { Variables.Remove(v); OnAnyVariableChanged(); },
+            onChanged: OnAnyVariableChanged,
+            getVariables: BuildVariableMap)
         {
             Name = variable.Name,
             Value = variable.Value,
@@ -184,5 +226,19 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
             IsEnabled = true,
         };
         return item;
+    }
+
+    /// <summary>Builds the current name→value map for variable substitution previews.</summary>
+    private IReadOnlyDictionary<string, string> BuildVariableMap()
+        => Variables
+            .Where(v => !string.IsNullOrWhiteSpace(v.Name))
+            .ToDictionary(v => v.Name.Trim(), v => v.Value, StringComparer.Ordinal);
+
+    /// <summary>Marks the environment dirty and refreshes all variable previews.</summary>
+    private void OnAnyVariableChanged()
+    {
+        IsDirty = true;
+        foreach (var v in Variables)
+            v.NotifyPreviewChanged();
     }
 }

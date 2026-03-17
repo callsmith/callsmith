@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace Callsmith.Desktop.ViewModels;
 
@@ -28,5 +29,18 @@ public partial class MainWindowViewModel : ViewModelBase
         RequestEditor = requestEditor;
         Environment = environment;
         EnvironmentEditor = environmentEditor;
+    }
+
+    /// <summary>
+    /// Ctrl+S handler: saves the current environment editor content when the editor panel is open,
+    /// or saves the active request tab otherwise.
+    /// </summary>
+    [RelayCommand]
+    private void Save()
+    {
+        if (Environment.IsEditorOpen)
+            EnvironmentEditor.SaveSelectedCommand.Execute(null);
+        else
+            RequestEditor.ActiveTab?.SaveCommand.Execute(null);
     }
 }

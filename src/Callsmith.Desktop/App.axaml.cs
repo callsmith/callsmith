@@ -65,14 +65,18 @@ public partial class App : Application
             return registry;
         });
 
-        // Core -- collection service
-        services.AddSingleton<ICollectionService, FileSystemCollectionService>();
+        // Core -- collection services (Callsmith + Bruno, routed transparently)
+        services.AddSingleton<FileSystemCollectionService>();
+        services.AddSingleton<BrunoCollectionService>();
+        services.AddSingleton<ICollectionService, RoutingCollectionService>();
 
         // Core -- recent collections
         services.AddSingleton<IRecentCollectionsService, RecentCollectionsService>();
 
-        // Core -- environment service
-        services.AddSingleton<IEnvironmentService, FileSystemEnvironmentService>();
+        // Core -- environment services (Callsmith + Bruno, routed transparently)
+        services.AddSingleton<FileSystemEnvironmentService>();
+        services.AddSingleton<BrunoEnvironmentService>();
+        services.AddSingleton<IEnvironmentService, RoutingEnvironmentService>();
 
         // Core -- collection preferences
         services.AddSingleton<ICollectionPreferencesService, FileSystemCollectionPreferencesService>();

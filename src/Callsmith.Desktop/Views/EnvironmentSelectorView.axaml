@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Callsmith.Desktop.ViewModels"
+             xmlns:conv="using:Callsmith.Desktop.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="34"
@@ -9,6 +10,15 @@
 
   <!-- Compact toolbar strip: label + environment chooser + manage button -->
   <DockPanel>
+
+    <!-- Active environment color swatch — only visible when the selected env has a color -->
+    <Border DockPanel.Dock="Left"
+            Width="10" Height="10"
+            CornerRadius="2"
+            Background="{Binding ActiveEnvironment.Color, Converter={x:Static conv:HexColorToBrushConverter.Instance}}"
+            IsVisible="{Binding ActiveEnvironment.Color, Converter={x:Static StringConverters.IsNotNullOrEmpty}, FallbackValue=False}"
+            Margin="0,0,6,0"
+            VerticalAlignment="Center"/>
 
     <TextBlock DockPanel.Dock="Left"
                Text="ENV"
@@ -19,24 +29,11 @@
                VerticalAlignment="Center"
                Margin="0,0,8,0"/>
 
-    <!-- Manage / Close editor buttons (right-aligned, mutually exclusive) -->
-    <Button DockPanel.Dock="Right"
-            Content="Manage Environments"
-            Command="{Binding OpenEditorCommand}"
-            IsVisible="{Binding !IsEditorOpen}"
-            FontSize="11"
-            Background="Transparent"
-            Foreground="#4ec9b0"
-            BorderThickness="0"
-            Padding="8,2"
-            Margin="8,0,0,0"
-            VerticalAlignment="Center"
-            ToolTip.Tip="Open the environment variable editor"/>
-
+    <!-- Back button — shown when any editor is open -->
     <Button DockPanel.Dock="Right"
             Content="← Back to Editor"
             Command="{Binding CloseEditorCommand}"
-            IsVisible="{Binding IsEditorOpen}"
+            IsVisible="{Binding IsAnyEditorOpen}"
             FontSize="11"
             Background="Transparent"
             Foreground="#4ec9b0"
@@ -46,28 +43,27 @@
             VerticalAlignment="Center"
             ToolTip.Tip="Return to the request editor"/>
 
-    <!-- Clear button — visible only when an environment is selected (and editor is closed) -->
+    <!-- Manage Environments button — shown when no editor is open -->
     <Button DockPanel.Dock="Right"
-            Content="✕"
+            Content="Manage Environments"
+            Command="{Binding OpenEditorCommand}"
+            IsVisible="{Binding !IsAnyEditorOpen}"
             FontSize="11"
             Background="Transparent"
-            Foreground="#888888"
-            Padding="6,2"
-            Margin="4,0,0,0"
+            Foreground="#4ec9b0"
+            BorderThickness="0"
+            Padding="8,2"
+            Margin="8,0,0,0"
             VerticalAlignment="Center"
-            ToolTip.Tip="Clear active environment"
-            Command="{Binding SetActiveCommand}"
-            CommandParameter="{x:Null}"
-            IsVisible="{Binding ActiveEnvironment, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+            ToolTip.Tip="Open the environment variable editor"/>
 
-    <!-- Environment picker (hidden when editor is open to avoid confusion) -->
-    <ComboBox ItemsSource="{Binding Environments}"
-              SelectedItem="{Binding ActiveEnvironment, Mode=TwoWay}"
-              PlaceholderText="(no environment)"
+    <!-- Environment picker — hidden while any editor is open -->
+    <ComboBox ItemsSource="{Binding EnvironmentsWithPlaceholder}"
+              SelectedItem="{Binding SelectedDropdownItem, Mode=TwoWay}"
               MinWidth="160"
               FontSize="13"
               VerticalAlignment="Center"
-              IsVisible="{Binding !IsEditorOpen}">
+              IsVisible="{Binding !IsAnyEditorOpen}">
       <ComboBox.ItemTemplate>
         <DataTemplate>
           <TextBlock Text="{Binding Name}"/>

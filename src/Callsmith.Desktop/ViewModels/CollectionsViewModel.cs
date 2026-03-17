@@ -629,12 +629,19 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     {
         if (_suppressWatcher) return;
 
-        // Only react to actual collection files (*.callsmith requests, *.env.callsmith
-        // environments, and directory events which have no extension).
-        // Metadata files such as .callsmith-prefs.json must not trigger a reload.
+        // Only react to directory events (no extension) or recognised request files:
+        //   • Callsmith: *.callsmith  (but NOT *.env.callsmith — env files don't affect the tree)
+        //   • Bruno:     *.bru        (but NOT ones inside an "environments" folder)
         var ext = Path.GetExtension(e.FullPath);
-        if (!string.IsNullOrEmpty(ext) &&
-            !e.FullPath.EndsWith(".callsmith", StringComparison.OrdinalIgnoreCase))
+        var isDirectory = string.IsNullOrEmpty(ext);
+        var isCallsmithRequest = !isDirectory
+            && e.FullPath.EndsWith(".callsmith", StringComparison.OrdinalIgnoreCase)
+            && !e.FullPath.EndsWith(".env.callsmith", StringComparison.OrdinalIgnoreCase);
+        var isBrunoRequest = !isDirectory
+            && e.FullPath.EndsWith(".bru", StringComparison.OrdinalIgnoreCase)
+            && !IsUnderBrunoEnvironmentsFolder(e.FullPath);
+
+        if (!isDirectory && !isCallsmithRequest && !isBrunoRequest)
             return;
 
         // Marshal entirely to the UI thread so no locking is needed for the
@@ -657,5 +664,17 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
             }, TaskScheduler.Default);
         });
     }
+
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="filePath"/> lives inside a Bruno
+    /// <c>environments/</c> folder so those files are excluded from tree-refresh triggers.
+    /// </summary>
+    private static bool IsUnderBrunoEnvironmentsFolder(string filePath) =>
+        filePath.Contains(
+            Path.DirectorySeparatorChar + "environments" + Path.DirectorySeparatorChar,
+            StringComparison.OrdinalIgnoreCase)
+        || filePath.Contains(
+            Path.AltDirectorySeparatorChar + "environments" + Path.AltDirectorySeparatorChar,
+            StringComparison.OrdinalIgnoreCase);
 }
 

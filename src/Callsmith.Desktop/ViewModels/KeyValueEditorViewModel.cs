@@ -77,7 +77,16 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
     }
 
     private void OnItemPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-        => Changed?.Invoke(this, EventArgs.Empty);
+    {
+        // Only data-changing properties should raise Changed (and therefore mark a tab dirty).
+        // Suggestion and configuration properties (SuggestionNames, ShowDeleteButton, etc.)
+        // are display concerns and must not be treated as user edits.
+        if (e.PropertyName is
+            nameof(KeyValueItemViewModel.Key) or
+            nameof(KeyValueItemViewModel.Value) or
+            nameof(KeyValueItemViewModel.IsEnabled))
+            Changed?.Invoke(this, EventArgs.Empty);
+    }
 
     partial void OnShowDeleteButtonChanged(bool value)
     {

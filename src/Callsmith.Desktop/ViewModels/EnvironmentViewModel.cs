@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Callsmith.Desktop.Messages;
 using Microsoft.Extensions.Logging;
+using System.IO;
 
 namespace Callsmith.Desktop.ViewModels;
 
@@ -18,13 +19,25 @@ namespace Callsmith.Desktop.ViewModels;
 /// </summary>
 public sealed partial class EnvironmentViewModel : ObservableRecipient,
     IRecipient<CollectionOpenedMessage>,
-    IRecipient<EnvironmentSavedMessage>
+    IRecipient<EnvironmentSavedMessage>,
+    IRecipient<EnvironmentOrderChangedMessage>
 {
     private readonly IEnvironmentService _environmentService;
     private readonly ICollectionPreferencesService _preferencesService;
     private readonly ILogger<EnvironmentViewModel> _logger;
 
     private string? _collectionFolderPath;
+
+    /// <summary>
+    /// Sentinel item that represents "no environment selected" in the dropdown.
+    /// Using a static reference allows cheap identity comparison.
+    /// </summary>
+    private static readonly EnvironmentModel NoEnvironmentItem = new()
+    {
+        FilePath = string.Empty,
+        Name = "(no environment)",
+        Variables = [],
+    };
 
     [ObservableProperty]
     private IReadOnlyList<EnvironmentModel> _environments = [];
@@ -33,10 +46,34 @@ public sealed partial class EnvironmentViewModel : ObservableRecipient,
     private EnvironmentModel? _activeEnvironment;
 
     /// <summary>
+    /// The item currently selected in the environment ComboBox.
+    /// Equals <see cref="NoEnvironmentItem"/> when no environment is active.
+    /// </summary>
+    [ObservableProperty]
+    private EnvironmentModel _selectedDropdownItem = NoEnvironmentItem;
+
+    /// <summary>
+    /// Environments list for the dropdown, always starting with the
+    /// <see cref="NoEnvironmentItem"/> sentinel so the user can deselect.
+    /// </summary>
+    public IReadOnlyList<EnvironmentModel> EnvironmentsWithPlaceholder
+        => [NoEnvironmentItem, .. Environments];
+
+    /// <summary>
     /// True when the environment editor panel is open (replacing the request editor in the right pane).
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAnyEditorOpen))]
     private bool _isEditorOpen;
+
+    /// <summary>
+    /// True when either the collection environment editor or the global environment editor is open.
+    /// Used by the main window to hide the normal collections sidebar and request editor.
+    /// </summary>
+    public bool IsAnyEditorOpen => IsEditorOpen;
+
+    // Guards against circular updates between ActiveEnvironment ↔ SelectedDropdownItem.
+    private bool _syncingSelection;
 
     public EnvironmentViewModel(
         IEnvironmentService environmentService,
@@ -70,7 +107,7 @@ public sealed partial class EnvironmentViewModel : ObservableRecipient,
         IsEditorOpen = true;
     }
 
-    /// <summary>Closes the environment editor panel and returns to the request editor.</summary>
+    /// <summary>Closes whichever editor panel is currently open and returns to the request editor.</summary>
     [RelayCommand]
     private void CloseEditor()
     {
@@ -102,15 +139,49 @@ public sealed partial class EnvironmentViewModel : ObservableRecipient,
         }
     }
 
+    /// <summary>
+    /// When the user reorders environments in the editor, reload to apply the new order
+    /// to the dropdown as well.
+    /// </summary>
+    public void Receive(EnvironmentOrderChangedMessage message)
+    {
+        _ = LoadEnvironmentsAsync(_collectionFolderPath);
+    }
+
     // ─── Property change side-effects ─────────────────────────────────────────
+
+    partial void OnEnvironmentsChanged(IReadOnlyList<EnvironmentModel> value)
+    {
+        // Keep the dropdown list in sync whenever the environments collection changes.
+        OnPropertyChanged(nameof(EnvironmentsWithPlaceholder));
+    }
 
     partial void OnActiveEnvironmentChanged(EnvironmentModel? value)
     {
+        // Keep the dropdown selection in sync without re-triggering OnSelectedDropdownItemChanged.
+        if (!_syncingSelection)
+        {
+            _syncingSelection = true;
+            SelectedDropdownItem = value ?? NoEnvironmentItem;
+            _syncingSelection = false;
+        }
+
         Messenger.Send(new EnvironmentChangedMessage(value));
 
         // Persist the selection so it can be restored on next launch.
         if (_collectionFolderPath is not null)
             _ = PersistActiveEnvironmentAsync(value?.FilePath);
+    }
+
+    partial void OnSelectedDropdownItemChanged(EnvironmentModel value)
+    {
+        // Map the sentinel back to null; keep ActiveEnvironment in sync.
+        if (!_syncingSelection)
+        {
+            _syncingSelection = true;
+            ActiveEnvironment = ReferenceEquals(value, NoEnvironmentItem) ? null : value;
+            _syncingSelection = false;
+        }
     }
 
     // ─── Private helpers ─────────────────────────────────────────────────────
@@ -138,11 +209,37 @@ public sealed partial class EnvironmentViewModel : ObservableRecipient,
 
             Environments = list;
 
-            // Retain the current selection if it still exists; otherwise clear it.
-            if (ActiveEnvironment is not null &&
-                !list.Any(e => e.FilePath == ActiveEnvironment.FilePath))
+            // Apply custom display order if saved.
+            if (prefs.EnvironmentOrder is { Count: > 0 } savedOrder)
             {
-                ActiveEnvironment = null;
+                var byFileName = list.ToDictionary(
+                    e => Path.GetFileName(e.FilePath),
+                    StringComparer.OrdinalIgnoreCase);
+
+                var ordered = savedOrder
+                    .Where(byFileName.ContainsKey)
+                    .Select(n => byFileName[n])
+                    .ToList();
+
+                var inOrder = new HashSet<string>(savedOrder, StringComparer.OrdinalIgnoreCase);
+                var remaining = list.Where(e => !inOrder.Contains(Path.GetFileName(e.FilePath)));
+
+                Environments = [..ordered, ..remaining];
+                // Mirror the reordered list back so subsequent lookups (ActiveEnvironment
+                // restoration below) use the reordered list.
+                list = Environments;
+            }
+
+            // Retain the current selection if it still exists; otherwise clear it.
+            // Always update to the fresh instance from the new list so the ComboBox can
+            // match by reference (stale instances are never reference-equal to items in
+            // the newly-loaded EnvironmentsWithPlaceholder).
+            if (ActiveEnvironment is not null)
+            {
+                var refreshed = list.FirstOrDefault(e =>
+                    string.Equals(e.FilePath, ActiveEnvironment.FilePath,
+                        StringComparison.OrdinalIgnoreCase));
+                ActiveEnvironment = refreshed; // null when no longer found; fresh ref otherwise
             }
 
             // If nothing is selected, restore the last-used environment.
@@ -181,6 +278,7 @@ public sealed partial class EnvironmentViewModel : ObservableRecipient,
                     LastActiveEnvironmentFile = relativeFilePath,
                     OpenTabPaths = current.OpenTabPaths,
                     ActiveTabPath = current.ActiveTabPath,
+                    EnvironmentOrder = current.EnvironmentOrder,
                 })
                 .ConfigureAwait(false);
         }

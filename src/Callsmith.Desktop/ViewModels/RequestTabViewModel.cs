@@ -28,6 +28,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private CollectionRequest? _sourceRequest;
 
     private EnvironmentModel? _activeEnvironment;
+    private IReadOnlyList<EnvironmentVariable> _globalVariables = [];
     private bool _loading;
     private bool _saving;
     private bool _syncingUrl;
@@ -227,18 +228,25 @@ public sealed partial class RequestTabViewModel : ObservableObject
             if (string.IsNullOrWhiteSpace(Url))
                 return string.Empty;
 
+            var vars = BuildMergedVars();
+
+            // Substitute {{tokens}} in path param values BEFORE URL-encoding.
             var pathParamValues = PathParams.GetEnabledPairs()
                 .Where(p => !string.IsNullOrWhiteSpace(p.Value))
-                .ToDictionary(p => p.Key, p => p.Value);
+                .ToDictionary(
+                    p => p.Key,
+                    p => VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value);
 
             var baseUrl = GetBaseUrl(Url);
             var resolved = PathTemplateHelper.ApplyPathParams(baseUrl, pathParamValues);
-            resolved = QueryStringHelper.ApplyQueryParams(resolved, QueryParams.GetEnabledPairs().ToList());
 
-            var vars = _activeEnvironment is not null
-                ? (IReadOnlyDictionary<string, string>)_activeEnvironment.Variables
-                    .ToDictionary(v => v.Name, v => v.Value)
-                : new Dictionary<string, string>();
+            var substitutedQueryParams = QueryParams.GetEnabledPairs()
+                .Select(p => new KeyValuePair<string, string>(
+                    VariableSubstitutionService.Substitute(p.Key, vars) ?? p.Key,
+                    VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value))
+                .ToList();
+
+            resolved = QueryStringHelper.ApplyQueryParams(resolved, substitutedQueryParams);
 
             return VariableSubstitutionService.Substitute(resolved, vars) ?? resolved;
         }
@@ -401,15 +409,47 @@ public sealed partial class RequestTabViewModel : ObservableObject
     public void SetEnvironment(EnvironmentModel? environment)
     {
         _activeEnvironment = environment;
+        UpdateEnvSuggestions();
+    }
 
-        var suggestions = environment is not null
-            ? (IReadOnlyList<EnvVarSuggestion>)environment.Variables
-                .Where(v => !string.IsNullOrWhiteSpace(v.Name))
-                .Select(v => new EnvVarSuggestion(
-                    v.Name,
-                    v.IsSecret ? "\u2022\u2022\u2022\u2022\u2022" : v.Value))
-                .ToList()
-            : [];
+    /// <summary>Updates the global environment variables used as the baseline for substitution.</summary>
+    public void SetGlobalEnvironment(IReadOnlyList<EnvironmentVariable> variables)
+    {
+        _globalVariables = variables;
+        UpdateEnvSuggestions();
+    }
+
+    /// <summary>
+    /// Builds the merged variable dictionary for substitution.
+    /// Global vars form the baseline; active environment vars take priority.
+    /// </summary>
+    private Dictionary<string, string> BuildMergedVars()
+    {
+        var merged = _globalVariables.ToDictionary(v => v.Name, v => v.Value);
+        if (_activeEnvironment is not null)
+            foreach (var v in _activeEnvironment.Variables)
+                merged[v.Name] = v.Value;
+        return merged;
+    }
+
+    /// <summary>
+    /// Rebuilds autocomplete suggestions from the merged global + active environment.
+    /// Active environment values override global values for the same name.
+    /// Secret variable values are shown as bullets.
+    /// </summary>
+    private void UpdateEnvSuggestions()
+    {
+        // Merge: global vars first, active env overrides
+        var merged = new Dictionary<string, EnvironmentVariable>(StringComparer.Ordinal);
+        foreach (var v in _globalVariables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
+            merged[v.Name] = v;
+        if (_activeEnvironment is not null)
+            foreach (var v in _activeEnvironment.Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
+                merged[v.Name] = v;
+
+        var suggestions = merged.Values
+            .Select(v => new EnvVarSuggestion(v.Name, v.IsSecret ? "\u2022\u2022\u2022\u2022\u2022" : v.Value))
+            .ToList();
 
         EnvVarNames = suggestions;
         Headers.SetSuggestions(suggestions);
@@ -438,21 +478,31 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 Headers.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
                 StringComparer.OrdinalIgnoreCase);
 
+            var vars = (IReadOnlyDictionary<string, string>)BuildMergedVars();
+
+            // Substitute {{tokens}} in path param values BEFORE URL-encoding.
             var pathParamValues = PathParams.GetEnabledPairs()
                 .Where(p => !string.IsNullOrWhiteSpace(p.Value))
-                .ToDictionary(p => p.Key, p => p.Value);
+                .ToDictionary(
+                    p => p.Key,
+                    p => VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value);
 
             var baseUrl = GetBaseUrl(Url);
             var requestUrl = PathTemplateHelper.ApplyPathParams(baseUrl, pathParamValues);
-            requestUrl = QueryStringHelper.ApplyQueryParams(requestUrl, QueryParams.GetEnabledPairs().ToList());
+
+            // Substitute variables in query param keys/values BEFORE URL-encoding so that
+            // {{tokens}} are resolved to their real values rather than being encoded literally.
+            var substitutedQueryParams = QueryParams.GetEnabledPairs()
+                .Select(p => new KeyValuePair<string, string>(
+                    VariableSubstitutionService.Substitute(p.Key, vars) ?? p.Key,
+                    VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value))
+                .ToList();
+
+            requestUrl = QueryStringHelper.ApplyQueryParams(requestUrl, substitutedQueryParams);
 
             ApplyAuthHeaders(headers, requestUrl, out requestUrl);
 
-            var vars = _activeEnvironment is not null
-                ? (IReadOnlyDictionary<string, string>)_activeEnvironment.Variables
-                    .ToDictionary(v => v.Name, v => v.Value)
-                : new Dictionary<string, string>();
-
+            // Substitute any remaining {{tokens}} in the base URL / path.
             requestUrl = VariableSubstitutionService.Substitute(requestUrl, vars) ?? requestUrl;
             foreach (var key in headers.Keys.ToList())
                 headers[key] = VariableSubstitutionService.Substitute(headers[key], vars) ?? headers[key];

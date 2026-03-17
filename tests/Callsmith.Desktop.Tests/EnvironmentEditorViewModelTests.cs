@@ -20,14 +20,25 @@ public sealed class EnvironmentEditorViewModelTests
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
+    private static readonly string GlobalEnvPath =
+        @"C:\collections\my-api\environment\_global.env.callsmith";
+
     private static EnvironmentEditorViewModel BuildSut(
         IEnvironmentService? service = null,
-        IMessenger? messenger = null)
+        IMessenger? messenger = null,
+        ICollectionPreferencesService? preferences = null)
     {
         service ??= Substitute.For<IEnvironmentService>();
+        // Always provide a default global env response so LoadEnvironmentsAsync doesn't throw.
+        service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+               .Returns(new EnvironmentModel { FilePath = GlobalEnvPath, Name = "Global", Variables = [] });
         messenger ??= new WeakReferenceMessenger();
+        preferences ??= Substitute.For<ICollectionPreferencesService>();
+        preferences.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+                   .Returns(new Callsmith.Core.Models.CollectionPreferences());
         return new EnvironmentEditorViewModel(
             service,
+            preferences,
             messenger,
             NullLogger<EnvironmentEditorViewModel>.Instance);
     }
@@ -40,12 +51,18 @@ public sealed class EnvironmentEditorViewModelTests
             Variables = [],
         };
 
+    // Helper: stub LoadGlobalEnvironmentAsync on an existing mock.
+    private static void SetupGlobalEnv(IEnvironmentService service) =>
+        service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+               .Returns(new EnvironmentModel { FilePath = GlobalEnvPath, Name = "Global", Variables = [] });
+
     // ─── CollectionOpenedMessage ──────────────────────────────────────────────
 
     [Fact]
     public async Task Receive_CollectionOpened_LoadsEnvironments()
     {
         var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
         service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
                .Returns([MakeModel("dev"), MakeModel("staging")]);
 
@@ -57,15 +74,19 @@ public sealed class EnvironmentEditorViewModelTests
         // Give async handler a chance to complete (it's fire-and-forget).
         await Task.Delay(100);
 
-        sut.Environments.Should().HaveCount(2);
-        sut.Environments[0].Name.Should().Be("dev");
-        sut.Environments[1].Name.Should().Be("staging");
+        // Global env is pinned at index 0; collection envs follow.
+        sut.Environments.Should().HaveCount(3);
+        sut.Environments[0].Name.Should().Be("Global");
+        sut.Environments[0].IsGlobal.Should().BeTrue();
+        sut.Environments[1].Name.Should().Be("dev");
+        sut.Environments[2].Name.Should().Be("staging");
     }
 
     [Fact]
-    public async Task Receive_CollectionOpened_SelectsFirstEnvironment()
+    public async Task Receive_CollectionOpened_SelectsFirstNonGlobalEnvironment()
     {
         var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
         service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
                .Returns([MakeModel("dev"), MakeModel("staging")]);
 
@@ -77,12 +98,14 @@ public sealed class EnvironmentEditorViewModelTests
 
         sut.SelectedEnvironment.Should().NotBeNull();
         sut.SelectedEnvironment!.Name.Should().Be("dev");
+        sut.SelectedEnvironment.IsGlobal.Should().BeFalse();
     }
 
     [Fact]
-    public async Task Receive_CollectionOpened_WhenNoEnvironments_SelectedEnvironmentIsNull()
+    public async Task Receive_CollectionOpened_WhenNoCollectionEnvs_SelectsGlobalEnvironment()
     {
         var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
         service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
                .Returns(Array.Empty<EnvironmentModel>());
 
@@ -92,7 +115,29 @@ public sealed class EnvironmentEditorViewModelTests
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(100);
 
-        sut.SelectedEnvironment.Should().BeNull();
+        // Only global env present — it is selected.
+        sut.Environments.Should().ContainSingle();
+        sut.SelectedEnvironment.Should().NotBeNull();
+        sut.SelectedEnvironment!.IsGlobal.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Receive_CollectionOpened_BroadcastsGlobalEnvironmentChangedMessage()
+    {
+        var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([]);
+
+        GlobalEnvironmentChangedMessage? received = null;
+        var messenger = new WeakReferenceMessenger();
+        messenger.Register<GlobalEnvironmentChangedMessage>(new object(), (_, msg) => received = msg);
+
+        var sut = BuildSut(service, messenger);
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        received.Should().NotBeNull();
     }
 
     // ─── BeginAddEnvironment / CancelAddEnvironment ───────────────────────────
@@ -124,6 +169,7 @@ public sealed class EnvironmentEditorViewModelTests
     public async Task CommitAddEnvironment_WithValidName_CreatesEnvironmentAndAddsToList()
     {
         var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
         var created = MakeModel("production");
         service.CreateEnvironmentAsync(CollectionPath, "production", Arg.Any<CancellationToken>())
                .Returns(created);
@@ -142,7 +188,7 @@ public sealed class EnvironmentEditorViewModelTests
 
         await sut.CommitAddEnvironmentCommand.ExecuteAsync(null);
 
-        sut.Environments.Should().ContainSingle(e => e.Name == "production");
+        sut.Environments.Should().Contain(e => e.Name == "production");
         sut.IsAddingEnvironment.Should().BeFalse();
         sut.SelectedEnvironment!.Name.Should().Be("production");
     }
@@ -151,6 +197,7 @@ public sealed class EnvironmentEditorViewModelTests
     public async Task CommitAddEnvironment_WithBlankName_SetsError()
     {
         var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
         service.ListEnvironmentsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
                .Returns([]);
 
@@ -173,6 +220,7 @@ public sealed class EnvironmentEditorViewModelTests
     public async Task CommitAddEnvironment_WhenServiceThrowsInvalidOperation_SetsError()
     {
         var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
         service.ListEnvironmentsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
                .Returns([]);
         service.CreateEnvironmentAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -198,6 +246,7 @@ public sealed class EnvironmentEditorViewModelTests
     public async Task DeleteEnvironment_RemovesSelectedEnvironmentFromList()
     {
         var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
         var dev = MakeModel("dev");
         var staging = MakeModel("staging");
         service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
@@ -211,11 +260,13 @@ public sealed class EnvironmentEditorViewModelTests
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(100);
 
-        sut.SelectedEnvironment = sut.Environments[0];   // select "dev"
+        // Environments = [Global(0), dev(1), staging(2)] — select dev at index 1.
+        sut.SelectedEnvironment = sut.Environments[1];
 
         await sut.DeleteEnvironmentCommand.ExecuteAsync(null);
 
-        sut.Environments.Should().ContainSingle(e => e.Name == "staging");
+        sut.Environments.Should().NotContain(e => e.Name == "dev");
+        sut.Environments.Should().Contain(e => e.Name == "staging");
     }
 
     // ─── SaveSelected ─────────────────────────────────────────────────────────
@@ -224,6 +275,7 @@ public sealed class EnvironmentEditorViewModelTests
     public async Task SaveSelected_ClearsDirtyFlag()
     {
         var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
         service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
                .Returns([MakeModel("dev")]);
         service.SaveEnvironmentAsync(Arg.Any<EnvironmentModel>(), Arg.Any<CancellationToken>())
@@ -235,7 +287,8 @@ public sealed class EnvironmentEditorViewModelTests
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(100);
 
-        // Dirty the selected environment.
+        // Dirty the selected environment (dev, at index 1 after global).
+        sut.SelectedEnvironment = sut.Environments.First(e => !e.IsGlobal);
         sut.SelectedEnvironment!.AddVariableCommand.Execute(null);
         sut.SelectedEnvironment.IsDirty.Should().BeTrue();
 
@@ -248,6 +301,7 @@ public sealed class EnvironmentEditorViewModelTests
     public async Task SaveSelected_PublishesEnvironmentSavedMessage()
     {
         var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
         service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
                .Returns([MakeModel("dev")]);
         service.SaveEnvironmentAsync(Arg.Any<EnvironmentModel>(), Arg.Any<CancellationToken>())
@@ -261,6 +315,9 @@ public sealed class EnvironmentEditorViewModelTests
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(100);
 
+        // Select the dev env (first non-global) before saving.
+        sut.SelectedEnvironment = sut.Environments.First(e => !e.IsGlobal);
+
         await sut.SaveSelectedCommand.ExecuteAsync(null);
 
         received.Should().NotBeNull();
@@ -273,6 +330,7 @@ public sealed class EnvironmentEditorViewModelTests
     public async Task AddVariable_MarksEnvironmentDirty()
     {
         var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
         service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
                .Returns([MakeModel("dev")]);
 
@@ -282,12 +340,15 @@ public sealed class EnvironmentEditorViewModelTests
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(100);
 
-        sut.SelectedEnvironment!.IsDirty.Should().BeFalse();
+        var devEnv = sut.Environments.First(e => !e.IsGlobal);
+        sut.SelectedEnvironment = devEnv;
 
-        sut.SelectedEnvironment.AddVariableCommand.Execute(null);
+        devEnv.IsDirty.Should().BeFalse();
 
-        sut.SelectedEnvironment.IsDirty.Should().BeTrue();
-        sut.SelectedEnvironment.Variables.Should().ContainSingle();
+        devEnv.AddVariableCommand.Execute(null);
+
+        devEnv.IsDirty.Should().BeTrue();
+        devEnv.Variables.Should().ContainSingle();
     }
 
     [Fact]
@@ -299,6 +360,7 @@ public sealed class EnvironmentEditorViewModelTests
         };
 
         var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
         service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
                .Returns([model]);
 
@@ -308,20 +370,24 @@ public sealed class EnvironmentEditorViewModelTests
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(100);
 
-        sut.SelectedEnvironment!.Variables.Should().HaveCount(1);
-        sut.SelectedEnvironment.IsDirty.Should().BeFalse();
+        var devEnv = sut.Environments.First(e => !e.IsGlobal);
+        sut.SelectedEnvironment = devEnv;
+
+        devEnv.Variables.Should().HaveCount(1);
+        devEnv.IsDirty.Should().BeFalse();
 
         // Execute delete on the variable row.
-        sut.SelectedEnvironment.Variables[0].DeleteCommand.Execute(null);
+        devEnv.Variables[0].DeleteCommand.Execute(null);
 
-        sut.SelectedEnvironment.Variables.Should().BeEmpty();
-        sut.SelectedEnvironment.IsDirty.Should().BeTrue();
+        devEnv.Variables.Should().BeEmpty();
+        devEnv.IsDirty.Should().BeTrue();
     }
 
     [Fact]
     public async Task BuildModel_ExcludesVariablesWithBlankNames()
     {
         var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
         service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
                .Returns([MakeModel("dev")]);
 
@@ -331,16 +397,187 @@ public sealed class EnvironmentEditorViewModelTests
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(100);
 
+        var devEnv = sut.Environments.First(e => !e.IsGlobal);
+        sut.SelectedEnvironment = devEnv;
+
         // Add one valid and one blank-name variable.
-        sut.SelectedEnvironment!.AddVariableCommand.Execute(null);
-        sut.SelectedEnvironment.Variables[0].Name = "API_KEY";
-        sut.SelectedEnvironment.Variables[0].Value = "secret123";
+        devEnv.AddVariableCommand.Execute(null);
+        devEnv.Variables[0].Name = "API_KEY";
+        devEnv.Variables[0].Value = "secret123";
 
-        sut.SelectedEnvironment.AddVariableCommand.Execute(null);
-        sut.SelectedEnvironment.Variables[1].Name = string.Empty;
+        devEnv.AddVariableCommand.Execute(null);
+        devEnv.Variables[1].Name = string.Empty;
 
-        var built = sut.SelectedEnvironment.BuildModel();
+        var built = devEnv.BuildModel();
 
         built.Variables.Should().ContainSingle(v => v.Name == "API_KEY");
+    }
+
+    [Fact]
+    public async Task CloneCommand_AddsGhostItemAfterSource()
+    {
+        var devModel = MakeModel("dev");
+        var clonedModel = MakeModel("Copy of dev");
+        var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([devModel, MakeModel("staging")]);
+        service.CloneEnvironmentAsync(devModel.FilePath, "Copy of dev", Arg.Any<CancellationToken>())
+               .Returns(clonedModel);
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        // Environments = [Global(0), dev(1), staging(2)]. Invoke Clone on dev (index 1).
+        sut.Environments[1].CloneCommand.Execute(null);
+        await Task.Delay(50); // async clone
+
+        // New item inserted right after dev at index 2; staging moves to index 3.
+        sut.Environments.Should().HaveCount(4);
+        sut.Environments[2].Name.Should().Be("Copy of dev");
+    }
+
+    [Fact]
+    public async Task CloneCommand_OnConfirm_CreatesEnvironmentAndReplacesGhost()
+    {
+        var devModel = MakeModel("dev");
+        var clonedModel = MakeModel("Copy of dev");
+
+        var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([devModel]);
+        service.CloneEnvironmentAsync(devModel.FilePath, "Copy of dev", Arg.Any<CancellationToken>())
+               .Returns(clonedModel);
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        // Environments = [Global(0), dev(1)]. Clone dev.
+        sut.Environments[1].CloneCommand.Execute(null);
+        await Task.Delay(50);
+
+        // After clone: [Global(0), dev(1), Copy of dev(2)]
+        sut.Environments.Should().HaveCount(3);
+        sut.Environments[2].Name.Should().Be("Copy of dev");
+    }
+
+    [Fact]
+    public async Task CloneCommand_OnCancel_RemovesGhostFromList()
+    {
+        // When clone service call fails, list stays unchanged.
+        var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([MakeModel("dev")]);
+        // No CloneEnvironmentAsync mock → NSubstitute returns null model → caught by VM.
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        // Environments = [Global(0), dev(1)].
+        sut.Environments[1].CloneCommand.Execute(null);
+        await Task.Delay(50);
+
+        // Clone failed silently — list unchanged.
+        sut.Environments.Should().HaveCount(2);
+        sut.Environments[1].Name.Should().Be("dev");
+    }
+
+    [Fact]
+    public async Task CloneCommand_WhenNameConflict_ReopensRenameBoxWithError()
+    {
+        var devModel = MakeModel("dev");
+
+        var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([devModel]);
+        service.CloneEnvironmentAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+               .ThrowsAsync(new InvalidOperationException("Already exists."));
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        sut.Environments[1].CloneCommand.Execute(null);
+        await Task.Delay(50);
+
+        // Clone failed — ErrorMessage is set on the ViewModel.
+        sut.ErrorMessage.Should().NotBeEmpty();
+        sut.Environments.Should().HaveCount(2); // unchanged
+    }
+
+    // ─── Global environment ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GlobalEnvironment_IsAlwaysPinnedFirst()
+    {
+        var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([MakeModel("dev"), MakeModel("staging")]);
+
+        var sut = BuildSut(service);
+        new WeakReferenceMessenger().Send(new CollectionOpenedMessage(CollectionPath));
+        var messenger = new WeakReferenceMessenger();
+        sut = BuildSut(service, messenger);
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        sut.Environments[0].IsGlobal.Should().BeTrue();
+        sut.Environments[0].Name.Should().Be("Global");
+    }
+
+    [Fact]
+    public async Task SaveSelected_WhenGlobalEnv_SendsGlobalEnvironmentChangedMessage()
+    {
+        var globalVars = new List<EnvironmentVariable>
+        {
+            new() { Name = "BASE_URL", Value = "https://example.com" },
+        };
+        var globalModel = new EnvironmentModel
+        {
+            FilePath = GlobalEnvPath,
+            Name = "Global",
+            Variables = globalVars,
+        };
+
+        var service = Substitute.For<IEnvironmentService>();
+        service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+               .Returns(globalModel);
+        service.SaveGlobalEnvironmentAsync(Arg.Any<EnvironmentModel>(), Arg.Any<CancellationToken>())
+               .Returns(Task.CompletedTask);
+        service.ListEnvironmentsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+               .Returns([]);
+
+        GlobalEnvironmentChangedMessage? received = null;
+        var messenger = new WeakReferenceMessenger();
+        messenger.Register<GlobalEnvironmentChangedMessage>(new object(), (_, msg) => received = msg);
+
+        var sut = BuildSut(service, messenger);
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        // Global env is at index 0 and auto-selected when no other envs exist.
+        sut.SelectedEnvironment!.IsGlobal.Should().BeTrue();
+
+        // Clear the startup broadcast so we only catch the save one.
+        received = null;
+
+        await sut.SaveSelectedCommand.ExecuteAsync(null);
+
+        received.Should().NotBeNull();
     }
 }

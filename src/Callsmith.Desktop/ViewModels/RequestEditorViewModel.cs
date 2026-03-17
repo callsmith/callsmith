@@ -18,6 +18,7 @@ namespace Callsmith.Desktop.ViewModels;
 public sealed partial class RequestEditorViewModel : ObservableRecipient,
     IRecipient<RequestSelectedMessage>,
     IRecipient<EnvironmentChangedMessage>,
+    IRecipient<GlobalEnvironmentChangedMessage>,
     IRecipient<CollectionItemDeletedMessage>,
     IRecipient<CollectionOpenedMessage>
 {
@@ -27,6 +28,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private readonly ILogger<RequestEditorViewModel> _logger;
 
     private EnvironmentModel? _activeEnvironment;
+    private IReadOnlyList<EnvironmentVariable> _globalVariables = [];
     private string _collectionPath = string.Empty;
     private bool _restoringTabs;
 
@@ -157,6 +159,13 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             tab.SetEnvironment(message.Value);
     }
 
+    public void Receive(GlobalEnvironmentChangedMessage message)
+    {
+        _globalVariables = message.Value;
+        foreach (var tab in Tabs)
+            tab.SetGlobalEnvironment(message.Value);
+    }
+
     public void Receive(CollectionItemDeletedMessage message)
     {
         var hint = message.Value;
@@ -222,6 +231,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             tab.IsNew = true;
 
         tab.SetEnvironment(_activeEnvironment);
+        tab.SetGlobalEnvironment(_globalVariables);
         return tab;
     }
 

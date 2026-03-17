@@ -15,6 +15,9 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
     /// <summary>File extension used for all environment files.</summary>
     public const string EnvironmentFileExtension = ".env.callsmith";
 
+    /// <summary>File name (without extension) of the collection-scoped global environment.</summary>
+    public const string GlobalEnvironmentFileName = "_global";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -43,7 +46,8 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
 
         var results = new List<EnvironmentModel>();
         foreach (var filePath in Directory.EnumerateFiles(
-                     envFolder, $"*{EnvironmentFileExtension}", SearchOption.TopDirectoryOnly))
+                     envFolder, $"*{EnvironmentFileExtension}", SearchOption.TopDirectoryOnly)
+                     .Where(p => !IsGlobalEnvironmentFile(p)))
         {
             ct.ThrowIfCancellationRequested();
             try
@@ -155,7 +159,63 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         return renamed;
     }
 
+    /// <inheritdoc/>
+    public async Task<EnvironmentModel> CloneEnvironmentAsync(
+        string sourceFilePath, string newName, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(sourceFilePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newName);
+
+        var directory = Path.GetDirectoryName(sourceFilePath)!;
+        var newFilePath = Path.Combine(directory, SanitizeFileName(newName) + EnvironmentFileExtension);
+
+        if (File.Exists(newFilePath))
+            throw new InvalidOperationException(
+                $"An environment named '{newName}' already exists.");
+
+        var source = await LoadEnvironmentAsync(sourceFilePath, ct).ConfigureAwait(false);
+        var cloned = source with { FilePath = newFilePath, Name = newName };
+
+        await SaveEnvironmentAsync(cloned, ct).ConfigureAwait(false);
+
+        _logger.LogDebug("Cloned environment '{Source}' → '{New}'", sourceFilePath, newFilePath);
+        return cloned;
+    }
+
+    // ─── Global environment ──────────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public async Task<EnvironmentModel> LoadGlobalEnvironmentAsync(
+        string collectionFolderPath, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(collectionFolderPath);
+
+        var filePath = GetGlobalFilePath(collectionFolderPath);
+        if (!File.Exists(filePath))
+            return new EnvironmentModel { FilePath = filePath, Name = "Global", Variables = [] };
+
+        return await LoadEnvironmentAsync(filePath, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public Task SaveGlobalEnvironmentAsync(
+        EnvironmentModel globalEnvironment, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(globalEnvironment);
+        return SaveEnvironmentAsync(globalEnvironment, ct);
+    }
+
     // ─── Private helpers ────────────────────────────────────────────────────
+
+    private static string GetGlobalFilePath(string collectionFolderPath) =>
+        Path.Combine(GetEnvFolder(collectionFolderPath),
+            GlobalEnvironmentFileName + EnvironmentFileExtension);
+
+    private static bool IsGlobalEnvironmentFile(string filePath) =>
+        string.Equals(
+            Path.GetFileNameWithoutExtension(filePath),
+            GlobalEnvironmentFileName,
+            StringComparison.OrdinalIgnoreCase);
 
     private static string GetEnvFolder(string collectionFolderPath) =>
         Path.Combine(collectionFolderPath, FileSystemCollectionService.EnvironmentFolderName);
@@ -170,6 +230,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
     {
         FilePath = filePath,
         Name = dto.Name ?? Path.GetFileNameWithoutExtension(filePath),
+        Color = dto.Color,
         Variables = (dto.Variables ?? [])
             .Select(v => new EnvironmentVariable
             {
@@ -185,6 +246,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
     private static EnvironmentDto ModelToDto(EnvironmentModel model) => new()
     {
         Name = model.Name,
+        Color = model.Color,
         Variables = model.Variables
             .Select(v => new VariableDto
             {
@@ -203,6 +265,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
     private sealed class EnvironmentDto
     {
         public string? Name { get; init; }
+        public string? Color { get; init; }
         public List<VariableDto>? Variables { get; init; }
     }
 
