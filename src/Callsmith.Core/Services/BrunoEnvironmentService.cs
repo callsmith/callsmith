@@ -22,11 +22,20 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
     public const string EnvironmentFileExtension = ".bru";
     public const string GlobalEnvironmentFileName = "_global";
 
+    private readonly ISecretStorageService _secrets;
+    private readonly IBrunoCollectionMetaService _meta;
     private readonly ILogger<BrunoEnvironmentService> _logger;
 
-    public BrunoEnvironmentService(ILogger<BrunoEnvironmentService> logger)
+    public BrunoEnvironmentService(
+        ISecretStorageService secrets,
+        IBrunoCollectionMetaService meta,
+        ILogger<BrunoEnvironmentService> logger)
     {
+        ArgumentNullException.ThrowIfNull(secrets);
+        ArgumentNullException.ThrowIfNull(meta);
         ArgumentNullException.ThrowIfNull(logger);
+        _secrets = secrets;
+        _meta = meta;
         _logger = logger;
     }
 
@@ -42,6 +51,9 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
         var envFolder = GetEnvFolder(collectionFolderPath);
         if (!Directory.Exists(envFolder)) return [];
 
+        // Load meta once to apply ordering and colors without per-file overhead.
+        var meta = await _meta.LoadAsync(collectionFolderPath, ct).ConfigureAwait(false);
+
         var results = new List<EnvironmentModel>();
         foreach (var filePath in Directory.EnumerateFiles(envFolder, "*.bru", SearchOption.TopDirectoryOnly)
                      .Where(p => !IsGlobalEnvironmentFile(p)))
@@ -49,8 +61,9 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
             ct.ThrowIfCancellationRequested();
             try
             {
-                var env = await LoadEnvironmentAsync(filePath, ct).ConfigureAwait(false);
-                results.Add(env);
+                var env = await LoadEnvironmentCoreAsync(filePath, ct).ConfigureAwait(false);
+                var color = meta.EnvironmentColors.TryGetValue(Path.GetFileName(filePath), out var c) ? c : null;
+                results.Add(env with { Color = color });
             }
             catch (Exception ex)
             {
@@ -59,12 +72,45 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
         }
 
         results.Sort(static (a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
-        return results;
+        return ApplyMetaOrder(results, meta.EnvironmentOrder);
+    }
+
+    private static IReadOnlyList<EnvironmentModel> ApplyMetaOrder(
+        List<EnvironmentModel> alphabetical, IReadOnlyList<string> order)
+    {
+        if (order.Count == 0) return alphabetical;
+
+        var byFileName = alphabetical.ToDictionary(
+            e => Path.GetFileName(e.FilePath), StringComparer.OrdinalIgnoreCase);
+
+        var ordered = order
+            .Where(byFileName.ContainsKey)
+            .Select(n => byFileName[n])
+            .ToList();
+
+        var inOrder = new HashSet<string>(order, StringComparer.OrdinalIgnoreCase);
+        var remaining = alphabetical.Where(
+            e => !inOrder.Contains(Path.GetFileName(e.FilePath)));
+
+        return [..ordered, ..remaining];
     }
 
     public async Task<EnvironmentModel> LoadEnvironmentAsync(string filePath, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(filePath);
+        var model = await LoadEnvironmentCoreAsync(filePath, ct).ConfigureAwait(false);
+        var collectionPath = GetCollectionFolderPath(filePath);
+        var meta = await _meta.LoadAsync(collectionPath, ct).ConfigureAwait(false);
+        var color = meta.EnvironmentColors.TryGetValue(Path.GetFileName(filePath), out var c) ? c : null;
+        return model with { Color = color };
+    }
+
+    /// <summary>
+    /// Loads an environment from its <c>.bru</c> file and injects secrets, but does not
+    /// consult the app-data meta for color. Used internally when meta is already loaded.
+    /// </summary>
+    private async Task<EnvironmentModel> LoadEnvironmentCoreAsync(string filePath, CancellationToken ct)
+    {
         if (!File.Exists(filePath))
             throw new FileNotFoundException($"Environment file not found: '{filePath}'", filePath);
 
@@ -81,14 +127,16 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
                 variables.Add(new EnvironmentVariable { Name = kv.Key, Value = kv.Value });
         }
 
-        // vars:secret {} — secret variables (skip disabled ~ entries)
+        // vars:secret {} — secret variables (skip disabled ~ entries); actual values come
+        // from local secret storage, not from the .bru file.
         if (doc.Find("vars:secret") is { } secretBlock)
         {
             foreach (var kv in secretBlock.Items.Where(kv => kv.IsEnabled))
                 variables.Add(new EnvironmentVariable { Name = kv.Key, Value = kv.Value, IsSecret = true });
         }
 
-        return new EnvironmentModel { FilePath = filePath, Name = name, Variables = variables };
+        var model = new EnvironmentModel { FilePath = filePath, Name = name, Variables = variables };
+        return model with { Variables = await InjectSecretsAsync(model, ct).ConfigureAwait(false) };
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -99,8 +147,18 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
     {
         ArgumentNullException.ThrowIfNull(environment);
 
+        // Global environment is stored in app-data, not as a .bru file.
+        if (IsGlobalEnvironmentFile(environment.FilePath))
+        {
+            await SaveGlobalEnvironmentAsync(environment, ct).ConfigureAwait(false);
+            return;
+        }
+
         var directory = Path.GetDirectoryName(environment.FilePath)!;
         Directory.CreateDirectory(directory);
+
+        // Persist actual secret values to local storage before writing the file.
+        await PersistSecretsAsync(environment, ct).ConfigureAwait(false);
 
         // Re-read the existing file (if any) to preserve disabled vars.
         BruDocument? existing = null;
@@ -119,6 +177,24 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
 
         var content = BuildEnvContent(environment, existing);
         await File.WriteAllTextAsync(environment.FilePath, content, ct).ConfigureAwait(false);
+
+        // Persist env color to app-data meta (Bruno .bru files have no color field).
+        var collectionPath = GetCollectionFolderPath(environment.FilePath);
+        var meta = await _meta.LoadAsync(collectionPath, ct).ConfigureAwait(false);
+        var newColors = new Dictionary<string, string>(meta.EnvironmentColors);
+        var envFileName = Path.GetFileName(environment.FilePath);
+        if (environment.Color is not null)
+            newColors[envFileName] = environment.Color;
+        else
+            newColors.Remove(envFileName);
+        await _meta.SaveAsync(collectionPath, new BrunoCollectionMeta
+        {
+            EnvironmentOrder = meta.EnvironmentOrder,
+            EnvironmentColors = newColors,
+            GlobalVariables = meta.GlobalVariables,
+            GlobalSecretVariableNames = meta.GlobalSecretVariableNames,
+        }, ct).ConfigureAwait(false);
+
         _logger.LogDebug("Saved Bruno environment '{Name}' → {Path}", environment.Name, environment.FilePath);
     }
 
@@ -140,18 +216,21 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
         return model;
     }
 
-    public Task DeleteEnvironmentAsync(string filePath, CancellationToken ct = default)
+    public async Task DeleteEnvironmentAsync(string filePath, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(filePath);
         ct.ThrowIfCancellationRequested();
+
+        // Remove locally-stored secrets for this environment before deleting the file.
+        var collectionPath = GetCollectionFolderPath(filePath);
+        var envName = Path.GetFileNameWithoutExtension(filePath);
+        await _secrets.DeleteEnvironmentSecretsAsync(collectionPath, envName, ct).ConfigureAwait(false);
 
         if (File.Exists(filePath))
         {
             File.Delete(filePath);
             _logger.LogDebug("Deleted Bruno environment file: {Path}", filePath);
         }
-
-        return Task.CompletedTask;
     }
 
     public async Task<EnvironmentModel> RenameEnvironmentAsync(
@@ -174,7 +253,19 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
         await SaveEnvironmentAsync(renamed, ct).ConfigureAwait(false);
 
         if (!string.Equals(filePath, newFilePath, StringComparison.OrdinalIgnoreCase))
+        {
             File.Delete(filePath);
+
+            // Clean up secrets stored under the old file-name key.
+            var oldEnvName = Path.GetFileNameWithoutExtension(filePath);
+            var newEnvName = Path.GetFileNameWithoutExtension(newFilePath);
+            if (!string.Equals(oldEnvName, newEnvName, StringComparison.OrdinalIgnoreCase))
+            {
+                var collectionPath = GetCollectionFolderPath(filePath);
+                await _secrets.DeleteEnvironmentSecretsAsync(collectionPath, oldEnvName, ct)
+                    .ConfigureAwait(false);
+            }
+        }
 
         _logger.LogDebug("Renamed Bruno environment '{Old}' → '{New}'", filePath, newFilePath);
         return renamed;
@@ -193,11 +284,44 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
             throw new InvalidOperationException($"An environment named '{newName}' already exists.");
 
         var source = await LoadEnvironmentAsync(sourceFilePath, ct).ConfigureAwait(false);
-        var cloned = source with { FilePath = newFilePath, Name = newName };
+
+        // Clones do not inherit secrets — the developer must supply their own values.
+        var cloned = source with
+        {
+            FilePath = newFilePath,
+            Name = newName,
+            Variables = source.Variables
+                .Select(v => v.IsSecret
+                    ? new EnvironmentVariable { Name = v.Name, Value = string.Empty, VariableType = v.VariableType, IsSecret = true }
+                    : v)
+                .ToList(),
+        };
         await SaveEnvironmentAsync(cloned, ct).ConfigureAwait(false);
 
         _logger.LogDebug("Cloned Bruno environment '{Source}' → '{New}'", sourceFilePath, newFilePath);
         return cloned;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Environment order
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public async Task SaveEnvironmentOrderAsync(
+        string collectionFolderPath, IReadOnlyList<string> orderedNames, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(collectionFolderPath);
+        ArgumentNullException.ThrowIfNull(orderedNames);
+
+        // Order is stored in app-data meta, not as _order.json inside the Bruno repo.
+        var meta = await _meta.LoadAsync(collectionFolderPath, ct).ConfigureAwait(false);
+        await _meta.SaveAsync(collectionFolderPath, new BrunoCollectionMeta
+        {
+            EnvironmentOrder = orderedNames.ToList(),
+            EnvironmentColors = meta.EnvironmentColors,
+            GlobalVariables = meta.GlobalVariables,
+            GlobalSecretVariableNames = meta.GlobalSecretVariableNames,
+        }, ct).ConfigureAwait(false);
+        _logger.LogDebug("Saved Bruno environment order for '{Path}'", collectionFolderPath);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -223,13 +347,14 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
             blocks.Add(varsBlock);
         }
 
-        // vars:secret block
+        // vars:secret block — secret variable names are recorded in the file, but their
+        // actual values live in local app-data, so we write an empty string here.
         var disabledSecretVars = GetDisabledItems(existing, "vars:secret");
         if (secretVars.Count > 0 || disabledSecretVars.Count > 0)
         {
             var secretBlock = new BruBlock("vars:secret");
             foreach (var v in secretVars)
-                secretBlock.Items.Add(new BruKv(v.Name, v.Value));
+                secretBlock.Items.Add(new BruKv(v.Name, string.Empty));
             foreach (var kv in disabledSecretVars)
                 secretBlock.Items.Add(kv);
             blocks.Add(secretBlock);
@@ -251,6 +376,67 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
     private static string GetEnvFolder(string collectionFolderPath) =>
         Path.Combine(collectionFolderPath, EnvironmentFolderName);
 
+    /// <summary>
+    /// Given the path of an environment file, returns the collection root (two levels up:
+    /// <c>collection/environments/name.bru</c> → <c>collection</c>).
+    /// </summary>
+    private static string GetCollectionFolderPath(string filePath)
+    {
+        var envFolder = Path.GetDirectoryName(Path.GetFullPath(filePath))!;
+        return Path.GetDirectoryName(envFolder)!;
+    }
+
+    /// <summary>Looks up each secret variable's actual value from local storage.</summary>
+    private async Task<IReadOnlyList<EnvironmentVariable>> InjectSecretsAsync(
+        EnvironmentModel model, CancellationToken ct)
+    {
+        if (!model.Variables.Any(v => v.IsSecret))
+            return model.Variables;
+
+        var collectionPath = GetCollectionFolderPath(model.FilePath);
+        var envName = Path.GetFileNameWithoutExtension(model.FilePath);
+
+        var result = new List<EnvironmentVariable>(model.Variables.Count);
+        foreach (var v in model.Variables)
+        {
+            if (!v.IsSecret)
+            {
+                result.Add(v);
+                continue;
+            }
+
+            var stored = await _secrets
+                .GetSecretAsync(collectionPath, envName, v.Name, ct)
+                .ConfigureAwait(false);
+
+            result.Add(new EnvironmentVariable
+            {
+                Name = v.Name,
+                Value = stored ?? string.Empty,
+                VariableType = v.VariableType,
+                IsSecret = true,
+            });
+        }
+        return result;
+    }
+
+    /// <summary>Writes each secret variable's actual value to local storage.</summary>
+    private async Task PersistSecretsAsync(EnvironmentModel environment, CancellationToken ct)
+    {
+        var secretVars = environment.Variables.Where(v => v.IsSecret).ToList();
+        if (secretVars.Count == 0) return;
+
+        var collectionPath = GetCollectionFolderPath(environment.FilePath);
+        var envName = Path.GetFileNameWithoutExtension(environment.FilePath);
+
+        foreach (var v in secretVars)
+        {
+            await _secrets
+                .SetSecretAsync(collectionPath, envName, v.Name, v.Value, ct)
+                .ConfigureAwait(false);
+        }
+    }
+
     // ─── Global environment ──────────────────────────────────────────────────
 
     public async Task<EnvironmentModel> LoadGlobalEnvironmentAsync(
@@ -258,20 +444,53 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
     {
         ArgumentNullException.ThrowIfNull(collectionFolderPath);
 
+        // Virtual path — used as a stable key for routing and secret storage.
+        // The actual file is never written to the Bruno repo.
         var filePath = Path.Combine(GetEnvFolder(collectionFolderPath),
             GlobalEnvironmentFileName + EnvironmentFileExtension);
 
-        if (!File.Exists(filePath))
+        var meta = await _meta.LoadAsync(collectionFolderPath, ct).ConfigureAwait(false);
+        if (meta.GlobalVariables.Count == 0 && meta.GlobalSecretVariableNames.Count == 0)
             return new EnvironmentModel { FilePath = filePath, Name = "Global", Variables = [] };
 
-        return await LoadEnvironmentAsync(filePath, ct).ConfigureAwait(false);
+        var variables = meta.GlobalVariables
+            .Select(v => new EnvironmentVariable { Name = v.Name, Value = v.Value })
+            .Concat(meta.GlobalSecretVariableNames
+                .Select(n => new EnvironmentVariable { Name = n, Value = string.Empty, IsSecret = true }))
+            .ToList();
+
+        var model = new EnvironmentModel { FilePath = filePath, Name = "Global", Variables = variables };
+        return model with { Variables = await InjectSecretsAsync(model, ct).ConfigureAwait(false) };
     }
 
-    public Task SaveGlobalEnvironmentAsync(
+    public async Task SaveGlobalEnvironmentAsync(
         EnvironmentModel globalEnvironment, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(globalEnvironment);
-        return SaveEnvironmentAsync(globalEnvironment, ct);
+
+        // Persist actual secret values to local storage.
+        await PersistSecretsAsync(globalEnvironment, ct).ConfigureAwait(false);
+
+        var collectionPath = GetCollectionFolderPath(globalEnvironment.FilePath);
+        var meta = await _meta.LoadAsync(collectionPath, ct).ConfigureAwait(false);
+
+        var nonSecretVars = globalEnvironment.Variables
+            .Where(v => !v.IsSecret)
+            .Select(v => new BrunoCollectionMeta.GlobalVarEntry { Name = v.Name, Value = v.Value })
+            .ToList();
+        var secretNames = globalEnvironment.Variables
+            .Where(v => v.IsSecret)
+            .Select(v => v.Name)
+            .ToList();
+
+        await _meta.SaveAsync(collectionPath, new BrunoCollectionMeta
+        {
+            EnvironmentOrder = meta.EnvironmentOrder,
+            EnvironmentColors = meta.EnvironmentColors,
+            GlobalVariables = nonSecretVars,
+            GlobalSecretVariableNames = secretNames,
+        }, ct).ConfigureAwait(false);
+        _logger.LogDebug("Saved Bruno global environment for '{Path}'", collectionPath);
     }
 
     private static bool IsGlobalEnvironmentFile(string filePath) =>

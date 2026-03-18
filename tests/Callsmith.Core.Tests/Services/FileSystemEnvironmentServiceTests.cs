@@ -1,8 +1,10 @@
+using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
 using Callsmith.Core.Tests.TestHelpers;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 
 namespace Callsmith.Core.Tests.Services;
 
@@ -12,10 +14,25 @@ namespace Callsmith.Core.Tests.Services;
 /// </summary>
 public sealed class FileSystemEnvironmentServiceTests : IDisposable
 {
-    private readonly FileSystemEnvironmentService _sut =
-        new(NullLogger<FileSystemEnvironmentService>.Instance);
-
     private readonly TempDirectory _temp = new();
+
+    /// <summary>No-op secrets service for tests that do not exercise secret storage.</summary>
+    private static ISecretStorageService NoOpSecrets() => Substitute.For<ISecretStorageService>();
+
+    private FileSystemEnvironmentService Sut(ISecretStorageService? secrets = null) =>
+        new(secrets ?? NoOpSecrets(), NullLogger<FileSystemEnvironmentService>.Instance);
+
+    /// <summary>Returns a real <see cref="FileSystemSecretStorageService"/> backed by a temp dir.</summary>
+    private FileSystemSecretStorageService RealSecrets(string storeDir) =>
+        new(storeDir, NullLogger<FileSystemSecretStorageService>.Instance);
+
+    // Shared instance for existing tests that have no interest in secret storage.
+    private readonly FileSystemEnvironmentService _sut;
+
+    public FileSystemEnvironmentServiceTests()
+    {
+        _sut = Sut();
+    }
 
     public void Dispose() => _temp.Dispose();
 
@@ -263,4 +280,211 @@ public sealed class FileSystemEnvironmentServiceTests : IDisposable
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*Staging*");
     }
+
+    // ─── SaveEnvironmentOrderAsync / ListEnvironmentsAsync (ordered) ─────────
+
+    [Fact]
+    public async Task SaveEnvironmentOrderAsync_WritesOrderFileInEnvFolder()
+    {
+        var collection = _temp.CreateSubDirectory("col");
+        await _sut.CreateEnvironmentAsync(collection, "Prod");
+        await _sut.CreateEnvironmentAsync(collection, "Dev");
+
+        await _sut.SaveEnvironmentOrderAsync(collection, ["Prod.env.callsmith", "Dev.env.callsmith"]);
+
+        var orderFile = Path.Combine(collection,
+            FileSystemCollectionService.EnvironmentFolderName,
+            FileSystemEnvironmentService.OrderFileName);
+        File.Exists(orderFile).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SaveEnvironmentOrderAsync_EmptyList_DeletesOrderFile()
+    {
+        var collection = _temp.CreateSubDirectory("col");
+        await _sut.CreateEnvironmentAsync(collection, "Dev");
+        await _sut.SaveEnvironmentOrderAsync(collection, ["Dev.env.callsmith"]);
+
+        await _sut.SaveEnvironmentOrderAsync(collection, []);
+
+        var orderFile = Path.Combine(collection,
+            FileSystemCollectionService.EnvironmentFolderName,
+            FileSystemEnvironmentService.OrderFileName);
+        File.Exists(orderFile).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ListEnvironmentsAsync_RespectsOrderFile()
+    {
+        var collection = _temp.CreateSubDirectory("col");
+        await _sut.CreateEnvironmentAsync(collection, "Alpha");
+        await _sut.CreateEnvironmentAsync(collection, "Beta");
+        await _sut.CreateEnvironmentAsync(collection, "Gamma");
+
+        // Save reverse alphabetical order
+        await _sut.SaveEnvironmentOrderAsync(collection,
+            ["Gamma.env.callsmith", "Beta.env.callsmith", "Alpha.env.callsmith"]);
+
+        var result = await _sut.ListEnvironmentsAsync(collection);
+
+        result.Select(e => e.Name).Should().ContainInOrder("Gamma", "Beta", "Alpha");
+    }
+
+    [Fact]
+    public async Task ListEnvironmentsAsync_AppendsUnorderedEnvsAtEnd()
+    {
+        var collection = _temp.CreateSubDirectory("col");
+        await _sut.CreateEnvironmentAsync(collection, "Alpha");
+        await _sut.CreateEnvironmentAsync(collection, "Beta");
+        await _sut.CreateEnvironmentAsync(collection, "Gamma");
+
+        // Order only specifies Alpha and Gamma; Beta (alphabetically between them) comes last
+        await _sut.SaveEnvironmentOrderAsync(collection,
+            ["Alpha.env.callsmith", "Gamma.env.callsmith"]);
+
+        var result = await _sut.ListEnvironmentsAsync(collection);
+
+        result.Select(e => e.Name).Should().ContainInOrder("Alpha", "Gamma", "Beta");
+    }
+
+    // ─── Secret variable behaviour ───────────────────────────────────────────
+
+    [Fact]
+    public async Task SaveEnvironmentAsync_SecretValue_IsNotWrittenToFile()
+    {
+        var secretsDir = _temp.CreateSubDirectory("secrets");
+        var secrets = RealSecrets(secretsDir);
+        var sut = Sut(secrets);
+        var collection = _temp.CreateSubDirectory("col-secret-file");
+        var env = await sut.CreateEnvironmentAsync(collection, "Dev");
+
+        var withSecret = env with
+        {
+            Variables =
+            [
+                new() { Name = "api-key", Value = "super-secret", IsSecret = true },
+                new() { Name = "base-url", Value = "https://example.com" },
+            ],
+        };
+        await sut.SaveEnvironmentAsync(withSecret);
+
+        var fileJson = await File.ReadAllTextAsync(env.FilePath);
+        fileJson.Should().NotContain("super-secret");
+        fileJson.Should().Contain("api-key");   // variable name is recorded
+        fileJson.Should().Contain("base-url");  // non-secret value is present
+        fileJson.Should().Contain("https://example.com");
+    }
+
+    [Fact]
+    public async Task SaveAndLoadEnvironmentAsync_SecretValue_IsRoundTrippedViaSecretStorage()
+    {
+        var secretsDir = _temp.CreateSubDirectory("secrets");
+        var secrets = RealSecrets(secretsDir);
+        var sut = Sut(secrets);
+        var collection = _temp.CreateSubDirectory("col-secret-rt");
+        var env = await sut.CreateEnvironmentAsync(collection, "Dev");
+
+        var withSecret = env with
+        {
+            Variables =
+            [
+                new() { Name = "token", Value = "my-token-value", IsSecret = true },
+            ],
+        };
+        await sut.SaveEnvironmentAsync(withSecret);
+
+        var loaded = await sut.LoadEnvironmentAsync(env.FilePath);
+
+        loaded.Variables.Should().HaveCount(1);
+        var v = loaded.Variables[0];
+        v.IsSecret.Should().BeTrue();
+        v.Value.Should().Be("my-token-value");
+    }
+
+    [Fact]
+    public async Task DeleteEnvironmentAsync_RemovesSecretsFromStorage()
+    {
+        var secretsDir = _temp.CreateSubDirectory("secrets");
+        var secrets = RealSecrets(secretsDir);
+        var sut = Sut(secrets);
+        var collection = _temp.CreateSubDirectory("col-secret-del");
+        var env = await sut.CreateEnvironmentAsync(collection, "Dev");
+
+        var withSecret = env with
+        {
+            Variables = [new() { Name = "token", Value = "to-delete", IsSecret = true }],
+        };
+        await sut.SaveEnvironmentAsync(withSecret);
+
+        await sut.DeleteEnvironmentAsync(env.FilePath);
+
+        // The environment name key in secret storage is the file stem ("Dev").
+        var remaining = await secrets.GetSecretAsync(collection, "Dev", "token");
+        remaining.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RenameEnvironmentAsync_SecretsAccessibleUnderNewName()
+    {
+        var secretsDir = _temp.CreateSubDirectory("secrets");
+        var secrets = RealSecrets(secretsDir);
+        var sut = Sut(secrets);
+        var collection = _temp.CreateSubDirectory("col-secret-ren");
+        var env = await sut.CreateEnvironmentAsync(collection, "OldName");
+
+        var withSecret = env with
+        {
+            Variables = [new() { Name = "token", Value = "rename-test-value", IsSecret = true }],
+        };
+        await sut.SaveEnvironmentAsync(withSecret);
+
+        var renamed = await sut.RenameEnvironmentAsync(env.FilePath, "NewName");
+
+        var loaded = await sut.LoadEnvironmentAsync(renamed.FilePath);
+        loaded.Variables.Should().HaveCount(1);
+        loaded.Variables[0].Value.Should().Be("rename-test-value");
+    }
+
+    [Fact]
+    public async Task RenameEnvironmentAsync_OldSecretKeyIsRemoved()
+    {
+        var secretsDir = _temp.CreateSubDirectory("secrets");
+        var secrets = RealSecrets(secretsDir);
+        var sut = Sut(secrets);
+        var collection = _temp.CreateSubDirectory("col-secret-ren-cleanup");
+        var env = await sut.CreateEnvironmentAsync(collection, "Before");
+
+        await sut.SaveEnvironmentAsync(env with
+        {
+            Variables = [new() { Name = "token", Value = "value", IsSecret = true }],
+        });
+
+        await sut.RenameEnvironmentAsync(env.FilePath, "After");
+
+        var old = await secrets.GetSecretAsync(collection, "Before", "token");
+        old.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CloneEnvironmentAsync_DoesNotCopySecrets()
+    {
+        var secretsDir = _temp.CreateSubDirectory("secrets");
+        var secrets = RealSecrets(secretsDir);
+        var sut = Sut(secrets);
+        var collection = _temp.CreateSubDirectory("col-secret-clone");
+        var env = await sut.CreateEnvironmentAsync(collection, "Source");
+
+        await sut.SaveEnvironmentAsync(env with
+        {
+            Variables = [new() { Name = "token", Value = "secret-val", IsSecret = true }],
+        });
+
+        var cloned = await sut.CloneEnvironmentAsync(env.FilePath, "Clone");
+
+        cloned.Variables.Should().HaveCount(1);
+        var v = cloned.Variables[0];
+        v.IsSecret.Should().BeTrue();
+        v.Value.Should().BeEmpty("clones must not inherit the source's secret values");
+    }
 }
+

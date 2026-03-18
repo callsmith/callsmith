@@ -1,8 +1,11 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using Callsmith.Core.Models;
 using Callsmith.Desktop.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using DynamicSegmentCallback = System.Func<Callsmith.Core.Models.DynamicValueSegment?, System.Threading.Tasks.Task<Callsmith.Core.Models.DynamicValueSegment?>>;
+using MockSegmentCallback = System.Func<Callsmith.Core.Models.MockDataSegment?, System.Threading.Tasks.Task<Callsmith.Core.Models.MockDataSegment?>>;
 
 namespace Callsmith.Desktop.ViewModels;
 
@@ -25,9 +28,35 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
     /// <summary>Whether row enabled/disabled checkboxes are shown.</summary>
     [ObservableProperty]
     private bool _showEnabledToggle = true;
+    /// <summary>
+    /// Whether the key column renders as a pill-aware field.
+    /// Set to true for headers and query params; false (default) for path params and form body.
+    /// </summary>
+    [ObservableProperty]
+    private bool _showKeyPills = false;
 
     /// <summary>Raised whenever the collection or any item's key/value/enabled state changes.</summary>
     public event EventHandler? Changed;
+
+    // ─── Dialog callbacks for segment editing ────────────────────────────────
+
+    private DynamicSegmentCallback? _editDynamicSegment;
+    private MockSegmentCallback? _editMockData;
+
+    /// <summary>
+    /// Wires up the dialog callbacks used by each row's <see cref="KeyValueItemViewModel.ValueField"/>
+    /// for editing dynamic value segments and mock data segments.
+    /// Call this once from the parent ViewModel after the dialogs are available.
+    /// </summary>
+    public void SetDialogCallbacks(DynamicSegmentCallback editDynamicSegment, MockSegmentCallback editMockData)
+    {
+        _editDynamicSegment = editDynamicSegment;
+        _editMockData = editMockData;
+
+        // Update any already-existing rows (e.g. loaded before callbacks were set).
+        foreach (var item in Items)
+            item.SetDialogCallbacks(editDynamicSegment, editMockData);
+    }
 
     public KeyValueEditorViewModel()
     {
@@ -56,12 +85,52 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
             Items.Add(CreateItem(k, v));
     }
 
+    /// <summary>
+    /// Replaces all current items with those from an ordered list of pairs.
+    /// Duplicate keys are preserved. Properly manages PropertyChanged subscriptions.
+    /// </summary>
+    public void LoadFrom(IReadOnlyList<KeyValuePair<string, string>> pairs)
+    {
+        foreach (var item in Items)
+            item.PropertyChanged -= OnItemPropertyChanged;
+
+        Items.Clear();
+
+        foreach (var (k, v) in pairs)
+            Items.Add(CreateItem(k, v));
+    }
+
+    /// <summary>
+    /// Replaces all current items with those from an ordered list of <see cref="RequestKv"/> entries.
+    /// Enabled state is preserved per item. Duplicate keys are preserved.
+    /// </summary>
+    public void LoadFrom(IReadOnlyList<RequestKv> items)
+    {
+        foreach (var item in Items)
+            item.PropertyChanged -= OnItemPropertyChanged;
+
+        Items.Clear();
+
+        foreach (var kv in items)
+            Items.Add(CreateItem(kv.Key, kv.Value, kv.IsEnabled));
+    }
+
     /// <summary>Returns all enabled rows that have a non-empty key.</summary>
     public IEnumerable<KeyValuePair<string, string>> GetEnabledPairs()
         => Items
             .Where(i => !string.IsNullOrWhiteSpace(i.Key))
             .Where(i => !ShowEnabledToggle || i.IsEnabled)
             .Select(i => new KeyValuePair<string, string>(i.Key, i.Value));
+
+    /// <summary>
+    /// Returns all rows (enabled and disabled) that have a non-empty key as <see cref="RequestKv"/>.
+    /// Use this when saving, so disabled items are preserved in the persisted request.
+    /// </summary>
+    public IReadOnlyList<RequestKv> GetAllKv()
+        => Items
+            .Where(i => !string.IsNullOrWhiteSpace(i.Key))
+            .Select(i => new RequestKv(i.Key, i.Value, !ShowEnabledToggle || i.IsEnabled))
+            .ToList();
 
     private void OnItemsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
@@ -106,6 +175,12 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
             item.ShowEnabledToggle = value;
     }
 
+    partial void OnShowKeyPillsChanged(bool value)
+    {
+        foreach (var item in Items)
+            item.ShowKeyPills = value;
+    }
+
     // ─── Environment variable suggestions ───────────────────────────────────
 
     private IReadOnlyList<EnvVarSuggestion> _suggestions = [];
@@ -121,13 +196,18 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
             item.SuggestionNames = suggestions;
     }
 
-    private KeyValueItemViewModel CreateItem(string key, string value) =>
-        new(RemoveItem)
+    private KeyValueItemViewModel CreateItem(string key, string value, bool isEnabled = true)
+    {
+        var item = new KeyValueItemViewModel(RemoveItem, _editDynamicSegment, _editMockData)
         {
-            Key = key,
-            Value = value,
+            IsEnabled = isEnabled,
             ShowDeleteButton = ShowDeleteButton,
             ShowEnabledToggle = ShowEnabledToggle,
+            ShowKeyPills = ShowKeyPills,
             SuggestionNames = _suggestions,
         };
+        item.LoadKey(key);
+        item.LoadValue(value);
+        return item;
+    }
 }

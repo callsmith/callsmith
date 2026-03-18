@@ -26,19 +26,28 @@ public sealed class EnvironmentEditorViewModelTests
     private static EnvironmentEditorViewModel BuildSut(
         IEnvironmentService? service = null,
         IMessenger? messenger = null,
-        ICollectionPreferencesService? preferences = null)
+        ICollectionService? collectionService = null,
+        IDynamicVariableEvaluator? dynamicEvaluator = null)
     {
         service ??= Substitute.For<IEnvironmentService>();
         // Always provide a default global env response so LoadEnvironmentsAsync doesn't throw.
         service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
                .Returns(new EnvironmentModel { FilePath = GlobalEnvPath, Name = "Global", Variables = [] });
         messenger ??= new WeakReferenceMessenger();
-        preferences ??= Substitute.For<ICollectionPreferencesService>();
-        preferences.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-                   .Returns(new Callsmith.Core.Models.CollectionPreferences());
+        collectionService ??= Substitute.For<ICollectionService>();
+        collectionService.OpenFolderAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+                         .Returns(new Callsmith.Core.Models.CollectionFolder
+                         {
+                             Name = "root",
+                             FolderPath = "/",
+                             Requests = [],
+                             SubFolders = [],
+                         });
+        dynamicEvaluator ??= Substitute.For<IDynamicVariableEvaluator>();
         return new EnvironmentEditorViewModel(
             service,
-            preferences,
+            collectionService,
+            dynamicEvaluator,
             messenger,
             NullLogger<EnvironmentEditorViewModel>.Instance);
     }
@@ -579,5 +588,87 @@ public sealed class EnvironmentEditorViewModelTests
         await sut.SaveSelectedCommand.ExecuteAsync(null);
 
         received.Should().NotBeNull();
+    }
+
+    // ─── Revert ───────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task RevertSelected_ResetsVariablesToLastSavedState()
+    {
+        var original = MakeModel("dev") with
+        {
+            Variables = [new EnvironmentVariable { Name = "BASE_URL", Value = "https://api.dev" }],
+        };
+
+        var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([original]);
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        var devEnv = sut.Environments.First(e => !e.IsGlobal);
+        sut.SelectedEnvironment = devEnv;
+
+        // Make a dirty change: add a second variable.
+        devEnv.AddVariableCommand.Execute(null);
+        devEnv.IsDirty.Should().BeTrue();
+        devEnv.Variables.Should().HaveCount(2);
+
+        // Revert.
+        sut.RevertSelectedCommand.Execute(null);
+
+        devEnv.IsDirty.Should().BeFalse();
+        devEnv.Variables.Should().ContainSingle(v => v.Name == "BASE_URL");
+    }
+
+    [Fact]
+    public async Task RevertSelected_AfterSave_RevertsToPreviouslySavedState()
+    {
+        var original = MakeModel("dev") with
+        {
+            Variables = [new EnvironmentVariable { Name = "BASE_URL", Value = "https://api.dev" }],
+        };
+        var updated = original with
+        {
+            Variables = [new EnvironmentVariable { Name = "BASE_URL", Value = "https://api.staging" }],
+        };
+
+        var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([original]);
+        service.SaveEnvironmentAsync(Arg.Any<EnvironmentModel>(), Arg.Any<CancellationToken>())
+               .Returns(Task.CompletedTask);
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        var devEnv = sut.Environments.First(e => !e.IsGlobal);
+        sut.SelectedEnvironment = devEnv;
+
+        // Mutate and save.
+        devEnv.Variables[0].Value = "https://api.staging";
+        devEnv.Variables[0].Name = "BASE_URL"; // force dirty
+        await sut.SaveSelectedCommand.ExecuteAsync(null);
+        devEnv.IsDirty.Should().BeFalse();
+
+        // Make another change.
+        devEnv.AddVariableCommand.Execute(null);
+        devEnv.IsDirty.Should().BeTrue();
+
+        // Revert should go back to the saved state (1 variable with staging URL),
+        // not the original loaded state.
+        sut.RevertSelectedCommand.Execute(null);
+
+        devEnv.IsDirty.Should().BeFalse();
+        devEnv.Variables.Should().ContainSingle(v => v.Name == "BASE_URL");
     }
 }

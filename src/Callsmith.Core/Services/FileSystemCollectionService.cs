@@ -37,12 +37,23 @@ public sealed class FileSystemCollectionService : ICollectionService
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
+    /// <summary>Reserved namespace used inside <see cref="ISecretStorageService"/> for Basic auth passwords.</summary>
+    private const string AuthSecretsNamespace = "__auth__";
+
+    private readonly ISecretStorageService _secrets;
     private readonly ILogger<FileSystemCollectionService> _logger;
 
-    /// <summary>Initialises the service with the provided logger.</summary>
-    public FileSystemCollectionService(ILogger<FileSystemCollectionService> logger)
+    // Populated by OpenFolderAsync; used to key auth secrets per-collection.
+    private string _currentRoot = string.Empty;
+
+    /// <summary>Initialises the service with the provided dependencies.</summary>
+    public FileSystemCollectionService(
+        ISecretStorageService secrets,
+        ILogger<FileSystemCollectionService> logger)
     {
+        ArgumentNullException.ThrowIfNull(secrets);
         ArgumentNullException.ThrowIfNull(logger);
+        _secrets = secrets;
         _logger = logger;
     }
 
@@ -56,6 +67,7 @@ public sealed class FileSystemCollectionService : ICollectionService
 
         ct.ThrowIfCancellationRequested();
 
+        _currentRoot = Path.GetFullPath(folderPath);
         var folder = await Task.Run(() => ReadFolder(folderPath), ct);
         _logger.LogDebug("Opened collection at '{FolderPath}'", folderPath);
 
@@ -76,7 +88,18 @@ public sealed class FileSystemCollectionService : ICollectionService
 
         _logger.LogDebug("Loaded request from '{FilePath}'", filePath);
 
-        return DtoToRequest(dto, filePath);
+        string? basicAuthPassword = null;
+        if ((dto.AuthType ?? AuthConfig.AuthTypes.None) == AuthConfig.AuthTypes.Basic
+            && !string.IsNullOrEmpty(_currentRoot))
+        {
+            // Prefer the secret-stored value; fall back to whatever is in the file (migration path).
+            var stored = await _secrets
+                .GetSecretAsync(_currentRoot, AuthSecretsNamespace, RequestKey(filePath), ct)
+                .ConfigureAwait(false);
+            basicAuthPassword = stored ?? dto.AuthPassword;
+        }
+
+        return DtoToRequest(dto, filePath, basicAuthPassword);
     }
 
     /// <inheritdoc/>
@@ -88,6 +111,19 @@ public sealed class FileSystemCollectionService : ICollectionService
             ?? throw new InvalidOperationException($"Cannot determine directory for path '{request.FilePath}'");
 
         Directory.CreateDirectory(directory);
+
+        // Persist Basic auth password locally so it is never written into the collection file.
+        if (request.Auth.AuthType == AuthConfig.AuthTypes.Basic && !string.IsNullOrEmpty(_currentRoot))
+        {
+            await _secrets
+                .SetSecretAsync(
+                    _currentRoot,
+                    AuthSecretsNamespace,
+                    RequestKey(request.FilePath),
+                    request.Auth.Password ?? string.Empty,
+                    ct)
+                .ConfigureAwait(false);
+        }
 
         var dto = RequestToDto(request);
         var json = JsonSerializer.Serialize(dto, JsonOptions);
@@ -149,6 +185,7 @@ public sealed class FileSystemCollectionService : ICollectionService
             QueryParams = existing.QueryParams,
             BodyType = existing.BodyType,
             Body = existing.Body,
+            FormParams = existing.FormParams,
             Auth = existing.Auth,
         };
 
@@ -179,9 +216,9 @@ public sealed class FileSystemCollectionService : ICollectionService
             Name = name,
             Method = System.Net.Http.HttpMethod.Get,
             Url = string.Empty,
-            Headers = new Dictionary<string, string>(),
+            Headers = [],
             PathParams = new Dictionary<string, string>(),
-            QueryParams = new Dictionary<string, string>(),
+            QueryParams = [],
             BodyType = CollectionRequest.BodyTypes.None,
             Auth = new AuthConfig(),
         };
@@ -356,26 +393,53 @@ public sealed class FileSystemCollectionService : ICollectionService
     // Private — mapping between domain model and on-disk DTO
     // -------------------------------------------------------------------------
 
-    private static CollectionRequest DtoToRequest(RequestFileDto dto, string filePath)
+    private static CollectionRequest DtoToRequest(RequestFileDto dto, string filePath, string? basicAuthPassword = null)
     {
         // Separate base URL from query params.
         // New files store them separately; old files have the full URL in the url field.
         var rawUrl = dto.Url ?? string.Empty;
         string baseUrl;
-        Dictionary<string, string> queryParams;
+        IReadOnlyList<RequestKv> queryParams;
 
-        if (dto.QueryParams is not null)
+        if (dto.QueryParamEntries is not null)
         {
+            // Current format: ordered list preserving duplicates and enabled state.
             baseUrl = rawUrl;
-            queryParams = dto.QueryParams;
+            queryParams = dto.QueryParamEntries
+                .Select(e => new RequestKv(e.Name, e.Value, e.Enabled))
+                .ToList();
+        }
+        else if (dto.QueryParams is not null)
+        {
+            // Legacy format v2: separate dictionary field, all entries enabled.
+            baseUrl = rawUrl;
+            queryParams = dto.QueryParams
+                .Select(kv => new RequestKv(kv.Key, kv.Value))
+                .ToList();
         }
         else
         {
-            // Backwards compat: derive query params by parsing the legacy URL field.
+            // Legacy format v1: derive query params by parsing the URL field, all enabled.
             baseUrl = rawUrl.Contains('?') ? rawUrl[..rawUrl.IndexOf('?')] : rawUrl;
-            var parsed = QueryStringHelper.ParseQueryParams(rawUrl);
-            queryParams = new Dictionary<string, string>(parsed);
+            queryParams = QueryStringHelper.ParseQueryParams(rawUrl)
+                .Select(kv => new RequestKv(kv.Key, kv.Value))
+                .ToList();
         }
+
+        // Headers: current format uses HeaderEntries (with enabled state); legacy uses Headers dict.
+        IReadOnlyList<RequestKv> headers;
+        if (dto.HeaderEntries is not null)
+            headers = dto.HeaderEntries.Select(e => new RequestKv(e.Name, e.Value, e.Enabled)).ToList();
+        else if (dto.Headers is not null)
+            headers = dto.Headers.Select(kv => new RequestKv(kv.Key, kv.Value)).ToList();
+        else
+            headers = [];
+
+        var formParams = dto.FormParamEntries is not null
+            ? dto.FormParamEntries
+                .Select(e => new KeyValuePair<string, string>(e.Name, e.Value))
+                .ToList()
+            : (IReadOnlyList<KeyValuePair<string, string>>)[];
 
         return new CollectionRequest
         {
@@ -384,17 +448,18 @@ public sealed class FileSystemCollectionService : ICollectionService
             Method = new HttpMethod(dto.Method ?? HttpMethod.Get.Method),
             Url = baseUrl,
             Description = dto.Description,
-            Headers = dto.Headers ?? new Dictionary<string, string>(),
+            Headers = headers,
             PathParams = dto.PathParams ?? new Dictionary<string, string>(),
             QueryParams = queryParams,
             BodyType = dto.BodyType ?? CollectionRequest.BodyTypes.None,
             Body = dto.Body,
+            FormParams = formParams,
             Auth = new AuthConfig
             {
                 AuthType = dto.AuthType ?? AuthConfig.AuthTypes.None,
                 Token = dto.AuthToken,
                 Username = dto.AuthUsername,
-                Password = dto.AuthPassword,
+                Password = basicAuthPassword ?? dto.AuthPassword,
                 ApiKeyName = dto.AuthApiKeyName,
                 ApiKeyValue = dto.AuthApiKeyValue,
                 ApiKeyIn = dto.AuthApiKeyIn ?? AuthConfig.ApiKeyLocations.Header,
@@ -402,20 +467,36 @@ public sealed class FileSystemCollectionService : ICollectionService
         };
     }
 
+    /// <summary>
+    /// Returns a stable, normalised key for a request file relative to the current collection root.
+    /// Used to key Basic auth passwords in local secret storage.
+    /// </summary>
+    private string RequestKey(string filePath) =>
+        Path.GetRelativePath(_currentRoot, Path.GetFullPath(filePath)).Replace('\\', '/');
+
     private static RequestFileDto RequestToDto(CollectionRequest request) =>
         new()
         {
             Method = request.Method.Method,
             Url = request.Url,
             Description = request.Description,
-            Headers = request.Headers.Count > 0
-                ? request.Headers.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
+            HeaderEntries = request.Headers.Count > 0
+                ? request.Headers
+                    .Select(h => new HeaderEntryDto { Name = h.Key, Value = h.Value, Enabled = h.IsEnabled })
+                    .ToList()
                 : null,
             PathParams = request.PathParams.Count > 0
                 ? request.PathParams.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
                 : null,
-            QueryParams = request.QueryParams.Count > 0
-                ? request.QueryParams.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
+            QueryParamEntries = request.QueryParams.Count > 0
+                ? request.QueryParams
+                    .Select(p => new QueryParamEntryDto { Name = p.Key, Value = p.Value, Enabled = p.IsEnabled })
+                    .ToList()
+                : null,
+            FormParamEntries = request.FormParams.Count > 0
+                ? request.FormParams
+                    .Select(kvp => new QueryParamEntryDto { Name = kvp.Key, Value = kvp.Value })
+                    .ToList()
                 : null,
             BodyType = request.BodyType == CollectionRequest.BodyTypes.None
                 ? null
@@ -426,7 +507,10 @@ public sealed class FileSystemCollectionService : ICollectionService
                 : request.Auth.AuthType,
             AuthToken = request.Auth.Token,
             AuthUsername = request.Auth.Username,
-            AuthPassword = request.Auth.Password,
+            // Basic auth passwords are stored in local secret storage, never in the file.
+            AuthPassword = request.Auth.AuthType == AuthConfig.AuthTypes.Basic
+                ? null
+                : request.Auth.Password,
             AuthApiKeyName = request.Auth.ApiKeyName,
             AuthApiKeyValue = request.Auth.ApiKeyValue,
             AuthApiKeyIn = request.Auth.ApiKeyIn == AuthConfig.ApiKeyLocations.Header
@@ -447,9 +531,16 @@ public sealed class FileSystemCollectionService : ICollectionService
         public string? Method { get; set; }
         public string? Url { get; set; }
         public string? Description { get; set; }
+        /// <summary>Current format: ordered list with enabled state.</summary>
+        public List<HeaderEntryDto>? HeaderEntries { get; set; }
+        /// <summary>Legacy format (v2): read-only for backwards compatibility — no enabled state.</summary>
         public Dictionary<string, string>? Headers { get; set; }
         public Dictionary<string, string>? PathParams { get; set; }
+        /// <summary>Current format: ordered list preserving duplicate keys and enabled state.</summary>
+        public List<QueryParamEntryDto>? QueryParamEntries { get; set; }
+        /// <summary>Legacy format (v2): read-only for backwards compatibility.</summary>
         public Dictionary<string, string>? QueryParams { get; set; }
+        public List<QueryParamEntryDto>? FormParamEntries { get; set; }
         public string? BodyType { get; set; }
         public string? Body { get; set; }
         public string? AuthType { get; set; }
@@ -459,5 +550,20 @@ public sealed class FileSystemCollectionService : ICollectionService
         public string? AuthApiKeyName { get; set; }
         public string? AuthApiKeyValue { get; set; }
         public string? AuthApiKeyIn { get; set; }
+    }
+
+    private sealed class HeaderEntryDto
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+        public bool Enabled { get; set; } = true;
+    }
+
+    private sealed class QueryParamEntryDto
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+        /// <summary>Defaults to true for backwards compatibility with files that lack this field.</summary>
+        public bool Enabled { get; set; } = true;
     }
 }

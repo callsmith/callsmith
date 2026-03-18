@@ -125,16 +125,35 @@
 
           <TabItem Header="Body">
             <Grid RowDefinitions="Auto,*" Margin="0,8">
-              <ComboBox Grid.Row="0"
-                        ItemsSource="{Binding BodyTypes}" SelectedItem="{Binding SelectedBodyType}"
-                        MinWidth="160" Foreground="#d4d4d4" Background="#3c3c3c"
-                        BorderBrush="#555" Margin="0,0,0,8"/>
-              <TextBox Grid.Row="1"
-                       Text="{Binding Body}" IsVisible="{Binding ShowBodyEditor}"
-                       AcceptsReturn="True" TextWrapping="Wrap"
-                       FontFamily="Consolas,Menlo,monospace" FontSize="12"
-                       Foreground="#d4d4d4" Background="#1e1e1e" BorderBrush="#444" Padding="8"
-                       controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
+              <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                <ComboBox ItemsSource="{Binding BodyTypes}" SelectedItem="{Binding SelectedBodyType}"
+                          MinWidth="160" Foreground="#d4d4d4" Background="#3c3c3c"
+                          BorderBrush="#555"/>
+                <Button Content="Format" Command="{Binding FormatBodyCommand}"
+                        IsVisible="{Binding IsBodyJson}"
+                        Background="Transparent" Foreground="#4ec9b0" BorderThickness="0"
+                        Padding="0" FontSize="12" Cursor="Hand"
+                        VerticalAlignment="Center"
+                        ToolTip.Tip="Pretty-print the JSON body"/>
+                <Button Content="+ Dynamic Value" Command="{Binding InsertDynamicValueToBodyCommand}"
+                        IsVisible="{Binding ShowTextBodyEditor}"
+                        Background="Transparent" Foreground="#4ec9b0" BorderThickness="0"
+                        Padding="0" FontSize="12" Cursor="Hand"
+                        VerticalAlignment="Center"
+                        ToolTip.Tip="Insert a dynamic response-body reference at the cursor"/>
+                <Button Content="+ Mock Data" Command="{Binding InsertMockDataToBodyCommand}"
+                        IsVisible="{Binding ShowTextBodyEditor}"
+                        Background="Transparent" Foreground="#c586c0" BorderThickness="0"
+                        Padding="0" FontSize="12" Cursor="Hand"
+                        VerticalAlignment="Center"
+                        ToolTip.Tip="Insert a mock-data token at the cursor"/>
+              </StackPanel>
+              <controls:SyntaxEditor x:Name="BodyEditor" Grid.Row="1"
+                       Text="{Binding Body}" Language="{Binding BodyLanguage}"
+                       IsVisible="{Binding ShowTextBodyEditor}"/>
+              <Panel Grid.Row="1" IsVisible="{Binding ShowFormBodyEditor}">
+                <views:KeyValueEditorView DataContext="{Binding FormParams}"/>
+              </Panel>
               <TextBlock Grid.Row="1" IsVisible="{Binding !ShowBodyEditor}"
                          Text="No body" Foreground="#888" FontSize="12"
                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -148,29 +167,395 @@
                           MinWidth="160" Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"/>
                 <StackPanel IsVisible="{Binding IsAuthBearer}" Spacing="6">
                   <TextBlock Text="Token" Foreground="#888" FontSize="11"/>
-                  <TextBox Text="{Binding AuthToken}" Watermark="Enter bearer token..."
+                  <!-- Plain input when no segments -->
+                  <TextBox Text="{Binding AuthTokenField.Text}"
+                           Watermark="Enter bearer token..."
                            Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"
                            Padding="8,6" FontFamily="Consolas,Menlo,monospace"
-                           controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
+                           IsVisible="{Binding AuthTokenField.ShowPlainInput}"
+                           controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}">
+                    <TextBox.ContextMenu>
+                      <ContextMenu>
+                        <MenuItem Header="Dynamic Value…" Command="{Binding AuthTokenField.AddDynamicValueCommand}"/>
+                        <MenuItem Header="Mock Data…"     Command="{Binding AuthTokenField.AddMockDataCommand}"/>
+                      </ContextMenu>
+                    </TextBox.ContextMenu>
+                  </TextBox>
+                  <!-- Pill view when segments are present -->
+                  <Border Background="#3c3c3c" BorderBrush="#4ec9b0" BorderThickness="1"
+                          CornerRadius="3" Padding="4,2" MinHeight="32"
+                          IsVisible="{Binding AuthTokenField.HasSegments}">
+                    <Border.ContextMenu>
+                      <ContextMenu>
+                        <MenuItem Header="Dynamic Value…" Command="{Binding AuthTokenField.AddDynamicValueCommand}"/>
+                        <MenuItem Header="Mock Data…"     Command="{Binding AuthTokenField.AddMockDataCommand}"/>
+                      </ContextMenu>
+                    </Border.ContextMenu>
+                    <Grid ColumnDefinitions="Auto,*">
+                      <ItemsControl Grid.Column="0" ItemsSource="{Binding AuthTokenField.DisplaySegments}">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:SegmentedValueFieldViewModel+SegmentDisplayItem">
+                            <StackPanel Orientation="Horizontal">
+                              <TextBox Text="{Binding StaticText, Mode=TwoWay}" IsVisible="{Binding IsStatic}"
+                                       Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
+                                       VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"/>
+                              <Border Background="#1a3a2a" BorderBrush="#2a6a4a" BorderThickness="1"
+                                      CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
+                                      IsVisible="{Binding IsDynamic}" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                  <Button Content="{Binding PillLabel}"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthTokenField.EditDynamicSegmentCommand}"
+                                          CommandParameter="{Binding DynamicSegment}"
+                                          Background="Transparent" Foreground="#4ec9b0" BorderThickness="0"
+                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                  <Button Content="×"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthTokenField.RemoveSegmentCommand}"
+                                          CommandParameter="{Binding RawSegment}"
+                                          Background="Transparent" Foreground="#888" BorderThickness="0"
+                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                </StackPanel>
+                              </Border>
+                              <Border Background="#2a1a3a" BorderBrush="#6a2a9a" BorderThickness="1"
+                                      CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
+                                      IsVisible="{Binding IsMockData}" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                  <Button Content="{Binding PillLabel}"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthTokenField.EditMockSegmentCommand}"
+                                          CommandParameter="{Binding MockDataSegment}"
+                                          Background="Transparent" Foreground="#c586c0" BorderThickness="0"
+                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                  <Button Content="×"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthTokenField.RemoveSegmentCommand}"
+                                          CommandParameter="{Binding RawSegment}"
+                                          Background="Transparent" Foreground="#888" BorderThickness="0"
+                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                </StackPanel>
+                              </Border>
+                            </StackPanel>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <TextBox Grid.Column="1" IsVisible="{Binding AuthTokenField.HasTrailingInput}"
+                               Text="{Binding AuthTokenField.TrailingText, Mode=TwoWay}"
+                               Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
+                               Background="Transparent" BorderThickness="0" Padding="2,1" HorizontalAlignment="Stretch"/>
+                    </Grid>
+                  </Border>
                 </StackPanel>
                 <StackPanel IsVisible="{Binding IsAuthBasic}" Spacing="6">
                   <TextBlock Text="Username" Foreground="#888" FontSize="11"/>
-                  <TextBox Text="{Binding AuthUsername}"
-                           Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555" Padding="8,6"/>
+                  <TextBox Text="{Binding AuthUsernameField.Text}" Watermark="username"
+                           Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"
+                           Padding="8,6" FontFamily="Consolas,Menlo,monospace"
+                           IsVisible="{Binding AuthUsernameField.ShowPlainInput}"
+                           controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}">
+                    <TextBox.ContextMenu>
+                      <ContextMenu>
+                        <MenuItem Header="Dynamic Value…" Command="{Binding AuthUsernameField.AddDynamicValueCommand}"/>
+                        <MenuItem Header="Mock Data…"     Command="{Binding AuthUsernameField.AddMockDataCommand}"/>
+                      </ContextMenu>
+                    </TextBox.ContextMenu>
+                  </TextBox>
+                  <Border Background="#3c3c3c" BorderBrush="#4ec9b0" BorderThickness="1"
+                          CornerRadius="3" Padding="4,2" MinHeight="32"
+                          IsVisible="{Binding AuthUsernameField.HasSegments}">
+                    <Border.ContextMenu>
+                      <ContextMenu>
+                        <MenuItem Header="Dynamic Value…" Command="{Binding AuthUsernameField.AddDynamicValueCommand}"/>
+                        <MenuItem Header="Mock Data…"     Command="{Binding AuthUsernameField.AddMockDataCommand}"/>
+                      </ContextMenu>
+                    </Border.ContextMenu>
+                    <Grid ColumnDefinitions="Auto,*">
+                      <ItemsControl Grid.Column="0" ItemsSource="{Binding AuthUsernameField.DisplaySegments}">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:SegmentedValueFieldViewModel+SegmentDisplayItem">
+                            <StackPanel Orientation="Horizontal">
+                              <TextBox Text="{Binding StaticText, Mode=TwoWay}" IsVisible="{Binding IsStatic}"
+                                       Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
+                                       VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"/>
+                              <Border Background="#1a3a2a" BorderBrush="#2a6a4a" BorderThickness="1"
+                                      CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
+                                      IsVisible="{Binding IsDynamic}" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                  <Button Content="{Binding PillLabel}"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthUsernameField.EditDynamicSegmentCommand}"
+                                          CommandParameter="{Binding DynamicSegment}"
+                                          Background="Transparent" Foreground="#4ec9b0" BorderThickness="0"
+                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                  <Button Content="×"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthUsernameField.RemoveSegmentCommand}"
+                                          CommandParameter="{Binding RawSegment}"
+                                          Background="Transparent" Foreground="#888" BorderThickness="0"
+                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                </StackPanel>
+                              </Border>
+                              <Border Background="#2a1a3a" BorderBrush="#6a2a9a" BorderThickness="1"
+                                      CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
+                                      IsVisible="{Binding IsMockData}" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                  <Button Content="{Binding PillLabel}"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthUsernameField.EditMockSegmentCommand}"
+                                          CommandParameter="{Binding MockDataSegment}"
+                                          Background="Transparent" Foreground="#c586c0" BorderThickness="0"
+                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                  <Button Content="×"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthUsernameField.RemoveSegmentCommand}"
+                                          CommandParameter="{Binding RawSegment}"
+                                          Background="Transparent" Foreground="#888" BorderThickness="0"
+                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                </StackPanel>
+                              </Border>
+                            </StackPanel>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <TextBox Grid.Column="1" IsVisible="{Binding AuthUsernameField.HasTrailingInput}"
+                               Text="{Binding AuthUsernameField.TrailingText, Mode=TwoWay}"
+                               Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
+                               Background="Transparent" BorderThickness="0" Padding="2,1" HorizontalAlignment="Stretch"/>
+                    </Grid>
+                  </Border>
+
                   <TextBlock Text="Password" Foreground="#888" FontSize="11"/>
-                  <TextBox Text="{Binding AuthPassword}" PasswordChar="*"
-                           Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555" Padding="8,6"/>
+                  <TextBox Text="{Binding AuthPasswordField.Text}" Watermark="password"
+                           Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"
+                           Padding="8,6" FontFamily="Consolas,Menlo,monospace"
+                           IsVisible="{Binding AuthPasswordField.ShowPlainInput}"
+                           controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}">
+                    <TextBox.ContextMenu>
+                      <ContextMenu>
+                        <MenuItem Header="Dynamic Value…" Command="{Binding AuthPasswordField.AddDynamicValueCommand}"/>
+                        <MenuItem Header="Mock Data…"     Command="{Binding AuthPasswordField.AddMockDataCommand}"/>
+                      </ContextMenu>
+                    </TextBox.ContextMenu>
+                  </TextBox>
+                  <Border Background="#3c3c3c" BorderBrush="#4ec9b0" BorderThickness="1"
+                          CornerRadius="3" Padding="4,2" MinHeight="32"
+                          IsVisible="{Binding AuthPasswordField.HasSegments}">
+                    <Border.ContextMenu>
+                      <ContextMenu>
+                        <MenuItem Header="Dynamic Value…" Command="{Binding AuthPasswordField.AddDynamicValueCommand}"/>
+                        <MenuItem Header="Mock Data…"     Command="{Binding AuthPasswordField.AddMockDataCommand}"/>
+                      </ContextMenu>
+                    </Border.ContextMenu>
+                    <Grid ColumnDefinitions="Auto,*">
+                      <ItemsControl Grid.Column="0" ItemsSource="{Binding AuthPasswordField.DisplaySegments}">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:SegmentedValueFieldViewModel+SegmentDisplayItem">
+                            <StackPanel Orientation="Horizontal">
+                              <TextBox Text="{Binding StaticText, Mode=TwoWay}" IsVisible="{Binding IsStatic}"
+                                       Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
+                                       VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"/>
+                              <Border Background="#1a3a2a" BorderBrush="#2a6a4a" BorderThickness="1"
+                                      CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
+                                      IsVisible="{Binding IsDynamic}" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                  <Button Content="{Binding PillLabel}"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthPasswordField.EditDynamicSegmentCommand}"
+                                          CommandParameter="{Binding DynamicSegment}"
+                                          Background="Transparent" Foreground="#4ec9b0" BorderThickness="0"
+                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                  <Button Content="×"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthPasswordField.RemoveSegmentCommand}"
+                                          CommandParameter="{Binding RawSegment}"
+                                          Background="Transparent" Foreground="#888" BorderThickness="0"
+                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                </StackPanel>
+                              </Border>
+                              <Border Background="#2a1a3a" BorderBrush="#6a2a9a" BorderThickness="1"
+                                      CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
+                                      IsVisible="{Binding IsMockData}" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                  <Button Content="{Binding PillLabel}"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthPasswordField.EditMockSegmentCommand}"
+                                          CommandParameter="{Binding MockDataSegment}"
+                                          Background="Transparent" Foreground="#c586c0" BorderThickness="0"
+                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                  <Button Content="×"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthPasswordField.RemoveSegmentCommand}"
+                                          CommandParameter="{Binding RawSegment}"
+                                          Background="Transparent" Foreground="#888" BorderThickness="0"
+                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                </StackPanel>
+                              </Border>
+                            </StackPanel>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <TextBox Grid.Column="1" IsVisible="{Binding AuthPasswordField.HasTrailingInput}"
+                               Text="{Binding AuthPasswordField.TrailingText, Mode=TwoWay}"
+                               Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
+                               Background="Transparent" BorderThickness="0" Padding="2,1" HorizontalAlignment="Stretch"/>
+                    </Grid>
+                  </Border>
                 </StackPanel>
                 <StackPanel IsVisible="{Binding IsAuthApiKey}" Spacing="6">
                   <TextBlock Text="Key name" Foreground="#888" FontSize="11"/>
-                  <TextBox Text="{Binding AuthApiKeyName}" Watermark="X-Api-Key"
-                           Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"
-                           Padding="8,6" FontFamily="Consolas,Menlo,monospace"/>
-                  <TextBlock Text="Key value" Foreground="#888" FontSize="11"/>
-                  <TextBox Text="{Binding AuthApiKeyValue}"
+                  <TextBox Text="{Binding AuthApiKeyNameField.Text}" Watermark="X-Api-Key"
                            Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"
                            Padding="8,6" FontFamily="Consolas,Menlo,monospace"
-                           controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
+                           IsVisible="{Binding AuthApiKeyNameField.ShowPlainInput}"
+                           controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}">
+                    <TextBox.ContextMenu>
+                      <ContextMenu>
+                        <MenuItem Header="Dynamic Value…" Command="{Binding AuthApiKeyNameField.AddDynamicValueCommand}"/>
+                        <MenuItem Header="Mock Data…"     Command="{Binding AuthApiKeyNameField.AddMockDataCommand}"/>
+                      </ContextMenu>
+                    </TextBox.ContextMenu>
+                  </TextBox>
+                  <Border Background="#3c3c3c" BorderBrush="#4ec9b0" BorderThickness="1"
+                          CornerRadius="3" Padding="4,2" MinHeight="32"
+                          IsVisible="{Binding AuthApiKeyNameField.HasSegments}">
+                    <Border.ContextMenu>
+                      <ContextMenu>
+                        <MenuItem Header="Dynamic Value…" Command="{Binding AuthApiKeyNameField.AddDynamicValueCommand}"/>
+                        <MenuItem Header="Mock Data…"     Command="{Binding AuthApiKeyNameField.AddMockDataCommand}"/>
+                      </ContextMenu>
+                    </Border.ContextMenu>
+                    <Grid ColumnDefinitions="Auto,*">
+                      <ItemsControl Grid.Column="0" ItemsSource="{Binding AuthApiKeyNameField.DisplaySegments}">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:SegmentedValueFieldViewModel+SegmentDisplayItem">
+                            <StackPanel Orientation="Horizontal">
+                              <TextBox Text="{Binding StaticText, Mode=TwoWay}" IsVisible="{Binding IsStatic}"
+                                       Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
+                                       VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"/>
+                              <Border Background="#1a3a2a" BorderBrush="#2a6a4a" BorderThickness="1"
+                                      CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
+                                      IsVisible="{Binding IsDynamic}" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                  <Button Content="{Binding PillLabel}"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthApiKeyNameField.EditDynamicSegmentCommand}"
+                                          CommandParameter="{Binding DynamicSegment}"
+                                          Background="Transparent" Foreground="#4ec9b0" BorderThickness="0"
+                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                  <Button Content="×"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthApiKeyNameField.RemoveSegmentCommand}"
+                                          CommandParameter="{Binding RawSegment}"
+                                          Background="Transparent" Foreground="#888" BorderThickness="0"
+                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                </StackPanel>
+                              </Border>
+                              <Border Background="#2a1a3a" BorderBrush="#6a2a9a" BorderThickness="1"
+                                      CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
+                                      IsVisible="{Binding IsMockData}" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                  <Button Content="{Binding PillLabel}"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthApiKeyNameField.EditMockSegmentCommand}"
+                                          CommandParameter="{Binding MockDataSegment}"
+                                          Background="Transparent" Foreground="#c586c0" BorderThickness="0"
+                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                  <Button Content="×"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthApiKeyNameField.RemoveSegmentCommand}"
+                                          CommandParameter="{Binding RawSegment}"
+                                          Background="Transparent" Foreground="#888" BorderThickness="0"
+                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                </StackPanel>
+                              </Border>
+                            </StackPanel>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <TextBox Grid.Column="1" IsVisible="{Binding AuthApiKeyNameField.HasTrailingInput}"
+                               Text="{Binding AuthApiKeyNameField.TrailingText, Mode=TwoWay}"
+                               Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
+                               Background="Transparent" BorderThickness="0" Padding="2,1" HorizontalAlignment="Stretch"/>
+                    </Grid>
+                  </Border>
+                  <TextBlock Text="Key value" Foreground="#888" FontSize="11"/>
+                  <!-- Plain input when no segments -->
+                  <TextBox Text="{Binding AuthApiKeyValueField.Text}"
+                           Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"
+                           Padding="8,6" FontFamily="Consolas,Menlo,monospace"
+                           IsVisible="{Binding AuthApiKeyValueField.ShowPlainInput}"
+                           controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}">
+                    <TextBox.ContextMenu>
+                      <ContextMenu>
+                        <MenuItem Header="Dynamic Value…" Command="{Binding AuthApiKeyValueField.AddDynamicValueCommand}"/>
+                        <MenuItem Header="Mock Data…"     Command="{Binding AuthApiKeyValueField.AddMockDataCommand}"/>
+                      </ContextMenu>
+                    </TextBox.ContextMenu>
+                  </TextBox>
+                  <!-- Pill view when segments are present -->
+                  <Border Background="#3c3c3c" BorderBrush="#4ec9b0" BorderThickness="1"
+                          CornerRadius="3" Padding="4,2" MinHeight="32"
+                          IsVisible="{Binding AuthApiKeyValueField.HasSegments}">
+                    <Border.ContextMenu>
+                      <ContextMenu>
+                        <MenuItem Header="Dynamic Value…" Command="{Binding AuthApiKeyValueField.AddDynamicValueCommand}"/>
+                        <MenuItem Header="Mock Data…"     Command="{Binding AuthApiKeyValueField.AddMockDataCommand}"/>
+                      </ContextMenu>
+                    </Border.ContextMenu>
+                    <Grid ColumnDefinitions="Auto,*">
+                      <ItemsControl Grid.Column="0" ItemsSource="{Binding AuthApiKeyValueField.DisplaySegments}">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:SegmentedValueFieldViewModel+SegmentDisplayItem">
+                            <StackPanel Orientation="Horizontal">
+                              <TextBox Text="{Binding StaticText, Mode=TwoWay}" IsVisible="{Binding IsStatic}"
+                                       Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
+                                       VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"/>
+                              <Border Background="#1a3a2a" BorderBrush="#2a6a4a" BorderThickness="1"
+                                      CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
+                                      IsVisible="{Binding IsDynamic}" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                  <Button Content="{Binding PillLabel}"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthApiKeyValueField.EditDynamicSegmentCommand}"
+                                          CommandParameter="{Binding DynamicSegment}"
+                                          Background="Transparent" Foreground="#4ec9b0" BorderThickness="0"
+                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                  <Button Content="×"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthApiKeyValueField.RemoveSegmentCommand}"
+                                          CommandParameter="{Binding RawSegment}"
+                                          Background="Transparent" Foreground="#888" BorderThickness="0"
+                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                </StackPanel>
+                              </Border>
+                              <Border Background="#2a1a3a" BorderBrush="#6a2a9a" BorderThickness="1"
+                                      CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
+                                      IsVisible="{Binding IsMockData}" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                  <Button Content="{Binding PillLabel}"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthApiKeyValueField.EditMockSegmentCommand}"
+                                          CommandParameter="{Binding MockDataSegment}"
+                                          Background="Transparent" Foreground="#c586c0" BorderThickness="0"
+                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                  <Button Content="×"
+                                          Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthApiKeyValueField.RemoveSegmentCommand}"
+                                          CommandParameter="{Binding RawSegment}"
+                                          Background="Transparent" Foreground="#888" BorderThickness="0"
+                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                </StackPanel>
+                              </Border>
+                            </StackPanel>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <TextBox Grid.Column="1" IsVisible="{Binding AuthApiKeyValueField.HasTrailingInput}"
+                               Text="{Binding AuthApiKeyValueField.TrailingText, Mode=TwoWay}"
+                               Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
+                               Background="Transparent" BorderThickness="0" Padding="2,1" HorizontalAlignment="Stretch"/>
+                    </Grid>
+                  </Border>
                   <TextBlock Text="Add to" Foreground="#888" FontSize="11"/>
                   <ComboBox ItemsSource="{Binding ApiKeyLocations}" SelectedItem="{Binding AuthApiKeyIn}"
                             MinWidth="160" Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"/>
@@ -258,14 +643,11 @@
                    Foreground="#777" FontSize="13" HorizontalAlignment="Center"/>
       </StackPanel>
 
-      <ScrollViewer Grid.Row="1"
+      <controls:SyntaxEditor Grid.Row="1"
                     IsVisible="{Binding Response, Converter={x:Static conv:NotNullConverter.Instance}}"
-                    HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-        <TextBox Text="{Binding Response.Body, FallbackValue=''}"
-                 IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
-                 FontFamily="Consolas,Menlo,monospace" FontSize="12"
-                 Foreground="#d4d4d4" Background="#1e1e1e" BorderThickness="0" Padding="16"/>
-      </ScrollViewer>
+                    Text="{Binding FormattedResponseBody, FallbackValue=''}"
+                    Language="{Binding ResponseLanguage}"
+                    IsReadOnly="True"/>
 
     </Grid>
 

@@ -25,6 +25,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private readonly ITransportRegistry _transportRegistry;
     private readonly ICollectionService _collectionService;
     private readonly ICollectionPreferencesService _preferencesService;
+    private readonly IDynamicVariableEvaluator _dynamicEvaluator;
     private readonly ILogger<RequestEditorViewModel> _logger;
 
     private EnvironmentModel? _activeEnvironment;
@@ -54,6 +55,8 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     [ObservableProperty]
     private IReadOnlyList<string> _availableFolders = [];
 
+    private IReadOnlyList<string> _availableRequestNames = [];
+
     public bool HasTabs => Tabs.Count > 0;
 
     // -------------------------------------------------------------------------
@@ -64,6 +67,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         ITransportRegistry transportRegistry,
         ICollectionService collectionService,
         ICollectionPreferencesService preferencesService,
+        IDynamicVariableEvaluator dynamicEvaluator,
         IMessenger messenger,
         ILogger<RequestEditorViewModel> logger)
         : base(messenger)
@@ -71,10 +75,12 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         ArgumentNullException.ThrowIfNull(transportRegistry);
         ArgumentNullException.ThrowIfNull(collectionService);
         ArgumentNullException.ThrowIfNull(preferencesService);
+        ArgumentNullException.ThrowIfNull(dynamicEvaluator);
         ArgumentNullException.ThrowIfNull(logger);
         _transportRegistry = transportRegistry;
         _collectionService = collectionService;
         _preferencesService = preferencesService;
+        _dynamicEvaluator = dynamicEvaluator;
         _logger = logger;
         IsActive = true;
 
@@ -219,10 +225,12 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             _transportRegistry,
             _collectionService,
             Messenger,
-            RemoveTab);
+            RemoveTab,
+            _dynamicEvaluator);
 
         tab.AvailableFolders = AvailableFolders;
         tab.CollectionRootPath = _collectionPath;
+        tab.AvailableRequestNames = _availableRequestNames;
         tab.SaveAsFolderPath = string.Empty;
 
         if (request is not null)
@@ -241,8 +249,11 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         {
             var root = await _collectionService.OpenFolderAsync(collectionPath);
             var folders = new List<string>();
+            var requestNames = new List<string>();
             CollectFolderPaths(root, collectionPath, folders);
+            CollectRequestNames(root, requestNames);
             AvailableFolders = folders.AsReadOnly();
+            _availableRequestNames = requestNames.AsReadOnly();
 
             // Push updated list to any already-open new tabs.
             await Dispatcher.UIThread.InvokeAsync(() =>
@@ -251,6 +262,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
                 {
                     tab.AvailableFolders = AvailableFolders;
                     tab.CollectionRootPath = collectionPath;
+                    tab.AvailableRequestNames = _availableRequestNames;
                     if (string.IsNullOrEmpty(tab.SaveAsFolderPath))
                         tab.SaveAsFolderPath = string.Empty;
                 }
@@ -269,6 +281,15 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         accumulator.Add(relative == "." ? string.Empty : relative);
         foreach (var sub in folder.SubFolders)
             CollectFolderPaths(sub, rootPath, accumulator);
+    }
+
+    private static void CollectRequestNames(CollectionFolder folder, List<string> accumulator)
+    {
+        foreach (var req in folder.Requests)
+            if (!string.IsNullOrWhiteSpace(req.Name))
+                accumulator.Add(req.Name);
+        foreach (var sub in folder.SubFolders)
+            CollectRequestNames(sub, accumulator);
     }
 
     private async Task RestoreTabsAsync(string collectionPath)
@@ -348,9 +369,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
                 ? Path.GetRelativePath(collectionPath, active.SourceFilePath)
                 : null;
 
-            // Read-modify-write: preserve prefs owned by other ViewModels (e.g. active environment).
-            var current = await _preferencesService.LoadAsync(collectionPath).ConfigureAwait(false);
-            await _preferencesService.SaveAsync(collectionPath, new()
+            await _preferencesService.UpdateAsync(collectionPath, current => new()
             {
                 LastActiveEnvironmentFile = current.LastActiveEnvironmentFile,
                 OpenTabPaths = tabPaths.Count > 0 ? tabPaths.AsReadOnly() : null,

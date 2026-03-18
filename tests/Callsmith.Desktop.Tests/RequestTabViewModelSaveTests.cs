@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Net.Http;
 using Callsmith.Core;
 using Callsmith.Core.Abstractions;
@@ -35,9 +36,9 @@ public sealed class RequestTabViewModelSaveTests
 
     private static CollectionRequest SampleRequest(
         string url = "https://api.example.com/users",
-        Dictionary<string, string>? queryParams = null,
+        IReadOnlyList<RequestKv>? queryParams = null,
         Dictionary<string, string>? pathParams = null,
-        Dictionary<string, string>? headers = null) =>
+        IReadOnlyList<RequestKv>? headers = null) =>
         new()
         {
             FilePath = @"c:\tmp\sample.callsmith",
@@ -101,7 +102,7 @@ public sealed class RequestTabViewModelSaveTests
     public void RemovingQueryParam_MarksTabDirty()
     {
         var sut = BuildSut();
-        sut.LoadRequest(SampleRequest(queryParams: new() { ["include"] = "orders" }));
+        sut.LoadRequest(SampleRequest(queryParams: [new RequestKv("include", "orders")]));
         sut.HasUnsavedChanges.Should().BeFalse();
 
         var item = sut.QueryParams.Items.First();
@@ -165,7 +166,7 @@ public sealed class RequestTabViewModelSaveTests
     public async Task Save_AfterQueryParamRemoval_ClearsDirtyState()
     {
         var sut = BuildSut();
-        sut.LoadRequest(SampleRequest(queryParams: new() { ["include"] = "orders" }));
+        sut.LoadRequest(SampleRequest(queryParams: [new RequestKv("include", "orders")]));
 
         var item = sut.QueryParams.Items.First();
         sut.QueryParams.Items.Remove(item);
@@ -186,7 +187,7 @@ public sealed class RequestTabViewModelSaveTests
             .Returns(Task.CompletedTask);
 
         var sut = BuildSut(collectionService);
-        sut.LoadRequest(SampleRequest(queryParams: new() { ["include"] = "orders" }));
+        sut.LoadRequest(SampleRequest(queryParams: [new RequestKv("include", "orders")]));
 
         sut.QueryParams.Items.Remove(sut.QueryParams.Items.First());
         await sut.PerformSaveAsync();
@@ -199,7 +200,7 @@ public sealed class RequestTabViewModelSaveTests
     public async Task Save_AfterHeaderRemoval_ClearsDirtyState()
     {
         var sut = BuildSut();
-        sut.LoadRequest(SampleRequest(headers: new() { ["Authorization"] = "Bearer tok" }));
+        sut.LoadRequest(SampleRequest(headers: [new RequestKv("Authorization", "Bearer tok")]));
 
         sut.Headers.Items.Remove(sut.Headers.Items.First());
         sut.HasUnsavedChanges.Should().BeTrue();
@@ -224,7 +225,7 @@ public sealed class RequestTabViewModelSaveTests
 
         await sut.PerformSaveAsync();
 
-        saved!.QueryParams.Should().ContainKey("page").WhoseValue.Should().Be("2");
+        saved!.QueryParams.Should().Contain(p => p.Key == "page" && p.Value == "2");
         sut.HasUnsavedChanges.Should().BeFalse();
     }
 

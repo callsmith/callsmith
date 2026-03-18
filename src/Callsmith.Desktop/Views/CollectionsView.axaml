@@ -70,26 +70,120 @@
     <Border DockPanel.Dock="Top"
             Background="#2d2d30"
             Padding="12,8">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+
+          <!-- COLLECTIONS label doubles as the recent-collections toggle -->
+          <Button IsVisible="{Binding HasRecentCollections}"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Padding="0"
+                  Cursor="Hand"
+                  ToolTip.Tip="Show recent collections"
+                  Command="{Binding ToggleRecentPanelCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <TextBlock Text="COLLECTIONS"
+                         Foreground="#cccccc"
+                         FontSize="11"
+                         FontWeight="SemiBold"
+                         LetterSpacing="1"
+                         VerticalAlignment="Center"/>
+              <TextBlock Text="▴" VerticalAlignment="Center" IsVisible="{Binding IsRecentPanelOpen}"
+                         Foreground="#cccccc" FontSize="13" Margin="0,1,0,0"/>
+              <TextBlock Text="▾" VerticalAlignment="Center" IsVisible="{Binding !IsRecentPanelOpen}"
+                         Foreground="#cccccc" FontSize="13" Margin="0,1,0,0"/>
+            </StackPanel>
+          </Button>
+          <!-- Static label when there are no recent collections yet -->
+          <TextBlock IsVisible="{Binding !HasRecentCollections}"
+                     Text="COLLECTIONS"
+                     Foreground="#cccccc"
+                     FontSize="11"
+                     FontWeight="SemiBold"
+                     LetterSpacing="1"
+                     VerticalAlignment="Center"/>
+
+          <!-- Open button -->
+          <Button Content="Open"
+                  FontSize="11"
+                  Foreground="#4ec9b0"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Padding="6,0"
+                  Cursor="Hand"
+                  ToolTip.Tip="Open collection folder (Callsmith, Bruno)"
+                  Command="{Binding OpenFolderCommand}"
+                  CommandParameter="{Binding $parent[Window].StorageProvider}"/>
+
+          <!-- Import button -->
+          <Button Content="Import"
+                  FontSize="11"
+                  Foreground="#4ec9b0"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Padding="4,0"
+                  Cursor="Hand"
+                  ToolTip.Tip="Import collection (Postman, Insomnia)"
+                  Command="{Binding ImportCollectionCommand}"
+                  CommandParameter="{Binding $parent[Window].StorageProvider}"/>
+        </StackPanel>
+
+        <!-- Bruno compatibility mode indicator -->
+        <Image Grid.Column="2"
+               Width="20"
+               Height="20"
+               VerticalAlignment="Center"
+               IsVisible="{Binding IsBrunoCollection}"
+               Source="/Assets/bruno.png"
+               ToolTip.Tip="Using a Bruno Collection"/>
+      </Grid>
+    </Border>
+
+    <!-- ── Recent collections panel (collapsible dropdown) ── -->
+    <Border DockPanel.Dock="Top"
+            IsVisible="{Binding IsRecentPanelOpen}"
+            Background="#1e1e1e"
+            BorderBrush="#444"
+            BorderThickness="0,0,0,1"
+            ZIndex="10">
       <DockPanel>
-        <TextBlock DockPanel.Dock="Left"
-                   Text="COLLECTIONS"
-                   Foreground="#cccccc"
-                   FontSize="11"
+        <TextBlock DockPanel.Dock="Top"
+                   Text="RECENT COLLECTIONS"
+                   Foreground="#606060"
+                   FontSize="10"
                    FontWeight="SemiBold"
                    LetterSpacing="1"
-                   VerticalAlignment="Center"/>
-
-        <!-- Open folder button -->
-        <Button DockPanel.Dock="Right"
-                Content="⊕"
-                FontSize="16"
-                Foreground="#cccccc"
-                Background="Transparent"
-                BorderThickness="0"
-                Padding="4,0"
-                ToolTip.Tip="Open collection folder"
-                Command="{Binding OpenFolderCommand}"
-                CommandParameter="{Binding $parent[Window].StorageProvider}"/>
+                   Margin="12,8,12,4"/>
+        <ScrollViewer MaxHeight="220"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+          <ItemsControl ItemsSource="{Binding RecentCollections}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Button Command="{Binding $parent[UserControl].((vm:CollectionsViewModel)DataContext).OpenRecentCommand}"
+                        CommandParameter="{Binding .}"
+                        Background="Transparent"
+                        Foreground="#cccccc"
+                        BorderThickness="0"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left"
+                        Padding="12,5"
+                        Cursor="Hand"
+                        ToolTip.Tip="{Binding .}">
+                  <StackPanel Spacing="1">
+                    <TextBlock Text="{Binding ., Converter={x:Static conv:PathToCollectionNameConverter.Instance}}"
+                               FontSize="12"
+                               TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding .}"
+                               FontSize="10"
+                               Foreground="#666"
+                               TextTrimming="CharacterEllipsis"/>
+                  </StackPanel>
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
       </DockPanel>
     </Border>
 
@@ -114,7 +208,7 @@
                    Foreground="#888"
                    FontSize="13"
                    HorizontalAlignment="Center"/>
-        <TextBlock Text="Click ⊕ to open a folder"
+        <TextBlock Text="Click Import or Open"
                    Foreground="#999"
                    FontSize="11"
                    HorizontalAlignment="Center"/>

@@ -57,7 +57,7 @@
 - [x] Add NuGet packages to each project (see ARCHITECTURE.md for the list)
 - [x] Set up `.editorconfig` and `Directory.Build.props`
 - [x] Confirm `dotnet build` passes
-- [ ] Confirm `dotnet publish -r win-x64 --self-contained` produces a runnable exe
+- [x] Confirm `dotnet publish -r win-x64 --self-contained` produces a runnable exe
 - [x] Set up GitHub Actions CI — `dotnet build` + `dotnet test` on every push to `main`
 
 ---
@@ -125,7 +125,7 @@
   - Response headers (always visible, collapsible)
   - Response body with syntax highlighting (always visible)
 - [x] Top toolbar: environment switcher — implemented in Phase 6
-- [ ] Status bar: current collection path, active environment name — deferred to Phase 6
+- [x] Status bar: current collection path, active environment name — deferred to Phase 6
 - [x] `RequestViewModel` wired to `ITransport` via `TransportRegistry`
 - [x] Send a GET request and see the full response without changing any view
 - [x] Collections sidebar: folder tree view reflecting the real filesystem layout
@@ -159,7 +159,7 @@
   - [x] Preserve unresolved placeholders in preview/send with clear validation feedback
 - [x] Request body editor:
   - [x] Body type selector: None, JSON, plain text, XML, form-urlencoded, multipart
-  - [ ] Syntax-highlighted editor for JSON and XML body types
+  - [x] Syntax-highlighted editor for JSON and XML body types
 - [x] Auth tab: None, Bearer token, Basic auth, API key (header or query param)
 - [x] Save request changes back to disk with explicit Save (● dirty indicator in title bar)
 
@@ -176,7 +176,7 @@
 - [x] Define `EnvironmentVariable` model:
   - [x] Static value (plain string)
   - [ ] Script value (JavaScript expression evaluated at request time) — **deferred (needs Jint)**
-  - [ ] Chained value (result of another request + JSONPath/XPath extraction) — **deferred**
+  - [x] Chained value (result of another request + JSONPath/XPath extraction) — **deferred**
 - [x] Define `IEnvironmentService` interface
 - [x] Implement `FileSystemEnvironmentService`
 - [x] Environment selector UI toolbar strip (environment switcher — single click to swap)
@@ -184,7 +184,7 @@
   - [x] Replace `{{variableName}}` in URL, headers, and body at send time
   - [ ] Evaluate JavaScript expressions — **deferred**
   - [ ] Execute chained requests — **deferred**
-- [ ] Environment editor UI (full CRUD from within the app):
+- [x] Environment editor UI (full CRUD from within the app):
   - [x] List environments (dev, staging, production, etc.)
   - [x] Add, rename, delete environments
   - [x] Per-variable: choose type (static), edit value
@@ -276,6 +276,11 @@
   - [ ] Proto file loading for method/message discovery
   - [ ] gRPC-specific UI panel
 - [ ] Cookie jar — view, edit, and persist cookies per domain
+- [x] Insomnia collection import (`ICollectionImporter` abstraction, `InsomniaCollectionImporter`, sidebar import button)
+  - Parses Insomnia v5 YAML (schema_version 5.x): requests, nested folders, environments + sub-environments
+  - Normalises Insomnia Nunjucks variable syntax (`{{ _['var'] }}`) to Callsmith `{{var}}` format
+  - Script-valued env vars (`{% response … %}`) are skipped on import (unsupported)
+  - Ready for Postman support: add a new `ICollectionImporter` implementation and register it in DI
 - [ ] OpenAPI / Swagger file import — generates request files on disk from a spec
 - [ ] Request chaining in collections — define a sequence of requests, pass values between them
 
@@ -283,10 +288,10 @@
 
 ## Phase 11 — Distribution and Polish
 
-- [ ] Application icon and branding
+- [x] Application icon and branding
 - [ ] Settings screen: default timeout, font size, proxy configuration
 - [ ] Light and dark theme, respects OS default, manual override in settings
 - [ ] Keyboard shortcuts for all primary actions (send, save, switch environment, open collection)
 - [ ] Windows installer (MSIX or WiX)
 - [ ] macOS `.app` bundle
-- [ ] GitHub Actions CD — publish release artifacts on version tag
+- [x] GitHub Actions CD — publish release artifacts on version tag

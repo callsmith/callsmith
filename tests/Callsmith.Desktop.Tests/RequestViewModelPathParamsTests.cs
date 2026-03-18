@@ -29,7 +29,7 @@ public sealed class RequestViewModelPathParamsTests
             Name = "sample",
             Method = HttpMethod.Get,
             Url = "https://api.example.com/users/{id}",
-            QueryParams = new Dictionary<string, string> { ["include"] = "orders" },
+            QueryParams = [new RequestKv("include", "orders")],
             PathParams = new Dictionary<string, string> { ["id"] = "42" },
         };
 

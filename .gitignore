@@ -28,5 +28,5 @@ coverage/
 *.trx
 *.coverage
 
-bruno/**/*
-Insomnia_2026-03-16.yaml
+# Example files
+examples/**/*

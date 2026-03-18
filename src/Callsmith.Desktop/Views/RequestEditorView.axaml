@@ -127,9 +127,10 @@
                                IsVisible="{Binding TabIsDirty}"
                                ToolTip.Tip="Unsaved changes"/>
 
-                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <DockPanel VerticalAlignment="Center" LastChildFill="True">
                       <!-- Method badge -->
-                      <Border Classes="method-chip"
+                      <Border DockPanel.Dock="Left"
+                              Classes="method-chip"
                               Background="{Binding MethodColor, Converter={x:Static conv:HexColorToBrushConverter.Instance}}">
                         <TextBlock Text="{Binding MethodPillLabel}"
                                    Foreground="White"
@@ -137,14 +138,15 @@
                                    FontWeight="Bold"/>
                       </Border>
 
-                      <!-- Request name -->
+                      <!-- Request name — fills remaining space and truncates with ellipsis -->
                       <TextBlock Classes="tab-title"
                                  Text="{Binding TabTitle}"
                                  Foreground="#cccccc"
                                  FontSize="12"
                                  VerticalAlignment="Center"
+                                 Margin="6,0,0,0"
                                  TextTrimming="CharacterEllipsis"/>
-                    </StackPanel>
+                    </DockPanel>
 
                   </DockPanel>
                 </Border>

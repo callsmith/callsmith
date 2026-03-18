@@ -1,12 +1,14 @@
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.Bruno;
 using Callsmith.Core.Models;
 using Callsmith.Desktop.Messages;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
+using System.Text.RegularExpressions;
 
 namespace Callsmith.Desktop.ViewModels;
 
@@ -18,10 +20,12 @@ namespace Callsmith.Desktop.ViewModels;
 public sealed partial class CollectionsViewModel : ObservableRecipient,
     IRecipient<CollectionRefreshRequestedMessage>,
     IRecipient<RequestSavedMessage>,
-    IRecipient<ActiveTabChangedMessage>
+    IRecipient<ActiveTabChangedMessage>,
+    IRecipient<RevealRequestMessage>
 {
     private readonly ICollectionService _collectionService;
     private readonly IRecentCollectionsService _recentCollectionsService;
+    private readonly ICollectionImportService _importService;
     private readonly ILogger<CollectionsViewModel> _logger;
 
     // -------------------------------------------------------------------------
@@ -68,6 +72,9 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     private bool _hasCollection;
 
     [ObservableProperty]
+    private bool _isBrunoCollection;
+
+    [ObservableProperty]
     private IReadOnlyList<string> _recentCollections = [];
 
     [ObservableProperty]
@@ -75,6 +82,9 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     private int _recentCollectionsCount;
 
     public bool HasRecentCollections => RecentCollections.Count > 0;
+
+    [ObservableProperty]
+    private bool _isRecentPanelOpen;
 
     /// <summary>Non-null while an inline delete confirmation is being shown for this node.</summary>
     [ObservableProperty]
@@ -95,6 +105,14 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     [ObservableProperty]
     private string _renameDialogConfirmLabel = string.Empty;
 
+    /// <summary>
+    /// Set to the file path of a request that should be revealed (ancestors expanded,
+    /// node highlighted) in the tree. The view observes this and performs the visual
+    /// tree expansion. Reset to empty string after the view has processed it.
+    /// </summary>
+    [ObservableProperty]
+    private string _revealFilePath = string.Empty;
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
@@ -102,14 +120,17 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     public CollectionsViewModel(
         ICollectionService collectionService,
         IRecentCollectionsService recentCollectionsService,
+        ICollectionImportService importService,
         IMessenger messenger,
         ILogger<CollectionsViewModel> logger)
         : base(messenger)
     {
         ArgumentNullException.ThrowIfNull(collectionService);
         ArgumentNullException.ThrowIfNull(recentCollectionsService);
+        ArgumentNullException.ThrowIfNull(importService);
         _collectionService = collectionService;
         _recentCollectionsService = recentCollectionsService;
+        _importService = importService;
         _logger = logger;
         IsActive = true;
 
@@ -122,7 +143,8 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Called when the active tab changes. Updates the sidebar active-node indicator.
+    /// Called when the active tab changes. Updates the sidebar active-node indicator
+    /// and signals the view to expand ancestors so the active request is visible.
     /// </summary>
     public void Receive(ActiveTabChangedMessage message)
     {
@@ -147,6 +169,16 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         if (TreeRoots is not [var root]) return;
         var node = FindNodeByFilePath(root, message.Value.FilePath);
         node?.UpdateRequest(message.Value);
+    }
+
+    /// <summary>
+    /// Called after the command palette opens a request, to expand the collection sidebar
+    /// and highlight that request node.
+    /// </summary>
+    public void Receive(RevealRequestMessage message)
+    {
+        _activeFilePath = message.Value;
+        ApplyActiveState();
     }
 
     // -------------------------------------------------------------------------
@@ -174,6 +206,72 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         await LoadCollectionAsync(path);
     }
 
+    /// <summary>
+    /// Import flow:
+    /// 1. Open a file picker to select the source collection file.
+    /// 2. Open a folder picker to select the destination folder.
+    /// 3. Run the import and load the resulting collection.
+    /// </summary>
+    [RelayCommand]
+    public async Task ImportCollectionAsync(IStorageProvider storageProvider)
+    {
+        ArgumentNullException.ThrowIfNull(storageProvider);
+
+        // Build file type patterns from all registered importers.
+        var extensions = _importService.SupportedFileExtensions;
+        var patterns = extensions.Select(e => $"*{e}").ToList();
+        var fileTypeFilter = new FilePickerFileType("Collection Files")
+        {
+            Patterns = patterns,
+        };
+
+        var files = await storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Select Collection File to Import",
+            AllowMultiple = false,
+            FileTypeFilter = [fileTypeFilter, FilePickerFileTypes.All],
+        });
+
+        if (files is not [var file])
+            return;
+
+        var filePath = file.TryGetLocalPath();
+        if (string.IsNullOrEmpty(filePath))
+            return;
+
+        // Verify the selected file is actually supported before asking for a destination.
+        var importer = await _importService.FindImporterAsync(filePath);
+        if (importer is null)
+        {
+            _logger.LogWarning("Selected file '{FilePath}' is not a recognised collection format.", filePath);
+            return;
+        }
+
+        // Ask where to import to.
+        var folders = await storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = $"Select Destination Folder for {importer.FormatName} Import",
+            AllowMultiple = false,
+        });
+
+        if (folders is not [var destFolder])
+            return;
+
+        var targetPath = destFolder.TryGetLocalPath();
+        if (string.IsNullOrEmpty(targetPath))
+            return;
+
+        try
+        {
+            await _importService.ImportToFolderAsync(filePath, targetPath);
+            await LoadCollectionAsync(targetPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Import failed for '{FilePath}'", filePath);
+        }
+    }
+
     [RelayCommand(CanExecute = nameof(HasCollection))]
     public async Task RefreshAsync()
     {
@@ -185,15 +283,33 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     public async Task OpenRecentAsync(string path)
     {
         if (!string.IsNullOrEmpty(path))
+        {
+            IsRecentPanelOpen = false;
             await LoadCollectionAsync(path);
+        }
     }
+
+    [RelayCommand]
+    private void ToggleRecentPanel() => IsRecentPanelOpen = !IsRecentPanelOpen;
 
     /// <summary>Opens a request node — called directly from the sidebar on every click.</summary>
     [RelayCommand]
-    public void OpenRequest(CollectionTreeItemViewModel node)
+    public async Task OpenRequest(CollectionTreeItemViewModel node)
     {
-        if (node.Request is CollectionRequest request)
+        if (node.Request is not CollectionRequest treeRequest) return;
+        try
+        {
+            // Always re-load from disk so that secrets (e.g. Basic auth passwords) are
+            // fetched from local secret storage rather than reading the stale in-memory
+            // tree node, which was populated by the synchronous folder-scan and never
+            // retrieves secrets.
+            var request = await _collectionService.LoadRequestAsync(treeRequest.FilePath);
             Messenger.Send(new RequestSelectedMessage(request));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load request '{Path}'", treeRequest.FilePath);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -460,6 +576,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         var root = await _collectionService.OpenFolderAsync(path);
         CollectionPath = path;
         HasCollection = true;
+        IsBrunoCollection = BrunoDetector.IsBrunoCollection(path);
 
         var rootNode = CollectionTreeItemViewModel.FromFolder(root, parent: null, isRoot: true);
 
@@ -468,7 +585,14 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
 
         TreeRoots = [rootNode];
         RefreshCommand.NotifyCanExecuteChanged();
-        Messenger.Send(new CollectionOpenedMessage(path));
+
+        // Only notify other ViewModels that a collection was opened when this is a
+        // genuine new-collection load (not a tree refresh after delete/rename/watcher).
+        // Refresh calls use retainExpansion=true; opening a new collection uses false.
+        // Sending CollectionOpenedMessage on a refresh incorrectly resets the active
+        // environment selection and clears/restores all open tabs.
+        if (!retainExpansion)
+            Messenger.Send(new CollectionOpenedMessage(path));
 
         // Re-apply active indicator after tree rebuild.
         ApplyActiveState();
@@ -563,6 +687,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         return null;
     }
 
+    /// <summary>
     private static HashSet<string> CollectExpandedFolderPaths(
         IEnumerable<CollectionTreeItemViewModel> roots)
     {

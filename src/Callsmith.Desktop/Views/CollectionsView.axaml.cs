@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Callsmith.Desktop.ViewModels;
 
@@ -39,6 +40,18 @@ public partial class CollectionsView : UserControl
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);
+
+        if (DataContext is CollectionsViewModel vm)
+        {
+            vm.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(CollectionsViewModel.RevealFilePath)
+                    && !string.IsNullOrEmpty(vm.RevealFilePath))
+                {
+                    RevealRequest(vm.RevealFilePath);
+                }
+            };
+        }
 
         if (CollectionTree.ContextMenu is not ContextMenu menu) return;
 
@@ -241,5 +254,83 @@ public partial class CollectionsView : UserControl
         _isDragging = false;
         CollectionTree.Cursor = Cursor.Default;
         pointer.Capture(null);
+    }
+
+    // -------------------------------------------------------------------------
+    // Reveal: expand ancestor TreeViewItems so the target request is visible
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Starts an async chain that expands one <see cref="TreeViewItem"/> level at a time,
+    /// yielding to the layout pass between each level so that child containers are
+    /// realized before we descend into them.
+    /// </summary>
+    private void RevealRequest(string filePath)
+    {
+        if (DataContext is not CollectionsViewModel vm) return;
+        if (vm.TreeRoots is not [var root]) return;
+
+        var chain = BuildAncestorChain(root, filePath);
+        if (chain is null) return;
+
+        _ = ExpandChainAsync(CollectionTree, chain, 0);
+    }
+
+    /// <summary>
+    /// Recursively expands the <see cref="TreeViewItem"/> for each node in
+    /// <paramref name="chain"/>, waiting for a layout pass after each expansion so
+    /// that the next level's containers are realized before we request them.
+    /// Scrolls the leaf item into view at the end.
+    /// </summary>
+    private static async Task ExpandChainAsync(
+        ItemsControl parent, List<CollectionTreeItemViewModel> chain, int depth)
+    {
+        if (depth >= chain.Count) return;
+
+        // Yield so any pending layout (triggered by the previous expansion) completes
+        // before we ask for the container at this depth.
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+        if (parent.ContainerFromItem(chain[depth]) is not TreeViewItem tvi) return;
+
+        if (depth == chain.Count - 1)
+        {
+            // Leaf node — scroll it into view.
+            tvi.BringIntoView();
+        }
+        else
+        {
+            // Folder node — expand it and recurse into the next level.
+            tvi.IsExpanded = true;
+            await ExpandChainAsync(tvi, chain, depth + 1);
+        }
+    }
+
+    /// <summary>
+    /// Returns the list of nodes from the root down to (and including) the target,
+    /// or null if the target is not found.
+    /// </summary>
+    private static List<CollectionTreeItemViewModel>? BuildAncestorChain(
+        CollectionTreeItemViewModel root, string filePath)
+    {
+        var chain = new List<CollectionTreeItemViewModel> { root };
+        return FindAndBuild(root, filePath, chain) ? chain : null;
+    }
+
+    private static bool FindAndBuild(
+        CollectionTreeItemViewModel node, string filePath,
+        List<CollectionTreeItemViewModel> chain)
+    {
+        if (!node.IsFolder &&
+            string.Equals(node.Request?.FilePath, filePath, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        foreach (var child in node.Children)
+        {
+            chain.Add(child);
+            if (FindAndBuild(child, filePath, chain)) return true;
+            chain.RemoveAt(chain.Count - 1);
+        }
+        return false;
     }
 }

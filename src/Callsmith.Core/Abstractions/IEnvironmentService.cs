@@ -54,6 +54,14 @@ public interface IEnvironmentService
     Task<EnvironmentModel> CloneEnvironmentAsync(
         string sourceFilePath, string newName, CancellationToken ct = default);
 
+    /// <summary>
+    /// Persists the user's preferred display order of environments to an <c>_order.json</c>
+    /// file stored inside the collection's environment sub-folder (alongside the env files).
+    /// Pass an empty list to delete the order file and restore the default alphabetical ordering.
+    /// </summary>
+    Task SaveEnvironmentOrderAsync(
+        string collectionFolderPath, IReadOnlyList<string> orderedNames, CancellationToken ct = default);
+
     // ─── Global (collection-scoped) environment ───────────────────────────────
 
     /// <summary>

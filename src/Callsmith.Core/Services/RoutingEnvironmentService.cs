@@ -53,6 +53,12 @@ public sealed class RoutingEnvironmentService : IEnvironmentService
     public Task<EnvironmentModel> CloneEnvironmentAsync(string sourceFilePath, string newName, CancellationToken ct = default) =>
         ServiceForFile(sourceFilePath).CloneEnvironmentAsync(sourceFilePath, newName, ct);
 
+    public Task SaveEnvironmentOrderAsync(
+        string collectionFolderPath, IReadOnlyList<string> orderedNames, CancellationToken ct = default) =>
+        BrunoDetector.IsBrunoCollection(collectionFolderPath)
+            ? _brunoService.SaveEnvironmentOrderAsync(collectionFolderPath, orderedNames, ct)
+            : _callsmithService.SaveEnvironmentOrderAsync(collectionFolderPath, orderedNames, ct);
+
     public Task<EnvironmentModel> LoadGlobalEnvironmentAsync(
         string collectionFolderPath, CancellationToken ct = default) =>
         BrunoDetector.IsBrunoCollection(collectionFolderPath)

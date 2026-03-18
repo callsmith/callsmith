@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark-theme plain-text highlighting for Callsmith — only {% %} and {{ }} tokens are coloured -->
+<SyntaxDefinition name="DarkText" extensions=".txt"
+    xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+
+  <Color name="DynamicTag" foreground="#c586c0" fontWeight="bold"/> <!-- purple — {% %} dynamic/mock tags -->
+  <Color name="EnvVar"     foreground="#4ec9b0" fontWeight="bold"/> <!-- teal  — {{ }} env-var references -->
+
+  <RuleSet>
+    <Span color="DynamicTag" multiline="false">
+      <Begin>\{%</Begin>
+      <End>%\}</End>
+    </Span>
+    <Span color="EnvVar" multiline="false">
+      <Begin>\{\{</Begin>
+      <End>\}\}</End>
+    </Span>
+  </RuleSet>
+
+</SyntaxDefinition>

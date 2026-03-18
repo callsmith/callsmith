@@ -27,10 +27,14 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     IRecipient<CollectionOpenedMessage>
 {
     private readonly IEnvironmentService _environmentService;
-    private readonly ICollectionPreferencesService _preferencesService;
+    private readonly ICollectionService _collectionService;
+    private readonly IDynamicVariableEvaluator _dynamicEvaluator;
     private readonly ILogger<EnvironmentEditorViewModel> _logger;
 
     private string? _collectionFolderPath;
+    private List<string> _availableRequestNames = [];
+    private TaskCompletionSource<DynamicValueSegment?>? _pendingDynamicConfigTcs;
+    private TaskCompletionSource<MockDataSegment?>? _pendingMockDataConfigTcs;
 
     // ─── Observable state ────────────────────────────────────────────────────
 
@@ -40,6 +44,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(DeleteEnvironmentCommand))]
     [NotifyCanExecuteChangedFor(nameof(SaveSelectedCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RevertSelectedCommand))]
     private EnvironmentListItemViewModel? _selectedEnvironment;
     /// <summary>True while a new-environment input row is being shown.</summary>
     [ObservableProperty]
@@ -71,25 +76,58 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
     private EnvironmentListItemViewModel? _pendingDeleteItem;
 
+    /// <summary>
+    /// Set to the dynamic value config ViewModel just before <see cref="ShowDynamicValueConfig"/>
+    /// becomes true. The view uses this to populate and show the configuration dialog.
+    /// </summary>
+    public DynamicValueConfigViewModel? PendingDynamicConfig { get; private set; }
+
+    /// <summary>
+    /// Setting this to true signals the view to open the dynamic value config dialog.
+    /// The view resets it to false after the dialog closes.
+    /// </summary>
+    [ObservableProperty]
+    private bool _showDynamicValueConfig;
+
+    /// <summary>
+    /// Set to the mock data config ViewModel just before <see cref="ShowMockDataConfig"/>
+    /// becomes true.
+    /// </summary>
+    public MockDataConfigViewModel? PendingMockDataConfig { get; private set; }
+
+    /// <summary>
+    /// Setting this to true signals the view to open the mock data picker dialog.
+    /// The view resets it to false after the dialog closes.
+    /// </summary>
+    [ObservableProperty]
+    private bool _showMockDataConfig;
+
     // ─── Constructor ─────────────────────────────────────────────────────────
 
     public EnvironmentEditorViewModel(
         IEnvironmentService environmentService,
-        ICollectionPreferencesService preferencesService,
+        ICollectionService collectionService,
+        IDynamicVariableEvaluator dynamicEvaluator,
         IMessenger messenger,
         ILogger<EnvironmentEditorViewModel> logger)
         : base(messenger)
     {
         ArgumentNullException.ThrowIfNull(environmentService);
-        ArgumentNullException.ThrowIfNull(preferencesService);
+        ArgumentNullException.ThrowIfNull(collectionService);
+        ArgumentNullException.ThrowIfNull(dynamicEvaluator);
         ArgumentNullException.ThrowIfNull(logger);
         _environmentService = environmentService;
-        _preferencesService = preferencesService;
+        _collectionService = collectionService;
+        _dynamicEvaluator = dynamicEvaluator;
         _logger = logger;
         IsActive = true;
     }
 
     // ─── Commands ────────────────────────────────────────────────────────────
+
+    /// <summary>Sends <see cref="CloseEnvironmentEditorMessage"/> so the environment panel closes.</summary>
+    [RelayCommand]
+    private void CloseEditor() => Messenger.Send(new CloseEnvironmentEditorMessage());
 
     /// <summary>Shows the inline new-environment input row.</summary>
     [RelayCommand]
@@ -231,6 +269,13 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         }
     }
 
+    /// <summary>Reverts unsaved changes for the currently selected environment to its last-saved state.</summary>
+    [RelayCommand(CanExecute = nameof(HasSelectedEnvironment))]
+    private void RevertSelected()
+    {
+        SelectedEnvironment?.Revert();
+    }
+
     /// <summary>Saves variable changes for the currently selected environment to disk.</summary>
     [RelayCommand(CanExecute = nameof(HasSelectedEnvironment))]
     private async Task SaveSelectedAsync(CancellationToken ct)
@@ -248,13 +293,13 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             {
                 // Global environment: persist via the dedicated global save path and broadcast.
                 await _environmentService.SaveGlobalEnvironmentAsync(model, ct).ConfigureAwait(true);
-                SelectedEnvironment.IsDirty = false;
+                SelectedEnvironment.MarkSaved(model);
                 Messenger.Send(new GlobalEnvironmentChangedMessage(model.Variables));
             }
             else
             {
                 await _environmentService.SaveEnvironmentAsync(model, ct).ConfigureAwait(true);
-                SelectedEnvironment.IsDirty = false;
+                SelectedEnvironment.MarkSaved(model);
                 // Notify the request editor so variable substitution uses the updated values.
                 Messenger.Send(new EnvironmentSavedMessage(model));
             }
@@ -277,6 +322,94 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     {
         _collectionFolderPath = message.Value;
         _ = LoadEnvironmentsAsync(message.Value);
+        _ = LoadRequestNamesAsync(message.Value);
+    }
+
+    // ─── Dynamic variable config (dialog coordination) ────────────────────────
+
+    /// <summary>
+    /// Opens the dynamic value configuration dialog for the given segment (null = new config).
+    /// Returns the configured segment if the user confirms, or null if cancelled.
+    /// Called from variable item ViewModels via their <c>EditDynamicSegmentCallback</c>.
+    /// </summary>
+    internal Task<DynamicValueSegment?> OpenDynamicValueConfigAsync(
+        DynamicValueSegment? existing,
+        EnvironmentListItemViewModel? sourceEnv = null)
+    {
+        _pendingDynamicConfigTcs?.TrySetResult(null);
+
+        // Use the environment that actually owns the variable being edited.
+        // Falling back to SelectedEnvironment is a safety net; in practice
+        // the callback always supplies sourceEnv.
+        var envItem = sourceEnv ?? SelectedEnvironment;
+        var model = envItem?.BuildModel();
+
+        // Static variable values (used as the base for substitution before dynamic resolution).
+        var staticVars = model?.Variables
+            .Where(v => !string.IsNullOrWhiteSpace(v.Name) && v.Segments is not { Count: > 0 })
+            .ToDictionary(v => v.Name.Trim(), v => v.Value, StringComparer.Ordinal)
+            ?? new Dictionary<string, string>();
+
+        PendingDynamicConfig = new DynamicValueConfigViewModel(
+            _dynamicEvaluator,
+            _collectionFolderPath ?? string.Empty,
+            envItem?.FilePath ?? string.Empty,
+            _availableRequestNames,
+            model?.Variables ?? [],
+            staticVars,
+            existing);
+
+        _pendingDynamicConfigTcs = new TaskCompletionSource<DynamicValueSegment?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        ShowDynamicValueConfig = true;
+        return _pendingDynamicConfigTcs.Task;
+    }
+
+    /// <summary>
+    /// Called by the view's code-behind when the dialog closes.
+    /// Completes the pending TCS and resets the dialog-open flag.
+    /// </summary>
+    internal void OnDynamicConfigDialogClosed()
+    {
+        ShowDynamicValueConfig = false;
+        var result = PendingDynamicConfig?.IsConfirmed == true
+            ? PendingDynamicConfig.ResultSegment
+            : null;
+        _pendingDynamicConfigTcs?.TrySetResult(result);
+        _pendingDynamicConfigTcs = null;
+        PendingDynamicConfig = null;
+    }
+
+    /// <summary>
+    /// Opens the mock data picker dialog for the given segment (null = new segment).
+    /// Returns the configured segment if the user confirms, or null if cancelled.
+    /// </summary>
+    internal Task<MockDataSegment?> OpenMockDataConfigAsync(MockDataSegment? existing)
+    {
+        _pendingMockDataConfigTcs?.TrySetResult(null);
+
+        PendingMockDataConfig = new MockDataConfigViewModel(existing);
+
+        _pendingMockDataConfigTcs = new TaskCompletionSource<MockDataSegment?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        ShowMockDataConfig = true;
+        return _pendingMockDataConfigTcs.Task;
+    }
+
+    /// <summary>
+    /// Called by the view's code-behind when the mock data dialog closes.
+    /// </summary>
+    internal void OnMockDataConfigDialogClosed()
+    {
+        ShowMockDataConfig = false;
+        var result = PendingMockDataConfig?.IsConfirmed == true
+            ? PendingMockDataConfig.ResultSegment
+            : null;
+        _pendingMockDataConfigTcs?.TrySetResult(result);
+        _pendingMockDataConfigTcs = null;
+        PendingMockDataConfig = null;
     }
 
     // ─── Private helpers ─────────────────────────────────────────────────────
@@ -303,30 +436,21 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             Messenger.Send(new EnvironmentOrderChangedMessage(_collectionFolderPath));
     }
 
-    /// <summary>Saves the current editor list order to collection preferences.</summary>
+    /// <summary>Saves the current editor list order to the collection's environment folder.</summary>
     private async Task PersistCurrentOrderAsync()
     {
         if (_collectionFolderPath is null) return;
 
         var orderedNames = Environments
-            .Where(e => !e.IsGlobal)           // global env is always pinned — never in the order list
+            .Where(e => !e.IsGlobal)              // global env is always pinned — never in the order list
             .Select(e => Path.GetFileName(e.FilePath))
             .Where(n => !string.IsNullOrEmpty(n)) // exclude unsaved clone ghosts
-            .ToList();
+            .ToList<string>();
 
         try
         {
-            var current = await _preferencesService
-                .LoadAsync(_collectionFolderPath)
-                .ConfigureAwait(false);
-            await _preferencesService
-                .SaveAsync(_collectionFolderPath, new()
-                {
-                    LastActiveEnvironmentFile = current.LastActiveEnvironmentFile,
-                    OpenTabPaths = current.OpenTabPaths,
-                    ActiveTabPath = current.ActiveTabPath,
-                    EnvironmentOrder = orderedNames,
-                })
+            await _environmentService
+                .SaveEnvironmentOrderAsync(_collectionFolderPath, orderedNames)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -343,22 +467,20 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         {
             var listTask = _environmentService.ListEnvironmentsAsync(collectionFolderPath);
             var globalTask = _environmentService.LoadGlobalEnvironmentAsync(collectionFolderPath);
-            var prefsTask = _preferencesService.LoadAsync(collectionFolderPath);
 
-            await Task.WhenAll(listTask, globalTask, prefsTask).ConfigureAwait(true);
+            await Task.WhenAll(listTask, globalTask).ConfigureAwait(true);
 
             var list = listTask.Result;
             var globalModel = globalTask.Result;
-            var prefs = prefsTask.Result;
-
-            var orderedList = ApplyOrder(list, prefs.EnvironmentOrder);
 
             Environments.Clear();
 
             // Global env is always pinned first.
             Environments.Add(CreateListItem(globalModel, isGlobal: true));
 
-            foreach (var model in orderedList)
+            // ListEnvironmentsAsync already returns environments in the saved order
+            // (from environment/_order.json), so no additional sorting needed here.
+            foreach (var model in list)
                 Environments.Add(CreateListItem(model));
 
             // Select the first non-global env, falling back to global if none present.
@@ -378,39 +500,20 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         }
     }
 
-    /// <summary>
-    /// Reorders <paramref name="list"/> according to <paramref name="savedOrder"/>.
-    /// Entries that no longer match an existing file are silently skipped.
-    /// New environments not present in the saved order are appended at the end.
-    /// </summary>
-    private static IEnumerable<EnvironmentModel> ApplyOrder(
-        IReadOnlyList<EnvironmentModel> list, IReadOnlyList<string>? savedOrder)
-    {
-        if (savedOrder is not { Count: > 0 })
-            return list;
-
-        var byFileName = list.ToDictionary(
-            e => Path.GetFileName(e.FilePath),
-            StringComparer.OrdinalIgnoreCase);
-
-        var ordered = savedOrder
-            .Where(byFileName.ContainsKey)
-            .Select(name => byFileName[name]);
-
-        var inOrder = new HashSet<string>(savedOrder, StringComparer.OrdinalIgnoreCase);
-        var remaining = list.Where(e => !inOrder.Contains(Path.GetFileName(e.FilePath)));
-
-        return ordered.Concat(remaining);
-    }
-
     private EnvironmentListItemViewModel CreateListItem(EnvironmentModel model, bool isGlobal = false)
     {
-        return new(
+        var item = new EnvironmentListItemViewModel(
             model,
             onRenameCommit: RenameAsync,
             onDeleteRequest: (i, ct) => { BeginDelete(i); return Task.CompletedTask; },
             onCloneRequest: (i, ct) => CloneImmediateAsync(i, ct),
             isGlobal: isGlobal);
+
+        // Capture `item` so the dialog receives variables from this specific environment,
+        // not whatever is currently selected in the list.
+        item.EditDynamicSegmentCallback = seg => OpenDynamicValueConfigAsync(seg, item);
+        item.EditMockDataSegmentCallback = seg => OpenMockDataConfigAsync(seg);
+        return item;
     }
 
     private async Task RenameAsync(
@@ -499,5 +602,40 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Loads all request display names (slash-separated folder paths) from the
+    /// collection folder and stores them for the dynamic value config dialog dropdown.
+    /// </summary>
+    private async Task LoadRequestNamesAsync(string collectionFolderPath)
+    {
+        try
+        {
+            var root = await _collectionService.OpenFolderAsync(collectionFolderPath)
+                           .ConfigureAwait(false);
+            _availableRequestNames = CollectRequestNames(root, string.Empty);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not load request names for dynamic variable config");
+            _availableRequestNames = [];
+        }
+    }
+
+    private static List<string> CollectRequestNames(
+        Callsmith.Core.Models.CollectionFolder folder, string prefix)
+    {
+        var names = new List<string>();
+        foreach (var req in folder.Requests)
+        {
+            names.Add(string.IsNullOrEmpty(prefix) ? req.Name : $"{prefix}/{req.Name}");
+        }
+        foreach (var sub in folder.SubFolders)
+        {
+            var subPrefix = string.IsNullOrEmpty(prefix) ? sub.Name : $"{prefix}/{sub.Name}";
+            names.AddRange(CollectRequestNames(sub, subPrefix));
+        }
+        return names;
     }
 }

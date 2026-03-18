@@ -29,11 +29,22 @@ public sealed class BrunoCollectionService : ICollectionService
     private static readonly string[] _httpVerbs =
         ["get", "post", "put", "delete", "patch", "head", "options"];
 
+    /// <summary>Reserved namespace used inside <see cref="ISecretStorageService"/> for Basic auth passwords.</summary>
+    private const string AuthSecretsNamespace = "__auth__";
+
+    private readonly ISecretStorageService _secrets;
     private readonly ILogger<BrunoCollectionService> _logger;
 
-    public BrunoCollectionService(ILogger<BrunoCollectionService> logger)
+    // Populated by OpenFolderAsync; used to key auth secrets per-collection.
+    private string _currentRoot = string.Empty;
+
+    public BrunoCollectionService(
+        ISecretStorageService secrets,
+        ILogger<BrunoCollectionService> logger)
     {
+        ArgumentNullException.ThrowIfNull(secrets);
         ArgumentNullException.ThrowIfNull(logger);
+        _secrets = secrets;
         _logger = logger;
     }
 
@@ -48,6 +59,7 @@ public sealed class BrunoCollectionService : ICollectionService
             throw new DirectoryNotFoundException($"Collection folder not found: '{folderPath}'");
 
         ct.ThrowIfCancellationRequested();
+        _currentRoot = Path.GetFullPath(folderPath);
         var folder = Task.Run(() => ReadFolder(folderPath, isRoot: true), ct);
         _logger.LogDebug("Opened Bruno collection at '{FolderPath}'", folderPath);
         return folder;
@@ -61,8 +73,23 @@ public sealed class BrunoCollectionService : ICollectionService
 
         var text = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
         var doc = BruParser.Parse(text);
-        return DocToRequest(doc, filePath)
+        var request = DocToRequest(doc, filePath)
                ?? throw new InvalidOperationException($"Not a valid HTTP request file: '{filePath}'");
+
+        if (request.Auth.AuthType == AuthConfig.AuthTypes.Basic && !string.IsNullOrEmpty(_currentRoot))
+        {
+            // Prefer the secret-stored value; fall back to whatever is in the file (migration path).
+            var stored = await _secrets
+                .GetSecretAsync(_currentRoot, AuthSecretsNamespace, RequestKey(filePath), ct)
+                .ConfigureAwait(false);
+            if (stored is not null || request.Auth.Password is not null)
+            {
+                request = DocToRequest(doc, filePath, stored ?? request.Auth.Password)
+                    ?? request;
+            }
+        }
+
+        return request;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -90,6 +117,19 @@ public sealed class BrunoCollectionService : ICollectionService
             {
                 _logger.LogWarning(ex, "Could not re-read '{Path}' for round-trip; starting fresh", request.FilePath);
             }
+        }
+
+        // Persist Basic auth password locally so it is never written into the collection file.
+        if (request.Auth.AuthType == AuthConfig.AuthTypes.Basic && !string.IsNullOrEmpty(_currentRoot))
+        {
+            await _secrets
+                .SetSecretAsync(
+                    _currentRoot,
+                    AuthSecretsNamespace,
+                    RequestKey(request.FilePath),
+                    request.Auth.Password ?? string.Empty,
+                    ct)
+                .ConfigureAwait(false);
         }
 
         var content = BuildBruContent(request, existing);
@@ -166,9 +206,9 @@ public sealed class BrunoCollectionService : ICollectionService
             Name = name,
             Method = HttpMethod.Get,
             Url = string.Empty,
-            Headers = new Dictionary<string, string>(),
+            Headers = [],
             PathParams = new Dictionary<string, string>(),
-            QueryParams = new Dictionary<string, string>(),
+            QueryParams = [],
             BodyType = CollectionRequest.BodyTypes.None,
             Auth = new AuthConfig(),
         };
@@ -376,7 +416,7 @@ public sealed class BrunoCollectionService : ICollectionService
     //  Private — BruDocument ↔ CollectionRequest mapping
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static CollectionRequest? DocToRequest(BruDocument doc, string filePath)
+    private static CollectionRequest? DocToRequest(BruDocument doc, string filePath, string? basicPasswordOverride = null)
     {
         var meta = doc.Find("meta");
         if (meta is null) return null;
@@ -399,32 +439,35 @@ public sealed class BrunoCollectionService : ICollectionService
 
         // params:query block is authoritative for query params when present.
         string baseUrl;
-        Dictionary<string, string> queryParams;
+        IReadOnlyList<RequestKv> queryParams;
         var queryBlock = doc.Find("params:query");
-        if (queryBlock?.Items.Any(kv => kv.IsEnabled) is true)
+        if (queryBlock?.Items.Count > 0)
         {
             baseUrl = QueryStringHelper.GetBaseUrl(rawUrl);
+            // Preserve all items (enabled and disabled) in the domain model.
             queryParams = queryBlock.Items
-                .Where(kv => kv.IsEnabled)
-                .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+                .Select(kv => new RequestKv(kv.Key, kv.Value, kv.IsEnabled))
+                .ToList();
         }
         else
         {
             // Fall back to parsing from the URL itself (e.g. no params:query block).
             baseUrl = QueryStringHelper.GetBaseUrl(rawUrl);
-            var parsed = QueryStringHelper.ParseQueryParams(rawUrl);
-            queryParams = new Dictionary<string, string>(parsed);
+            queryParams = QueryStringHelper.ParseQueryParams(rawUrl)
+                .Select(kv => new RequestKv(kv.Key, kv.Value))
+                .ToList();
         }
 
+        // Preserve all header items (enabled and disabled).
         var headers = doc.Find("headers")?.Items
-            .Where(kv => kv.IsEnabled)
-            .ToDictionary(kv => kv.Key, kv => kv.Value)
-            ?? new Dictionary<string, string>();
+            .Select(kv => new RequestKv(kv.Key, kv.Value, kv.IsEnabled))
+            .ToList() ?? (IReadOnlyList<RequestKv>)[];
 
         var bodyType = MapBrunoBodyType(bruBodyType);
         var body = BuildBody(doc, bodyType);
+        var formParams = BuildFormParams(doc, bodyType);
         var authType = MapBrunoAuthType(bruAuthType);
-        var auth = BuildAuth(doc, authType);
+        var auth = BuildAuth(doc, authType, basicPasswordOverride);
 
         return new CollectionRequest
         {
@@ -437,6 +480,7 @@ public sealed class BrunoCollectionService : ICollectionService
             QueryParams = queryParams,
             BodyType = bodyType,
             Body = body,
+            FormParams = formParams,
             Auth = auth,
         };
     }
@@ -446,21 +490,29 @@ public sealed class BrunoCollectionService : ICollectionService
         CollectionRequest.BodyTypes.Json => doc.Find("body:json")?.RawContent,
         CollectionRequest.BodyTypes.Text => doc.Find("body:text")?.RawContent,
         CollectionRequest.BodyTypes.Xml => doc.Find("body:xml")?.RawContent,
-        CollectionRequest.BodyTypes.Form => ReadFormBodyAsUrlEncoded(doc.Find("body:form-urlencoded")),
-        CollectionRequest.BodyTypes.Multipart => ReadFormBodyAsUrlEncoded(doc.Find("body:multipart")),
+        // Form and multipart params are stored in FormParams, not Body
         _ => null,
     };
 
-    private static string? ReadFormBodyAsUrlEncoded(BruBlock? block)
+    private static IReadOnlyList<KeyValuePair<string, string>> BuildFormParams(
+        BruDocument doc, string bodyType)
     {
-        if (block is null) return null;
-        var pairs = block.Items
+        var blockName = bodyType switch
+        {
+            CollectionRequest.BodyTypes.Form => "body:form-urlencoded",
+            CollectionRequest.BodyTypes.Multipart => "body:multipart",
+            _ => null,
+        };
+        if (blockName is null) return [];
+        var block = doc.Find(blockName);
+        if (block is null) return [];
+        return block.Items
             .Where(kv => kv.IsEnabled)
-            .Select(kv => Uri.EscapeDataString(kv.Key) + "=" + Uri.EscapeDataString(kv.Value));
-        return string.Join("&", pairs);
+            .Select(kv => new KeyValuePair<string, string>(kv.Key, kv.Value))
+            .ToList();
     }
 
-    private static AuthConfig BuildAuth(BruDocument doc, string authType) => authType switch
+    private static AuthConfig BuildAuth(BruDocument doc, string authType, string? basicPasswordOverride = null) => authType switch
     {
         AuthConfig.AuthTypes.Bearer => new AuthConfig
         {
@@ -471,7 +523,8 @@ public sealed class BrunoCollectionService : ICollectionService
         {
             AuthType = AuthConfig.AuthTypes.Basic,
             Username = doc.GetValue("auth:basic", "username"),
-            Password = doc.GetValue("auth:basic", "password"),
+            // Prefer injected secret; fall back to file value (migration path for existing files).
+            Password = basicPasswordOverride ?? doc.GetValue("auth:basic", "password"),
         },
         _ => new AuthConfig { AuthType = AuthConfig.AuthTypes.None },
     };
@@ -535,27 +588,21 @@ public sealed class BrunoCollectionService : ICollectionService
         method.Items.Add(new BruKv("auth", MapCallsmithAuthType(request.Auth.AuthType)));
         blocks.Add(method);
 
-        // params:query
-        var disabledQueryParams = GetDisabledItems(existing, "params:query");
-        if (request.QueryParams.Count > 0 || disabledQueryParams.Count > 0)
+        // params:query — write all items (enabled and disabled) with their state.
+        if (request.QueryParams.Count > 0)
         {
             var queryBlock = new BruBlock("params:query");
-            foreach (var (k, v) in request.QueryParams)
-                queryBlock.Items.Add(new BruKv(k, v));
-            foreach (var kv in disabledQueryParams)
-                queryBlock.Items.Add(kv);
+            foreach (var p in request.QueryParams)
+                queryBlock.Items.Add(new BruKv(p.Key, p.Value, p.IsEnabled));
             blocks.Add(queryBlock);
         }
 
-        // headers
-        var disabledHeaders = GetDisabledItems(existing, "headers");
-        if (request.Headers.Count > 0 || disabledHeaders.Count > 0)
+        // headers — write all items (enabled and disabled) with their state.
+        if (request.Headers.Count > 0)
         {
             var headersBlock = new BruBlock("headers");
-            foreach (var (k, v) in request.Headers)
-                headersBlock.Items.Add(new BruKv(k, v));
-            foreach (var kv in disabledHeaders)
-                headersBlock.Items.Add(kv);
+            foreach (var h in request.Headers)
+                headersBlock.Items.Add(new BruKv(h.Key, h.Value, h.IsEnabled));
             blocks.Add(headersBlock);
         }
 
@@ -563,9 +610,9 @@ public sealed class BrunoCollectionService : ICollectionService
         AddBodyBlock(blocks, request);
 
         // auth
-        AddAuthBlock(blocks, request);
+        AddAuthBlock(blocks, request, existing);
 
-        // Preserved blocks: scripts and tests are written back unchanged.
+        // Preserved blocks: scripts, tests, and path params are written back unchanged.
         if (existing is not null)
         {
             foreach (var block in existing.Blocks)
@@ -580,49 +627,39 @@ public sealed class BrunoCollectionService : ICollectionService
 
     private static void AddBodyBlock(List<BruBlock> blocks, CollectionRequest request)
     {
-        if (request.BodyType == CollectionRequest.BodyTypes.None || request.Body is null)
-            return;
-
         if (request.BodyType is CollectionRequest.BodyTypes.Form or CollectionRequest.BodyTypes.Multipart)
         {
+            if (request.FormParams.Count == 0) return;
+
             var blockName = request.BodyType == CollectionRequest.BodyTypes.Form
                 ? "body:form-urlencoded"
                 : "body:multipart";
             var block = new BruBlock(blockName);
-
-            // Convert URL-encoded body back to Bruno's KV format.
-            foreach (var pair in request.Body.Split('&', StringSplitOptions.RemoveEmptyEntries))
-            {
-                var eq = pair.IndexOf('=');
-                if (eq < 0) continue;
-                var k = Uri.UnescapeDataString(pair[..eq]);
-                var v = Uri.UnescapeDataString(pair[(eq + 1)..]);
+            foreach (var (k, v) in request.FormParams)
                 block.Items.Add(new BruKv(k, v));
-            }
             blocks.Add(block);
+            return;
         }
-        else
-        {
-            var blockName = request.BodyType switch
-            {
-                CollectionRequest.BodyTypes.Json => "body:json",
-                CollectionRequest.BodyTypes.Text => "body:text",
-                CollectionRequest.BodyTypes.Xml => "body:xml",
-                _ => "body:json",
-            };
 
-            var block = new BruBlock(blockName);
-            // If the body content already starts with whitespace it came from a Bruno file
-            // and already carries the correct indentation.  Otherwise indent it.
-            var raw = request.Body ?? string.Empty;
-            block.RawContent = raw.StartsWith(' ') || raw.StartsWith('\t')
-                ? raw
-                : IndentRawContent(raw);
-            blocks.Add(block);
-        }
+        if (request.Body is null) return;
+
+        var bodyBlockName = request.BodyType switch
+        {
+            CollectionRequest.BodyTypes.Json => "body:json",
+            CollectionRequest.BodyTypes.Text => "body:text",
+            CollectionRequest.BodyTypes.Xml => "body:xml",
+            _ => "body:json",
+        };
+
+        var rawBlock = new BruBlock(bodyBlockName);
+        var raw = request.Body;
+        rawBlock.RawContent = raw.StartsWith(' ') || raw.StartsWith('\t')
+            ? raw
+            : IndentRawContent(raw);
+        blocks.Add(rawBlock);
     }
 
-    private static void AddAuthBlock(List<BruBlock> blocks, CollectionRequest request)
+    private static void AddAuthBlock(List<BruBlock> blocks, CollectionRequest request, BruDocument? existing)
     {
         switch (request.Auth.AuthType)
         {
@@ -635,18 +672,34 @@ public sealed class BrunoCollectionService : ICollectionService
             case AuthConfig.AuthTypes.Basic:
                 var basicBlock = new BruBlock("auth:basic");
                 basicBlock.Items.Add(new BruKv("username", request.Auth.Username ?? string.Empty));
-                basicBlock.Items.Add(new BruKv("password", request.Auth.Password ?? string.Empty));
+                // Password is stored in local secret storage — never write a literal value to the
+                // file.  However, if the existing file had a {{variable}} reference, preserve it
+                // so Bruno users whose password is stored as an env-var are not broken.
+                var existingPw = existing?.GetValue("auth:basic", "password") ?? string.Empty;
+                var pwToWrite = IsEnvVarRef(existingPw) ? existingPw : string.Empty;
+                basicBlock.Items.Add(new BruKv("password", pwToWrite));
                 blocks.Add(basicBlock);
                 break;
         }
     }
 
-    private static IReadOnlyList<BruKv> GetDisabledItems(BruDocument? doc, string blockName) =>
-        doc?.Find(blockName)?.Items.Where(kv => !kv.IsEnabled).ToList()
-        ?? (IReadOnlyList<BruKv>)[];
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="value"/> is a Bruno environment-variable
+    /// reference such as <c>{{myVar}}</c>.  These should never be erased on save.
+    /// </summary>
+    private static bool IsEnvVarRef(string value) =>
+        value.StartsWith("{{" , StringComparison.Ordinal) &&
+        value.EndsWith("}}", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Returns a stable, normalised key for a request file relative to the current collection root.
+    /// Used to key Basic auth passwords in local secret storage.
+    /// </summary>
+    private string RequestKey(string filePath) =>
+        Path.GetRelativePath(_currentRoot, Path.GetFullPath(filePath)).Replace('\\', '/');
 
     private static bool IsPreservedBlockName(string name) =>
-        name is "script:pre-request" or "script:post-response" or "tests";
+        name is "script:pre-request" or "script:post-response" or "tests" or "params:path";
 
     private static string IndentRawContent(string content)
     {

@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Callsmith.Desktop.Messages;
+using Microsoft.Extensions.Logging;
 
 namespace Callsmith.Desktop.ViewModels;
 
@@ -21,6 +22,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
 {
     private readonly ITransportRegistry _transportRegistry;
     private readonly ICollectionService _collectionService;
+    private readonly IDynamicVariableEvaluator? _dynamicEvaluator;
     private readonly IMessenger _messenger;
     private readonly Action<RequestTabViewModel> _requestClose;
 
@@ -90,6 +92,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowBodyEditor))]
+    [NotifyPropertyChangedFor(nameof(ShowTextBodyEditor))]
+    [NotifyPropertyChangedFor(nameof(ShowFormBodyEditor))]
+    [NotifyPropertyChangedFor(nameof(IsBodyJson))]
+    [NotifyPropertyChangedFor(nameof(BodyLanguage))]
     private string _selectedBodyType = CollectionRequest.BodyTypes.None;
 
     [ObservableProperty]
@@ -107,6 +113,21 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [ObservableProperty] private string _authApiKeyName = string.Empty;
     [ObservableProperty] private string _authApiKeyValue = string.Empty;
     [ObservableProperty] private string _authApiKeyIn = AuthConfig.ApiKeyLocations.Header;
+
+    /// <summary>Segmented field for the bearer token (supports pill rendering of dynamic tokens).</summary>
+    public SegmentedValueFieldViewModel AuthTokenField { get; }
+
+    /// <summary>Segmented field for the basic auth username.</summary>
+    public SegmentedValueFieldViewModel AuthUsernameField { get; }
+
+    /// <summary>Segmented field for the basic auth password.</summary>
+    public SegmentedValueFieldViewModel AuthPasswordField { get; }
+
+    /// <summary>Segmented field for the API key name.</summary>
+    public SegmentedValueFieldViewModel AuthApiKeyNameField { get; }
+
+    /// <summary>Segmented field for the API key value (supports pill rendering of dynamic tokens).</summary>
+    public SegmentedValueFieldViewModel AuthApiKeyValueField { get; }
 
     // -------------------------------------------------------------------------
     // Save state
@@ -142,6 +163,13 @@ public sealed partial class RequestTabViewModel : ObservableObject
     /// <summary>Absolute path of the open collection root. Used to resolve relative SaveAsFolderPath values.</summary>
     public string CollectionRootPath { get; internal set; } = string.Empty;
 
+    /// <summary>
+    /// Names of all requests in the open collection.
+    /// Used to populate the request picker in the dynamic value config dialog.
+    /// Set by <see cref="RequestEditorViewModel"/> when the collection is loaded.
+    /// </summary>
+    public IReadOnlyList<string> AvailableRequestNames { get; internal set; } = [];
+
     // -------------------------------------------------------------------------
     // Close guard (shown when closing a dirty existing tab)
     // -------------------------------------------------------------------------
@@ -153,7 +181,15 @@ public sealed partial class RequestTabViewModel : ObservableObject
     // Response state
     // -------------------------------------------------------------------------
 
-    [ObservableProperty] private ResponseModel? _response;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FormattedResponseBody))]
+    [NotifyPropertyChangedFor(nameof(ResponseLanguage))]
+    [NotifyPropertyChangedFor(nameof(StatusDisplay))]
+    [NotifyPropertyChangedFor(nameof(ElapsedDisplay))]
+    [NotifyPropertyChangedFor(nameof(SizeDisplay))]
+    [NotifyPropertyChangedFor(nameof(StatusBadgeColor))]
+    private ResponseModel? _response;
+
     [ObservableProperty] private bool _isSending;
     [ObservableProperty] private string? _errorMessage;
 
@@ -164,6 +200,95 @@ public sealed partial class RequestTabViewModel : ObservableObject
     public KeyValueEditorViewModel Headers { get; } = new();
     public KeyValueEditorViewModel QueryParams { get; } = new();
     public KeyValueEditorViewModel PathParams { get; } = new();
+    public KeyValueEditorViewModel FormParams { get; } = new();
+
+    // -------------------------------------------------------------------------
+    // Segment-editing dialogs (shared by all KV editors and auth fields)
+    // -------------------------------------------------------------------------
+
+    private TaskCompletionSource<DynamicValueSegment?>? _pendingDynamicConfigTcs;
+    private TaskCompletionSource<MockDataSegment?>?     _pendingMockDataConfigTcs;
+
+    /// <summary>
+    /// Set just before <see cref="ShowDynamicValueConfig"/> becomes true.
+    /// The view code-behind shows the dialog and calls <see cref="OnDynamicConfigDialogClosed"/> when done.
+    /// </summary>
+    public DynamicValueConfigViewModel? PendingDynamicConfig { get; private set; }
+
+    /// <summary>Set just before <see cref="ShowMockDataConfig"/> becomes true.</summary>
+    public MockDataConfigViewModel? PendingMockDataConfig { get; private set; }
+
+    [ObservableProperty] private bool _showDynamicValueConfig;
+    [ObservableProperty] private bool _showMockDataConfig;
+
+    /// <summary>
+    /// Opens the dynamic value configuration dialog. Returns the configured segment or null.
+    /// Used as the callback wired into every KV editor row's <see cref="SegmentedValueFieldViewModel"/>.
+    /// </summary>
+    internal Task<DynamicValueSegment?> OpenDynamicValueConfigAsync(DynamicValueSegment? existing)
+    {
+        // This method is only reachable when _dynamicEvaluator is not null
+        // (callbacks are only wired when the evaluator is available).
+        if (_dynamicEvaluator is null)
+            return Task.FromResult<DynamicValueSegment?>(null);
+
+        _pendingDynamicConfigTcs?.TrySetResult(null);
+
+        var staticVars = BuildMergedVars();
+
+        PendingDynamicConfig = new DynamicValueConfigViewModel(
+            _dynamicEvaluator,
+            CollectionRootPath,
+            string.Empty,            // no single env file in this context
+            AvailableRequestNames,
+            [],                      // env variables not needed here
+            staticVars,
+            existing);
+
+        _pendingDynamicConfigTcs = new TaskCompletionSource<DynamicValueSegment?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        ShowDynamicValueConfig = true;
+        return _pendingDynamicConfigTcs.Task;
+    }
+
+    /// <summary>Called by the view's code-behind when the dynamic value dialog closes.</summary>
+    internal void OnDynamicConfigDialogClosed()
+    {
+        ShowDynamicValueConfig = false;
+        var result = PendingDynamicConfig?.IsConfirmed == true
+            ? PendingDynamicConfig.ResultSegment
+            : null;
+        _pendingDynamicConfigTcs?.TrySetResult(result);
+        _pendingDynamicConfigTcs = null;
+        PendingDynamicConfig = null;
+    }
+
+    /// <summary>Opens the mock data picker dialog. Returns the configured segment or null.</summary>
+    internal Task<MockDataSegment?> OpenMockDataConfigAsync(MockDataSegment? existing)
+    {
+        _pendingMockDataConfigTcs?.TrySetResult(null);
+
+        PendingMockDataConfig = new MockDataConfigViewModel(existing);
+
+        _pendingMockDataConfigTcs = new TaskCompletionSource<MockDataSegment?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        ShowMockDataConfig = true;
+        return _pendingMockDataConfigTcs.Task;
+    }
+
+    /// <summary>Called by the view's code-behind when the mock data dialog closes.</summary>
+    internal void OnMockDataConfigDialogClosed()
+    {
+        ShowMockDataConfig = false;
+        var result = PendingMockDataConfig?.IsConfirmed == true
+            ? PendingMockDataConfig.ResultSegment
+            : null;
+        _pendingMockDataConfigTcs?.TrySetResult(result);
+        _pendingMockDataConfigTcs = null;
+        PendingMockDataConfig = null;
+    }
 
     // -------------------------------------------------------------------------
     // Environment variable completions
@@ -253,6 +378,46 @@ public sealed partial class RequestTabViewModel : ObservableObject
     }
 
     public bool ShowBodyEditor => SelectedBodyType != CollectionRequest.BodyTypes.None;
+    public bool ShowTextBodyEditor => ShowBodyEditor && SelectedBodyType != CollectionRequest.BodyTypes.Form;
+    public bool ShowFormBodyEditor => SelectedBodyType == CollectionRequest.BodyTypes.Form;
+    public bool IsBodyJson => SelectedBodyType == CollectionRequest.BodyTypes.Json;
+
+    /// <summary>Language hint for the request body editor (for syntax highlighting).</summary>
+    public string BodyLanguage => SelectedBodyType switch
+    {
+        CollectionRequest.BodyTypes.Json => "json",
+        CollectionRequest.BodyTypes.Xml  => "xml",
+        _                                => string.Empty,
+    };
+
+    /// <summary>Language hint for the response body viewer derived from the Content-Type header.</summary>
+    public string ResponseLanguage
+    {
+        get
+        {
+            if (Response is null) return string.Empty;
+            var ct = Response.Headers.TryGetValue("Content-Type", out var v) ? v : string.Empty;
+            if (ct.Contains("json", StringComparison.OrdinalIgnoreCase)) return "json";
+            if (ct.Contains("xml",  StringComparison.OrdinalIgnoreCase) ||
+                ct.Contains("xhtml", StringComparison.OrdinalIgnoreCase)) return "xml";
+            return string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// The response body formatted according to the response Content-Type header.
+    /// JSON and XML bodies are pretty-printed; all others are returned as-is.
+    /// </summary>
+    public string FormattedResponseBody
+    {
+        get
+        {
+            if (Response is null) return string.Empty;
+            var contentType = Response.Headers.TryGetValue("Content-Type", out var ct) ? ct : null;
+            return ResponseFormatter.FormatBody(Response.Body, contentType);
+        }
+    }
+
     public bool IsAuthBearer => AuthType == AuthConfig.AuthTypes.Bearer;
     public bool IsAuthBasic  => AuthType == AuthConfig.AuthTypes.Basic;
     public bool IsAuthApiKey => AuthType == AuthConfig.AuthTypes.ApiKey;
@@ -296,7 +461,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         ITransportRegistry transportRegistry,
         ICollectionService collectionService,
         IMessenger messenger,
-        Action<RequestTabViewModel> requestClose)
+        Action<RequestTabViewModel> requestClose,
+        IDynamicVariableEvaluator? dynamicEvaluator = null)
     {
         ArgumentNullException.ThrowIfNull(transportRegistry);
         ArgumentNullException.ThrowIfNull(collectionService);
@@ -305,12 +471,59 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
         _transportRegistry = transportRegistry;
         _collectionService = collectionService;
+        _dynamicEvaluator = dynamicEvaluator;
         _messenger = messenger;
         _requestClose = requestClose;
+
+        // Initialize auth segment fields — sync back to plain string properties.
+        SegmentedValueFieldViewModel? authTokenField = null;
+        authTokenField = new SegmentedValueFieldViewModel(
+            onChanged: () => { AuthToken = authTokenField!.GetInlineText(); });
+        AuthTokenField = authTokenField;
+
+        SegmentedValueFieldViewModel? authUsernameField = null;
+        authUsernameField = new SegmentedValueFieldViewModel(
+            onChanged: () => { AuthUsername = authUsernameField!.GetInlineText(); });
+        AuthUsernameField = authUsernameField;
+
+        SegmentedValueFieldViewModel? authPasswordField = null;
+        authPasswordField = new SegmentedValueFieldViewModel(
+            onChanged: () => { AuthPassword = authPasswordField!.GetInlineText(); });
+        AuthPasswordField = authPasswordField;
+
+        SegmentedValueFieldViewModel? authApiKeyNameField = null;
+        authApiKeyNameField = new SegmentedValueFieldViewModel(
+            onChanged: () => { AuthApiKeyName = authApiKeyNameField!.GetInlineText(); });
+        AuthApiKeyNameField = authApiKeyNameField;
+
+        SegmentedValueFieldViewModel? authApiKeyValueField = null;
+        authApiKeyValueField = new SegmentedValueFieldViewModel(
+            onChanged: () => { AuthApiKeyValue = authApiKeyValueField!.GetInlineText(); });
+        AuthApiKeyValueField = authApiKeyValueField;
 
         PathParams.ShowAddButton = false;
         PathParams.ShowDeleteButton = false;
         PathParams.ShowEnabledToggle = false;
+
+        Headers.ShowKeyPills = true;
+        QueryParams.ShowKeyPills = true;
+
+        // Wire up pill-segment dialog callbacks for all KV editors.
+        // When no dynamic evaluator is provided (e.g. tests), dynamic-value dialogs are suppressed.
+        if (_dynamicEvaluator is not null)
+        {
+            var editDynamic = (DynamicValueSegment? seg) => OpenDynamicValueConfigAsync(seg);
+            var editMock    = (MockDataSegment? seg)     => OpenMockDataConfigAsync(seg);
+            Headers.SetDialogCallbacks(editDynamic, editMock);
+            QueryParams.SetDialogCallbacks(editDynamic, editMock);
+            PathParams.SetDialogCallbacks(editDynamic, editMock);
+            FormParams.SetDialogCallbacks(editDynamic, editMock);
+            AuthTokenField.SetCallbacks(editDynamic, editMock);
+            AuthUsernameField.SetCallbacks(editDynamic, editMock);
+            AuthPasswordField.SetCallbacks(editDynamic, editMock);
+            AuthApiKeyNameField.SetCallbacks(editDynamic, editMock);
+            AuthApiKeyValueField.SetCallbacks(editDynamic, editMock);
+        }
 
         // Dirty tracking — only fires for deliberate user edits to existing requests.
         // The _saving guard prevents reactive URL/param sync that occurs during PerformSaveAsync
@@ -326,10 +539,14 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(Response) or nameof(IsSending) or nameof(ErrorMessage) or
                 nameof(StatusDisplay) or nameof(ElapsedDisplay) or nameof(SizeDisplay) or
                 nameof(StatusBadgeColor) or nameof(MethodColor) or
-                nameof(ShowBodyEditor) or nameof(PreviewUrl) or
+                nameof(ShowBodyEditor) or nameof(ShowTextBodyEditor) or nameof(ShowFormBodyEditor) or
+                nameof(PreviewUrl) or
                 nameof(HasUnresolvedPathParams) or nameof(PreviewUrlForeground) or
                 nameof(IsAuthBearer) or nameof(IsAuthBasic) or nameof(IsAuthApiKey) or
-                nameof(EnvVarNames))
+                nameof(EnvVarNames) or
+                nameof(FormattedResponseBody) or nameof(IsBodyJson) or
+                nameof(BodyLanguage) or nameof(ResponseLanguage) or
+                nameof(ShowDynamicValueConfig) or nameof(ShowMockDataConfig))
                 return;
             HasUnsavedChanges = true;
         };
@@ -354,6 +571,11 @@ public sealed partial class RequestTabViewModel : ObservableObject
             OnPropertyChanged(nameof(HasUnresolvedPathParams));
             OnPropertyChanged(nameof(PreviewUrlForeground));
         };
+
+        FormParams.Changed += (_, _) =>
+        {
+            if (!_loading && !_saving && _sourceRequest is not null) HasUnsavedChanges = true;
+        };
     }
 
     // -------------------------------------------------------------------------
@@ -373,8 +595,12 @@ public sealed partial class RequestTabViewModel : ObservableObject
             _syncingUrl = true;
             try
             {
-                Url = req.QueryParams.Count > 0
-                    ? QueryStringHelper.ApplyQueryParams(req.Url, req.QueryParams)
+                var enabledParams = req.QueryParams
+                    .Where(p => p.IsEnabled)
+                    .Select(p => new KeyValuePair<string, string>(p.Key, p.Value))
+                    .ToList();
+                Url = enabledParams.Count > 0
+                    ? QueryStringHelper.ApplyQueryParams(req.Url, enabledParams)
                     : req.Url;
                 QueryParams.LoadFrom(req.QueryParams);
                 SyncPathParamsWithUrl(Url, req.PathParams);
@@ -387,12 +613,18 @@ public sealed partial class RequestTabViewModel : ObservableObject
             Headers.LoadFrom(req.Headers);
             SelectedBodyType = req.BodyType;
             Body = req.Body ?? string.Empty;
+            FormParams.LoadFrom(req.FormParams);
             AuthType = req.Auth.AuthType;
             AuthToken = req.Auth.Token ?? string.Empty;
+            AuthTokenField.LoadFromText(AuthToken);
             AuthUsername = req.Auth.Username ?? string.Empty;
+            AuthUsernameField.LoadFromText(AuthUsername);
             AuthPassword = req.Auth.Password ?? string.Empty;
+            AuthPasswordField.LoadFromText(AuthPassword);
             AuthApiKeyName = req.Auth.ApiKeyName ?? string.Empty;
+            AuthApiKeyNameField.LoadFromText(AuthApiKeyName);
             AuthApiKeyValue = req.Auth.ApiKeyValue ?? string.Empty;
+            AuthApiKeyValueField.LoadFromText(AuthApiKeyValue);
             AuthApiKeyIn = req.Auth.ApiKeyIn;
             Response = null;
             ErrorMessage = null;
@@ -433,6 +665,48 @@ public sealed partial class RequestTabViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Async version of <see cref="BuildMergedVars"/> that additionally evaluates
+    /// dynamic variables before returning. If no evaluator is registered, falls back
+    /// to the static implementation.
+    /// </summary>
+    private async Task<Dictionary<string, string>> BuildMergedVarsAsync(CancellationToken ct)
+    {
+        var merged = BuildMergedVars();
+
+        if (_dynamicEvaluator is null || _activeEnvironment is null)
+            return merged;
+
+        // Check if any variable is dynamic; skip the round-trip if none are.
+        if (!_activeEnvironment.Variables.Any(v =>
+            v.VariableType == EnvironmentVariable.VariableTypes.Dynamic))
+            return merged;
+
+        try
+        {
+            var resolved = await _dynamicEvaluator.ResolveAsync(
+                CollectionRootPath,
+                _activeEnvironment.FilePath,
+                _activeEnvironment.Variables,
+                merged,
+                ct).ConfigureAwait(false);
+
+            // Merge evaluated results into the dictionary (dynamic values override static).
+            foreach (var kvp in resolved)
+                merged[kvp.Key] = kvp.Value;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // If evaluation fails, continue with static values so the request still sends.
+        }
+
+        return merged;
+    }
+
+    /// <summary>
     /// Rebuilds autocomplete suggestions from the merged global + active environment.
     /// Active environment values override global values for the same name.
     /// Secret variable values are shown as bullets.
@@ -455,8 +729,60 @@ public sealed partial class RequestTabViewModel : ObservableObject
         Headers.SetSuggestions(suggestions);
         QueryParams.SetSuggestions(suggestions);
         PathParams.SetSuggestions(suggestions);
+        FormParams.SetSuggestions(suggestions);
 
         OnPropertyChanged(nameof(PreviewUrl));
+    }
+
+    // -------------------------------------------------------------------------
+    // Body — insert token at caret
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Fired when a dynamic or mock-data token should be inserted into the body editor
+    /// at the current caret position. The view code-behind listens and calls
+    /// <c>BodyEditor.Document.Insert(CaretOffset, text)</c>.
+    /// </summary>
+    public event Action<string>? InsertTextAtBodyCaret;
+
+    /// <summary>
+    /// Opens the dynamic-value config dialog and inserts the resulting token into the body editor.
+    /// </summary>
+    [RelayCommand]
+    private async Task InsertDynamicValueToBodyAsync()
+    {
+        var segment = await OpenDynamicValueConfigAsync(null).ConfigureAwait(true);
+        if (segment is null) return;
+        var token = SegmentSerializer.SerializeSegments([segment]);
+        InsertTextAtBodyCaret?.Invoke(token);
+    }
+
+    /// <summary>
+    /// Opens the mock-data picker and inserts the resulting token into the body editor.
+    /// </summary>
+    [RelayCommand]
+    private async Task InsertMockDataToBodyAsync()
+    {
+        var segment = await OpenMockDataConfigAsync(null).ConfigureAwait(true);
+        if (segment is null) return;
+        var token = SegmentSerializer.SerializeSegments([segment]);
+        InsertTextAtBodyCaret?.Invoke(token);
+    }
+
+    // -------------------------------------------------------------------------
+    // Commands — Body formatting
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Pretty-prints the JSON body in the text editor.
+    /// Does nothing if the body is not valid JSON.
+    /// </summary>
+    [RelayCommand]
+    private void FormatBody()
+    {
+        var formatted = ResponseFormatter.TryFormatJson(Body);
+        if (formatted is not null)
+            Body = formatted;
     }
 
     // -------------------------------------------------------------------------
@@ -478,7 +804,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 Headers.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
                 StringComparer.OrdinalIgnoreCase);
 
-            var vars = (IReadOnlyDictionary<string, string>)BuildMergedVars();
+            var vars = (IReadOnlyDictionary<string, string>)await BuildMergedVarsAsync(ct);
 
             // Substitute {{tokens}} in path param values BEFORE URL-encoding.
             var pathParamValues = PathParams.GetEnabledPairs()
@@ -507,9 +833,25 @@ public sealed partial class RequestTabViewModel : ObservableObject
             foreach (var key in headers.Keys.ToList())
                 headers[key] = VariableSubstitutionService.Substitute(headers[key], vars) ?? headers[key];
 
-            var resolvedBody = SelectedBodyType != CollectionRequest.BodyTypes.None && !string.IsNullOrEmpty(Body)
+            var resolvedBody = SelectedBodyType != CollectionRequest.BodyTypes.None
+                && SelectedBodyType != CollectionRequest.BodyTypes.Form
+                && !string.IsNullOrEmpty(Body)
                 ? VariableSubstitutionService.Substitute(Body, vars) ?? Body
                 : null;
+
+            // For form-encoded bodies, build the URL-encoded string from FormParams.
+            if (SelectedBodyType == CollectionRequest.BodyTypes.Form)
+            {
+                var formPairs = FormParams.GetEnabledPairs()
+                    .Select(p => new KeyValuePair<string, string>(
+                        VariableSubstitutionService.Substitute(p.Key, vars) ?? p.Key,
+                        VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value))
+                    .ToList();
+                if (formPairs.Count > 0)
+                    resolvedBody = string.Join("&",
+                        formPairs.Select(p =>
+                            Uri.EscapeDataString(p.Key) + "=" + Uri.EscapeDataString(p.Value)));
+            }
 
             var request = new RequestModel
             {
@@ -534,10 +876,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
         finally
         {
             IsSending = false;
-            OnPropertyChanged(nameof(StatusDisplay));
-            OnPropertyChanged(nameof(ElapsedDisplay));
-            OnPropertyChanged(nameof(SizeDisplay));
-            OnPropertyChanged(nameof(StatusBadgeColor));
         }
     }
 
@@ -612,9 +950,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
             Name = name,
             Method = new HttpMethod(SelectedMethod),
             Url = string.Empty, // PerformSaveAsync will overwrite from editor state
-            Headers = new Dictionary<string, string>(),
+            Headers = [],
             PathParams = new Dictionary<string, string>(),
-            QueryParams = new Dictionary<string, string>(),
+            QueryParams = [],
             BodyType = CollectionRequest.BodyTypes.None,
             Auth = new AuthConfig(),
         };
@@ -695,11 +1033,12 @@ public sealed partial class RequestTabViewModel : ObservableObject
             Method = new HttpMethod(SelectedMethod),
             Url = baseUrl,
             Description = _sourceRequest.Description,
-            Headers = Headers.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
+            Headers = Headers.GetAllKv(),
             PathParams = PathParams.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
-            QueryParams = QueryParams.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
+            QueryParams = QueryParams.GetAllKv(),
             BodyType = SelectedBodyType,
             Body = string.IsNullOrEmpty(Body) ? null : Body,
+            FormParams = FormParams.GetEnabledPairs().ToList(),
             Auth = new AuthConfig
             {
                 AuthType = AuthType,

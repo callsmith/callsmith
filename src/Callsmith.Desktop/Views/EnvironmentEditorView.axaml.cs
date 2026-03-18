@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -15,6 +16,8 @@ public partial class EnvironmentEditorView : UserControl
     private bool _isDragging;
     private const double DragThreshold = 6.0;
 
+    private EnvironmentEditorViewModel? _trackedVm;
+
     public EnvironmentEditorView()
     {
         InitializeComponent();
@@ -25,6 +28,59 @@ public partial class EnvironmentEditorView : UserControl
         EnvironmentList.AddHandler(InputElement.PointerMovedEvent, OnListPointerMoved, moveRelease, handledEventsToo: true);
         EnvironmentList.AddHandler(InputElement.PointerReleasedEvent, OnListPointerReleased, moveRelease, handledEventsToo: true);
         EnvironmentList.AddHandler(InputElement.PointerCaptureLostEvent, OnListPointerCaptureLost, RoutingStrategies.Direct);
+    }
+
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+
+        if (_trackedVm is not null)
+            _trackedVm.PropertyChanged -= OnViewModelPropertyChanged;
+
+        _trackedVm = DataContext as EnvironmentEditorViewModel;
+
+        if (_trackedVm is not null)
+            _trackedVm.PropertyChanged += OnViewModelPropertyChanged;
+    }
+
+    private async void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(EnvironmentEditorViewModel.ShowDynamicValueConfig))
+        {
+            if (_trackedVm is null || !_trackedVm.ShowDynamicValueConfig)
+                return;
+            if (_trackedVm.PendingDynamicConfig is null)
+                return;
+
+            var owner = TopLevel.GetTopLevel(this) as Window;
+            if (owner is null) return;
+
+            var dialog = new DynamicValueConfigDialog
+            {
+                DataContext = _trackedVm.PendingDynamicConfig,
+            };
+
+            await dialog.ShowDialog(owner);
+            _trackedVm.OnDynamicConfigDialogClosed();
+        }
+        else if (e.PropertyName == nameof(EnvironmentEditorViewModel.ShowMockDataConfig))
+        {
+            if (_trackedVm is null || !_trackedVm.ShowMockDataConfig)
+                return;
+            if (_trackedVm.PendingMockDataConfig is null)
+                return;
+
+            var owner = TopLevel.GetTopLevel(this) as Window;
+            if (owner is null) return;
+
+            var dialog = new MockDataConfigDialog
+            {
+                DataContext = _trackedVm.PendingMockDataConfig,
+            };
+
+            await dialog.ShowDialog(owner);
+            _trackedVm.OnMockDataConfigDialogClosed();
+        }
     }
 
     // ─── Drag to reorder ──────────────────────────────────────────────────────
@@ -107,4 +163,5 @@ public partial class EnvironmentEditorView : UserControl
         EnvironmentList.Cursor = Cursor.Default;
         pointer.Capture(null);
     }
+
 }

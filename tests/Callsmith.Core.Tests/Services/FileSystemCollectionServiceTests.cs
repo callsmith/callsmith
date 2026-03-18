@@ -1,9 +1,11 @@
 using System.Net.Http;
+using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
 using Callsmith.Core.Tests.TestHelpers;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 
 namespace Callsmith.Core.Tests.Services;
 
@@ -14,10 +16,25 @@ namespace Callsmith.Core.Tests.Services;
 /// </summary>
 public sealed class FileSystemCollectionServiceTests : IDisposable
 {
-    private readonly FileSystemCollectionService _sut =
-        new(NullLogger<FileSystemCollectionService>.Instance);
-
     private readonly TempDirectory _temp = new();
+
+    /// <summary>No-op secrets for tests that do not exercise auth-secret storage.</summary>
+    private static ISecretStorageService NoOpSecrets() => Substitute.For<ISecretStorageService>();
+
+    /// <summary>Returns a real secrets service backed by a fresh temp sub-directory.</summary>
+    private FileSystemSecretStorageService RealSecrets() =>
+        new(_temp.CreateSubDirectory("secrets-store"), NullLogger<FileSystemSecretStorageService>.Instance);
+
+    private FileSystemCollectionService Sut(ISecretStorageService? secrets = null) =>
+        new(secrets ?? NoOpSecrets(), NullLogger<FileSystemCollectionService>.Instance);
+
+    // Shared instance for tests that don't exercise secret storage.
+    private readonly FileSystemCollectionService _sut;
+
+    public FileSystemCollectionServiceTests()
+    {
+        _sut = Sut();
+    }
 
     public void Dispose() => _temp.Dispose();
 
@@ -222,8 +239,8 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
 
         var result = await _sut.LoadRequestAsync(filePath);
 
-        result.Headers.Should().ContainKey("Authorization").WhoseValue.Should().Be("Bearer token123");
-        result.Headers.Should().ContainKey("Accept").WhoseValue.Should().Be("application/json");
+        result.Headers.Should().Contain(h => h.Key == "Authorization" && h.Value == "Bearer token123");
+        result.Headers.Should().Contain(h => h.Key == "Accept" && h.Value == "application/json");
     }
 
     // -------------------------------------------------------------------------
@@ -270,7 +287,7 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
             Method = HttpMethod.Put,
             Url = "https://api.example.com/items/1",
             Description = "Update item",
-            Headers = new Dictionary<string, string> { ["Content-Type"] = "application/json" },
+            Headers = [new RequestKv("Content-Type", "application/json")],
             Body = """{"value":42}""",
             BodyType = CollectionRequest.BodyTypes.Json,
         };
@@ -284,7 +301,7 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
         loaded.Description.Should().Be(original.Description);
         loaded.Body.Should().Be(original.Body);
         loaded.BodyType.Should().Be(original.BodyType);
-        loaded.Headers.Should().ContainKey("Content-Type").WhoseValue.Should().Be("application/json");
+        loaded.Headers.Should().Contain(h => h.Key == "Content-Type" && h.Value == "application/json");
     }
 
     [Fact]
@@ -441,7 +458,7 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
             Name = "req",
             Method = HttpMethod.Get,
             Url = "https://api.example.com",
-            QueryParams = new Dictionary<string, string> { ["limit"] = "10", ["offset"] = "0" },
+            QueryParams = [new("limit", "10"), new("offset", "0")],
         };
 
         await _sut.SaveRequestAsync(request);
@@ -449,6 +466,32 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
 
         loaded.QueryParams.Should().BeEquivalentTo(request.QueryParams);
         loaded.Url.Should().Be("https://api.example.com");
+    }
+
+    [Fact]
+    public async Task SaveAndLoad_WithDuplicateQueryParamKeys_PreservesAll()
+    {
+        var folder = _temp.CreateSubDirectory("col");
+        var request = new CollectionRequest
+        {
+            FilePath = Path.Combine(folder, "dups.callsmith"),
+            Name = "dups",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com/roles",
+            QueryParams =
+            [
+                new("roleNames", "ADMIN"),
+                new("roleNames", "MANAGER"),
+                new("roleNames", "VIEWER"),
+            ],
+        };
+
+        await _sut.SaveRequestAsync(request);
+        var loaded = await _sut.LoadRequestAsync(request.FilePath);
+
+        loaded.QueryParams.Should().HaveCount(3);
+        loaded.QueryParams.Select(p => p.Key).Should().AllBe("roleNames");
+        loaded.QueryParams.Select(p => p.Value).Should().BeEquivalentTo(["ADMIN", "MANAGER", "VIEWER"]);
     }
 
     [Fact]
@@ -496,9 +539,12 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveAndLoad_BasicAuth_RoundTrips()
+    public async Task SaveAndLoad_BasicAuth_PasswordIsStoredInSecretsNotInFile()
     {
-        var folder = _temp.CreateSubDirectory("col");
+        var sut = Sut(RealSecrets());
+        var folder = _temp.CreateSubDirectory("col-basic-redact");
+        await sut.OpenFolderAsync(folder);
+
         var request = new CollectionRequest
         {
             FilePath = Path.Combine(folder, "req.callsmith"),
@@ -509,16 +555,44 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
             {
                 AuthType = AuthConfig.AuthTypes.Basic,
                 Username = "user",
-                Password = "pass",
+                Password = "s3cret",
             },
         };
 
-        await _sut.SaveRequestAsync(request);
-        var loaded = await _sut.LoadRequestAsync(request.FilePath);
+        await sut.SaveRequestAsync(request);
+
+        // The on-disk file must not contain the plain-text password.
+        var json = await File.ReadAllTextAsync(request.FilePath);
+        json.Should().NotContain("s3cret");
+    }
+
+    [Fact]
+    public async Task SaveAndLoad_BasicAuth_RoundTrips()
+    {
+        var sut = Sut(RealSecrets());
+        var folder = _temp.CreateSubDirectory("col-basic");
+        await sut.OpenFolderAsync(folder);
+
+        var request = new CollectionRequest
+        {
+            FilePath = Path.Combine(folder, "req.callsmith"),
+            Name = "req",
+            Method = HttpMethod.Post,
+            Url = "https://api.example.com",
+            Auth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.Basic,
+                Username = "user",
+                Password = "s3cret",
+            },
+        };
+
+        await sut.SaveRequestAsync(request);
+        var loaded = await sut.LoadRequestAsync(request.FilePath);
 
         loaded.Auth.AuthType.Should().Be(AuthConfig.AuthTypes.Basic);
         loaded.Auth.Username.Should().Be("user");
-        loaded.Auth.Password.Should().Be("pass");
+        loaded.Auth.Password.Should().Be("s3cret");
     }
 
     [Fact]
@@ -573,7 +647,60 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
         var loaded = await _sut.LoadRequestAsync(filePath);
 
         loaded.Url.Should().Be("https://api.example.com");
-        loaded.QueryParams.Should().ContainKey("foo").WhoseValue.Should().Be("bar");
-        loaded.QueryParams.Should().ContainKey("limit").WhoseValue.Should().Be("5");
+        loaded.QueryParams.Should().Contain(p => p.Key == "foo" && p.Value == "bar");
+        loaded.QueryParams.Should().Contain(p => p.Key == "limit" && p.Value == "5");
+    }
+
+    [Fact]
+    public async Task SaveAndLoad_WithDisabledQueryParam_PreservesEnabledState()
+    {
+        var folder = _temp.CreateSubDirectory("col");
+        var request = new CollectionRequest
+        {
+            FilePath = Path.Combine(folder, "req.callsmith"),
+            Name = "req",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com",
+            QueryParams =
+            [
+                new RequestKv("active", "true"),
+                new RequestKv("debug", "1", IsEnabled: false),
+            ],
+        };
+
+        await _sut.SaveRequestAsync(request);
+        var loaded = await _sut.LoadRequestAsync(request.FilePath);
+
+        loaded.QueryParams.Should().HaveCount(2);
+        loaded.QueryParams.Should().Contain(p => p.Key == "active" && p.IsEnabled);
+        loaded.QueryParams.Should().Contain(p => p.Key == "debug" && !p.IsEnabled);
+        // Disabled param must not appear in FullUrl
+        loaded.FullUrl.Should().NotContain("debug");
+        loaded.FullUrl.Should().Contain("active=true");
+    }
+
+    [Fact]
+    public async Task SaveAndLoad_WithDisabledHeader_PreservesEnabledState()
+    {
+        var folder = _temp.CreateSubDirectory("col");
+        var request = new CollectionRequest
+        {
+            FilePath = Path.Combine(folder, "req.callsmith"),
+            Name = "req",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com",
+            Headers =
+            [
+                new RequestKv("Authorization", "Bearer token"),
+                new RequestKv("X-Debug", "true", IsEnabled: false),
+            ],
+        };
+
+        await _sut.SaveRequestAsync(request);
+        var loaded = await _sut.LoadRequestAsync(request.FilePath);
+
+        loaded.Headers.Should().HaveCount(2);
+        loaded.Headers.Should().Contain(h => h.Key == "Authorization" && h.IsEnabled);
+        loaded.Headers.Should().Contain(h => h.Key == "X-Debug" && !h.IsEnabled);
     }
 }

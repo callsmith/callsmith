@@ -4,6 +4,7 @@ using Avalonia.Data.Core.Plugins;
 using System.Linq;
 using Avalonia.Markup.Xaml;
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.Insomnia;
 using Callsmith.Core.Services;
 using Callsmith.Core.Transports.Http;
 using Callsmith.Core;
@@ -75,17 +76,35 @@ public partial class App : Application
 
         // Core -- environment services (Callsmith + Bruno, routed transparently)
         services.AddSingleton<FileSystemEnvironmentService>();
+        services.AddSingleton<IBrunoCollectionMetaService, FileSystemBrunoCollectionMetaService>();
         services.AddSingleton<BrunoEnvironmentService>();
         services.AddSingleton<IEnvironmentService, RoutingEnvironmentService>();
 
+        // Core -- dynamic variable evaluation
+        services.AddSingleton<IDynamicVariableEvaluator, DynamicVariableEvaluatorService>();
+
         // Core -- collection preferences
         services.AddSingleton<ICollectionPreferencesService, FileSystemCollectionPreferencesService>();
+
+        // Core -- secret environment-variable storage (local, never checked in)
+        services.AddSingleton<ISecretStorageService, FileSystemSecretStorageService>();
+
+        // Core -- import (extensible: register new importers here as formats are added)
+        // NOTE: always use the plain Callsmith services here — imports must produce Callsmith-format
+        // files regardless of which collection type is currently open in the routing services.
+        services.AddSingleton<ICollectionImporter, InsomniaCollectionImporter>();
+        services.AddSingleton<ICollectionImportService>(sp => new CollectionImportService(
+            sp.GetServices<ICollectionImporter>(),
+            sp.GetRequiredService<FileSystemCollectionService>(),
+            sp.GetRequiredService<FileSystemEnvironmentService>(),
+            sp.GetRequiredService<ILogger<CollectionImportService>>()));
 
         // ViewModels
         services.AddSingleton<CollectionsViewModel>();
         services.AddSingleton<RequestEditorViewModel>();
         services.AddSingleton<EnvironmentViewModel>();
         services.AddSingleton<EnvironmentEditorViewModel>();
+        services.AddSingleton<CommandPaletteViewModel>();
         services.AddSingleton<MainWindowViewModel>();
 
         return services;

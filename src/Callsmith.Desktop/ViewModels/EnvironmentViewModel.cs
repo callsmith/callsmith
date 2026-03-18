@@ -20,7 +20,8 @@ namespace Callsmith.Desktop.ViewModels;
 public sealed partial class EnvironmentViewModel : ObservableRecipient,
     IRecipient<CollectionOpenedMessage>,
     IRecipient<EnvironmentSavedMessage>,
-    IRecipient<EnvironmentOrderChangedMessage>
+    IRecipient<EnvironmentOrderChangedMessage>,
+    IRecipient<CloseEnvironmentEditorMessage>
 {
     private readonly IEnvironmentService _environmentService;
     private readonly ICollectionPreferencesService _preferencesService;
@@ -113,6 +114,9 @@ public sealed partial class EnvironmentViewModel : ObservableRecipient,
     {
         IsEditorOpen = false;
     }
+
+    /// <inheritdoc/>
+    public void Receive(CloseEnvironmentEditorMessage message) => IsEditorOpen = false;
 
     // ─── Message handlers ────────────────────────────────────────────────────
 
@@ -209,27 +213,6 @@ public sealed partial class EnvironmentViewModel : ObservableRecipient,
 
             Environments = list;
 
-            // Apply custom display order if saved.
-            if (prefs.EnvironmentOrder is { Count: > 0 } savedOrder)
-            {
-                var byFileName = list.ToDictionary(
-                    e => Path.GetFileName(e.FilePath),
-                    StringComparer.OrdinalIgnoreCase);
-
-                var ordered = savedOrder
-                    .Where(byFileName.ContainsKey)
-                    .Select(n => byFileName[n])
-                    .ToList();
-
-                var inOrder = new HashSet<string>(savedOrder, StringComparer.OrdinalIgnoreCase);
-                var remaining = list.Where(e => !inOrder.Contains(Path.GetFileName(e.FilePath)));
-
-                Environments = [..ordered, ..remaining];
-                // Mirror the reordered list back so subsequent lookups (ActiveEnvironment
-                // restoration below) use the reordered list.
-                list = Environments;
-            }
-
             // Retain the current selection if it still exists; otherwise clear it.
             // Always update to the fresh instance from the new list so the ComboBox can
             // match by reference (stale instances are never reference-equal to items in
@@ -270,17 +253,12 @@ public sealed partial class EnvironmentViewModel : ObservableRecipient,
                 ? Path.GetRelativePath(_collectionFolderPath, filePath)
                 : null;
 
-            // Read-modify-write: preserve any prefs owned by other ViewModels (e.g. open tabs).
-            var current = await _preferencesService.LoadAsync(_collectionFolderPath).ConfigureAwait(false);
-            await _preferencesService
-                .SaveAsync(_collectionFolderPath, new()
-                {
-                    LastActiveEnvironmentFile = relativeFilePath,
-                    OpenTabPaths = current.OpenTabPaths,
-                    ActiveTabPath = current.ActiveTabPath,
-                    EnvironmentOrder = current.EnvironmentOrder,
-                })
-                .ConfigureAwait(false);
+            await _preferencesService.UpdateAsync(_collectionFolderPath, current => new()
+            {
+                LastActiveEnvironmentFile = relativeFilePath,
+                OpenTabPaths = current.OpenTabPaths,
+                ActiveTabPath = current.ActiveTabPath,
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

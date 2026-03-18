@@ -1,6 +1,8 @@
+using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 
 namespace Callsmith.Core.Tests.Services;
 
@@ -16,8 +18,17 @@ public sealed class BrunoEnvironmentServiceTests : IDisposable
     {
         _root = Path.Combine(Path.GetTempPath(), "BrunoEnvTests_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
-        _sut = new BrunoEnvironmentService(NullLogger<BrunoEnvironmentService>.Instance);
+        _sut = new BrunoEnvironmentService(
+            Substitute.For<ISecretStorageService>(),
+            RealMeta(),
+            NullLogger<BrunoEnvironmentService>.Instance);
     }
+
+    /// <summary>Returns a real meta service backed by a dedicated temp sub-directory.</summary>
+    private FileSystemBrunoCollectionMetaService RealMeta() =>
+        new(
+            Path.Combine(_root, "__meta_store__"),
+            NullLogger<FileSystemBrunoCollectionMetaService>.Instance);
 
     public void Dispose() => Directory.Delete(_root, recursive: true);
 
@@ -62,8 +73,11 @@ public sealed class BrunoEnvironmentServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadEnvironmentAsync_ParsesVarsSecretBlock()
+    public async Task LoadEnvironmentAsync_ParsesVarsSecretBlock_NameAndIsSecretFlagArePreserved()
     {
+        // The .bru file records the variable *name* and marks it as secret.
+        // The actual value comes from secret storage (tested separately); here
+        // we verify the name and IsSecret flag are parsed correctly.
         var envDir = Path.Combine(_root, "environments");
         Directory.CreateDirectory(envDir);
         var filePath = Path.Combine(envDir, "Staging.bru");
@@ -82,7 +96,35 @@ public sealed class BrunoEnvironmentServiceTests : IDisposable
         Assert.Equal(2, env.Variables.Count);
         var secret = env.Variables.Single(v => v.IsSecret);
         Assert.Equal("api-password", secret.Name);
-        Assert.Equal("s3cr3t", secret.Value);
+        Assert.True(secret.IsSecret);
+        // No value in secret storage (mock returns null) → empty string returned.
+        Assert.Equal(string.Empty, secret.Value);
+    }
+
+    [Fact]
+    public async Task LoadEnvironmentAsync_WhenSecretStoredLocally_InjectsActualValue()
+    {
+        var secretsDir = Path.Combine(_root, "secrets");
+        var secrets = new FileSystemSecretStorageService(
+            secretsDir, NullLogger<FileSystemSecretStorageService>.Instance);
+        var sut = new BrunoEnvironmentService(
+            secrets, RealMeta(), NullLogger<BrunoEnvironmentService>.Instance);
+
+        var envDir = Path.Combine(_root, "environments");
+        Directory.CreateDirectory(envDir);
+        var filePath = Path.Combine(envDir, "Staging.bru");
+        File.WriteAllText(filePath, """
+            vars:secret {
+              api-password:
+            }
+            """);
+
+        // Store the real value in local secret storage.
+        await secrets.SetSecretAsync(_root, "Staging", "api-password", "hunter2");
+
+        var env = await sut.LoadEnvironmentAsync(filePath);
+
+        Assert.Equal("hunter2", env.Variables.Single(v => v.IsSecret).Value);
     }
 
     [Fact]

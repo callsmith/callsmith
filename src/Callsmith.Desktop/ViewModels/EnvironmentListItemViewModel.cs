@@ -56,6 +56,19 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     /// <summary>Editable variable rows for this environment.</summary>
     public ObservableCollection<EnvironmentVariableItemViewModel> Variables { get; } = [];
 
+    /// <summary>
+    /// Callback provided by the host (EnvironmentEditorViewModel) that opens the
+    /// dynamic value configuration dialog and returns the resulting segment, or null
+    /// when the user cancels.
+    /// </summary>
+    internal Func<DynamicValueSegment?, Task<DynamicValueSegment?>>? EditDynamicSegmentCallback { get; set; }
+
+    /// <summary>
+    /// Callback provided by the host (EnvironmentEditorViewModel) that opens the
+    /// mock data picker dialog and returns the resulting segment, or null when the user cancels.
+    /// </summary>
+    internal Func<MockDataSegment?, Task<MockDataSegment?>>? EditMockDataSegmentCallback { get; set; }
+
     // ─── Read-only identity ──────────────────────────────────────────────────
 
     /// <summary>Absolute path of the backing file on disk.</summary>
@@ -185,6 +198,25 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Reverts all unsaved changes by reloading variables and color from the last-saved backing model.
+    /// </summary>
+    internal void Revert()
+    {
+        Color = _model.Color;            // may transiently set IsDirty = true
+        LoadVariables(_model.Variables); // resets IsDirty = false
+    }
+
+    /// <summary>
+    /// Updates the backing model to reflect the newly saved state and clears the dirty flag.
+    /// Called by <see cref="EnvironmentEditorViewModel"/> after a successful save.
+    /// </summary>
+    internal void MarkSaved(EnvironmentModel savedModel)
+    {
+        _model = savedModel;
+        IsDirty = false;
+    }
+
+    /// <summary>
     /// Builds a new <see cref="EnvironmentModel"/> from the current variable rows.
     /// Used to produce the value that will be saved to disk.
     /// </summary>
@@ -192,12 +224,19 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     {
         var variables = Variables
             .Where(v => !string.IsNullOrWhiteSpace(v.Name))
-            .Select(v => new EnvironmentVariable
+            .Select(v =>
             {
-                Name = v.Name.Trim(),
-                Value = v.Value,
-                IsSecret = v.IsSecret,
-                VariableType = EnvironmentVariable.VariableTypes.Static,
+                var segments = v.GetSegments();
+                return new EnvironmentVariable
+                {
+                    Name = v.Name.Trim(),
+                    Value = v.Value,
+                    IsSecret = v.IsSecret,
+                    VariableType = segments is { Count: > 0 }
+                        ? EnvironmentVariable.VariableTypes.Dynamic
+                        : EnvironmentVariable.VariableTypes.Static,
+                    Segments = segments is { Count: > 0 } ? [.. segments] : null,
+                };
             })
             .ToList();
 
@@ -218,13 +257,18 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         var item = new EnvironmentVariableItemViewModel(
             onDelete: v => { Variables.Remove(v); OnAnyVariableChanged(); },
             onChanged: OnAnyVariableChanged,
-            getVariables: BuildVariableMap)
+            getVariables: BuildVariableMap,
+            editDynamicSegment: seg =>
+                EditDynamicSegmentCallback?.Invoke(seg) ?? Task.FromResult<DynamicValueSegment?>(null),
+            editMockData: seg =>
+                EditMockDataSegmentCallback?.Invoke(seg) ?? Task.FromResult<MockDataSegment?>(null))
         {
             Name = variable.Name,
             Value = variable.Value,
             IsSecret = variable.IsSecret,
             IsEnabled = true,
         };
+        item.LoadSegments(variable.Segments);
         return item;
     }
 

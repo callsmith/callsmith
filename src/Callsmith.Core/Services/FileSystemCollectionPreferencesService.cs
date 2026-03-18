@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -23,6 +24,10 @@ public sealed class FileSystemCollectionPreferencesService : ICollectionPreferen
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
+
+    // One semaphore per prefs file path so concurrent writers for different collections
+    // do not block each other, but concurrent writers for the same collection queue up.
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly string _storeDirectory;
     private readonly ILogger<FileSystemCollectionPreferencesService> _logger;
@@ -53,6 +58,9 @@ public sealed class FileSystemCollectionPreferencesService : ICollectionPreferen
         return Path.Combine(appData, "Callsmith", "collection-prefs");
     }
 
+    private SemaphoreSlim GetFileLock(string prefsFilePath) =>
+        _locks.GetOrAdd(prefsFilePath, _ => new SemaphoreSlim(1, 1));
+
     /// <inheritdoc/>
     public async Task<CollectionPreferences> LoadAsync(
         string collectionFolderPath, CancellationToken ct = default)
@@ -60,6 +68,70 @@ public sealed class FileSystemCollectionPreferencesService : ICollectionPreferen
         ArgumentNullException.ThrowIfNull(collectionFolderPath);
 
         var path = GetPrefsFilePath(collectionFolderPath);
+        var sem = GetFileLock(path);
+        await sem.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return await LoadCoreAsync(path, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            sem.Release();
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task SaveAsync(
+        string collectionFolderPath, CollectionPreferences preferences, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(collectionFolderPath);
+        ArgumentNullException.ThrowIfNull(preferences);
+
+        var path = GetPrefsFilePath(collectionFolderPath);
+        var sem = GetFileLock(path);
+        await sem.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await SaveCoreAsync(path, preferences, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            sem.Release();
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task UpdateAsync(
+        string collectionFolderPath,
+        Func<CollectionPreferences, CollectionPreferences> update,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(collectionFolderPath);
+        ArgumentNullException.ThrowIfNull(update);
+
+        var path = GetPrefsFilePath(collectionFolderPath);
+        var sem = GetFileLock(path);
+        await sem.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var current = await LoadCoreAsync(path, ct).ConfigureAwait(false);
+            var updated = update(current);
+            await SaveCoreAsync(path, updated, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "Could not update collection preferences at '{Path}'", path);
+        }
+        finally
+        {
+            sem.Release();
+        }
+    }
+
+    // ── lock-free core helpers ────────────────────────────────────────────────
+
+    private async Task<CollectionPreferences> LoadCoreAsync(string path, CancellationToken ct)
+    {
         if (!File.Exists(path))
             return new CollectionPreferences();
 
@@ -78,15 +150,8 @@ public sealed class FileSystemCollectionPreferencesService : ICollectionPreferen
         }
     }
 
-    /// <inheritdoc/>
-    public async Task SaveAsync(
-        string collectionFolderPath, CollectionPreferences preferences, CancellationToken ct = default)
+    private async Task SaveCoreAsync(string path, CollectionPreferences preferences, CancellationToken ct)
     {
-        ArgumentNullException.ThrowIfNull(collectionFolderPath);
-        ArgumentNullException.ThrowIfNull(preferences);
-
-        var path = GetPrefsFilePath(collectionFolderPath);
-
         try
         {
             await using var stream = File.Open(path, FileMode.Create, FileAccess.Write);
@@ -114,3 +179,4 @@ public sealed class FileSystemCollectionPreferencesService : ICollectionPreferen
         return Path.Combine(_storeDirectory, fileName);
     }
 }
+

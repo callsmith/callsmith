@@ -28,9 +28,11 @@ public sealed class CollectionRequest
     /// <summary>Optional human-readable description of the request.</summary>
     public string? Description { get; init; }
 
-    /// <summary>Request headers. May be empty but never null.</summary>
-    public IReadOnlyDictionary<string, string> Headers { get; init; }
-        = new Dictionary<string, string>();
+    /// <summary>
+    /// Request headers. Items may be disabled (IsEnabled = false) — disabled headers are
+    /// preserved on disk but not sent with the HTTP request.
+    /// </summary>
+    public IReadOnlyList<RequestKv> Headers { get; init; } = [];
 
     /// <summary>The body content type (e.g. "json", "text", "xml", "form", "multipart", "none").</summary>
     public string BodyType { get; init; } = BodyTypes.None;
@@ -40,10 +42,10 @@ public sealed class CollectionRequest
 
     /// <summary>
     /// Query parameters stored separately from the base URL.
-    /// The full request URL is the base <see cref="Url"/> with these parameters appended.
+    /// Duplicate keys are preserved. Items may be disabled (IsEnabled = false) — disabled
+    /// params are preserved on disk but not appended to the URL when sending.
     /// </summary>
-    public IReadOnlyDictionary<string, string> QueryParams { get; init; }
-        = new Dictionary<string, string>();
+    public IReadOnlyList<RequestKv> QueryParams { get; init; } = [];
 
     /// <summary>
     /// Path parameters keyed by placeholder name (for URL templates such as <c>/users/{id}</c>).
@@ -56,12 +58,26 @@ public sealed class CollectionRequest
     public AuthConfig Auth { get; init; } = new();
 
     /// <summary>
-    /// The full URL including any query parameters from <see cref="QueryParams"/>.
+    /// Form parameters for <c>application/x-www-form-urlencoded</c> or <c>multipart/form-data</c> bodies.
+    /// Populated instead of <see cref="Body"/> when <see cref="BodyType"/> is "form" or "multipart".
+    /// </summary>
+    public IReadOnlyList<KeyValuePair<string, string>> FormParams { get; init; } = [];
+
+    /// <summary>
+    /// The full URL including all <em>enabled</em> query parameters from <see cref="QueryParams"/>.
     /// Use this when building a <c>RequestModel</c> to send.
     /// </summary>
-    public string FullUrl => QueryParams.Count > 0
-        ? QueryStringHelper.ApplyQueryParams(Url, QueryParams)
-        : Url;
+    public string FullUrl
+    {
+        get
+        {
+            var enabled = QueryParams
+                .Where(p => p.IsEnabled)
+                .Select(p => new KeyValuePair<string, string>(p.Key, p.Value))
+                .ToList();
+            return enabled.Count > 0 ? QueryStringHelper.ApplyQueryParams(Url, enabled) : Url;
+        }
+    }
 
     /// <summary>Well-known body type constants to avoid magic strings.</summary>
     public static class BodyTypes

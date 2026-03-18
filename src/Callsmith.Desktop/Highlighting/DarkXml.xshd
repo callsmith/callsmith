@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark-theme XML syntax highlighting for Callsmith -->
+<SyntaxDefinition name="DarkXml" extensions=".xml"
+    xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+
+  <!-- VS Code Dark+-inspired palette -->
+  <Color name="Comment"          foreground="#6a9955" />   <!-- green — xml comments -->
+  <Color name="DynamicTag"       foreground="#c586c0" fontWeight="bold"/> <!-- purple — {% %} dynamic/mock tags -->
+  <Color name="EnvVar"           foreground="#4ec9b0" fontWeight="bold"/> <!-- teal — {{ }} env-var references -->
+  <Color name="CData"            foreground="#ce9178" />   <!-- orange — CDATA -->
+  <Color name="DocType"          foreground="#808080" />   <!-- grey -->
+  <Color name="XmlDeclaration"   foreground="#808080" />   <!-- grey -->
+  <Color name="XmlTag"           foreground="#808080" />   <!-- grey — <> brackets -->
+  <Color name="TagName"          foreground="#4ec9b0" />   <!-- teal — element names -->
+  <Color name="AttributeName"    foreground="#9cdcfe" />   <!-- light blue — attr names -->
+  <Color name="AttributeValue"   foreground="#ce9178" />   <!-- orange — attr values -->
+  <Color name="Entity"           foreground="#4ec9b0" />   <!-- teal — &amp; etc. -->
+  <Color name="BrokenEntity"     foreground="#f44747" />   <!-- red — malformed entities -->
+
+  <RuleSet>
+    <Span color="Comment" multiline="true">
+      <Begin>&lt;!--</Begin>
+      <End>--&gt;</End>
+    </Span>
+    <Span color="CData" multiline="true">
+      <Begin>&lt;!\[CDATA\[</Begin>
+      <End>]]&gt;</End>
+    </Span>
+    <Span color="DocType" multiline="true">
+      <Begin>&lt;!DOCTYPE</Begin>
+      <End>&gt;</End>
+    </Span>
+    <Span color="XmlDeclaration" multiline="true">
+      <Begin>&lt;\?</Begin>
+      <End>\?&gt;</End>
+    </Span>
+    <Span color="XmlTag" multiline="true">
+      <Begin>&lt;</Begin>
+      <End>&gt;</End>
+      <RuleSet>
+        <Span color="AttributeValue" multiline="true" ruleSet="EntitySet">
+          <Begin>"</Begin>
+          <End>"|(?=&lt;)</End>
+        </Span>
+        <Span color="AttributeValue" multiline="true" ruleSet="EntitySet">
+          <Begin>'</Begin>
+          <End>'|(?=&lt;)</End>
+        </Span>
+        <Rule color="AttributeName">[\d\w_\-\.]+(?=(\s*=))</Rule>
+        <Rule color="AttributeValue">=</Rule>
+      </RuleSet>
+    </Span>
+    <Import ruleSet="EntitySet" />
+    <Import ruleSet="DynamicHighlights" />
+  </RuleSet>
+
+  <RuleSet name="EntitySet">
+    <Rule color="Entity">
+      &amp;[\w\d\#]+;
+    </Rule>
+    <Rule color="BrokenEntity">
+      &amp;[\w\d\#]*
+    </Rule>
+  </RuleSet>
+
+  <!-- Dynamic/mock tags and env-var references — overlaid on top of XML structure -->
+  <RuleSet name="DynamicHighlights">
+    <Span color="DynamicTag" multiline="false">
+      <Begin>\{%</Begin>
+      <End>%\}</End>
+    </Span>
+    <Span color="EnvVar" multiline="false">
+      <Begin>\{\{</Begin>
+      <End>\}\}</End>
+    </Span>
+  </RuleSet>
+
+</SyntaxDefinition>

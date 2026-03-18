@@ -8,26 +8,28 @@ public static class QueryStringHelper
 {
     /// <summary>
     /// Parses the query parameters out of a URL.
-    /// Returns an empty dictionary if the URL has no query string or is not a valid absolute URI.
-    /// Keys and values are URL-decoded.
+    /// Returns an empty list if the URL has no query string or is not a valid absolute URI.
+    /// Keys and values are URL-decoded. Duplicate keys are preserved in order.
     /// </summary>
-    public static IReadOnlyDictionary<string, string> ParseQueryParams(string url)
+    public static IReadOnlyList<KeyValuePair<string, string>> ParseQueryParams(string url)
     {
         if (string.IsNullOrEmpty(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri))
-            return new Dictionary<string, string>();
+            return [];
 
         var query = uri.Query.TrimStart('?');
         if (string.IsNullOrEmpty(query))
-            return new Dictionary<string, string>();
+            return [];
 
-        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        var result = new List<KeyValuePair<string, string>>();
         foreach (var segment in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
         {
             var eq = segment.IndexOf('=');
             if (eq < 0)
-                result[Uri.UnescapeDataString(segment)] = string.Empty;
+                result.Add(new KeyValuePair<string, string>(Uri.UnescapeDataString(segment), string.Empty));
             else
-                result[Uri.UnescapeDataString(segment[..eq])] = Uri.UnescapeDataString(segment[(eq + 1)..]);
+                result.Add(new KeyValuePair<string, string>(
+                    Uri.UnescapeDataString(segment[..eq]),
+                    Uri.UnescapeDataString(segment[(eq + 1)..])));
         }
         return result;
     }

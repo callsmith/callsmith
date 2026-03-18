@@ -1,0 +1,155 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Callsmith.Desktop.ViewModels"
+             xmlns:conv="using:Callsmith.Desktop.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             x:Class="Callsmith.Desktop.Views.CommandPaletteView"
+             x:DataType="vm:CommandPaletteViewModel"
+             IsVisible="{Binding IsOpen}"
+             HorizontalAlignment="Stretch"
+             VerticalAlignment="Stretch">
+
+  <!-- Full-window dark scrim so clicks outside dismiss the palette -->
+  <Panel>
+    <Border Background="#88000000"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            PointerPressed="OnScrimPressed"/>
+
+    <!-- Centred floating card -->
+    <Border Width="560"
+            MaxHeight="420"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Top"
+            Margin="0,60,0,0"
+            CornerRadius="6"
+            Background="#252526"
+            BorderBrush="#3c3c3c"
+            BorderThickness="1"
+            BoxShadow="0 8 32 0 #aa000000"
+            ClipToBounds="True">
+
+      <Grid RowDefinitions="Auto,Auto,*">
+
+        <!-- ─── Search input ─────────────────────────────────────── -->
+        <Border Grid.Row="0"
+                Padding="12,10"
+                BorderBrush="#3c3c3c"
+                BorderThickness="0,0,0,1">
+          <Grid ColumnDefinitions="Auto,*,Auto">
+
+            <!-- Search icon -->
+            <TextBlock Grid.Column="0"
+                       Text="⌕"
+                       Foreground="#888"
+                       FontSize="16"
+                       VerticalAlignment="Center"
+                       Margin="0,0,8,0"/>
+
+            <!-- Text input -->
+            <TextBox Grid.Column="1"
+                     x:Name="SearchBox"
+                     Text="{Binding SearchText}"
+                     Watermark="Search requests…"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Foreground="#d4d4d4"
+                     CaretBrush="#4ec9b0"
+                     FontSize="14"
+                     VerticalAlignment="Center"
+                     KeyDown="OnSearchBoxKeyDown"/>
+
+            <!-- Esc hint -->
+            <Border Grid.Column="2"
+                    Background="#3c3c3c"
+                    CornerRadius="3"
+                    Padding="5,2"
+                    Margin="8,0,0,0"
+                    VerticalAlignment="Center">
+              <TextBlock Text="esc"
+                         Foreground="#888"
+                         FontSize="11"/>
+            </Border>
+          </Grid>
+        </Border>
+
+        <!-- ─── "No results" hint ──────────────────────────────────── -->
+        <Border Grid.Row="1"
+                Padding="16,8"
+                IsVisible="{Binding !HasResults}">
+          <TextBlock Text="No requests match."
+                     Foreground="#666"
+                     FontSize="13"/>
+        </Border>
+
+        <!-- ─── Results list ──────────────────────────────────────── -->
+        <ScrollViewer Grid.Row="2"
+                      IsVisible="{Binding HasResults}"
+                      VerticalScrollBarVisibility="Auto">
+
+          <ItemsControl x:Name="ResultsList"
+                        ItemsSource="{Binding Results}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:CommandPaletteResult">
+
+                <!-- Single result row -->
+                <Border x:Name="ResultRow"
+                        Background="Transparent"
+                        Padding="12,7"
+                        Cursor="Hand"
+                        PointerPressed="OnResultPressed"
+                        PointerEntered="OnResultPointerEntered">
+
+                  <Border.Styles>
+                    <Style Selector="Border.palette-selected">
+                      <Setter Property="Background" Value="#094771"/>
+                    </Style>
+                  </Border.Styles>
+
+                  <Grid ColumnDefinitions="54,*,Auto">
+
+                    <!-- Method pill -->
+                    <Border Grid.Column="0"
+                            CornerRadius="3"
+                            Padding="5,2"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            Background="{Binding MethodName, Converter={x:Static conv:HttpMethodToBrushConverter.Instance}}">
+                      <TextBlock Text="{Binding MethodName}"
+                                 FontSize="10"
+                                 FontWeight="Bold"
+                                 Foreground="#1e1e1e"/>
+                    </Border>
+
+                    <!-- Request name + URL -->
+                    <StackPanel Grid.Column="1"
+                                Orientation="Vertical"
+                                VerticalAlignment="Center"
+                                Margin="8,0,0,0"
+                                Spacing="2">
+                      <TextBlock Text="{Binding Request.Name}"
+                                 Foreground="#d4d4d4"
+                                 FontSize="13"
+                                 TextTrimming="CharacterEllipsis"/>
+                      <TextBlock Text="{Binding Request.Url}"
+                                 Foreground="#666"
+                                 FontSize="11"
+                                 TextTrimming="CharacterEllipsis"
+                                 IsVisible="{Binding Request.Url, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    </StackPanel>
+
+                  </Grid>
+                </Border>
+
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+        </ScrollViewer>
+
+      </Grid>
+    </Border>
+  </Panel>
+</UserControl>

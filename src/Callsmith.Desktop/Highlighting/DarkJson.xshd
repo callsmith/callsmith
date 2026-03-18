@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark-theme JSON syntax highlighting for Callsmith -->
+<SyntaxDefinition name="DarkJson" extensions=".json"
+    xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+
+  <!-- VS Code Dark+-inspired palette -->
+  <Color name="FieldName"   foreground="#9cdcfe" />   <!-- light blue — property keys -->
+  <Color name="String"      foreground="#ce9178" />   <!-- orange — string values -->
+  <Color name="Number"      foreground="#b5cea8" />   <!-- light green — numbers -->
+  <Color name="Bool"        foreground="#569cd6" />   <!-- blue — true / false -->
+  <Color name="Null"        foreground="#569cd6" />   <!-- blue — null -->
+  <Color name="Punctuation" foreground="#808080" />   <!-- grey — braces, colons, commas -->
+  <Color name="DynamicTag"  foreground="#c586c0" fontWeight="bold"/> <!-- purple — {% %} dynamic/mock tags -->
+  <Color name="EnvVar"      foreground="#4ec9b0" fontWeight="bold"/> <!-- teal — {{ }} env-var references -->
+
+  <RuleSet name="EscapeSeq">
+    <Span begin="\\" end="." />
+  </RuleSet>
+
+  <RuleSet name="Object">
+    <!-- Key (field name) -->
+    <Span color="FieldName" ruleSet="EscapeSeq">
+      <Begin>"</Begin>
+      <End>"</End>
+    </Span>
+    <Span color="Punctuation" ruleSet="Expression">
+      <Begin>:</Begin>
+    </Span>
+    <Span color="Punctuation">
+      <Begin>,</Begin>
+    </Span>
+  </RuleSet>
+
+  <RuleSet name="Array">
+    <Import ruleSet="Expression" />
+    <Span color="Punctuation">
+      <Begin>,</Begin>
+    </Span>
+  </RuleSet>
+
+  <RuleSet name="Expression">
+    <Keywords color="Bool">
+      <Word>true</Word>
+      <Word>false</Word>
+    </Keywords>
+    <Keywords color="Null">
+      <Word>null</Word>
+    </Keywords>
+    <!-- String value -->
+    <Span color="String" ruleSet="EscapeSeq">
+      <Begin>"</Begin>
+      <End>"</End>
+    </Span>
+    <!-- Object -->
+    <Span color="Punctuation" ruleSet="Object" multiline="true">
+      <Begin>\{</Begin>
+      <End>\}</End>
+    </Span>
+    <!-- Array -->
+    <Span color="Punctuation" ruleSet="Array" multiline="true">
+      <Begin>\[</Begin>
+      <End>\]</End>
+    </Span>
+    <!-- Number -->
+    <Rule color="Number">
+      -?(\b\d+(\.\d+)?|\.\d+)([eE][+-]?\d+)?
+    </Rule>
+  </RuleSet>
+
+  <RuleSet>
+    <!-- Dynamic/mock tags — highlighted before string spans so they stand out in string values -->
+    <Span color="DynamicTag" multiline="false">
+      <Begin>\{%</Begin>
+      <End>%\}</End>
+    </Span>
+    <!-- Environment variable references -->
+    <Span color="EnvVar" multiline="false">
+      <Begin>\{\{</Begin>
+      <End>\}\}</End>
+    </Span>
+    <Import ruleSet="Expression" />
+  </RuleSet>
+
+</SyntaxDefinition>

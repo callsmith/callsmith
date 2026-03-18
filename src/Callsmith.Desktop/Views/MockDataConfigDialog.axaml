@@ -1,0 +1,175 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Callsmith.Desktop.ViewModels"
+        xmlns:mockdata="using:Callsmith.Core.MockData"
+        x:Class="Callsmith.Desktop.Views.MockDataConfigDialog"
+        x:DataType="vm:MockDataConfigViewModel"
+        Title="Mock Data"
+        Width="500" Height="440"
+        MinHeight="380"
+        CanResize="True"
+        WindowStartupLocation="CenterOwner"
+        Background="#252526"
+        ShowInTaskbar="False">
+
+  <Grid RowDefinitions="Auto,*,Auto,Auto" Margin="20,18,20,18">
+
+    <!-- ── Header ──────────────────────────────────────────────────────── -->
+    <StackPanel Grid.Row="0" Spacing="6" Margin="0,0,0,12">
+      <TextBlock Text="Insert Mock Data"
+                 Foreground="#d4d4d4"
+                 FontSize="14"
+                 FontWeight="SemiBold"/>
+      <TextBlock Text="Select a category and field. The value is generated fresh each time the variable is evaluated."
+                 Foreground="#888"
+                 FontSize="11"
+                 TextWrapping="Wrap"/>
+    </StackPanel>
+
+    <!-- ── Two-panel picker ────────────────────────────────────────────── -->
+    <Grid Grid.Row="1" ColumnDefinitions="160,8,*">
+
+      <!-- Categories -->
+      <Border Grid.Column="0"
+              Background="#1e1e1e"
+              BorderBrush="#3a3a3a"
+              BorderThickness="1"
+              CornerRadius="3">
+        <ListBox ItemsSource="{Binding Categories}"
+                 SelectedItem="{Binding SelectedCategory, Mode=TwoWay}"
+                 Background="Transparent"
+                 BorderThickness="0"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <ListBox.Styles>
+            <Style Selector="ListBoxItem">
+              <Setter Property="Padding" Value="10,6"/>
+              <Setter Property="FontSize" Value="12"/>
+              <Setter Property="Foreground" Value="#cccccc"/>
+              <Setter Property="Background" Value="Transparent"/>
+              <Setter Property="CornerRadius" Value="2"/>
+            </Style>
+            <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+              <Setter Property="Background" Value="#3a2a4a"/>
+            </Style>
+            <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+              <Setter Property="Background" Value="#2d2d35"/>
+            </Style>
+          </ListBox.Styles>
+        </ListBox>
+      </Border>
+
+      <!-- Fields -->
+      <Border Grid.Column="2"
+              Background="#1e1e1e"
+              BorderBrush="#3a3a3a"
+              BorderThickness="1"
+              CornerRadius="3">
+        <ListBox ItemsSource="{Binding Fields}"
+                 SelectedItem="{Binding SelectedField, Mode=TwoWay}"
+                 Background="Transparent"
+                 BorderThickness="0"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <ListBox.Styles>
+            <Style Selector="ListBoxItem">
+              <Setter Property="Padding" Value="10,6"/>
+              <Setter Property="Background" Value="Transparent"/>
+              <Setter Property="CornerRadius" Value="2"/>
+            </Style>
+            <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+              <Setter Property="Background" Value="#3a2a4a"/>
+            </Style>
+            <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+              <Setter Property="Background" Value="#2d2d35"/>
+            </Style>
+          </ListBox.Styles>
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="mockdata:MockDataEntry">
+              <StackPanel Spacing="1">
+                <TextBlock Text="{Binding Field}"
+                           FontSize="12"
+                           Foreground="#d4d4d4"/>
+                <TextBlock Text="{Binding Description}"
+                           FontSize="10"
+                           Foreground="#888"/>
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Border>
+    </Grid>
+
+    <!-- ── Preview panel ───────────────────────────────────────────────── -->
+    <Border Grid.Row="2"
+            Background="#1e1e1e"
+            BorderBrush="#3a3a3a"
+            BorderThickness="1"
+            CornerRadius="3"
+            Padding="10,8"
+            Margin="0,8,0,0">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+
+        <TextBlock Grid.Column="0"
+                   Text="PREVIEW"
+                   Foreground="#666"
+                   FontSize="9"
+                   FontWeight="SemiBold"
+                   LetterSpacing="1"
+                   VerticalAlignment="Center"
+                   Margin="0,0,10,0"/>
+
+        <TextBlock Grid.Column="1"
+                   Text="{Binding PreviewValue}"
+                   Foreground="#c586c0"
+                   FontFamily="Consolas,Menlo,monospace"
+                   FontSize="12"
+                   VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis"
+                   IsVisible="{Binding PreviewValue, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   ToolTip.Tip="{Binding PreviewValue}"/>
+
+        <TextBlock Grid.Column="1"
+                   Text="—"
+                   Foreground="#555"
+                   FontSize="12"
+                   VerticalAlignment="Center"
+                   IsVisible="{Binding PreviewValue, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
+
+        <Button Grid.Column="2"
+                Content="↺ Regenerate"
+                Command="{Binding RegenerateCommand}"
+                Background="#2a1a3a"
+                Foreground="#c586c0"
+                BorderThickness="0"
+                Padding="10,3"
+                CornerRadius="3"
+                FontSize="11"
+                Margin="10,0,0,0"
+                ToolTip.Tip="Generate a new sample value"/>
+      </Grid>
+    </Border>
+
+    <!-- ── OK / Cancel ─────────────────────────────────────────────────── -->
+    <Grid Grid.Row="3" ColumnDefinitions="*,Auto,10,Auto" Margin="0,12,0,0">
+      <Button Grid.Column="1"
+              Content="Cancel"
+              Command="{Binding CancelCommand}"
+              Background="#3c3c3c"
+              Foreground="#d4d4d4"
+              BorderThickness="0"
+              Padding="18,6"
+              CornerRadius="3"
+              FontSize="12"/>
+      <Button Grid.Column="3"
+              Content="OK"
+              Command="{Binding ConfirmCommand}"
+              Background="#5a1e8a"
+              Foreground="#fff"
+              BorderThickness="0"
+              Padding="18,6"
+              CornerRadius="3"
+              FontSize="12"
+              IsDefault="True"/>
+    </Grid>
+
+  </Grid>
+</Window>

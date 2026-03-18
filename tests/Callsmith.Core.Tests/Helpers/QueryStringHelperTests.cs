@@ -28,7 +28,8 @@ public sealed class QueryStringHelperTests
     {
         var result = QueryStringHelper.ParseQueryParams("https://api.example.com?foo=bar");
         result.Should().HaveCount(1);
-        result["foo"].Should().Be("bar");
+        result[0].Key.Should().Be("foo");
+        result[0].Value.Should().Be("bar");
     }
 
     [Fact]
@@ -36,24 +37,32 @@ public sealed class QueryStringHelperTests
     {
         var result = QueryStringHelper.ParseQueryParams("https://api.example.com?a=1&b=2&c=3");
         result.Should().HaveCount(3);
-        result["a"].Should().Be("1");
-        result["b"].Should().Be("2");
-        result["c"].Should().Be("3");
+        result[0].Key.Should().Be("a"); result[0].Value.Should().Be("1");
+        result[1].Key.Should().Be("b"); result[1].Value.Should().Be("2");
+        result[2].Key.Should().Be("c"); result[2].Value.Should().Be("3");
     }
 
     [Fact]
     public void ParseQueryParams_EncodedChars_DecodesKeyAndValue()
     {
         var result = QueryStringHelper.ParseQueryParams("https://api.example.com?search=hello%20world&tag=c%23");
-        result["search"].Should().Be("hello world");
-        result["tag"].Should().Be("c#");
+        result.First(p => p.Key == "search").Value.Should().Be("hello world");
+        result.First(p => p.Key == "tag").Value.Should().Be("c#");
     }
 
     [Fact]
     public void ParseQueryParams_ParamWithNoValue_ReturnsEmptyString()
     {
         var result = QueryStringHelper.ParseQueryParams("https://api.example.com?flag");
-        result["flag"].Should().BeEmpty();
+        result.First(p => p.Key == "flag").Value.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ParseQueryParams_DuplicateKeys_PreservesAllOccurrences()
+    {
+        var result = QueryStringHelper.ParseQueryParams("https://api.example.com?role=admin&role=user&role=viewer");
+        result.Should().HaveCount(3);
+        result.Select(p => p.Value).Should().BeEquivalentTo(["admin", "user", "viewer"]);
     }
 
     // -------------------------------------------------------------------------
@@ -110,11 +119,9 @@ public sealed class QueryStringHelperTests
         var rebuilt = QueryStringHelper.ApplyQueryParams("https://api.example.com/search", parsed);
         // Re-parse to compare regardless of order
         var reparsed = QueryStringHelper.ParseQueryParams(rebuilt);
-        reparsed.Should().BeEquivalentTo(new Dictionary<string, string>
-        {
-            ["q"] = "test",
-            ["limit"] = "10",
-            ["offset"] = "0",
-        });
+        reparsed.Select(p => p.Key).Should().BeEquivalentTo(["q", "limit", "offset"]);
+        reparsed.First(p => p.Key == "q").Value.Should().Be("test");
+        reparsed.First(p => p.Key == "limit").Value.Should().Be("10");
+        reparsed.First(p => p.Key == "offset").Value.Should().Be("0");
     }
 }

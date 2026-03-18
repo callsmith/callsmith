@@ -18,19 +18,32 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
     /// <summary>File name (without extension) of the collection-scoped global environment.</summary>
     public const string GlobalEnvironmentFileName = "_global";
 
+    /// <summary>
+    /// Name of the JSON file that records the user's preferred environment display order,
+    /// stored alongside the <c>.env.callsmith</c> files in the <c>environment/</c> folder.
+    /// </summary>
+    public const string OrderFileName = "_order.json";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        // Required for JSON polymorphism on ValueSegment hierarchy.
+        // System.Text.Json handles [JsonPolymorphic] / [JsonDerivedType] automatically.
     };
 
+    private readonly ISecretStorageService _secrets;
     private readonly ILogger<FileSystemEnvironmentService> _logger;
 
-    /// <summary>Initialises the service with the provided logger.</summary>
-    public FileSystemEnvironmentService(ILogger<FileSystemEnvironmentService> logger)
+    /// <summary>Initialises the service with the provided dependencies.</summary>
+    public FileSystemEnvironmentService(
+        ISecretStorageService secrets,
+        ILogger<FileSystemEnvironmentService> logger)
     {
+        ArgumentNullException.ThrowIfNull(secrets);
         ArgumentNullException.ThrowIfNull(logger);
+        _secrets = secrets;
         _logger = logger;
     }
 
@@ -62,7 +75,38 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         }
 
         results.Sort(static (a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
-        return results;
+        return ApplyOrder(results, envFolder);
+    }
+
+    private static IReadOnlyList<EnvironmentModel> ApplyOrder(
+        List<EnvironmentModel> alphabetical, string envFolder)
+    {
+        var orderFilePath = Path.Combine(envFolder, OrderFileName);
+        if (!File.Exists(orderFilePath)) return alphabetical;
+
+        IReadOnlyList<string> savedOrder;
+        try
+        {
+            var json = File.ReadAllText(orderFilePath);
+            savedOrder = JsonSerializer.Deserialize<List<string>>(json) ?? [];
+        }
+        catch (JsonException) { return alphabetical; }
+
+        if (savedOrder.Count == 0) return alphabetical;
+
+        var byFileName = alphabetical.ToDictionary(
+            e => Path.GetFileName(e.FilePath), StringComparer.OrdinalIgnoreCase);
+
+        var ordered = savedOrder
+            .Where(byFileName.ContainsKey)
+            .Select(n => byFileName[n])
+            .ToList();
+
+        var inOrder = new HashSet<string>(savedOrder, StringComparer.OrdinalIgnoreCase);
+        var remaining = alphabetical.Where(
+            e => !inOrder.Contains(Path.GetFileName(e.FilePath)));
+
+        return [..ordered, ..remaining];
     }
 
     /// <inheritdoc/>
@@ -79,7 +123,8 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
                       .ConfigureAwait(false)
                   ?? throw new InvalidDataException($"Environment file is empty or null: '{filePath}'");
 
-        return DtoToModel(filePath, dto);
+        var model = DtoToModel(filePath, dto);
+        return model with { Variables = await InjectSecretsAsync(model, ct).ConfigureAwait(false) };
     }
 
     /// <inheritdoc/>
@@ -90,6 +135,11 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         var directory = Path.GetDirectoryName(environment.FilePath)!;
         Directory.CreateDirectory(directory);
 
+        // Persist actual secret values to local storage before writing the file.
+        await PersistSecretsAsync(environment, ct).ConfigureAwait(false);
+
+        // The serialised file stores an empty value for secrets — only the name (presence)
+        // is recorded so that the file is safe to check in to version control.
         var dto = ModelToDto(environment);
 
         await using var stream = File.Open(environment.FilePath, FileMode.Create, FileAccess.Write);
@@ -118,18 +168,21 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
     }
 
     /// <inheritdoc/>
-    public Task DeleteEnvironmentAsync(string filePath, CancellationToken ct = default)
+    public async Task DeleteEnvironmentAsync(string filePath, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(filePath);
         ct.ThrowIfCancellationRequested();
+
+        // Remove locally-stored secrets for this environment before deleting the file.
+        var collectionPath = GetCollectionFolderPath(filePath);
+        var envName = Path.GetFileNameWithoutExtension(filePath);
+        await _secrets.DeleteEnvironmentSecretsAsync(collectionPath, envName, ct).ConfigureAwait(false);
 
         if (File.Exists(filePath))
         {
             File.Delete(filePath);
             _logger.LogDebug("Deleted environment file: {Path}", filePath);
         }
-
-        return Task.CompletedTask;
     }
 
     /// <inheritdoc/>
@@ -152,8 +205,19 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         var existing = await LoadEnvironmentAsync(filePath, ct).ConfigureAwait(false);
         var renamed = existing with { FilePath = newFilePath, Name = newName };
 
+        // SaveEnvironmentAsync persists secrets under the new file-name key.
         await SaveEnvironmentAsync(renamed, ct).ConfigureAwait(false);
         File.Delete(filePath);
+
+        // Clean up secrets stored under the old file-name key (only when the key actually changes).
+        var oldEnvName = Path.GetFileNameWithoutExtension(filePath);
+        var newEnvName = Path.GetFileNameWithoutExtension(newFilePath);
+        if (!string.Equals(oldEnvName, newEnvName, StringComparison.OrdinalIgnoreCase))
+        {
+            var collectionPath = GetCollectionFolderPath(filePath);
+            await _secrets.DeleteEnvironmentSecretsAsync(collectionPath, oldEnvName, ct)
+                .ConfigureAwait(false);
+        }
 
         _logger.LogDebug("Renamed environment '{Old}' → '{New}'", filePath, newFilePath);
         return renamed;
@@ -174,12 +238,51 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
                 $"An environment named '{newName}' already exists.");
 
         var source = await LoadEnvironmentAsync(sourceFilePath, ct).ConfigureAwait(false);
-        var cloned = source with { FilePath = newFilePath, Name = newName };
+
+        // Clones do not inherit secrets — the developer must supply their own values.
+        var cloned = source with
+        {
+            FilePath = newFilePath,
+            Name = newName,
+            Variables = source.Variables
+                .Select(v => v.IsSecret
+                    ? new EnvironmentVariable { Name = v.Name, Value = string.Empty, VariableType = v.VariableType, IsSecret = true, Segments = v.Segments }
+                    : v)
+                .ToList(),
+        };
 
         await SaveEnvironmentAsync(cloned, ct).ConfigureAwait(false);
 
         _logger.LogDebug("Cloned environment '{Source}' → '{New}'", sourceFilePath, newFilePath);
         return cloned;
+    }
+
+    // ─── Environment order ────────────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public async Task SaveEnvironmentOrderAsync(
+        string collectionFolderPath, IReadOnlyList<string> orderedNames, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(collectionFolderPath);
+        ArgumentNullException.ThrowIfNull(orderedNames);
+
+        var envFolder = GetEnvFolder(collectionFolderPath);
+        var orderFilePath = Path.Combine(envFolder, OrderFileName);
+
+        if (orderedNames.Count == 0)
+        {
+            if (File.Exists(orderFilePath))
+            {
+                File.Delete(orderFilePath);
+                _logger.LogDebug("Removed environment order file for '{Path}'", collectionFolderPath);
+            }
+            return;
+        }
+
+        Directory.CreateDirectory(envFolder);
+        var json = JsonSerializer.Serialize(orderedNames, JsonOptions);
+        await File.WriteAllTextAsync(orderFilePath, json, ct).ConfigureAwait(false);
+        _logger.LogDebug("Saved environment order for '{Path}'", collectionFolderPath);
     }
 
     // ─── Global environment ──────────────────────────────────────────────────
@@ -213,12 +316,74 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
 
     private static bool IsGlobalEnvironmentFile(string filePath) =>
         string.Equals(
-            Path.GetFileNameWithoutExtension(filePath),
-            GlobalEnvironmentFileName,
+            Path.GetFileName(filePath),
+            GlobalEnvironmentFileName + EnvironmentFileExtension,
             StringComparison.OrdinalIgnoreCase);
 
     private static string GetEnvFolder(string collectionFolderPath) =>
         Path.Combine(collectionFolderPath, FileSystemCollectionService.EnvironmentFolderName);
+
+    /// <summary>
+    /// Given the path of an environment file, returns the collection root (two levels up:
+    /// <c>collection/environment/name.env.callsmith</c> → <c>collection</c>).
+    /// </summary>
+    private static string GetCollectionFolderPath(string filePath)
+    {
+        var envFolder = Path.GetDirectoryName(Path.GetFullPath(filePath))!;
+        return Path.GetDirectoryName(envFolder)!;
+    }
+
+    /// <summary>Looks up each secret variable's actual value from local storage.</summary>
+    private async Task<IReadOnlyList<EnvironmentVariable>> InjectSecretsAsync(
+        EnvironmentModel model, CancellationToken ct)
+    {
+        if (!model.Variables.Any(v => v.IsSecret))
+            return model.Variables;
+
+        var collectionPath = GetCollectionFolderPath(model.FilePath);
+        var envName = Path.GetFileNameWithoutExtension(model.FilePath);
+
+        var result = new List<EnvironmentVariable>(model.Variables.Count);
+        foreach (var v in model.Variables)
+        {
+            if (!v.IsSecret)
+            {
+                result.Add(v);
+                continue;
+            }
+
+            var stored = await _secrets
+                .GetSecretAsync(collectionPath, envName, v.Name, ct)
+                .ConfigureAwait(false);
+
+            result.Add(new EnvironmentVariable
+            {
+                Name = v.Name,
+                Value = stored ?? string.Empty,
+                VariableType = v.VariableType,
+                IsSecret = true,
+                Segments = v.Segments,
+            });
+        }
+        return result;
+    }
+
+    /// <summary>Writes each secret variable's actual value to local storage.</summary>
+    private async Task PersistSecretsAsync(EnvironmentModel environment, CancellationToken ct)
+    {
+        var secretVars = environment.Variables.Where(v => v.IsSecret).ToList();
+        if (secretVars.Count == 0) return;
+
+        var collectionPath = GetCollectionFolderPath(environment.FilePath);
+        var envName = Path.GetFileNameWithoutExtension(environment.FilePath);
+
+        foreach (var v in secretVars)
+        {
+            await _secrets
+                .SetSecretAsync(collectionPath, envName, v.Name, v.Value, ct)
+                .ConfigureAwait(false);
+        }
+    }
 
     private static string SanitizeFileName(string name)
     {
@@ -238,6 +403,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
                 Value = v.Value ?? string.Empty,
                 VariableType = v.VariableType ?? EnvironmentVariable.VariableTypes.Static,
                 IsSecret = v.IsSecret ?? false,
+                Segments = v.Segments is { Count: > 0 } ? v.Segments : null,
             })
             .Where(v => !string.IsNullOrWhiteSpace(v.Name))
             .ToList(),
@@ -251,11 +417,13 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
             .Select(v => new VariableDto
             {
                 Name = v.Name,
-                Value = v.Value,
+                // Secret values are stored in local app-data, not in the file.
+                Value = v.IsSecret ? string.Empty : v.Value,
                 VariableType = v.VariableType == EnvironmentVariable.VariableTypes.Static
                     ? null  // omit the default to keep JSON tidy
                     : v.VariableType,
                 IsSecret = v.IsSecret ? (bool?)true : null,
+                Segments = v.Segments is { Count: > 0 } ? [.. v.Segments] : null,
             })
             .ToList(),
     };
@@ -277,5 +445,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         public string? VariableType { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? IsSecret { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<ValueSegment>? Segments { get; init; }
     }
 }

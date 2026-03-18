@@ -22,6 +22,14 @@ public sealed class EnvironmentVariable
     /// </summary>
     public bool IsSecret { get; init; }
 
+    /// <summary>
+    /// When non-null and non-empty, the variable value is composed from these segments
+    /// (a mix of <see cref="StaticValueSegment"/> and <see cref="DynamicValueSegment"/>).
+    /// The <see cref="Value"/> field then holds the last cached/resolved result.
+    /// When null or empty, the variable is purely static and <see cref="Value"/> is used directly.
+    /// </summary>
+    public IReadOnlyList<ValueSegment>? Segments { get; init; }
+
     /// <summary>Well-known variable type constants.</summary>
     public static class VariableTypes
     {
@@ -33,5 +41,11 @@ public sealed class EnvironmentVariable
 
         /// <summary>Reserved: Extracted from the response of another named request.</summary>
         public const string Chained = "chained";
+
+        /// <summary>
+        /// Value composed from static and dynamic segments. The variable has a
+        /// non-empty <see cref="EnvironmentVariable.Segments"/> list.
+        /// </summary>
+        public const string Dynamic = "dynamic";
     }
 }

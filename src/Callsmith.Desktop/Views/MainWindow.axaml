@@ -7,7 +7,7 @@
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="750"
         x:Class="Callsmith.Desktop.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Icon="/Assets/avalonia-logo.ico"
+        Icon="/Assets/callsmith.ico"
         Title="Callsmith"
         MinWidth="800" MinHeight="500"
         Background="#1e1e1e">
@@ -16,6 +16,8 @@
          otherwise falls through to the active request tab. -->
     <Window.KeyBindings>
         <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}"/>
+        <KeyBinding Gesture="Ctrl+P" Command="{Binding OpenCommandPaletteCommand}"/>
+        <KeyBinding Gesture="Alt+R" Command="{Binding RevealActiveRequestCommand}"/>
     </Window.KeyBindings>
 
     <Design.DataContext>
@@ -66,23 +68,19 @@
              Full-width collection environment editor panel
              Spans all columns so the collection sidebar is not visible.
              ================================================================ -->
-        <Grid Grid.Column="0" Grid.ColumnSpan="3" RowDefinitions="Auto,*"
-              IsVisible="{Binding Environment.IsEditorOpen}">
+        <!-- Full-width collection environment editor panel -->
+        <Panel Grid.Column="0" Grid.ColumnSpan="3"
+               IsVisible="{Binding Environment.IsEditorOpen}">
+            <views:EnvironmentEditorView DataContext="{Binding EnvironmentEditor}"/>
+        </Panel>
 
-            <!-- Same env toolbar strip so the user can switch back -->
-            <Border Grid.Row="0"
-                    Background="#2d2d30"
-                    BorderBrush="#444"
-                    BorderThickness="0,0,0,1"
-                    Padding="12,6">
-                <views:EnvironmentSelectorView DataContext="{Binding Environment}"/>
-            </Border>
-
-            <!-- Environment editor fills the remaining height -->
-            <views:EnvironmentEditorView Grid.Row="1"
-                                         DataContext="{Binding EnvironmentEditor}"/>
-
-        </Grid>
+        <!-- ================================================================
+             Command palette overlay — floats over all content, manages its
+             own IsVisible state. ZIndex puts it on top of everything else.
+             ================================================================ -->
+        <views:CommandPaletteView Grid.Column="0" Grid.ColumnSpan="3"
+                                  ZIndex="100"
+                                  DataContext="{Binding CommandPalette}"/>
 
     </Grid>
 

@@ -20,24 +20,59 @@ public partial class RequestView : UserControl
         base.OnDataContextChanged(e);
 
         if (_trackedVm is not null)
+        {
             _trackedVm.PropertyChanged -= OnViewModelPropertyChanged;
+            _trackedVm.InsertTextAtBodyCaret -= OnInsertTextAtBodyCaret;
+        }
 
         _trackedVm = DataContext as RequestTabViewModel;
 
         if (_trackedVm is not null)
+        {
             _trackedVm.PropertyChanged += OnViewModelPropertyChanged;
+            _trackedVm.InsertTextAtBodyCaret += OnInsertTextAtBodyCaret;
+        }
+    }
+
+    private void OnInsertTextAtBodyCaret(string text)
+    {
+        var offset = BodyEditor.CaretOffset;
+        BodyEditor.Document.Insert(offset, text);
+        BodyEditor.CaretOffset = offset + text.Length;
     }
 
     private async void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(RequestTabViewModel.ShowSaveAsPanel)) return;
-        if (_trackedVm is null || !_trackedVm.ShowSaveAsPanel) return;
+        if (_trackedVm is null) return;
 
-        var owner = TopLevel.GetTopLevel(this) as Window;
-        if (owner is null) return;
-
-        var dialog = new SaveAsDialog { DataContext = _trackedVm };
-        await dialog.ShowDialog(owner);
+        if (e.PropertyName == nameof(RequestTabViewModel.ShowSaveAsPanel))
+        {
+            if (!_trackedVm.ShowSaveAsPanel) return;
+            var owner = TopLevel.GetTopLevel(this) as Window;
+            if (owner is null) return;
+            var dialog = new SaveAsDialog { DataContext = _trackedVm };
+            await dialog.ShowDialog(owner);
+        }
+        else if (e.PropertyName == nameof(RequestTabViewModel.ShowDynamicValueConfig))
+        {
+            if (!_trackedVm.ShowDynamicValueConfig) return;
+            if (_trackedVm.PendingDynamicConfig is null) return;
+            var owner = TopLevel.GetTopLevel(this) as Window;
+            if (owner is null) return;
+            var dialog = new DynamicValueConfigDialog { DataContext = _trackedVm.PendingDynamicConfig };
+            await dialog.ShowDialog(owner);
+            _trackedVm.OnDynamicConfigDialogClosed();
+        }
+        else if (e.PropertyName == nameof(RequestTabViewModel.ShowMockDataConfig))
+        {
+            if (!_trackedVm.ShowMockDataConfig) return;
+            if (_trackedVm.PendingMockDataConfig is null) return;
+            var owner = TopLevel.GetTopLevel(this) as Window;
+            if (owner is null) return;
+            var dialog = new MockDataConfigDialog { DataContext = _trackedVm.PendingMockDataConfig };
+            await dialog.ShowDialog(owner);
+            _trackedVm.OnMockDataConfigDialogClosed();
+        }
     }
 
     private async void OnCopyPreviewUrlClicked(object? sender, RoutedEventArgs e)

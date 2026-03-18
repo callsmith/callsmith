@@ -11,24 +11,6 @@
   <!-- Compact toolbar strip: label + environment chooser + manage button -->
   <DockPanel>
 
-    <!-- Active environment color swatch — only visible when the selected env has a color -->
-    <Border DockPanel.Dock="Left"
-            Width="10" Height="10"
-            CornerRadius="2"
-            Background="{Binding ActiveEnvironment.Color, Converter={x:Static conv:HexColorToBrushConverter.Instance}}"
-            IsVisible="{Binding ActiveEnvironment.Color, Converter={x:Static StringConverters.IsNotNullOrEmpty}, FallbackValue=False}"
-            Margin="0,0,6,0"
-            VerticalAlignment="Center"/>
-
-    <TextBlock DockPanel.Dock="Left"
-               Text="ENV"
-               Foreground="#888888"
-               FontSize="11"
-               FontWeight="SemiBold"
-               LetterSpacing="1"
-               VerticalAlignment="Center"
-               Margin="0,0,8,0"/>
-
     <!-- Back button — shown when any editor is open -->
     <Button DockPanel.Dock="Right"
             Content="← Back to Editor"
@@ -55,6 +37,7 @@
             Padding="8,2"
             Margin="8,0,0,0"
             VerticalAlignment="Center"
+            Cursor="Hand"
             ToolTip.Tip="Open the environment variable editor"/>
 
     <!-- Environment picker — hidden while any editor is open -->
@@ -66,7 +49,14 @@
               IsVisible="{Binding !IsAnyEditorOpen}">
       <ComboBox.ItemTemplate>
         <DataTemplate>
-          <TextBlock Text="{Binding Name}"/>
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <Border Width="10" Height="10"
+                    CornerRadius="2"
+                    Background="{Binding Color, Converter={x:Static conv:HexColorToBrushConverter.Instance}}"
+                    IsVisible="{Binding Color, Converter={x:Static StringConverters.IsNotNullOrEmpty}, FallbackValue=False}"
+                    VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+          </StackPanel>
         </DataTemplate>
       </ComboBox.ItemTemplate>
     </ComboBox>

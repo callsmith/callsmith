@@ -14,21 +14,25 @@ public partial class MainWindowViewModel : ViewModelBase
     public RequestEditorViewModel RequestEditor { get; }
     public EnvironmentViewModel Environment { get; }
     public EnvironmentEditorViewModel EnvironmentEditor { get; }
+    public CommandPaletteViewModel CommandPalette { get; }
 
     public MainWindowViewModel(
         CollectionsViewModel collections,
         RequestEditorViewModel requestEditor,
         EnvironmentViewModel environment,
-        EnvironmentEditorViewModel environmentEditor)
+        EnvironmentEditorViewModel environmentEditor,
+        CommandPaletteViewModel commandPalette)
     {
         ArgumentNullException.ThrowIfNull(collections);
         ArgumentNullException.ThrowIfNull(requestEditor);
         ArgumentNullException.ThrowIfNull(environment);
         ArgumentNullException.ThrowIfNull(environmentEditor);
+        ArgumentNullException.ThrowIfNull(commandPalette);
         Collections = collections;
         RequestEditor = requestEditor;
         Environment = environment;
         EnvironmentEditor = environmentEditor;
+        CommandPalette = commandPalette;
     }
 
     /// <summary>
@@ -42,5 +46,27 @@ public partial class MainWindowViewModel : ViewModelBase
             EnvironmentEditor.SaveSelectedCommand.Execute(null);
         else
             RequestEditor.ActiveTab?.SaveCommand.Execute(null);
+    }
+
+    /// <summary>
+    /// Ctrl+P handler: opens the command palette when the request editor is active
+    /// (i.e. the environment editor panel is not open).
+    /// </summary>
+    [RelayCommand]
+    private void OpenCommandPalette()
+    {
+        if (Environment.IsAnyEditorOpen) return;
+        CommandPalette.Open(Collections.TreeRoots);
+    }
+
+    /// <summary>
+    /// Alt+R handler: reveals the currently active request in the collections sidebar.
+    /// </summary>
+    [RelayCommand]
+    private void RevealActiveRequest()
+    {
+        var path = RequestEditor.ActiveTab?.SourceFilePath;
+        if (string.IsNullOrEmpty(path)) return;
+        Collections.RevealFilePath = path;
     }
 }

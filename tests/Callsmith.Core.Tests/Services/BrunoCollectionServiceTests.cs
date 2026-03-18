@@ -1,7 +1,10 @@
+using System.Linq;
 using System.Net.Http;
+using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 
 namespace Callsmith.Core.Tests.Services;
 
@@ -18,8 +21,20 @@ public sealed class BrunoCollectionServiceTests : IDisposable
     {
         _root = Path.Combine(Path.GetTempPath(), "BrunoTests_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
-        _sut = new BrunoCollectionService(NullLogger<BrunoCollectionService>.Instance);
+        _sut = Sut();
     }
+
+    /// <summary>No-op secrets for tests that do not exercise auth-secret storage.</summary>
+    private static ISecretStorageService NoOpSecrets() => Substitute.For<ISecretStorageService>();
+
+    /// <summary>Returns a real secrets service backed by a dedicated temp sub-directory.</summary>
+    private FileSystemSecretStorageService RealSecrets() =>
+        new(
+            Path.Combine(_root, "__secrets_store__"),
+            NullLogger<FileSystemSecretStorageService>.Instance);
+
+    private BrunoCollectionService Sut(ISecretStorageService? secrets = null) =>
+        new(secrets ?? NoOpSecrets(), NullLogger<BrunoCollectionService>.Instance);
 
     public void Dispose() => Directory.Delete(_root, recursive: true);
 
@@ -129,9 +144,9 @@ public sealed class BrunoCollectionServiceTests : IDisposable
         Assert.Equal("get items", request.Name);
         Assert.Equal(HttpMethod.Get, request.Method);
         Assert.Equal("https://api.example.com/items", request.Url);
-        Assert.Equal("active", request.QueryParams["filter"]);
-        Assert.Equal("Bearer {{token}}", request.Headers["Authorization"]);
-        Assert.Equal("application/json", request.Headers["Accept"]);
+        Assert.Equal("active", request.QueryParams.First(p => p.Key == "filter").Value);
+        Assert.Equal("Bearer {{token}}", request.Headers.Single(h => h.Key == "Authorization").Value);
+        Assert.Equal("application/json", request.Headers.Single(h => h.Key == "Accept").Value);
     }
 
     [Fact]
@@ -192,7 +207,7 @@ public sealed class BrunoCollectionServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadRequestAsync_FormBody_ProducesUrlEncodedString()
+    public async Task LoadRequestAsync_FormBody_PopulatesFormParams()
     {
         var content = """
             meta {
@@ -217,9 +232,10 @@ public sealed class BrunoCollectionServiceTests : IDisposable
         var request = await _sut.LoadRequestAsync(Path.Combine(_root, "login.bru"));
 
         Assert.Equal(CollectionRequest.BodyTypes.Form, request.BodyType);
-        Assert.NotNull(request.Body);
-        Assert.Contains("grant_type=password", request.Body);
-        Assert.Contains("username=user%40example.com", request.Body);
+        Assert.Null(request.Body);
+        Assert.Equal(2, request.FormParams.Count);
+        Assert.Contains(request.FormParams, p => p.Key == "grant_type" && p.Value == "password");
+        Assert.Contains(request.FormParams, p => p.Key == "username" && p.Value == "user@example.com");
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -320,9 +336,9 @@ public sealed class BrunoCollectionServiceTests : IDisposable
             Name = "new request",
             Method = HttpMethod.Post,
             Url = "https://api.example.com/create",
-            Headers = new Dictionary<string, string> { ["Content-Type"] = "application/json" },
+            Headers = [new RequestKv("Content-Type", "application/json")],
             PathParams = new Dictionary<string, string>(),
-            QueryParams = new Dictionary<string, string>(),
+            QueryParams = [],
             BodyType = CollectionRequest.BodyTypes.Json,
             Body = @"{""name"": ""test""}",
             Auth = new AuthConfig { AuthType = AuthConfig.AuthTypes.None },
@@ -409,6 +425,64 @@ public sealed class BrunoCollectionServiceTests : IDisposable
 
         Assert.Contains("  seq: 2", firstContent);
         Assert.Contains("  seq: 1", secondContent);
+    }
+
+    [Fact]
+    public async Task SaveAndLoad_BasicAuth_PasswordIsStoredInSecretsNotInFile()
+    {
+        var sut = Sut(RealSecrets());
+        await sut.OpenFolderAsync(_root);
+
+        var filePath = Path.Combine(_root, "api.bru");
+        var request = new CollectionRequest
+        {
+            FilePath = filePath,
+            Name = "api",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com",
+            Auth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.Basic,
+                Username = "alice",
+                Password = "hunter2",
+            },
+        };
+
+        await sut.SaveRequestAsync(request);
+
+        var content = await File.ReadAllTextAsync(filePath);
+        Assert.DoesNotContain("hunter2", content);
+        // Username is still stored in the file.
+        Assert.Contains("alice", content);
+    }
+
+    [Fact]
+    public async Task SaveAndLoad_BasicAuth_RoundTrips()
+    {
+        var sut = Sut(RealSecrets());
+        await sut.OpenFolderAsync(_root);
+
+        var filePath = Path.Combine(_root, "api.bru");
+        var request = new CollectionRequest
+        {
+            FilePath = filePath,
+            Name = "api",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com",
+            Auth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.Basic,
+                Username = "alice",
+                Password = "hunter2",
+            },
+        };
+
+        await sut.SaveRequestAsync(request);
+        var loaded = await sut.LoadRequestAsync(filePath);
+
+        Assert.Equal(AuthConfig.AuthTypes.Basic, loaded.Auth.AuthType);
+        Assert.Equal("alice", loaded.Auth.Username);
+        Assert.Equal("hunter2", loaded.Auth.Password);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

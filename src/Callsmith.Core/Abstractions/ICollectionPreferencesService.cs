@@ -21,4 +21,13 @@ public interface ICollectionPreferencesService
     /// crashing the UI over a non-critical write.
     /// </summary>
     Task SaveAsync(string collectionFolderPath, CollectionPreferences preferences, CancellationToken ct = default);
+
+    /// <summary>
+    /// Atomically reads the current preferences for <paramref name="collectionFolderPath"/>,
+    /// applies <paramref name="update"/> to produce a new value, and writes it back — all
+    /// while holding a per-collection exclusive lock. Use this instead of a manual
+    /// <see cref="LoadAsync"/> + <see cref="SaveAsync"/> pair to prevent concurrent writers
+    /// from clobbering each other's changes.
+    /// </summary>
+    Task UpdateAsync(string collectionFolderPath, Func<CollectionPreferences, CollectionPreferences> update, CancellationToken ct = default);
 }
