@@ -2,6 +2,7 @@ using System.Net.Http;
 using System.Text;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Helpers;
+using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
 using Callsmith.Desktop.Controls;
@@ -30,7 +31,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private CollectionRequest? _sourceRequest;
 
     private EnvironmentModel? _activeEnvironment;
-    private IReadOnlyList<EnvironmentVariable> _globalVariables = [];
+    private EnvironmentModel _globalEnvironment = new() { FilePath = string.Empty, Name = "Global", Variables = [] };
     private bool _loading;
     private bool _saving;
     private bool _syncingUrl;
@@ -110,6 +111,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [ObservableProperty] private string _authToken = string.Empty;
     [ObservableProperty] private string _authUsername = string.Empty;
     [ObservableProperty] private string _authPassword = string.Empty;
+    [ObservableProperty] private bool _showAuthPassword = false;
     [ObservableProperty] private string _authApiKeyName = string.Empty;
     [ObservableProperty] private string _authApiKeyValue = string.Empty;
     [ObservableProperty] private string _authApiKeyIn = AuthConfig.ApiKeyLocations.Header;
@@ -220,6 +222,19 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     [ObservableProperty] private bool _showDynamicValueConfig;
     [ObservableProperty] private bool _showMockDataConfig;
+
+    // -------------------------------------------------------------------------
+    // cURL dialog state
+    // -------------------------------------------------------------------------
+
+    /// <summary>True when the cURL command dialog should be shown.</summary>
+    [ObservableProperty] private bool _showCurlDialog;
+
+    /// <summary>The fully-resolved request to display in the cURL dialog. Set just before <see cref="ShowCurlDialog"/> becomes true.</summary>
+    internal RequestModel? CurlRequestSnapshot { get; private set; }
+
+    /// <summary>API-key masking hints for the cURL dialog. Set alongside <see cref="CurlRequestSnapshot"/>.</summary>
+    internal CurlAuthMaskInfo? CurlAuthMask { get; private set; }
 
     /// <summary>
     /// Opens the dynamic value configuration dialog. Returns the configured segment or null.
@@ -529,7 +544,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(EnvVarNames) or
                 nameof(FormattedResponseBody) or nameof(IsBodyJson) or
                 nameof(BodyLanguage) or nameof(ResponseLanguage) or
-                nameof(ShowDynamicValueConfig) or nameof(ShowMockDataConfig))
+                nameof(ShowDynamicValueConfig) or nameof(ShowMockDataConfig) or
+                nameof(ShowCurlDialog))
                 return;
             HasUnsavedChanges = true;
         };
@@ -628,9 +644,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
     }
 
     /// <summary>Updates the global environment variables used as the baseline for substitution.</summary>
-    public void SetGlobalEnvironment(IReadOnlyList<EnvironmentVariable> variables)
+    public void SetGlobalEnvironment(EnvironmentModel environment)
     {
-        _globalVariables = variables;
+        _globalEnvironment = environment;
         UpdateEnvSuggestions();
     }
 
@@ -640,7 +656,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     /// </summary>
     private Dictionary<string, string> BuildMergedVars()
     {
-        var merged = _globalVariables.ToDictionary(v => v.Name, v => v.Value);
+        var merged = (_globalEnvironment.Variables).ToDictionary(v => v.Name, v => v.Value);
         if (_activeEnvironment is not null)
             foreach (var v in _activeEnvironment.Variables)
                 merged[v.Name] = v.Value;
@@ -656,26 +672,81 @@ public sealed partial class RequestTabViewModel : ObservableObject
     {
         var merged = BuildMergedVars();
 
-        if (_dynamicEvaluator is null || _activeEnvironment is null)
+        if (_dynamicEvaluator is null)
             return new ResolvedEnvironment { Variables = merged };
 
-        // Check if any variable needs resolution.
-        var needsResolution = _activeEnvironment.Variables.Any(v =>
-            v.VariableType == EnvironmentVariable.VariableTypes.Dynamic
-            || v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
-            || v.VariableType == EnvironmentVariable.VariableTypes.MockData);
+        var globalVars = _globalEnvironment.Variables;
+        var globalHasDynamic = globalVars.Any(v =>
+            v.VariableType is EnvironmentVariable.VariableTypes.Dynamic
+                or EnvironmentVariable.VariableTypes.ResponseBody
+                or EnvironmentVariable.VariableTypes.MockData);
 
-        if (!needsResolution)
+        var activeVars = _activeEnvironment?.Variables ?? (IReadOnlyList<EnvironmentVariable>)[];
+        var activeHasDynamic = activeVars.Any(v =>
+            v.VariableType is EnvironmentVariable.VariableTypes.Dynamic
+                or EnvironmentVariable.VariableTypes.ResponseBody
+                or EnvironmentVariable.VariableTypes.MockData);
+
+        if (!globalHasDynamic && !activeHasDynamic)
             return new ResolvedEnvironment { Variables = merged };
 
+        var allMockGenerators = new Dictionary<string, MockDataEntry>();
         try
         {
-            return await _dynamicEvaluator.ResolveAsync(
-                CollectionRootPath,
-                _activeEnvironment.FilePath,
-                _activeEnvironment.Variables,
-                merged,
-                ct).ConfigureAwait(false);
+            // 1. Resolve global dynamic vars first, passing the full merged static dict so that
+            //    global requests can use active-env vars (e.g. baseUrl) when they need them.
+            if (globalHasDynamic)
+            {
+                // Ensure a stable, per-collection cache key for the global environment
+                // even if the model hasn't been fully loaded yet (FilePath could be empty
+                // on first use before the environment editor has been opened).
+                var globalFilePath = !string.IsNullOrEmpty(_globalEnvironment.FilePath)
+                    ? _globalEnvironment.FilePath
+                    : Path.Combine(CollectionRootPath, "environment", "_global.env.callsmith");
+
+                // Scope the global var cache per active environment — a global token request
+                // uses the active env's credentials/baseUrl, so each env gets its own token.
+                var globalCacheNamespace = _activeEnvironment is not null
+                    ? $"{globalFilePath}[env:{_activeEnvironment.FilePath}]"
+                    : globalFilePath;
+
+                var globalResolved = await _dynamicEvaluator.ResolveAsync(
+                    CollectionRootPath,
+                    globalCacheNamespace,
+                    globalVars,
+                    merged,
+                    ct).ConfigureAwait(false);
+
+                foreach (var kv in globalResolved.Variables)
+                    merged[kv.Key] = kv.Value;
+                foreach (var kv in globalResolved.MockGenerators)
+                    allMockGenerators[kv.Key] = kv.Value;
+
+                // Active-env static vars must still win over global resolved values.
+                if (_activeEnvironment is not null)
+                    foreach (var v in _activeEnvironment.Variables
+                        .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.Static
+                                 && !string.IsNullOrWhiteSpace(v.Name)))
+                        merged[v.Name] = v.Value;
+            }
+
+            // 2. Resolve active-env dynamic vars with global values now available in merged.
+            if (activeHasDynamic && _activeEnvironment is not null)
+            {
+                var activeResolved = await _dynamicEvaluator.ResolveAsync(
+                    CollectionRootPath,
+                    _activeEnvironment.FilePath,
+                    _activeEnvironment.Variables,
+                    merged,
+                    ct).ConfigureAwait(false);
+
+                foreach (var kv in activeResolved.Variables)
+                    merged[kv.Key] = kv.Value;
+                foreach (var kv in activeResolved.MockGenerators)
+                    allMockGenerators[kv.Key] = kv.Value;
+            }
+
+            return new ResolvedEnvironment { Variables = merged, MockGenerators = allMockGenerators };
         }
         catch (OperationCanceledException)
         {
@@ -689,6 +760,56 @@ public sealed partial class RequestTabViewModel : ObservableObject
     }
 
     /// <summary>
+    /// After a successful manual send, updates the dynamic variable cache for any
+    /// response-body environment variables (in both global and active environments)
+    /// that reference the request that was just executed.
+    /// </summary>
+    private async Task UpdateDynamicCacheFromResponseAsync(string responseBody, CancellationToken ct)
+    {
+        if (_dynamicEvaluator is null || _sourceRequest is null) return;
+
+        var globalVars = _globalEnvironment.Variables;
+        var globalFilePath = !string.IsNullOrEmpty(_globalEnvironment.FilePath)
+            ? _globalEnvironment.FilePath
+            : Path.Combine(CollectionRootPath, "environment", "_global.env.callsmith");
+
+        // Global env: use the same env-scoped cache namespace as BuildMergedVarsAsync.
+        var globalCacheNamespace = _activeEnvironment is not null
+            ? $"{globalFilePath}[env:{_activeEnvironment.FilePath}]"
+            : globalFilePath;
+
+        try
+        {
+            await _dynamicEvaluator.UpdateCacheFromResponseAsync(
+                CollectionRootPath,
+                globalCacheNamespace,
+                _sourceRequest.Name,
+                responseBody,
+                globalVars,
+                ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch { /* Cache update is best-effort; a miss just causes a re-execute on next send. */ }
+
+        // Active environment: update using the active env's own cache namespace.
+        if (_activeEnvironment is not null)
+        {
+            try
+            {
+                await _dynamicEvaluator.UpdateCacheFromResponseAsync(
+                    CollectionRootPath,
+                    _activeEnvironment.FilePath,
+                    _sourceRequest.Name,
+                    responseBody,
+                    _activeEnvironment.Variables,
+                    ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch { /* Cache update is best-effort; a miss just causes a re-execute on next send. */ }
+        }
+    }
+
+    /// <summary>
     /// Rebuilds autocomplete suggestions from the merged global + active environment.
     /// Active environment values override global values for the same name.
     /// Secret variable values are shown as bullets.
@@ -697,7 +818,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     {
         // Merge: global vars first, active env overrides
         var merged = new Dictionary<string, EnvironmentVariable>(StringComparer.Ordinal);
-        foreach (var v in _globalVariables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
+        foreach (var v in _globalEnvironment.Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
             merged[v.Name] = v;
         if (_activeEnvironment is not null)
             foreach (var v in _activeEnvironment.Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
@@ -733,6 +854,100 @@ public sealed partial class RequestTabViewModel : ObservableObject
     }
 
     // -------------------------------------------------------------------------
+    // Commands — View as cURL
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Builds the cURL command for the current request state with full variable resolution
+    /// (including dynamic variables) — identical to what would actually be sent.
+    /// </summary>
+    [RelayCommand]
+    private async Task ViewCurlAsync(CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(Url)) return;
+
+        var env = await BuildMergedVarsAsync(ct);
+
+        // Resolve path params
+        var pathParamValues = PathParams.GetEnabledPairs()
+            .Where(p => !string.IsNullOrWhiteSpace(p.Value))
+            .ToDictionary(
+                p => p.Key,
+                p => VariableSubstitutionService.Substitute(p.Value, env) ?? p.Value);
+
+        var baseUrl = GetBaseUrl(Url);
+        var requestUrl = PathTemplateHelper.ApplyPathParams(baseUrl, pathParamValues);
+
+        // Resolve query params
+        var substitutedQueryParams = QueryParams.GetEnabledPairs()
+            .Select(p => new KeyValuePair<string, string>(
+                VariableSubstitutionService.Substitute(p.Key, env) ?? p.Key,
+                VariableSubstitutionService.Substitute(p.Value, env) ?? p.Value))
+            .ToList();
+
+        requestUrl = QueryStringHelper.ApplyQueryParams(requestUrl, substitutedQueryParams);
+
+        // Headers + auth
+        var headers = new Dictionary<string, string>(
+            Headers.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
+            StringComparer.OrdinalIgnoreCase);
+
+        ApplyAuthHeaders(headers, requestUrl, out requestUrl);
+
+        requestUrl = VariableSubstitutionService.Substitute(requestUrl, env) ?? requestUrl;
+        foreach (var key in headers.Keys.ToList())
+            headers[key] = VariableSubstitutionService.Substitute(headers[key], env) ?? headers[key];
+
+        // Body
+        string? resolvedBody = null;
+        if (SelectedBodyType != CollectionRequest.BodyTypes.None &&
+            SelectedBodyType != CollectionRequest.BodyTypes.Form &&
+            !string.IsNullOrEmpty(Body))
+            resolvedBody = VariableSubstitutionService.Substitute(Body, env) ?? Body;
+
+        if (SelectedBodyType == CollectionRequest.BodyTypes.Form)
+        {
+            var formPairs = FormParams.GetEnabledPairs()
+                .Select(p => new KeyValuePair<string, string>(
+                    VariableSubstitutionService.Substitute(p.Key, env) ?? p.Key,
+                    VariableSubstitutionService.Substitute(p.Value, env) ?? p.Value))
+                .ToList();
+            if (formPairs.Count > 0)
+                resolvedBody = string.Join("&",
+                    formPairs.Select(p =>
+                        Uri.EscapeDataString(p.Key) + "=" + Uri.EscapeDataString(p.Value)));
+        }
+
+        var request = new RequestModel
+        {
+            Method = new HttpMethod(SelectedMethod),
+            Url = requestUrl,
+            Headers = headers,
+            Body = resolvedBody,
+            ContentType = GetContentType(),
+        };
+
+        // Determine API-key masking info for the cURL dialog.
+        CurlAuthMaskInfo? authMask = null;
+        if (AuthType == AuthConfig.AuthTypes.ApiKey && !string.IsNullOrEmpty(AuthApiKeyName))
+        {
+            // Header param name is stored as-is (header keys are not var-substituted).
+            // Query param name may have been substituted into the URL, so resolve it.
+            var resolvedName = AuthApiKeyIn == AuthConfig.ApiKeyLocations.Query
+                ? VariableSubstitutionService.Substitute(AuthApiKeyName, env) ?? AuthApiKeyName
+                : AuthApiKeyName;
+
+            authMask = AuthApiKeyIn == AuthConfig.ApiKeyLocations.Header
+                ? new CurlAuthMaskInfo(ApiKeyHeaderName: resolvedName, ApiKeyQueryParamName: null)
+                : new CurlAuthMaskInfo(ApiKeyHeaderName: null, ApiKeyQueryParamName: resolvedName);
+        }
+
+        CurlRequestSnapshot = request;
+        CurlAuthMask = authMask;
+        ShowCurlDialog = true;
+    }
+
+    // -------------------------------------------------------------------------
     // Commands — Send
     // -------------------------------------------------------------------------
 
@@ -753,7 +968,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
             var env = await BuildMergedVarsAsync(ct);
 
-            // Substitute {{tokens}} in path param values BEFORE URL-encoding.
             var pathParamValues = PathParams.GetEnabledPairs()
                 .Where(p => !string.IsNullOrWhiteSpace(p.Value))
                 .ToDictionary(
@@ -810,6 +1024,16 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
             var transport = _transportRegistry.Resolve(request);
             Response = await transport.SendAsync(request, ct);
+
+            // If this is a saved request, update the dynamic variable cache for any
+            // environment variables that reference this request, so subsequent resolutions
+            // pick up the fresh response without executing the request again.
+            if (_dynamicEvaluator is not null
+                && _sourceRequest is not null
+                && !string.IsNullOrEmpty(Response.Body))
+            {
+                await UpdateDynamicCacheFromResponseAsync(Response.Body, ct).ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException)
         {

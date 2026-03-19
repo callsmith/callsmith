@@ -1,4 +1,5 @@
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
 using Callsmith.Desktop.Messages;
 using Callsmith.Desktop.ViewModels;
@@ -670,5 +671,291 @@ public sealed class EnvironmentEditorViewModelTests
 
         devEnv.IsDirty.Should().BeFalse();
         devEnv.Variables.Should().ContainSingle(v => v.Name == "BASE_URL");
+    }
+
+    // ─── Dynamic variable preview ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Regression: when a concrete env's static var references a global response-body var
+    /// (e.g. "Bearer {{access-token}}"), the preview must show the resolved value even though
+    /// the concrete env has no response-body vars of its own.
+    /// </summary>
+    [Fact]
+    public async Task Preview_ConcreteEnv_StaticVarReferencingGlobalResponseBodyVar_ResolvesToResolvedValue()
+    {
+        const string resolvedToken = "eyJ.resolved.token";
+
+        var globalModel = new EnvironmentModel
+        {
+            FilePath = GlobalEnvPath,
+            Name = "Global",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "access-token",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                    ResponseRequestName = "Auth/login",
+                    ResponsePath = "$.token",
+                },
+            ],
+        };
+
+        var devModel = new EnvironmentModel
+        {
+            Name = "dev",
+            FilePath = @"C:\collections\my-api\environment\dev.env.callsmith",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "auth-header",
+                    Value = "Bearer {{access-token}}",
+                    VariableType = EnvironmentVariable.VariableTypes.Static,
+                },
+            ],
+        };
+
+        var service = Substitute.For<IEnvironmentService>();
+        service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+               .Returns(globalModel);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([devModel]);
+
+        var evaluator = Substitute.For<IDynamicVariableEvaluator>();
+        // Return the resolved access-token whenever the global env's variables are evaluated.
+        evaluator.ResolveAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Is<IReadOnlyList<EnvironmentVariable>>(vars =>
+                    vars.Any(v => v.Name == "access-token"
+                               && v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody)),
+                Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new ResolvedEnvironment
+            {
+                Variables = new Dictionary<string, string> { ["access-token"] = resolvedToken },
+                MockGenerators = new Dictionary<string, MockDataEntry>(),
+            });
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger, dynamicEvaluator: evaluator);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(300); // allow fire-and-forget load + preview refresh
+
+        var devEnv = sut.Environments.First(e => !e.IsGlobal);
+        var authHeaderVar = devEnv.Variables.First(v => v.Name == "auth-header");
+
+        authHeaderVar.PreviewValue.Should().Be($"Bearer {resolvedToken}",
+            "a concrete env static var that references a global response-body var should show the resolved value");
+    }
+
+    /// <summary>
+    /// When neither the global env nor the concrete env has any response-body variables,
+    /// the evaluator should never be called — no HTTP requests should fire.
+    /// </summary>
+    [Fact]
+    public async Task Preview_WhenNeitherEnvHasResponseBodyVars_ResolveAsyncIsNeverCalled()
+    {
+        var globalModel = new EnvironmentModel
+        {
+            FilePath = GlobalEnvPath,
+            Name = "Global",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "base-url",
+                    Value = "https://api.example.com",
+                    VariableType = EnvironmentVariable.VariableTypes.Static,
+                },
+            ],
+        };
+
+        var devModel = new EnvironmentModel
+        {
+            Name = "dev",
+            FilePath = @"C:\collections\my-api\environment\dev.env.callsmith",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "full-url",
+                    Value = "{{base-url}}/v1",
+                    VariableType = EnvironmentVariable.VariableTypes.Static,
+                },
+            ],
+        };
+
+        var service = Substitute.For<IEnvironmentService>();
+        service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+               .Returns(globalModel);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([devModel]);
+
+        var evaluator = Substitute.For<IDynamicVariableEvaluator>();
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger, dynamicEvaluator: evaluator);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(300);
+
+        await evaluator.DidNotReceive().ResolveAsync(
+            Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
+            Arg.Any<IReadOnlyDictionary<string, string>>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Even without HTTP, global static vars must propagate into a concrete env's preview column
+    /// so that {{base-url}} and similar tokens resolve correctly.
+    /// </summary>
+    [Fact]
+    public async Task Preview_WhenNeitherEnvHasResponseBodyVars_GlobalStaticVarsResolveInConcreteEnvPreview()
+    {
+        var globalModel = new EnvironmentModel
+        {
+            FilePath = GlobalEnvPath,
+            Name = "Global",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "base-url",
+                    Value = "https://api.example.com",
+                    VariableType = EnvironmentVariable.VariableTypes.Static,
+                },
+            ],
+        };
+
+        var devModel = new EnvironmentModel
+        {
+            Name = "dev",
+            FilePath = @"C:\collections\my-api\environment\dev.env.callsmith",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "full-url",
+                    Value = "{{base-url}}/v1",
+                    VariableType = EnvironmentVariable.VariableTypes.Static,
+                },
+            ],
+        };
+
+        var service = Substitute.For<IEnvironmentService>();
+        service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+               .Returns(globalModel);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([devModel]);
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(300);
+
+        var devEnv = sut.Environments.First(e => !e.IsGlobal);
+        var fullUrlVar = devEnv.Variables.First(v => v.Name == "full-url");
+
+        fullUrlVar.PreviewValue.Should().Be("https://api.example.com/v1");
+    }
+
+    /// <summary>
+    /// When a concrete env has its own response-body var, it is resolved and
+    /// any static var in that env that references it shows the resolved value in the preview.
+    /// </summary>
+    [Fact]
+    public async Task Preview_ConcreteEnv_OwnResponseBodyVarResolvesAndPropagatesIntoStaticVarPreview()
+    {
+        const string resolvedKey = "my-api-key-123";
+
+        var devModel = new EnvironmentModel
+        {
+            Name = "dev",
+            FilePath = @"C:\collections\my-api\environment\dev.env.callsmith",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "api-key",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                    ResponseRequestName = "GetKey",
+                    ResponsePath = "$.key",
+                },
+                new EnvironmentVariable
+                {
+                    Name = "auth-header",
+                    Value = "Key {{api-key}}",
+                    VariableType = EnvironmentVariable.VariableTypes.Static,
+                },
+            ],
+        };
+
+        var service = Substitute.For<IEnvironmentService>();
+        service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+               .Returns(new EnvironmentModel { FilePath = GlobalEnvPath, Name = "Global", Variables = [] });
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([devModel]);
+
+        var evaluator = Substitute.For<IDynamicVariableEvaluator>();
+        // Step 2: concrete env's own resolution returns the api-key.
+        evaluator.ResolveAsync(
+                CollectionPath, devModel.FilePath,
+                Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
+                Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new ResolvedEnvironment
+            {
+                Variables = new Dictionary<string, string> { ["api-key"] = resolvedKey },
+                MockGenerators = new Dictionary<string, MockDataEntry>(),
+            });
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger, dynamicEvaluator: evaluator);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(300);
+
+        var devEnv = sut.Environments.First(e => !e.IsGlobal);
+        var authHeaderVar = devEnv.Variables.First(v => v.Name == "auth-header");
+
+        authHeaderVar.PreviewValue.Should().Be($"Key {resolvedKey}");
+    }
+
+    /// <summary>
+    /// Regression: restoring the saved GlobalPreviewEnvironmentName during collection load
+    /// used to set IsDirty = true on the global env before the user touched anything.
+    /// </summary>
+    [Fact]
+    public async Task GlobalEnv_NotMarkedDirty_WhenGlobalPreviewEnvRestoredOnLoad()
+    {
+        var globalModel = new EnvironmentModel
+        {
+            FilePath = GlobalEnvPath,
+            Name = "Global",
+            Variables = [],
+            GlobalPreviewEnvironmentName = "dev", // previously saved selection
+        };
+
+        var service = Substitute.For<IEnvironmentService>();
+        service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+               .Returns(globalModel);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([MakeModel("dev")]);
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(200);
+
+        var globalEnv = sut.Environments.First(e => e.IsGlobal);
+        globalEnv.IsDirty.Should().BeFalse(
+            "restoring GlobalPreviewEnvironmentName from saved state must not mark the global env dirty");
     }
 }

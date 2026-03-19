@@ -29,7 +29,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private readonly ILogger<RequestEditorViewModel> _logger;
 
     private EnvironmentModel? _activeEnvironment;
-    private IReadOnlyList<EnvironmentVariable> _globalVariables = [];
+    private EnvironmentModel _globalEnvironment = new() { FilePath = string.Empty, Name = "Global", Variables = [] };
     private string _collectionPath = string.Empty;
     private bool _restoringTabs;
 
@@ -167,7 +167,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
 
     public void Receive(GlobalEnvironmentChangedMessage message)
     {
-        _globalVariables = message.Value;
+        _globalEnvironment = message.Value;
         foreach (var tab in Tabs)
             tab.SetGlobalEnvironment(message.Value);
     }
@@ -239,7 +239,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             tab.IsNew = true;
 
         tab.SetEnvironment(_activeEnvironment);
-        tab.SetGlobalEnvironment(_globalVariables);
+        tab.SetGlobalEnvironment(_globalEnvironment);
         return tab;
     }
 

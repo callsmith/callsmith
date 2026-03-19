@@ -20,4 +20,11 @@ public sealed record EnvironmentModel
     /// Null means no color indicator is shown.
     /// </summary>
     public string? Color { get; init; }
+
+    /// <summary>
+    /// Name of the concrete environment to use as the preview context when evaluating global
+    /// dynamic variables in the environment editor. Only meaningful for the global environment.
+    /// Stored in the global <c>.env.callsmith</c> file so the selection persists across sessions.
+    /// </summary>
+    public string? GlobalPreviewEnvironmentName { get; init; }
 }

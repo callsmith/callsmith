@@ -5,6 +5,7 @@
         x:Class="Callsmith.Desktop.Views.SaveAsDialog"
         x:DataType="vm:RequestTabViewModel"
         Title="Save Request"
+        Icon="/Assets/callsmith.ico"
         Width="460" SizeToContent="Height"
         CanResize="False"
         WindowStartupLocation="CenterOwner"

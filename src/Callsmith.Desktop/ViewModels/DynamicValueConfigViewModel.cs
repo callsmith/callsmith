@@ -18,6 +18,8 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
     private readonly string _environmentFilePath;
     private readonly IReadOnlyList<EnvironmentVariable> _allVariables;
     private readonly IReadOnlyDictionary<string, string> _staticVariables;
+    private readonly IReadOnlyList<EnvironmentVariable> _globalVariables;
+    private readonly string _globalEnvironmentFilePath;
 
     // ─── Available options ────────────────────────────────────────────────────
 
@@ -85,7 +87,9 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
         IReadOnlyList<string> availableRequests,
         IReadOnlyList<EnvironmentVariable> allVariables,
         IReadOnlyDictionary<string, string> staticVariables,
-        DynamicValueSegment? existing = null)
+        DynamicValueSegment? existing = null,
+        IReadOnlyList<EnvironmentVariable>? globalVariables = null,
+        string? globalEnvironmentFilePath = null)
     {
         ArgumentNullException.ThrowIfNull(evaluator);
         ArgumentNullException.ThrowIfNull(collectionFolderPath);
@@ -98,6 +102,8 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
         _environmentFilePath = environmentFilePath;
         _allVariables = allVariables;
         _staticVariables = staticVariables;
+        _globalVariables = globalVariables ?? [];
+        _globalEnvironmentFilePath = globalEnvironmentFilePath ?? string.Empty;
 
         foreach (var r in availableRequests)
             AvailableRequests.Add(r);
@@ -137,13 +143,34 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
             var segment = BuildSegment();
 
             // Resolve all dynamic variables in the environment first.
-            IReadOnlyDictionary<string, string> resolvedVars = _staticVariables;
+            IReadOnlyDictionary<string, string> baseStaticVars = _staticVariables;
+            // Phase 1: pre-resolve global dynamic vars (e.g. `token`) so their values are in
+            // the dict when the active env's dynamic var calls its request.
+            // Uses the same env-scoped cache namespace as send time to avoid redundant HTTP calls.
+            IReadOnlyDictionary<string, string> resolvedVars = baseStaticVars;
+            if (_globalVariables.Any(v =>
+                v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
+                || v.VariableType == EnvironmentVariable.VariableTypes.Dynamic))
+            {
+                var globalCacheNamespace = !string.IsNullOrEmpty(_globalEnvironmentFilePath)
+                    ? $"{_globalEnvironmentFilePath}[env:{_environmentFilePath}]"
+                    : _environmentFilePath;
+                var globalResolved = await _evaluator
+                    .ResolveAsync(_collectionFolderPath, globalCacheNamespace, _globalVariables, baseStaticVars, ct)
+                    .ConfigureAwait(true);
+                var merged = new Dictionary<string, string>(baseStaticVars, StringComparer.Ordinal);
+                foreach (var kv in globalResolved.Variables)
+                    merged[kv.Key] = kv.Value;
+                resolvedVars = merged;
+            }
+
+            // Phase 2: resolve the active env's own dynamic variables with the now-complete var set.
             if (_allVariables.Any(v =>
                 v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
                 || v.VariableType == EnvironmentVariable.VariableTypes.Dynamic))
             {
                 var resolved = await _evaluator
-                    .ResolveAsync(_collectionFolderPath, _environmentFilePath, _allVariables, _staticVariables, ct)
+                    .ResolveAsync(_collectionFolderPath, _environmentFilePath, _allVariables, resolvedVars, ct)
                     .ConfigureAwait(true);
                 resolvedVars = resolved.Variables;
             }

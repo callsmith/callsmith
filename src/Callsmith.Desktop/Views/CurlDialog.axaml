@@ -1,0 +1,64 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Callsmith.Desktop.ViewModels"
+        x:Class="Callsmith.Desktop.Views.CurlDialog"
+        x:DataType="vm:CurlDialogViewModel"
+        Title="cURL Command"
+        Icon="/Assets/callsmith.ico"
+        Width="680" Height="460"
+        MinWidth="400" MinHeight="280"
+        CanResize="True"
+        WindowStartupLocation="CenterOwner"
+        Background="#252526"
+        ShowInTaskbar="False">
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="20,16,20,16">
+
+    <!-- Header -->
+    <TextBlock Grid.Row="0"
+               Text="cURL Command"
+               Foreground="#d4d4d4" FontSize="14" FontWeight="SemiBold"
+               Margin="0,0,0,10"/>
+
+    <!-- Auth toggle -->
+    <CheckBox Grid.Row="1"
+              IsChecked="{Binding IncludeAuthentication}"
+              IsEnabled="{Binding HasAuthentication}"
+              Content="Include authentication"
+              Foreground="#9a9a9a" FontSize="12"
+              Margin="0,0,0,10"/>
+
+    <!-- Command text area -->
+    <TextBox Grid.Row="2"
+             Text="{Binding CurlCommandText}"
+             IsReadOnly="True"
+             AcceptsReturn="True"
+             TextWrapping="Wrap"
+             ScrollViewer.VerticalScrollBarVisibility="Auto"
+             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+             FontFamily="Consolas,Menlo,monospace"
+             FontSize="12"
+             Foreground="#d4d4d4"
+             Background="#1e1e1e"
+             BorderBrush="#3a3a3a"
+             Padding="10,8"
+             VerticalContentAlignment="Top"
+             Margin="0,0,0,12"/>
+
+    <!-- Buttons -->
+    <Grid Grid.Row="3" ColumnDefinitions="*,Auto,10,Auto">
+      <Button Grid.Column="1"
+              x:Name="CopyButton"
+              Content="Copy to Clipboard"
+              Background="#0e639c" Foreground="White" BorderThickness="0"
+              Padding="18,7" FontSize="12" CornerRadius="4"/>
+      <Button Grid.Column="3"
+              x:Name="CloseButton"
+              Content="Close"
+              Background="#3a3a3a" Foreground="#ccc" BorderThickness="0"
+              Padding="14,7" FontSize="12" CornerRadius="4"/>
+    </Grid>
+
+  </Grid>
+
+</Window>

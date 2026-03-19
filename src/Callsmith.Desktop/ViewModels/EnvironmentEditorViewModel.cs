@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
 using Callsmith.Desktop.Messages;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -35,6 +36,11 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     private List<string> _availableRequestNames = [];
     private TaskCompletionSource<EnvironmentVariable?>? _pendingMockDataTcs;
     private TaskCompletionSource<EnvironmentVariable?>? _pendingResponseBodyTcs;
+    private CancellationTokenSource? _dynPreviewCts;
+    // Guard: true while LoadEnvironmentsAsync is restoring saved state from disk.
+    // Prevents changes driven by the load (e.g. restoring GlobalPreviewEnvironmentName)
+    // from marking environments dirty before the user has touched anything.
+    private bool _loadingEnvironments;
 
     // ─── Observable state ────────────────────────────────────────────────────
 
@@ -98,6 +104,19 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     [ObservableProperty]
     private bool _showResponseBodyConfig;
 
+    /// <summary>
+    /// The concrete environment selected as the shared preview context for all global dynamic
+    /// variables. When set, all global response-body variable previews are resolved using this
+    /// environment's static vars (e.g. baseUrl, credentials) so every var resolves consistently.
+    /// Null means fall back to the first available concrete environment.
+    /// </summary>
+    [ObservableProperty]
+    private EnvironmentListItemViewModel? _selectedGlobalPreviewEnvironment;
+
+    /// <summary>All non-global environments available for selection as the global preview context.</summary>
+    public IEnumerable<EnvironmentListItemViewModel> GlobalPreviewEnvironments =>
+        Environments.Where(e => !e.IsGlobal);
+
     // ─── Constructor ─────────────────────────────────────────────────────────
 
     public EnvironmentEditorViewModel(
@@ -117,6 +136,10 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         _dynamicEvaluator = dynamicEvaluator;
         _logger = logger;
         IsActive = true;
+
+        // Re-expose GlobalPreviewEnvironments whenever the Environments list changes
+        // (collection is initially empty; environments load asynchronously on open).
+        Environments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(GlobalPreviewEnvironments));
     }
 
     // ─── Commands ────────────────────────────────────────────────────────────
@@ -287,10 +310,15 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
             if (SelectedEnvironment.IsGlobal)
             {
+                // Inject the current preview-env selection so it persists across sessions.
+                var modelWithPreview = model with
+                {
+                    GlobalPreviewEnvironmentName = SelectedGlobalPreviewEnvironment?.Name,
+                };
                 // Global environment: persist via the dedicated global save path and broadcast.
-                await _environmentService.SaveGlobalEnvironmentAsync(model, ct).ConfigureAwait(true);
-                SelectedEnvironment.MarkSaved(model);
-                Messenger.Send(new GlobalEnvironmentChangedMessage(model.Variables));
+                await _environmentService.SaveGlobalEnvironmentAsync(modelWithPreview, ct).ConfigureAwait(true);
+                SelectedEnvironment.MarkSaved(modelWithPreview);
+                Messenger.Send(new GlobalEnvironmentChangedMessage(modelWithPreview));
             }
             else
             {
@@ -381,12 +409,39 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
         var envItem = sourceEnv ?? SelectedEnvironment;
         var model = envItem?.BuildModel();
+        var isGlobal = envItem?.IsGlobal == true;
 
-        var staticVars = model?.Variables
-            .Where(v => !string.IsNullOrWhiteSpace(v.Name)
-                && v.VariableType == EnvironmentVariable.VariableTypes.Static)
-            .ToDictionary(v => v.Name.Trim(), v => v.Value, StringComparer.Ordinal)
-            ?? new Dictionary<string, string>();
+        // Build static vars baseline: start with global static vars (if this is a non-global env),
+        // then layer the active env's static vars on top. Matches send-time precedence so that
+        // tokens like {{access-token-header}} from the global env resolve inside preview requests.
+        Dictionary<string, string> staticVars;
+        if (!isGlobal)
+        {
+            staticVars = new Dictionary<string, string>(StringComparer.Ordinal);
+            var globalItem = Environments.FirstOrDefault(e => e.IsGlobal);
+            if (globalItem is not null)
+            {
+                foreach (var v in globalItem.BuildModel().Variables
+                    .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.Static
+                             && !string.IsNullOrWhiteSpace(v.Name)))
+                    staticVars[v.Name.Trim()] = v.Value;
+            }
+            if (model is not null)
+            {
+                foreach (var v in model.Variables
+                    .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.Static
+                             && !string.IsNullOrWhiteSpace(v.Name)))
+                    staticVars[v.Name.Trim()] = v.Value;
+            }
+        }
+        else
+        {
+            staticVars = model?.Variables
+                .Where(v => !string.IsNullOrWhiteSpace(v.Name)
+                    && v.VariableType == EnvironmentVariable.VariableTypes.Static)
+                .ToDictionary(v => v.Name.Trim(), v => v.Value, StringComparer.Ordinal)
+                ?? new Dictionary<string, string>(StringComparer.Ordinal);
+        }
 
         // Re-use DynamicValueConfigViewModel for the response-body picker dialog.
         DynamicValueSegment? existingSegment = null;
@@ -402,14 +457,55 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             };
         }
 
+        // When editing a global-environment dynamic var, pre-populate the static vars
+        // with the SelectedGlobalPreviewEnvironment so the "Test" button uses the same
+        // context as the passive preview column.
+        if (isGlobal && SelectedGlobalPreviewEnvironment is { } envLevelChoice)
+        {
+            foreach (var v in envLevelChoice.BuildModel().Variables
+                .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.Static
+                         && !string.IsNullOrWhiteSpace(v.Name)))
+                staticVars[v.Name.Trim()] = v.Value;
+        }
+
+        // Compute the environment file path / cache namespace for the config VM.
+        // For global env vars, use the same env-scoped namespace as the passive preview and
+        // send-time evaluation (globalFilePath[env:previewEnvFilePath]) so that token cache
+        // entries written by "Send" are found by the "Test" button and vice versa.
+        // Switching the preview env therefore correctly invalidates any stale token.
+        string configEnvFilePath;
+        if (isGlobal && SelectedGlobalPreviewEnvironment is { } previewChoice
+            && !string.IsNullOrEmpty(envItem?.FilePath))
+            configEnvFilePath = $"{envItem.FilePath}[env:{previewChoice.FilePath}]";
+        else
+            configEnvFilePath = envItem?.FilePath ?? string.Empty;
+
+        // For non-global envs, supply the global env's variables so that PreviewAsync
+        // can pre-resolve global dynamic vars (e.g. `token`) before applying the
+        // active env's own dynamic vars — same two-phase logic as send time.
+        IReadOnlyList<EnvironmentVariable>? globalVars = null;
+        string? globalEnvFilePath = null;
+        if (!isGlobal)
+        {
+            var globalItem = Environments.FirstOrDefault(e => e.IsGlobal);
+            if (globalItem is not null)
+            {
+                var globalModel = globalItem.BuildModel();
+                globalVars = globalModel.Variables;
+                globalEnvFilePath = globalModel.FilePath;
+            }
+        }
+
         PendingResponseBodyConfig = new DynamicValueConfigViewModel(
             _dynamicEvaluator,
             _collectionFolderPath ?? string.Empty,
-            envItem?.FilePath ?? string.Empty,
+            configEnvFilePath,
             _availableRequestNames,
             model?.Variables ?? [],
             staticVars,
-            existingSegment);
+            existingSegment,
+            globalVariables: globalVars,
+            globalEnvironmentFilePath: globalEnvFilePath);
 
         _pendingResponseBodyTcs = new TaskCompletionSource<EnvironmentVariable?>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -446,6 +542,264 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
     private bool HasSelectedEnvironment => SelectedEnvironment is not null;
     private bool HasSelectedDeletableEnvironment => SelectedEnvironment is { IsGlobal: false };
+
+    /// <summary>
+    /// Triggers an async evaluation of all dynamic variables in the newly selected environment
+    /// so that static variable previews can display fully-resolved values (e.g. "Bearer {{token}}"
+    /// becomes "Bearer eyJ..."). Uses the cache where available; executes HTTP only when needed.
+    /// </summary>
+    partial void OnSelectedEnvironmentChanged(EnvironmentListItemViewModel? value)
+    {
+        _dynPreviewCts?.Cancel();
+        _dynPreviewCts = new CancellationTokenSource();
+        if (value is not null)
+            _ = RefreshDynamicPreviewsAsync(value, _dynPreviewCts.Token);
+    }
+
+    partial void OnSelectedGlobalPreviewEnvironmentChanged(EnvironmentListItemViewModel? value)
+    {
+        var globalEnv = Environments.FirstOrDefault(e => e.IsGlobal);
+        if (globalEnv is null) return;
+
+        // Only mark dirty if this is a user change, not a programmatic restore during load.
+        if (!_loadingEnvironments)
+            globalEnv.IsDirty = true;
+
+        // Re-run the global env preview with the newly selected context env.
+        if (SelectedEnvironment == globalEnv)
+        {
+            _dynPreviewCts?.Cancel();
+            _dynPreviewCts = new CancellationTokenSource();
+            _ = RefreshDynamicPreviewsAsync(globalEnv, _dynPreviewCts.Token);
+        }
+    }
+
+    /// <summary>
+    /// Resolves all dynamic variables for <paramref name="env"/> and stores the results in it
+    /// so that variable substitution previews include response-body and mock-data values.
+    /// For non-global environments, also resolves and pushes the global environment context
+    /// so that tokens like {{base-url}} and {{token}} resolve in the preview column even when
+    /// they live in the global env. Falls back silently on failure.
+    /// </summary>
+    private async Task RefreshDynamicPreviewsAsync(
+        EnvironmentListItemViewModel env, CancellationToken ct)
+    {
+        if (_collectionFolderPath is null) return;
+
+        var model = env.BuildModel();
+
+        var hasDynamic = model.Variables.Any(v =>
+            v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
+            || v.VariableType == EnvironmentVariable.VariableTypes.MockData
+            || v.VariableType == EnvironmentVariable.VariableTypes.Dynamic);
+
+        // Whether this env has variables that actually require HTTP to compute.
+        // MockData vars are generated client-side and never need a network call.
+        var hasResponseBodyVars = model.Variables.Any(v =>
+            v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
+            || v.VariableType == EnvironmentVariable.VariableTypes.Dynamic);
+
+        // ── Global env path ──────────────────────────────────────────────────
+        if (env.IsGlobal)
+        {
+            if (!hasDynamic) return;
+
+            var globalStaticVars = model.Variables
+                .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.Static
+                         && !string.IsNullOrWhiteSpace(v.Name))
+                .ToDictionary(v => v.Name.Trim(), v => v.Value, StringComparer.Ordinal);
+
+            // Use the env-level preview selection when set; otherwise fall back to the first
+            // concrete environment. This matches the send-time cache namespace so cached tokens
+            // from recent request sends are reused without an extra HTTP call.
+            var contextEnv = SelectedGlobalPreviewEnvironment ?? Environments.FirstOrDefault(e => !e.IsGlobal);
+            string cacheNamespace;
+            if (contextEnv is not null)
+            {
+                cacheNamespace = !string.IsNullOrEmpty(env.FilePath)
+                    ? $"{env.FilePath}[env:{contextEnv.FilePath}]"
+                    : contextEnv.FilePath;
+                foreach (var v in contextEnv.BuildModel().Variables
+                    .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.Static
+                             && !string.IsNullOrWhiteSpace(v.Name)))
+                    globalStaticVars[v.Name.Trim()] = v.Value;
+            }
+            else
+            {
+                cacheNamespace = env.FilePath;
+            }
+
+            try
+            {
+                var resolved = await _dynamicEvaluator
+                    .ResolveAsync(_collectionFolderPath, cacheNamespace, model.Variables, globalStaticVars, ct)
+                    .ConfigureAwait(true);
+                ct.ThrowIfCancellationRequested();
+                var dynVars = resolved.Variables
+                    .Where(kv => !globalStaticVars.ContainsKey(kv.Key))
+                    .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+                env.SetDynamicPreviewValues(dynVars, resolved.MockGenerators);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex,
+                    "Could not refresh dynamic variable previews for environment '{Name}'", env.Name);
+            }
+            return;
+        }
+
+        // ── Concrete env path ────────────────────────────────────────────────
+        // Step 1: Build global context vars (global statics + Phase 1 global dynamics) and
+        // push them to this env's preview system. This enables {{base-url}}, {{token}}, etc.
+        // in the preview column regardless of whether this env has its own dynamic vars.
+        var activeStaticVars = model.Variables
+            .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.Static
+                     && !string.IsNullOrWhiteSpace(v.Name))
+            .ToDictionary(v => v.Name.Trim(), v => v.Value, StringComparer.Ordinal);
+
+        var globalContextVars = new Dictionary<string, string>(StringComparer.Ordinal);
+        IReadOnlyDictionary<string, MockDataEntry> globalMockGenerators
+            = new Dictionary<string, MockDataEntry>();
+        var globalItem = Environments.FirstOrDefault(e => e.IsGlobal);
+        if (globalItem is not null)
+        {
+            var globalModel = globalItem.BuildModel();
+
+            // Seed with global statics.
+            foreach (var v in globalModel.Variables
+                .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.Static
+                         && !string.IsNullOrWhiteSpace(v.Name)))
+                globalContextVars[v.Name.Trim()] = v.Value;
+
+            var globalHasResponseBody = globalModel.Variables.Any(v =>
+                v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
+                || v.VariableType == EnvironmentVariable.VariableTypes.Dynamic);
+
+            // Resolve global response-body vars whenever the global env has them.
+            // The current env's static vars may reference global dynamic vars (e.g.
+            // "Bearer {{access-token}}") and need those values to render their preview.
+            // ResolveAsync uses the cache where available, so this is fast when warm.
+            if (globalHasResponseBody)
+            {
+                // Resolve global dynamics using the first concrete env that has a warm
+                // cache entry. Strategy: try the being-edited env first (env-specific token);
+                // if Phase 1 leaves global response-body vars unresolved, fall back to the
+                // first available concrete env (which is most likely to have a cached token
+                // from a recent send). The config dialog's own preview offers exact per-env
+                // control when needed.
+                var candidateEnvs = new List<EnvironmentListItemViewModel> { env };
+                var firstConcrete = Environments.FirstOrDefault(e => !e.IsGlobal && e != env);
+                if (firstConcrete is not null)
+                    candidateEnvs.Add(firstConcrete);
+
+                foreach (var candidate in candidateEnvs)
+                {
+                    try
+                    {
+                        var phase1Context = new Dictionary<string, string>(globalContextVars, StringComparer.Ordinal);
+                        // Overlay the candidate env's statics (for baseUrl, credentials, etc.)
+                        foreach (var v in candidate.BuildModel().Variables
+                            .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.Static
+                                     && !string.IsNullOrWhiteSpace(v.Name)))
+                            phase1Context[v.Name.Trim()] = v.Value;
+                        // Keep the being-edited env's own statics at highest priority.
+                        foreach (var kv in activeStaticVars)
+                            phase1Context[kv.Key] = kv.Value;
+
+                        var globalCacheNamespace = !string.IsNullOrEmpty(globalModel.FilePath)
+                            ? $"{globalModel.FilePath}[env:{candidate.FilePath}]"
+                            : candidate.FilePath;
+
+                        var globalResolved = await _dynamicEvaluator
+                            .ResolveAsync(_collectionFolderPath, globalCacheNamespace, globalModel.Variables, phase1Context, ct)
+                            .ConfigureAwait(true);
+
+                        // Check whether any response-body vars actually resolved.
+                        var responseBodyNames = globalModel.Variables
+                            .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
+                                     && !string.IsNullOrWhiteSpace(v.Name))
+                            .Select(v => v.Name.Trim())
+                            .ToHashSet(StringComparer.Ordinal);
+                        var anyResolved = responseBodyNames.Count == 0
+                            || responseBodyNames.Any(n => globalResolved.Variables.TryGetValue(n, out var val)
+                                                          && !string.IsNullOrEmpty(val));
+
+                        foreach (var kv in globalResolved.Variables)
+                            globalContextVars[kv.Key] = kv.Value;
+                        globalMockGenerators = globalResolved.MockGenerators;
+
+                        if (anyResolved) break; // Good result — no need to try the next candidate.
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex,
+                            "Could not resolve global dynamic vars using '{Candidate}' context for '{Name}'",
+                            candidate.Name, env.Name);
+                    }
+                }
+
+                // Re-apply active env's own statics at the end to maintain override precedence.
+                foreach (var kv in activeStaticVars)
+                    globalContextVars[kv.Key] = kv.Value;
+            }
+            else
+            {
+                // No HTTP needed — still collect global mock-data generators so that
+                // {{faker-*}} tokens from the global env resolve in the preview column.
+                var mockGens = new Dictionary<string, MockDataEntry>(StringComparer.Ordinal);
+                foreach (var v in globalModel.Variables
+                    .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.MockData
+                             && !string.IsNullOrWhiteSpace(v.Name)))
+                {
+                    var entry = v.GetMockEntry();
+                    if (entry is not null)
+                        mockGens[v.Name] = entry;
+                }
+                if (mockGens.Count > 0)
+                    globalMockGenerators = mockGens;
+            }
+
+            // Push global context: {{base-url}}, {{token}}, {{faker-*}}, etc. now resolve
+            // in the preview column regardless of whether this env has its own dynamic vars.
+            env.SetGlobalPreviewValues(globalContextVars, globalMockGenerators);
+        }
+
+        if (!hasDynamic) return; // No dynamic vars in this env — global context above is sufficient.
+
+        // Step 2: Resolve this env's own dynamic vars.
+        // staticVars = global context (fully resolved) + active env statics (override precedence).
+        var staticVars = new Dictionary<string, string>(globalContextVars, StringComparer.Ordinal);
+        foreach (var kv in activeStaticVars)
+            staticVars[kv.Key] = kv.Value;
+
+        try
+        {
+            var resolved = await _dynamicEvaluator
+                .ResolveAsync(_collectionFolderPath, env.FilePath, model.Variables, staticVars, ct)
+                .ConfigureAwait(true);
+
+            ct.ThrowIfCancellationRequested();
+
+            // Store only the dynamically-derived values — static vars are read directly from
+            // v.Value in BuildResolvedEnvironment(); global vars have their own _globalPreviewVars.
+            var dynVars = resolved.Variables
+                .Where(kv => !staticVars.ContainsKey(kv.Key))
+                .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+
+            env.SetDynamicPreviewValues(dynVars, resolved.MockGenerators);
+        }
+        catch (OperationCanceledException)
+        {
+            // Environment selection changed — preview refresh superseded.
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex,
+                "Could not refresh dynamic variable previews for environment '{Name}'", env.Name);
+        }
+    }
 
     /// <summary>
     /// Moves <paramref name="item"/> to <paramref name="targetIndex"/> in the
@@ -513,11 +867,25 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             foreach (var model in list)
                 Environments.Add(CreateListItem(model));
 
+            // Restore the saved global preview environment selection without dirtying anything.
+            _loadingEnvironments = true;
+            try
+            {
+                if (globalModel.GlobalPreviewEnvironmentName is { } savedName)
+                    SelectedGlobalPreviewEnvironment = Environments
+                        .FirstOrDefault(e => !e.IsGlobal
+                            && string.Equals(e.Name, savedName, StringComparison.OrdinalIgnoreCase));
+            }
+            finally
+            {
+                _loadingEnvironments = false;
+            }
+
             // Select the first non-global env, falling back to global if none present.
             SelectedEnvironment = Environments.Count > 1 ? Environments[1] : Environments[0];
 
             // Broadcast the current global vars so request tabs are up-to-date.
-            Messenger.Send(new GlobalEnvironmentChangedMessage(globalModel.Variables));
+            Messenger.Send(new GlobalEnvironmentChangedMessage(globalModel));
         }
         catch (Exception ex)
         {

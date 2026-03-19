@@ -5,6 +5,7 @@
         x:Class="Callsmith.Desktop.Views.DynamicValueConfigDialog"
         x:DataType="vm:DynamicValueConfigViewModel"
         Title="Dynamic Value"
+        Icon="/Assets/callsmith.ico"
         Width="520" SizeToContent="Height"
         CanResize="False"
         WindowStartupLocation="CenterOwner"

@@ -14,7 +14,7 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
 {
     private readonly Action<EnvironmentVariableItemViewModel> _onDelete;
     private readonly Action _onChanged;
-    private readonly Func<IReadOnlyDictionary<string, string>> _getVariables;
+    private readonly Func<ResolvedEnvironment> _getResolvedEnv;
     private readonly Func<EnvironmentVariable?, Task<EnvironmentVariable?>> _editMockData;
     private readonly Func<EnvironmentVariable?, Task<EnvironmentVariable?>> _editResponseBody;
 
@@ -129,12 +129,15 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     {
         get
         {
-            if (!IsStatic || !Value.Contains("{{")) return null;
-            return VariableSubstitutionService.Substitute(Value, _getVariables());
+            if (!IsStatic || !TokenPattern().IsMatch(Value)) return null;
+            return VariableSubstitutionService.Substitute(Value, _getResolvedEnv());
         }
     }
 
-    public bool HasPreview => IsStatic && !IsSecret && Value.Contains("{{");
+    public bool HasPreview => IsStatic && !IsSecret && TokenPattern().IsMatch(Value);
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\{\{[^}]+\}\}")]
+    private static partial System.Text.RegularExpressions.Regex TokenPattern();
 
     public IRelayCommand DeleteCommand { get; }
 
@@ -143,16 +146,16 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     public EnvironmentVariableItemViewModel(
         Action<EnvironmentVariableItemViewModel> onDelete,
         Action onChanged,
-        Func<IReadOnlyDictionary<string, string>> getVariables,
+        Func<ResolvedEnvironment> getResolvedEnv,
         Func<EnvironmentVariable?, Task<EnvironmentVariable?>>? editMockData = null,
         Func<EnvironmentVariable?, Task<EnvironmentVariable?>>? editResponseBody = null)
     {
         ArgumentNullException.ThrowIfNull(onDelete);
         ArgumentNullException.ThrowIfNull(onChanged);
-        ArgumentNullException.ThrowIfNull(getVariables);
+        ArgumentNullException.ThrowIfNull(getResolvedEnv);
         _onDelete = onDelete;
         _onChanged = onChanged;
-        _getVariables = getVariables;
+        _getResolvedEnv = getResolvedEnv;
         _editMockData = editMockData ?? (_ => Task.FromResult<EnvironmentVariable?>(null));
         _editResponseBody = editResponseBody ?? (_ => Task.FromResult<EnvironmentVariable?>(null));
         DeleteCommand = new RelayCommand(() => _onDelete(this));
@@ -200,14 +203,14 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
         var current = BuildModel();
         var result = await _editResponseBody(current).ConfigureAwait(true);
         if (result is null) return;
-        var changed = result.ResponseRequestName       != ResponseRequestName
-                   || result.ResponsePath              != ResponsePath
-                   || result.ResponseFrequency         != ResponseFrequency
-                   || result.ResponseExpiresAfterSeconds != ResponseExpiresAfterSeconds;
-        ResponseRequestName        = result.ResponseRequestName;
-        ResponsePath               = result.ResponsePath;
-        ResponseFrequency          = result.ResponseFrequency;
-        ResponseExpiresAfterSeconds = result.ResponseExpiresAfterSeconds;
+        var changed = result.ResponseRequestName          != ResponseRequestName
+                   || result.ResponsePath                 != ResponsePath
+                   || result.ResponseFrequency            != ResponseFrequency
+                   || result.ResponseExpiresAfterSeconds  != ResponseExpiresAfterSeconds;
+        ResponseRequestName           = result.ResponseRequestName;
+        ResponsePath                  = result.ResponsePath;
+        ResponseFrequency             = result.ResponseFrequency;
+        ResponseExpiresAfterSeconds   = result.ResponseExpiresAfterSeconds;
         if (changed) _onChanged();
     }
 

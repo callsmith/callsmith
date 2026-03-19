@@ -5,6 +5,7 @@
         x:Class="Callsmith.Desktop.Views.MockDataConfigDialog"
         x:DataType="vm:MockDataConfigViewModel"
         Title="Mock Data"
+        Icon="/Assets/callsmith.ico"
         Width="500" Height="440"
         MinHeight="380"
         CanResize="True"

@@ -427,14 +427,40 @@
                     BorderThickness="0,0,0,1"
                     Padding="10,8"
                     Margin="0,0,0,8">
-              <TextBlock TextWrapping="Wrap"
-                         Foreground="#7db87d"
-                         FontSize="12">
-                Global variables are always active for this collection, regardless of which
-                environment is selected. They are scoped to this collection folder and can be
-                checked in to source control. A collection environment variable with the same
-                name takes priority.
-              </TextBlock>
+              <StackPanel Spacing="8">
+                <TextBlock TextWrapping="Wrap"
+                           Foreground="#7db87d"
+                           FontSize="12">
+                  Global variables are always active for this collection, regardless of which
+                  environment is selected. They are scoped to this collection folder and can be
+                  checked in to source control. A collection environment variable with the same
+                  name takes priority.
+                </TextBlock>
+                <!-- Preview env selector — makes all global dynamic var previews use one consistent context -->
+                <StackPanel Orientation="Horizontal"
+                            Spacing="8"
+                            VerticalAlignment="Center">
+                  <TextBlock Text="Preview against:"
+                             Foreground="#7db87d"
+                             FontSize="11"
+                             VerticalAlignment="Center"/>
+                  <ComboBox ItemsSource="{Binding GlobalPreviewEnvironments}"
+                            SelectedItem="{Binding SelectedGlobalPreviewEnvironment, Mode=TwoWay}"
+                            PlaceholderText="First environment"
+                            MinWidth="160"
+                            FontSize="11"
+                            Background="#1e2e1e"
+                            Foreground="#cccccc"
+                            BorderBrush="#2a5a3a"
+                            ToolTip.Tip="All global dynamic variable previews are resolved using this environment's static variables (e.g. baseUrl, credentials).">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="vm:EnvironmentListItemViewModel">
+                        <TextBlock Text="{Binding Name}" FontSize="11"/>
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+              </StackPanel>
             </Border>
 
             <!-- Column headers: Name(320) | Value(*) | Type(140) -->
@@ -621,7 +647,7 @@
                             ToolTip.Tip="Remove variable"/>
 
                     <!-- Preview row — shown when a static value contains {{VAR}} references -->
-                    <Border Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                    <Border Grid.Row="1" Grid.Column="1"
                             IsVisible="{Binding HasPreview}"
                             Background="#1e1e1e"
                             BorderBrush="#3a3a3a"

@@ -43,4 +43,25 @@ public interface IDynamicVariableEvaluator
         EnvironmentVariable variable,
         IReadOnlyDictionary<string, string> variables,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Updates the dynamic variable cache for all response-body variables in
+    /// <paramref name="variables"/> that reference <paramref name="requestName"/>,
+    /// extracting values from <paramref name="responseBody"/> using each variable's
+    /// configured JSONPath. Called after a request is manually run so that subsequent
+    /// variable resolutions use the fresh value without re-executing the request.
+    /// </summary>
+    /// <param name="collectionFolderPath">Root folder of the collection.</param>
+    /// <param name="environmentFilePath">Cache namespace (environment file path or scoped key).</param>
+    /// <param name="requestName">Name of the request that was just executed.</param>
+    /// <param name="responseBody">The raw response body from the completed request.</param>
+    /// <param name="variables">Environment variables to inspect for references to the request.</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task UpdateCacheFromResponseAsync(
+        string collectionFolderPath,
+        string environmentFilePath,
+        string requestName,
+        string responseBody,
+        IReadOnlyList<EnvironmentVariable> variables,
+        CancellationToken ct = default);
 }

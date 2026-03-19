@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls.Primitives;
+using Avalonia.Data;
 using Avalonia.Media;
 using AvaloniaEdit;
 using AvaloniaEdit.Folding;
@@ -50,7 +51,8 @@ public sealed class SyntaxEditor : TextEditor
 
     /// <summary>Bindable text property. Bridges to/from the underlying TextEditor document.</summary>
     public static readonly StyledProperty<string> TextProperty =
-        AvaloniaProperty.Register<SyntaxEditor, string>(nameof(Text), string.Empty);
+        AvaloniaProperty.Register<SyntaxEditor, string>(nameof(Text), string.Empty,
+            defaultBindingMode: BindingMode.TwoWay);
 
     /// <summary>Gets or sets the editor content. Supports two-way Avalonia binding.</summary>
     public new string Text

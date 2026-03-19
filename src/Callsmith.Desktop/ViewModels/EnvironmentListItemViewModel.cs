@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -19,6 +20,22 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     private readonly Func<EnvironmentListItemViewModel, CancellationToken, Task> _onDeleteRequest;
     private readonly Func<EnvironmentListItemViewModel, CancellationToken, Task>? _onCloneRequest;
     private readonly Action? _onCancelRename;
+
+    // Pre-evaluated dynamic variable values for the PREVIEW box.
+    // Populated asynchronously by EnvironmentEditorViewModel after selection.
+    private Dictionary<string, string> _resolvedDynVars = new(StringComparer.Ordinal);
+    private IReadOnlyDictionary<string, MockDataEntry> _mockGenerators
+        = new Dictionary<string, MockDataEntry>();
+
+    // Pre-resolved global environment vars (global statics + global dynamics resolved for this
+    // env's context). Used as baseline in BuildResolvedEnvironment so that tokens like
+    // {{base-url}} and {{token}} that live in the global env resolve in the preview column.
+    private Dictionary<string, string> _globalPreviewVars = new(StringComparer.Ordinal);
+
+    // Mock-data generators from the global environment so that {{faker-internet-example-email}}
+    // and similar global mock vars resolve in the preview column of concrete environments.
+    private IReadOnlyDictionary<string, MockDataEntry> _globalMockGenerators
+        = new Dictionary<string, MockDataEntry>();
 
     // ─── Observable state ────────────────────────────────────────────────────
 
@@ -247,7 +264,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         var item = new EnvironmentVariableItemViewModel(
             onDelete: v => { Variables.Remove(v); OnAnyVariableChanged(); },
             onChanged: OnAnyVariableChanged,
-            getVariables: BuildVariableMap,
+            getResolvedEnv: BuildResolvedEnvironment,
             editMockData: v => EditMockDataCallback?.Invoke(v) ?? Task.FromResult<EnvironmentVariable?>(null),
             editResponseBody: v => EditResponseBodyCallback?.Invoke(v) ?? Task.FromResult<EnvironmentVariable?>(null))
         {
@@ -316,11 +333,70 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         };
     }
 
-    /// <summary>Builds the current name→value map for variable substitution previews.</summary>
-    private IReadOnlyDictionary<string, string> BuildVariableMap()
-        => Variables
-            .Where(v => !string.IsNullOrWhiteSpace(v.Name))
-            .ToDictionary(v => v.Name.Trim(), v => v.Value, StringComparer.Ordinal);
+    /// <summary>
+    /// Builds a <see cref="ResolvedEnvironment"/> for variable substitution previews.
+    /// Starts with the resolved global environment vars as a baseline so that tokens like
+    /// {{base-url}} and {{token}} from the global env expand in this env's preview column.
+    /// Own static vars and dynamic vars are layered on top (own vars override global).
+    /// Mock generators are merged from global (baseline) + own (override) so that global
+    /// mock vars like {{faker-internet-example-email}} also resolve.
+    /// </summary>
+    private ResolvedEnvironment BuildResolvedEnvironment()
+    {
+        // Global vars as the baseline; own vars override.
+        var vars = new Dictionary<string, string>(_globalPreviewVars, StringComparer.Ordinal);
+        foreach (var v in Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
+        {
+            var key = v.Name.Trim();
+            if (v.IsStatic)
+                vars[key] = v.Value;
+            else if (_resolvedDynVars.TryGetValue(key, out var dyn))
+                vars[key] = dyn;
+        }
+
+        // Merge mock generators: global generators as baseline, own generators override.
+        IReadOnlyDictionary<string, MockDataEntry> mockGenerators = _mockGenerators;
+        if (_globalMockGenerators.Count > 0)
+        {
+            var merged = new Dictionary<string, MockDataEntry>(_globalMockGenerators, StringComparer.Ordinal);
+            foreach (var kv in _mockGenerators)
+                merged[kv.Key] = kv.Value;
+            mockGenerators = merged;
+        }
+
+        return new ResolvedEnvironment { Variables = vars, MockGenerators = mockGenerators };
+    }
+
+    /// <summary>
+    /// Stores the resolved global environment variables and mock generators so that the
+    /// preview column can expand tokens like {{base-url}}, {{token}}, and
+    /// {{faker-internet-example-email}} that live in the global environment.
+    /// Called by <see cref="EnvironmentEditorViewModel"/> whenever the selected env changes.
+    /// </summary>
+    internal void SetGlobalPreviewValues(
+        IReadOnlyDictionary<string, string> globalVars,
+        IReadOnlyDictionary<string, MockDataEntry> globalMockGenerators)
+    {
+        _globalPreviewVars = new Dictionary<string, string>(globalVars, StringComparer.Ordinal);
+        _globalMockGenerators = globalMockGenerators;
+        foreach (var v in Variables)
+            v.NotifyPreviewChanged();
+    }
+
+    /// <summary>
+    /// Stores pre-evaluated dynamic variable values so that static variable previews
+    /// can fully resolve <c>{{token}}</c>-style references to response-body or mock-data vars.
+    /// Called by <see cref="EnvironmentEditorViewModel"/> after an async evaluation pass.
+    /// </summary>
+    internal void SetDynamicPreviewValues(
+        IReadOnlyDictionary<string, string> dynVars,
+        IReadOnlyDictionary<string, MockDataEntry> generators)
+    {
+        _resolvedDynVars = new Dictionary<string, string>(dynVars, StringComparer.Ordinal);
+        _mockGenerators = generators;
+        foreach (var v in Variables)
+            v.NotifyPreviewChanged();
+    }
 
     /// <summary>Marks the environment dirty and refreshes all variable previews.</summary>
     private void OnAnyVariableChanged()

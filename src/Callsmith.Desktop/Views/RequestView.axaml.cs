@@ -60,6 +60,22 @@ public partial class RequestView : UserControl
             await dialog.ShowDialog(owner);
             _trackedVm.OnMockDataConfigDialogClosed();
         }
+        else if (e.PropertyName == nameof(RequestTabViewModel.ShowCurlDialog))
+        {
+            if (!_trackedVm.ShowCurlDialog) return;
+            var request = _trackedVm.CurlRequestSnapshot;
+            var authMask = _trackedVm.CurlAuthMask;
+            // Reset immediately so the property change can fire again on re-open.
+            _trackedVm.ShowCurlDialog = false;
+            if (request is null) return;
+            var owner = TopLevel.GetTopLevel(this) as Window;
+            if (owner is null) return;
+            var dialog = new CurlDialog
+            {
+                DataContext = new CurlDialogViewModel(request, authMask)
+            };
+            await dialog.ShowDialog(owner);
+        }
     }
 
     private async void OnCopyPreviewUrlClicked(object? sender, RoutedEventArgs e)

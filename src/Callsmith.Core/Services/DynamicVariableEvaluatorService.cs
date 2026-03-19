@@ -191,6 +191,75 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         return await ExecuteAndExtractAsync(segment, folder, variables, ct).ConfigureAwait(false);
     }
 
+    /// <inheritdoc/>
+    public async Task UpdateCacheFromResponseAsync(
+        string collectionFolderPath,
+        string environmentFilePath,
+        string requestName,
+        string responseBody,
+        IReadOnlyList<EnvironmentVariable> variables,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(collectionFolderPath);
+        ArgumentNullException.ThrowIfNull(environmentFilePath);
+        ArgumentNullException.ThrowIfNull(requestName);
+        ArgumentNullException.ThrowIfNull(responseBody);
+        ArgumentNullException.ThrowIfNull(variables);
+
+        if (string.IsNullOrEmpty(responseBody)) return;
+
+        // Find response-body variables whose linked request matches the one just executed.
+        // A variable with a slash-qualified name (e.g. "Auth/core login") is matched by its
+        // last segment; a plain name (e.g. "core login") is matched directly.
+        var matchingVars = variables
+            .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
+                     && !string.IsNullOrEmpty(v.ResponseRequestName)
+                     && !string.IsNullOrEmpty(v.ResponsePath)
+                     && ResponseRequestNameMatches(v.ResponseRequestName, requestName))
+            .ToList();
+
+        if (matchingVars.Count == 0) return;
+
+        var cache = await LoadCacheAsync(collectionFolderPath, ct).ConfigureAwait(false);
+        var cacheModified = false;
+
+        foreach (var variable in matchingVars)
+        {
+            var extracted = JsonPathHelper.Extract(responseBody, variable.ResponsePath!);
+            if (extracted is null)
+            {
+                _logger.LogDebug(
+                    "Cache update skipped for '{Name}': no value at JSONPath '{Path}'",
+                    variable.Name, variable.ResponsePath);
+                continue;
+            }
+
+            var cacheKey = MakeCacheKey(environmentFilePath, variable.ResponseRequestName!, variable.ResponsePath!);
+            cache[cacheKey] = new CacheEntry(extracted, DateTime.UtcNow);
+            cacheModified = true;
+            _logger.LogDebug(
+                "Cache updated for '{Name}' (request '{RequestName}', path '{Path}') → '{Value}'",
+                variable.Name, variable.ResponseRequestName, variable.ResponsePath, extracted);
+        }
+
+        if (cacheModified)
+            await SaveCacheAsync(collectionFolderPath, cache, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="responseRequestName"/> refers to
+    /// <paramref name="executedRequestName"/>. A slash-qualified reference (e.g. "Auth/core login")
+    /// is matched by its final segment; a plain name is compared directly.
+    /// </summary>
+    private static bool ResponseRequestNameMatches(string responseRequestName, string executedRequestName)
+    {
+        var lastSlash = responseRequestName.LastIndexOf('/');
+        var leaf = lastSlash >= 0
+            ? responseRequestName[(lastSlash + 1)..]
+            : responseRequestName;
+        return string.Equals(leaf, executedRequestName, StringComparison.OrdinalIgnoreCase);
+    }
+
     // ─── Request execution ───────────────────────────────────────────────────
 
     private async Task<string?> EvaluateResponseBodyVarAsync(

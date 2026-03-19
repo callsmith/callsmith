@@ -396,6 +396,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         FilePath = filePath,
         Name = dto.Name ?? Path.GetFileNameWithoutExtension(filePath),
         Color = dto.Color,
+        GlobalPreviewEnvironmentName = dto.GlobalPreviewEnvironmentName,
         Variables = (dto.Variables ?? [])
             .Select(v => new EnvironmentVariable
             {
@@ -419,6 +420,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
     {
         Name = model.Name,
         Color = model.Color,
+        GlobalPreviewEnvironmentName = model.GlobalPreviewEnvironmentName,
         Variables = model.Variables
             .Select(v => new VariableDto
             {
@@ -446,6 +448,8 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
     {
         public string? Name { get; init; }
         public string? Color { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? GlobalPreviewEnvironmentName { get; init; }
         public List<VariableDto>? Variables { get; init; }
     }
 

@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Xml.Linq;
 
@@ -39,7 +40,11 @@ public static class ResponseFormatter
         try
         {
             using var doc = JsonDocument.Parse(json, new JsonDocumentOptions { AllowTrailingCommas = true });
-            return JsonSerializer.Serialize(doc.RootElement, new JsonSerializerOptions { WriteIndented = true });
+            return JsonSerializer.Serialize(doc.RootElement, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            });
         }
         catch (JsonException)
         {
