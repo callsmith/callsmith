@@ -30,10 +30,14 @@ public sealed class EnvironmentEditorViewModelTests
         ICollectionService? collectionService = null,
         IDynamicVariableEvaluator? dynamicEvaluator = null)
     {
-        service ??= Substitute.For<IEnvironmentService>();
-        // Always provide a default global env response so LoadEnvironmentsAsync doesn't throw.
-        service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-               .Returns(new EnvironmentModel { FilePath = GlobalEnvPath, Name = "Global", Variables = [] });
+        if (service is null)
+        {
+            service = Substitute.For<IEnvironmentService>();
+            // Only seed the default global env on a freshly-created mock so tests that supply
+            // their own service stub don't get their LoadGlobalEnvironmentAsync setup overwritten.
+            service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+                   .Returns(new EnvironmentModel { FilePath = GlobalEnvPath, Name = "Global", Variables = [] });
+        }
         messenger ??= new WeakReferenceMessenger();
         collectionService ??= Substitute.For<ICollectionService>();
         collectionService.OpenFolderAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
