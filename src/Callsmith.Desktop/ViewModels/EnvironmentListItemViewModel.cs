@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Callsmith.Core.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Callsmith.Desktop.ViewModels;
 
@@ -57,17 +58,16 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     public ObservableCollection<EnvironmentVariableItemViewModel> Variables { get; } = [];
 
     /// <summary>
-    /// Callback provided by the host (EnvironmentEditorViewModel) that opens the
-    /// dynamic value configuration dialog and returns the resulting segment, or null
-    /// when the user cancels.
+    /// Callback provided by the host that opens the mock-data picker dialog.
+    /// Returns the updated variable if confirmed, or null if cancelled.
     /// </summary>
-    internal Func<DynamicValueSegment?, Task<DynamicValueSegment?>>? EditDynamicSegmentCallback { get; set; }
+    internal Func<EnvironmentVariable?, Task<EnvironmentVariable?>>? EditMockDataCallback { get; set; }
 
     /// <summary>
-    /// Callback provided by the host (EnvironmentEditorViewModel) that opens the
-    /// mock data picker dialog and returns the resulting segment, or null when the user cancels.
+    /// Callback provided by the host that opens the response-body config dialog.
+    /// Returns the updated variable if confirmed, or null if cancelled.
     /// </summary>
-    internal Func<MockDataSegment?, Task<MockDataSegment?>>? EditMockDataSegmentCallback { get; set; }
+    internal Func<EnvironmentVariable?, Task<EnvironmentVariable?>>? EditResponseBodyCallback { get; set; }
 
     // ─── Read-only identity ──────────────────────────────────────────────────
 
@@ -224,20 +224,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     {
         var variables = Variables
             .Where(v => !string.IsNullOrWhiteSpace(v.Name))
-            .Select(v =>
-            {
-                var segments = v.GetSegments();
-                return new EnvironmentVariable
-                {
-                    Name = v.Name.Trim(),
-                    Value = v.Value,
-                    IsSecret = v.IsSecret,
-                    VariableType = segments is { Count: > 0 }
-                        ? EnvironmentVariable.VariableTypes.Dynamic
-                        : EnvironmentVariable.VariableTypes.Static,
-                    Segments = segments is { Count: > 0 } ? [.. segments] : null,
-                };
-            })
+            .Select(v => v.BuildModel())
             .ToList();
 
         return _model with { Variables = variables, Color = Color };
@@ -254,22 +241,79 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
 
     private EnvironmentVariableItemViewModel CreateVariableItem(EnvironmentVariable variable)
     {
+        // Migrate legacy dynamic (segment-based) var to the new typed model on load.
+        var migrated = MigrateLegacyVariable(variable);
+
         var item = new EnvironmentVariableItemViewModel(
             onDelete: v => { Variables.Remove(v); OnAnyVariableChanged(); },
             onChanged: OnAnyVariableChanged,
             getVariables: BuildVariableMap,
-            editDynamicSegment: seg =>
-                EditDynamicSegmentCallback?.Invoke(seg) ?? Task.FromResult<DynamicValueSegment?>(null),
-            editMockData: seg =>
-                EditMockDataSegmentCallback?.Invoke(seg) ?? Task.FromResult<MockDataSegment?>(null))
+            editMockData: v => EditMockDataCallback?.Invoke(v) ?? Task.FromResult<EnvironmentVariable?>(null),
+            editResponseBody: v => EditResponseBodyCallback?.Invoke(v) ?? Task.FromResult<EnvironmentVariable?>(null))
+        {
+            Name = migrated.Name,
+            Value = migrated.Value,
+            IsSecret = migrated.IsSecret,
+            VariableType = migrated.VariableType,
+            MockDataCategory = migrated.MockDataCategory,
+            MockDataField = migrated.MockDataField,
+            ResponseRequestName = migrated.ResponseRequestName,
+            ResponsePath = migrated.ResponsePath,
+            ResponseFrequency = migrated.ResponseFrequency,
+            ResponseExpiresAfterSeconds = migrated.ResponseExpiresAfterSeconds,
+        };
+        return item;
+    }
+
+    /// <summary>
+    /// Migrates a legacy segment-based <see cref="EnvironmentVariable.VariableTypes.Dynamic"/> variable
+    /// to the new typed model (mock-data or response-body) when loaded from disk.
+    /// Pure static variables and already-typed variables are returned unchanged.
+    /// </summary>
+    private static EnvironmentVariable MigrateLegacyVariable(EnvironmentVariable variable)
+    {
+        if (variable.VariableType != EnvironmentVariable.VariableTypes.Dynamic
+            || variable.Segments is not { Count: > 0 })
+            return variable;
+
+        // Single segment — migrate cleanly
+        if (variable.Segments.Count == 1)
+        {
+            switch (variable.Segments[0])
+            {
+                case MockDataSegment m:
+                    return new EnvironmentVariable
+                    {
+                        Name = variable.Name,
+                        Value = variable.Value,
+                        IsSecret = variable.IsSecret,
+                        VariableType = EnvironmentVariable.VariableTypes.MockData,
+                        MockDataCategory = m.Category,
+                        MockDataField = m.Field,
+                    };
+                case DynamicValueSegment d:
+                    return new EnvironmentVariable
+                    {
+                        Name = variable.Name,
+                        Value = variable.Value,
+                        IsSecret = variable.IsSecret,
+                        VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                        ResponseRequestName = d.RequestName,
+                        ResponsePath = d.Path,
+                        ResponseFrequency = d.Frequency,
+                        ResponseExpiresAfterSeconds = d.ExpiresAfterSeconds,
+                    };
+            }
+        }
+
+        // Composite or unrecognised — downgrade to static with serialised value for now.
+        return new EnvironmentVariable
         {
             Name = variable.Name,
-            Value = variable.Value,
             IsSecret = variable.IsSecret,
-            IsEnabled = true,
+            VariableType = EnvironmentVariable.VariableTypes.Static,
+            Value = Callsmith.Core.Helpers.SegmentSerializer.SerializeSegments(variable.Segments),
         };
-        item.LoadSegments(variable.Segments);
-        return item;
     }
 
     /// <summary>Builds the current name→value map for variable substitution previews.</summary>

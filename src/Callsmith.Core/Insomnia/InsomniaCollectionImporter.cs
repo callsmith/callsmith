@@ -89,6 +89,10 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
         // Build a map of Insomnia request IDs → display paths for dynamic variable resolution.
         var requestIdMap = BuildRequestIdMap(doc.Collection);
 
+        // Accumulates global env vars extracted from inline request-field {% %} tags.
+        // Keyed by var name so duplicates (same faker type in multiple requests) are merged.
+        var globalVarsExtracted = new Dictionary<string, ImportedDynamicVariable>(StringComparer.Ordinal);
+
         // Insomnia sortKey values for requests/folders are large negative numbers;
         // ascending order places the most-negative (earliest created) item first,
         // which matches Insomnia's display order.
@@ -96,13 +100,13 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
         {
             if (item.IsRequest)
             {
-                var req = MapRequest(item, requestIdMap);
+                var req = MapRequest(item, requestIdMap, globalVarsExtracted);
                 rootRequests.Add(req);
                 rootOrder.Add(req.Name);
             }
             else
             {
-                var folder = MapFolder(item, requestIdMap);
+                var folder = MapFolder(item, requestIdMap, globalVarsExtracted);
                 rootFolders.Add(folder);
                 rootOrder.Add(folder.Name);
             }
@@ -118,6 +122,7 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
             RootFolders = rootFolders,
             ItemOrder = rootOrder,
             Environments = environments,
+            GlobalDynamicVars = [.. globalVarsExtracted.Values],
         };
     }
 
@@ -125,16 +130,20 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
     // Mapping helpers
     // ─────────────────────────────────────────────────────────────────────────
 
-    private ImportedRequest MapRequest(InsomniaCollectionItem item, IReadOnlyDictionary<string, string>? requestIdMap = null)
+    private ImportedRequest MapRequest(
+        InsomniaCollectionItem item,
+        IReadOnlyDictionary<string, string>? requestIdMap = null,
+        Dictionary<string, ImportedDynamicVariable>? globalVars = null)
     {
         requestIdMap ??= new Dictionary<string, string>();
-        var url = ConvertPathParamSyntax(NormalizeAndConvertTags(item.Url ?? string.Empty, requestIdMap));
+        var url = ConvertPathParamSyntax(ExtractTagsToGlobalVars(
+            NormalizeVariables(item.Url ?? string.Empty), requestIdMap, globalVars));
         var method = ParseMethod(item.Method);
-        var headers = MapHeaders(item.Headers, requestIdMap);
+        var headers = MapHeaders(item.Headers, requestIdMap, globalVars);
         var auth = MapAuth(item.Authentication, requestIdMap);
-        var (bodyType, bodyContent, formParams) = MapBody(item.Body, requestIdMap);
+        var (bodyType, bodyContent, formParams) = MapBody(item.Body, requestIdMap, globalVars);
         var pathParams = MapPathParams(item.PathParameters, requestIdMap);
-        var queryParams = MapQueryParams(item.Parameters, requestIdMap);
+        var queryParams = MapQueryParams(item.Parameters, requestIdMap, globalVars);
 
         return new ImportedRequest
         {
@@ -152,7 +161,10 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
         };
     }
 
-    private ImportedFolder MapFolder(InsomniaCollectionItem item, IReadOnlyDictionary<string, string>? requestIdMap = null)
+    private ImportedFolder MapFolder(
+        InsomniaCollectionItem item,
+        IReadOnlyDictionary<string, string>? requestIdMap = null,
+        Dictionary<string, ImportedDynamicVariable>? globalVars = null)
     {
         requestIdMap ??= new Dictionary<string, string>();
         var requests = new List<ImportedRequest>();
@@ -163,13 +175,13 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
         {
             if (child.IsRequest)
             {
-                var req = MapRequest(child, requestIdMap);
+                var req = MapRequest(child, requestIdMap, globalVars);
                 requests.Add(req);
                 order.Add(req.Name);
             }
             else
             {
-                var folder = MapFolder(child, requestIdMap);
+                var folder = MapFolder(child, requestIdMap, globalVars);
                 subFolders.Add(folder);
                 order.Add(folder.Name);
             }
@@ -236,7 +248,7 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
 
     /// <summary>
     /// Splits a raw Insomnia environment data dictionary into static string variables
-    /// and dynamic (segment-based) variables.
+    /// and typed dynamic variables (mock-data or response-body).
     /// </summary>
     private static (IReadOnlyDictionary<string, string> staticVars, IReadOnlyList<ImportedDynamicVariable> dynamicVars)
         SplitVariables(Dictionary<string, string> data, IReadOnlyDictionary<string, string> requestIdMap)
@@ -252,16 +264,64 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
                 continue;
             }
 
-            var segments = ParseDynamicValue(kv.Value, requestIdMap);
-            if (segments is { Count: > 0 })
+            // Try pure faker tag
+            var fakerMatch = InsomniaFakerTag.Match(kv.Value.Trim());
+            if (fakerMatch.Success && fakerMatch.Value.Trim() == kv.Value.Trim())
             {
+                var (cat, fld) = ResolveFakerEntry(fakerMatch.Groups[1].Value);
                 dynamicVars.Add(new ImportedDynamicVariable
                 {
                     Name = kv.Key,
-                    Segments = segments,
+                    MockDataCategory = cat,
+                    MockDataField = fld,
                 });
+                continue;
             }
-            // Variables that have script syntax but couldn't be parsed are silently dropped.
+
+            // Try pure response tag
+            var responseMatch = InsomniaResponseTag.Match(kv.Value.Trim());
+            if (responseMatch.Success && responseMatch.Value.Trim() == kv.Value.Trim())
+            {
+                var requestId = responseMatch.Groups[2].Value;
+                var pathRaw = responseMatch.Groups[3].Value;
+                var freq = responseMatch.Groups[4].Value;
+                var secs = responseMatch.Groups[5].Value;
+
+                var requestName = requestIdMap.TryGetValue(requestId, out var n) ? n : requestId;
+                var path = DecodePath(pathRaw);
+                var frequency = ParseFrequency(freq);
+                int? expiresAfterSeconds = int.TryParse(secs, out var s) ? s : null;
+
+                dynamicVars.Add(new ImportedDynamicVariable
+                {
+                    Name = kv.Key,
+                    ResponseRequestName = requestName,
+                    ResponsePath = path,
+                    ResponseFrequency = frequency,
+                    ResponseExpiresAfterSeconds = expiresAfterSeconds,
+                });
+                continue;
+            }
+
+            // Composite or mixed value: static text + one or more dynamic tags.
+            // Extract each tag into its own dynamic var; store the original var as a
+            // static string that references the new vars with {{name}} syntax.
+            var localExtracted = new Dictionary<string, ImportedDynamicVariable>();
+            var transformed = ExtractTagsToGlobalVars(kv.Value, requestIdMap, localExtracted);
+            if (localExtracted.Count > 0)
+            {
+                staticVars[kv.Key] = NormalizeVariables(transformed);
+                dynamicVars.AddRange(localExtracted.Values);
+            }
+            else
+            {
+                // Couldn't extract any dynamic vars — normalize {{}} syntax but drop the var
+                // silently if unresolvable {%...%} script tags remain, rather than storing
+                // raw script syntax as a plain static string.
+                var normalized = NormalizeVariables(kv.Value);
+                if (!normalized.Contains("{%", StringComparison.Ordinal))
+                    staticVars[kv.Key] = normalized;
+            }
         }
 
         return (staticVars, dynamicVars);
@@ -269,14 +329,17 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
 
     private static IReadOnlyList<RequestKv> MapHeaders(
         List<InsomniaHeader>? insomniaHeaders,
-        IReadOnlyDictionary<string, string> requestIdMap)
+        IReadOnlyDictionary<string, string> requestIdMap,
+        Dictionary<string, ImportedDynamicVariable>? globalVars = null)
     {
         var headers = new List<RequestKv>();
 
         foreach (var h in insomniaHeaders ?? [])
         {
             if (string.IsNullOrWhiteSpace(h.Name)) continue;
-            headers.Add(new RequestKv(h.Name, NormalizeAndConvertTags(h.Value, requestIdMap), !h.Disabled));
+            var value = ExtractTagsToGlobalVars(
+                NormalizeVariables(h.Value ?? string.Empty), requestIdMap, globalVars);
+            headers.Add(new RequestKv(h.Name, value, !h.Disabled));
         }
 
         return headers;
@@ -312,7 +375,9 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
     }
 
     private static (string bodyType, string? bodyContent, IReadOnlyList<KeyValuePair<string, string>> formParams) MapBody(
-        InsomniaBody? body, IReadOnlyDictionary<string, string> requestIdMap)
+        InsomniaBody? body,
+        IReadOnlyDictionary<string, string> requestIdMap,
+        Dictionary<string, ImportedDynamicVariable>? globalVars = null)
     {
         if (body is null)
             return (BodyTypes.None, null, []);
@@ -322,7 +387,9 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
         {
             var formParams = (body.Params ?? [])
                 .Where(p => !p.Disabled && !string.IsNullOrWhiteSpace(p.Name))
-                .Select(p => new KeyValuePair<string, string>(p.Name, NormalizeAndConvertTags(p.Value, requestIdMap)))
+                .Select(p => new KeyValuePair<string, string>(
+                    p.Name,
+                    ExtractTagsToGlobalVars(NormalizeVariables(p.Value ?? string.Empty), requestIdMap, globalVars)))
                 .ToList();
             return (BodyTypes.Form, null, formParams);
         }
@@ -339,8 +406,9 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
             _ => string.IsNullOrWhiteSpace(body.Text) ? BodyTypes.None : BodyTypes.Text,
         };
 
-        // Body text: normalize variable syntax and convert any inline {% %} tags
-        return (type, NormalizeAndConvertTags(body.Text, requestIdMap), []);
+        var bodyText = ExtractTagsToGlobalVars(
+            NormalizeVariables(body.Text), requestIdMap, globalVars);
+        return (type, bodyText, []);
     }
 
     private static IReadOnlyDictionary<string, string> MapPathParams(
@@ -360,14 +428,17 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
 
     private static IReadOnlyList<RequestKv> MapQueryParams(
         List<InsomniaQueryParam>? queryParams,
-        IReadOnlyDictionary<string, string> requestIdMap)
+        IReadOnlyDictionary<string, string> requestIdMap,
+        Dictionary<string, ImportedDynamicVariable>? globalVars = null)
     {
         var result = new List<RequestKv>();
 
         foreach (var p in queryParams ?? [])
         {
             if (string.IsNullOrWhiteSpace(p.Name)) continue;
-            result.Add(new RequestKv(p.Name, NormalizeAndConvertTags(p.Value, requestIdMap), !p.Disabled));
+            var value = ExtractTagsToGlobalVars(
+                NormalizeVariables(p.Value ?? string.Empty), requestIdMap, globalVars);
+            result.Add(new RequestKv(p.Name, value, !p.Disabled));
         }
 
         return result;
@@ -506,6 +577,116 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
     /// <summary>Returns true when the value contains an Insomnia template script expression.</summary>
     internal static bool IsScriptValue(string? value) =>
         value is not null && value.Contains("{%", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Scans <paramref name="value"/> for <c>{% faker %}</c> and <c>{% response %}</c> tags.
+    /// For each tag found: creates (or reuses) a named <see cref="ImportedDynamicVariable"/> in
+    /// <paramref name="globalVars"/> and replaces the tag with a <c>{{var-name}}</c> reference.
+    /// When <paramref name="globalVars"/> is null, any tags found are converted to Callsmith
+    /// inline format via <see cref="NormalizeAndConvertTags"/> instead.
+    /// </summary>
+    internal static string ExtractTagsToGlobalVars(
+        string value,
+        IReadOnlyDictionary<string, string> requestIdMap,
+        Dictionary<string, ImportedDynamicVariable>? globalVars)
+    {
+        if (!value.Contains("{%", StringComparison.Ordinal)) return value;
+        if (globalVars is null) return NormalizeAndConvertTags(value, requestIdMap);
+
+        return InsomniaResponseTagSplit.Replace(value, match =>
+        {
+            var tag = match.Groups[1].Value;
+
+            // {% faker %} tag
+            var fakerMatch = InsomniaFakerTag.Match(tag);
+            if (fakerMatch.Success)
+            {
+                var (cat, fld) = ResolveFakerEntry(fakerMatch.Groups[1].Value);
+                // Derive a deterministic var name: "faker-category-field" lowercased, hyphens
+                var varName = $"faker-{cat}-{fld}"
+                    .ToLowerInvariant()
+                    .Replace(' ', '-');
+
+                if (!globalVars.ContainsKey(varName))
+                {
+                    globalVars[varName] = new ImportedDynamicVariable
+                    {
+                        Name = varName,
+                        MockDataCategory = cat,
+                        MockDataField = fld,
+                    };
+                }
+                return $"{{{{{varName}}}}}";
+            }
+
+            // {% response %} tag
+            var responseMatch = InsomniaResponseTag.Match(tag);
+            if (responseMatch.Success)
+            {
+                var requestId = responseMatch.Groups[2].Value;
+                var pathRaw = responseMatch.Groups[3].Value;
+                var freq = responseMatch.Groups[4].Value;
+                var secs = responseMatch.Groups[5].Value;
+
+                var requestName = requestIdMap.TryGetValue(requestId, out var n) ? n : requestId;
+                var path = DecodePath(pathRaw);
+                var frequency = ParseFrequency(freq);
+                int? expiresAfterSeconds = int.TryParse(secs, out var s) ? s : null;
+
+                // Derive a deterministic var name from request name + json-path leaf
+                var pathLeaf = path.Split(['.', '$', '[', ']'], StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? "value";
+                var baseName = $"{pathLeaf}"
+                    .ToLowerInvariant()
+                    .Replace('_', '-')
+                    .Trim('-');
+                var varName = baseName;
+                var counter = 2;
+                // Ensure name is unique and not already registered for a *different* request+path.
+                while (globalVars.TryGetValue(varName, out var existing)
+                    && (existing.ResponseRequestName != requestName || existing.ResponsePath != path))
+                {
+                    varName = $"{baseName}-{counter++}";
+                }
+
+                if (!globalVars.ContainsKey(varName))
+                {
+                    globalVars[varName] = new ImportedDynamicVariable
+                    {
+                        Name = varName,
+                        ResponseRequestName = requestName,
+                        ResponsePath = path,
+                        ResponseFrequency = frequency,
+                        ResponseExpiresAfterSeconds = expiresAfterSeconds,
+                    };
+                }
+                return $"{{{{{varName}}}}}";
+            }
+
+            // Unknown tag — leave as-is
+            return tag;
+        });
+    }
+
+    /// <summary>Resolves a faker bogus-name or dot-notation key to a (category, field) pair.</summary>
+    private static (string category, string field) ResolveFakerEntry(string bogusName)
+    {
+        var entry = MockDataCatalog.FindByBogusName(bogusName);
+        if (entry is not null) return (entry.Category, entry.Field);
+
+        var dotIdx = bogusName.IndexOf('.', StringComparison.Ordinal);
+        if (dotIdx > 0)
+        {
+            var cat = bogusName[..dotIdx];
+            var fld = bogusName[(dotIdx + 1)..];
+            var direct = MockDataCatalog.All.FirstOrDefault(e =>
+                string.Equals(e.Category, cat, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(e.Field, fld, StringComparison.OrdinalIgnoreCase));
+            if (direct is not null) return (direct.Category, direct.Field);
+            return (cat, fld);
+        }
+
+        return ("Random", "UUID");
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Dynamic variable parsing (for environment variables)

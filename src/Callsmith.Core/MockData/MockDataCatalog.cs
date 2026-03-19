@@ -31,8 +31,9 @@ public static class MockDataCatalog
         new("Name", "Job Title",    "e.g. Senior Software Engineer")         { GenerateFunc = f => f.Name.JobTitle() },
 
         // ── Internet ────────────────────────────────────────────────────────
-        new("Internet", "Email",        "Random email address")              { GenerateFunc = f => f.Internet.Email() },
-        new("Internet", "Username",     "Random username handle")            { GenerateFunc = f => f.Internet.UserName() },
+        new("Internet", "Email",          "Random email address")              { GenerateFunc = f => f.Internet.Email() },
+        new("Internet", "Example Email",  "Email at a safe example domain")    { GenerateFunc = f => f.Internet.ExampleEmail() },
+        new("Internet", "Username",       "Random username handle")            { GenerateFunc = f => f.Internet.UserName() },
         new("Internet", "URL",          "Random HTTP URL")                   { GenerateFunc = f => f.Internet.Url() },
         new("Internet", "Password",     "Random password string")            { GenerateFunc = f => f.Internet.Password() },
         new("Internet", "IP Address",   "IPv4 address e.g. 192.168.1.1")    { GenerateFunc = f => f.Internet.Ip() },
@@ -129,8 +130,9 @@ public static class MockDataCatalog
         var lastName   = All.First(e => e.Category == "Name"     && e.Field == "Last Name");
         var fullName   = All.First(e => e.Category == "Name"     && e.Field == "Full Name");
         var jobTitle   = All.First(e => e.Category == "Name"     && e.Field == "Job Title");
-        var email      = All.First(e => e.Category == "Internet" && e.Field == "Email");
-        var username   = All.First(e => e.Category == "Internet" && e.Field == "Username");
+        var email        = All.First(e => e.Category == "Internet" && e.Field == "Email");
+        var exampleEmail = All.First(e => e.Category == "Internet" && e.Field == "Example Email");
+        var username     = All.First(e => e.Category == "Internet" && e.Field == "Username");
         var url        = All.First(e => e.Category == "Internet" && e.Field == "URL");
         var password   = All.First(e => e.Category == "Internet" && e.Field == "Password");
         var ipAddress  = All.First(e => e.Category == "Internet" && e.Field == "IP Address");
@@ -169,6 +171,9 @@ public static class MockDataCatalog
             ["internet.email"]         = email,
             ["randomemail"]            = email,
             ["email"]                  = email,
+            ["internet.exampleemail"]  = exampleEmail,
+            ["randomexampleemail"]     = exampleEmail,
+            ["exampleemail"]           = exampleEmail,
             ["internet.username"]      = username,
             ["randomusername"]         = username,
             ["username"]               = username,

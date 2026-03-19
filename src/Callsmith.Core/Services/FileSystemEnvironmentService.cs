@@ -404,6 +404,12 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
                 VariableType = v.VariableType ?? EnvironmentVariable.VariableTypes.Static,
                 IsSecret = v.IsSecret ?? false,
                 Segments = v.Segments is { Count: > 0 } ? v.Segments : null,
+                MockDataCategory = v.MockDataCategory,
+                MockDataField = v.MockDataField,
+                ResponseRequestName = v.ResponseRequestName,
+                ResponsePath = v.ResponsePath,
+                ResponseFrequency = v.ResponseFrequency ?? DynamicFrequency.Always,
+                ResponseExpiresAfterSeconds = v.ResponseExpiresAfterSeconds,
             })
             .Where(v => !string.IsNullOrWhiteSpace(v.Name))
             .ToList(),
@@ -424,6 +430,12 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
                     : v.VariableType,
                 IsSecret = v.IsSecret ? (bool?)true : null,
                 Segments = v.Segments is { Count: > 0 } ? [.. v.Segments] : null,
+                MockDataCategory = v.MockDataCategory,
+                MockDataField = v.MockDataField,
+                ResponseRequestName = v.ResponseRequestName,
+                ResponsePath = v.ResponsePath,
+                ResponseFrequency = v.ResponseFrequency == DynamicFrequency.Always ? null : v.ResponseFrequency,
+                ResponseExpiresAfterSeconds = v.ResponseExpiresAfterSeconds,
             })
             .ToList(),
     };
@@ -447,5 +459,19 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         public bool? IsSecret { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public List<ValueSegment>? Segments { get; init; }
+        // Mock-data type
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? MockDataCategory { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? MockDataField { get; init; }
+        // Response-body type
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? ResponseRequestName { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? ResponsePath { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public DynamicFrequency? ResponseFrequency { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? ResponseExpiresAfterSeconds { get; init; }
     }
 }

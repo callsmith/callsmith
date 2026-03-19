@@ -11,9 +11,10 @@ using Microsoft.Extensions.Logging;
 namespace Callsmith.Core.Services;
 
 /// <summary>
-/// Evaluates dynamic environment variable segments by executing referenced collection
-/// requests and extracting values from their responses. Results are cached on disk
-/// according to each segment's <see cref="DynamicFrequency"/> setting.
+/// Evaluates dynamic environment variables (response-body and mock-data types) by
+/// executing referenced collection requests and extracting values from responses.
+/// Response-body results are cached on disk according to each variable's
+/// <see cref="DynamicFrequency"/> setting.
 /// <para>
 /// Cache location: <c>%LOCALAPPDATA%\Callsmith\dyncache\&lt;collection-hash&gt;.json</c>.
 /// </para>
@@ -61,27 +62,51 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
     }
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyDictionary<string, string>> ResolveAsync(
+    public async Task<ResolvedEnvironment> ResolveAsync(
         string collectionFolderPath,
         string environmentFilePath,
         IReadOnlyList<EnvironmentVariable> variables,
-        IReadOnlyDictionary<string, string> resolvedStaticVariables,
+        IReadOnlyDictionary<string, string> staticVariables,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(collectionFolderPath);
         ArgumentNullException.ThrowIfNull(environmentFilePath);
         ArgumentNullException.ThrowIfNull(variables);
-        ArgumentNullException.ThrowIfNull(resolvedStaticVariables);
+        ArgumentNullException.ThrowIfNull(staticVariables);
 
-        var dynamicVars = variables.Where(v => v.Segments is { Count: > 0 }).ToList();
-        if (dynamicVars.Count == 0)
-            return resolvedStaticVariables;
+        var resolvedVars = new Dictionary<string, string>(staticVariables);
+        var mockGenerators = new Dictionary<string, MockDataEntry>();
 
-        var result = new Dictionary<string, string>(resolvedStaticVariables);
+        // Separate variables by type.
+        var responseBodyVars = new List<EnvironmentVariable>();
+        foreach (var v in variables)
+        {
+            switch (v.VariableType)
+            {
+                case EnvironmentVariable.VariableTypes.MockData:
+                    var entry = v.GetMockEntry();
+                    if (entry is not null)
+                        mockGenerators[v.Name] = entry;
+                    break;
+
+                case EnvironmentVariable.VariableTypes.ResponseBody:
+                    if (!string.IsNullOrEmpty(v.ResponseRequestName))
+                        responseBodyVars.Add(v);
+                    break;
+
+                // Legacy: old segment-based dynamic vars — migrate and handle inline.
+                case EnvironmentVariable.VariableTypes.Dynamic:
+                    MigrateLegacyVar(v, responseBodyVars, mockGenerators);
+                    break;
+            }
+        }
+
+        if (responseBodyVars.Count == 0)
+            return new ResolvedEnvironment { Variables = resolvedVars, MockGenerators = mockGenerators };
+
         var cache = await LoadCacheAsync(collectionFolderPath, ct).ConfigureAwait(false);
         var cacheModified = false;
 
-        // Load the collection folder tree once (shared across all dynamic variables).
         CollectionFolder? folder = null;
         try
         {
@@ -93,34 +118,30 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
             _logger.LogWarning(ex, "Could not open collection folder for dynamic variable evaluation");
         }
 
-        // Evaluate in two passes so that dynamic variables which reference other dynamic
-        // variables in their linked requests work correctly regardless of declaration order.
-        // The second pass uses the fully-populated result dict from the first, so any
-        // {{varName}} tokens in request headers/auth/body resolve to their evaluated values.
-        // Never/IfExpired variables hit the cache on the second pass (no extra HTTP calls);
-        // Always-frequency variables make a second call, which is expected for that policy.
-        var passes = dynamicVars.Count > 1 ? 2 : 1;
+        // Two passes so that response-body vars that reference other response-body vars
+        // resolve in the right order regardless of declaration order.
+        var passes = responseBodyVars.Count > 1 ? 2 : 1;
         for (var pass = 0; pass < passes; pass++)
         {
-            foreach (var variable in dynamicVars)
+            foreach (var variable in responseBodyVars)
             {
                 ct.ThrowIfCancellationRequested();
                 try
                 {
-                    var value = await BuildSegmentValueAsync(
-                        variable, environmentFilePath, folder, result, cache, ct)
+                    var value = await EvaluateResponseBodyVarAsync(
+                        variable, environmentFilePath, folder, resolvedVars, cache, ct)
                         .ConfigureAwait(false);
 
                     if (value != null)
                     {
-                        result[variable.Name] = value;
+                        resolvedVars[variable.Name] = value;
                         cacheModified = true;
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex,
-                        "Failed to resolve dynamic variable '{Name}'", variable.Name);
+                        "Failed to resolve response-body variable '{Name}'", variable.Name);
                 }
             }
         }
@@ -128,19 +149,24 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         if (cacheModified)
             await SaveCacheAsync(collectionFolderPath, cache, ct).ConfigureAwait(false);
 
-        return result;
+        return new ResolvedEnvironment { Variables = resolvedVars, MockGenerators = mockGenerators };
     }
 
     /// <inheritdoc/>
-    public async Task<string?> PreviewAsync(
+    public async Task<string?> PreviewResponseBodyAsync(
         string collectionFolderPath,
-        DynamicValueSegment segment,
+        EnvironmentVariable variable,
         IReadOnlyDictionary<string, string> variables,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(collectionFolderPath);
-        ArgumentNullException.ThrowIfNull(segment);
+        ArgumentNullException.ThrowIfNull(variable);
         ArgumentNullException.ThrowIfNull(variables);
+
+        if (variable.VariableType != EnvironmentVariable.VariableTypes.ResponseBody
+            || string.IsNullOrEmpty(variable.ResponseRequestName)
+            || string.IsNullOrEmpty(variable.ResponsePath))
+            return null;
 
         CollectionFolder? folder = null;
         try
@@ -154,12 +180,20 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
             return null;
         }
 
+        var segment = new DynamicValueSegment
+        {
+            RequestName = variable.ResponseRequestName,
+            Path = variable.ResponsePath,
+            Frequency = variable.ResponseFrequency,
+            ExpiresAfterSeconds = variable.ResponseExpiresAfterSeconds,
+        };
+
         return await ExecuteAndExtractAsync(segment, folder, variables, ct).ConfigureAwait(false);
     }
 
     // ─── Request execution ───────────────────────────────────────────────────
 
-    private async Task<string?> BuildSegmentValueAsync(
+    private async Task<string?> EvaluateResponseBodyVarAsync(
         EnvironmentVariable variable,
         string environmentFilePath,
         CollectionFolder? folder,
@@ -167,35 +201,14 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         DynCache cache,
         CancellationToken ct)
     {
-        var sb = new StringBuilder();
-        foreach (var seg in variable.Segments!)
+        var segment = new DynamicValueSegment
         {
-            if (seg is StaticValueSegment s)
-            {
-                sb.Append(s.Text);
-            }
-            else if (seg is MockDataSegment m)
-            {
-                sb.Append(MockDataCatalog.Generate(m.Category, m.Field));
-            }
-            else if (seg is DynamicValueSegment d)
-            {
-                var val = await EvaluateDynamicSegmentAsync(
-                    d, environmentFilePath, folder, vars, cache, ct).ConfigureAwait(false);
-                sb.Append(val ?? string.Empty);
-            }
-        }
-        return sb.ToString();
-    }
+            RequestName = variable.ResponseRequestName!,
+            Path = variable.ResponsePath ?? string.Empty,
+            Frequency = variable.ResponseFrequency,
+            ExpiresAfterSeconds = variable.ResponseExpiresAfterSeconds,
+        };
 
-    private async Task<string?> EvaluateDynamicSegmentAsync(
-        DynamicValueSegment segment,
-        string environmentFilePath,
-        CollectionFolder? folder,
-        IReadOnlyDictionary<string, string> vars,
-        DynCache cache,
-        CancellationToken ct)
-    {
         var cacheKey = MakeCacheKey(environmentFilePath, segment.RequestName, segment.Path);
 
         var shouldExecute = segment.Frequency switch
@@ -212,16 +225,84 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         if (folder is null)
         {
             _logger.LogWarning(
-                "Cannot evaluate dynamic segment for '{RequestName}': collection folder not loaded",
-                segment.RequestName);
+                "Cannot evaluate response-body variable '{Name}': collection folder not loaded",
+                variable.Name);
             return cache.TryGetValue(cacheKey, out var fallback) ? fallback.Value : null;
         }
 
         var resolved = await ExecuteAndExtractAsync(segment, folder, vars, ct).ConfigureAwait(false);
-
-        // Always cache the result so that subsequent uses (with Never/IfExpired) can use it.
         cache[cacheKey] = new CacheEntry(resolved ?? string.Empty, DateTime.UtcNow);
         return resolved;
+    }
+
+    /// <summary>
+    /// Migrates a legacy segment-based <see cref="EnvironmentVariable.VariableTypes.Dynamic"/> variable
+    /// to the new typed model by inspecting its <see cref="EnvironmentVariable.Segments"/>.
+    /// A single <see cref="MockDataSegment"/> becomes a mock generator entry.
+    /// A single <see cref="DynamicValueSegment"/> is added to the response-body list.
+    /// Composites and unrecognised forms are silently ignored.
+    /// </summary>
+    private static void MigrateLegacyVar(
+        EnvironmentVariable variable,
+        List<EnvironmentVariable> responseBodyVars,
+        Dictionary<string, MockDataEntry> mockGenerators)
+    {
+        if (variable.Segments is not { Count: > 0 }) return;
+
+        // Pure single-segment → migrate cleanly
+        if (variable.Segments.Count == 1)
+        {
+            switch (variable.Segments[0])
+            {
+                case MockDataSegment m:
+                    var entry = MockDataCatalog.All.FirstOrDefault(
+                        e => e.Category == m.Category && e.Field == m.Field);
+                    if (entry is not null)
+                        mockGenerators[variable.Name] = entry;
+                    return;
+
+                case DynamicValueSegment d:
+                    responseBodyVars.Add(new EnvironmentVariable
+                    {
+                        Name = variable.Name,
+                        Value = variable.Value,
+                        IsSecret = variable.IsSecret,
+                        VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                        ResponseRequestName = d.RequestName,
+                        ResponsePath = d.Path,
+                        ResponseFrequency = d.Frequency,
+                        ResponseExpiresAfterSeconds = d.ExpiresAfterSeconds,
+                    });
+                    return;
+            }
+        }
+
+        // Composite: handle each segment independently (mock → generator; dynamic → response-body).
+        foreach (var seg in variable.Segments)
+        {
+            if (seg is MockDataSegment ms)
+            {
+                var e = MockDataCatalog.All.FirstOrDefault(
+                    x => x.Category == ms.Category && x.Field == ms.Field);
+                if (e is not null)
+                    mockGenerators.TryAdd(variable.Name, e);
+            }
+            else if (seg is DynamicValueSegment ds)
+            {
+                responseBodyVars.Add(new EnvironmentVariable
+                {
+                    Name = variable.Name,
+                    Value = variable.Value,
+                    IsSecret = variable.IsSecret,
+                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                    ResponseRequestName = ds.RequestName,
+                    ResponsePath = ds.Path,
+                    ResponseFrequency = ds.Frequency,
+                    ResponseExpiresAfterSeconds = ds.ExpiresAfterSeconds,
+                });
+                break; // Only migrate the first dynamic segment from a composite.
+            }
+        }
     }
 
     private async Task<string?> ExecuteAndExtractAsync(

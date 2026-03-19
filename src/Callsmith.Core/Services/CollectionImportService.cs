@@ -109,6 +109,12 @@ public sealed class CollectionImportService : ICollectionImportService
         if (envFileOrder.Count > 0)
             await _environmentService.SaveEnvironmentOrderAsync(targetFolderPath, envFileOrder, ct).ConfigureAwait(false);
 
+        // Merge global dynamic vars (extracted from inline request-field tags) into the
+        // global environment, deduplicating by variable name.
+        if (collection.GlobalDynamicVars.Count > 0)
+            await MergeGlobalDynamicVarsAsync(collection.GlobalDynamicVars, targetFolderPath, ct)
+                .ConfigureAwait(false);
+
         _logger.LogInformation(
             "Import complete: {RequestCount} root requests, {FolderCount} folders, {EnvCount} environments",
             collection.RootRequests.Count,
@@ -198,17 +204,37 @@ public sealed class CollectionImportService : ICollectionImportService
             })
             .ToList();
 
-        // Dynamic variables (composite segments)
+        // Dynamic variables (typed: mock-data or response-body)
         foreach (var dv in imported.DynamicVariables)
         {
-            variables.Add(new EnvironmentVariable
+            EnvironmentVariable env;
+            if (dv.IsMockData)
             {
-                Name = dv.Name,
-                Value = string.Empty, // resolved at evaluation time
-                VariableType = EnvironmentVariable.VariableTypes.Dynamic,
-                IsSecret = false,
-                Segments = dv.Segments,
-            });
+                env = new EnvironmentVariable
+                {
+                    Name = dv.Name,
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.MockData,
+                    IsSecret = false,
+                    MockDataCategory = dv.MockDataCategory,
+                    MockDataField = dv.MockDataField,
+                };
+            }
+            else
+            {
+                env = new EnvironmentVariable
+                {
+                    Name = dv.Name,
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                    IsSecret = false,
+                    ResponseRequestName = dv.ResponseRequestName,
+                    ResponsePath = dv.ResponsePath,
+                    ResponseFrequency = dv.ResponseFrequency,
+                    ResponseExpiresAfterSeconds = dv.ResponseExpiresAfterSeconds,
+                };
+            }
+            variables.Add(env);
         }
 
         var envFolder = Path.Combine(
@@ -247,6 +273,60 @@ public sealed class CollectionImportService : ICollectionImportService
     {
         var sanitized = string.Join('_', name.Split(InvalidFileNameChars, StringSplitOptions.None));
         return string.IsNullOrWhiteSpace(sanitized) ? "Unnamed" : sanitized;
+    }
+
+    /// <summary>
+    /// Merges <paramref name="globalVars"/> into the collection's global environment,
+    /// skipping any var whose name already exists there.
+    /// </summary>
+    private async Task MergeGlobalDynamicVarsAsync(
+        IReadOnlyList<ImportedDynamicVariable> globalVars,
+        string collectionFolderPath,
+        CancellationToken ct)
+    {
+        var globalModel = await _environmentService
+            .LoadGlobalEnvironmentAsync(collectionFolderPath, ct)
+            .ConfigureAwait(false);
+
+        var existing = new HashSet<string>(
+            globalModel.Variables.Select(v => v.Name), StringComparer.Ordinal);
+
+        var toAdd = new List<EnvironmentVariable>();
+        foreach (var dv in globalVars)
+        {
+            if (existing.Contains(dv.Name)) continue;
+            existing.Add(dv.Name);
+
+            toAdd.Add(dv.IsMockData
+                ? new EnvironmentVariable
+                {
+                    Name = dv.Name,
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.MockData,
+                    MockDataCategory = dv.MockDataCategory,
+                    MockDataField = dv.MockDataField,
+                }
+                : new EnvironmentVariable
+                {
+                    Name = dv.Name,
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                    ResponseRequestName = dv.ResponseRequestName,
+                    ResponsePath = dv.ResponsePath,
+                    ResponseFrequency = dv.ResponseFrequency,
+                    ResponseExpiresAfterSeconds = dv.ResponseExpiresAfterSeconds,
+                });
+        }
+
+        if (toAdd.Count == 0) return;
+
+        var updated = globalModel with
+        {
+            Variables = [.. globalModel.Variables, .. toAdd],
+        };
+        await _environmentService.SaveGlobalEnvironmentAsync(updated, ct).ConfigureAwait(false);
+        _logger.LogDebug(
+            "Added {Count} global dynamic variable(s) to global environment", toAdd.Count);
     }
 
     private static void EnqueueName(

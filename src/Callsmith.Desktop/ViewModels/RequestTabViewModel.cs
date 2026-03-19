@@ -505,25 +505,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         PathParams.ShowDeleteButton = false;
         PathParams.ShowEnabledToggle = false;
 
-        Headers.ShowKeyPills = true;
-        QueryParams.ShowKeyPills = true;
-
-        // Wire up pill-segment dialog callbacks for all KV editors.
-        // When no dynamic evaluator is provided (e.g. tests), dynamic-value dialogs are suppressed.
-        if (_dynamicEvaluator is not null)
-        {
-            var editDynamic = (DynamicValueSegment? seg) => OpenDynamicValueConfigAsync(seg);
-            var editMock    = (MockDataSegment? seg)     => OpenMockDataConfigAsync(seg);
-            Headers.SetDialogCallbacks(editDynamic, editMock);
-            QueryParams.SetDialogCallbacks(editDynamic, editMock);
-            PathParams.SetDialogCallbacks(editDynamic, editMock);
-            FormParams.SetDialogCallbacks(editDynamic, editMock);
-            AuthTokenField.SetCallbacks(editDynamic, editMock);
-            AuthUsernameField.SetCallbacks(editDynamic, editMock);
-            AuthPasswordField.SetCallbacks(editDynamic, editMock);
-            AuthApiKeyNameField.SetCallbacks(editDynamic, editMock);
-            AuthApiKeyValueField.SetCallbacks(editDynamic, editMock);
-        }
+        // Note: key-pill editing has been removed from request fields.
+        // Headers and query params still support {{var}} references via plain TextBoxes.
 
         // Dirty tracking — only fires for deliberate user edits to existing requests.
         // The _saving guard prevents reactive URL/param sync that occurs during PerformSaveAsync
@@ -669,30 +652,30 @@ public sealed partial class RequestTabViewModel : ObservableObject
     /// dynamic variables before returning. If no evaluator is registered, falls back
     /// to the static implementation.
     /// </summary>
-    private async Task<Dictionary<string, string>> BuildMergedVarsAsync(CancellationToken ct)
+    private async Task<ResolvedEnvironment> BuildMergedVarsAsync(CancellationToken ct)
     {
         var merged = BuildMergedVars();
 
         if (_dynamicEvaluator is null || _activeEnvironment is null)
-            return merged;
+            return new ResolvedEnvironment { Variables = merged };
 
-        // Check if any variable is dynamic; skip the round-trip if none are.
-        if (!_activeEnvironment.Variables.Any(v =>
-            v.VariableType == EnvironmentVariable.VariableTypes.Dynamic))
-            return merged;
+        // Check if any variable needs resolution.
+        var needsResolution = _activeEnvironment.Variables.Any(v =>
+            v.VariableType == EnvironmentVariable.VariableTypes.Dynamic
+            || v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
+            || v.VariableType == EnvironmentVariable.VariableTypes.MockData);
+
+        if (!needsResolution)
+            return new ResolvedEnvironment { Variables = merged };
 
         try
         {
-            var resolved = await _dynamicEvaluator.ResolveAsync(
+            return await _dynamicEvaluator.ResolveAsync(
                 CollectionRootPath,
                 _activeEnvironment.FilePath,
                 _activeEnvironment.Variables,
                 merged,
                 ct).ConfigureAwait(false);
-
-            // Merge evaluated results into the dictionary (dynamic values override static).
-            foreach (var kvp in resolved)
-                merged[kvp.Key] = kvp.Value;
         }
         catch (OperationCanceledException)
         {
@@ -701,9 +684,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         catch
         {
             // If evaluation fails, continue with static values so the request still sends.
+            return new ResolvedEnvironment { Variables = merged };
         }
-
-        return merged;
     }
 
     /// <summary>
@@ -732,41 +714,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
         FormParams.SetSuggestions(suggestions);
 
         OnPropertyChanged(nameof(PreviewUrl));
-    }
-
-    // -------------------------------------------------------------------------
-    // Body — insert token at caret
-    // -------------------------------------------------------------------------
-
-    /// <summary>
-    /// Fired when a dynamic or mock-data token should be inserted into the body editor
-    /// at the current caret position. The view code-behind listens and calls
-    /// <c>BodyEditor.Document.Insert(CaretOffset, text)</c>.
-    /// </summary>
-    public event Action<string>? InsertTextAtBodyCaret;
-
-    /// <summary>
-    /// Opens the dynamic-value config dialog and inserts the resulting token into the body editor.
-    /// </summary>
-    [RelayCommand]
-    private async Task InsertDynamicValueToBodyAsync()
-    {
-        var segment = await OpenDynamicValueConfigAsync(null).ConfigureAwait(true);
-        if (segment is null) return;
-        var token = SegmentSerializer.SerializeSegments([segment]);
-        InsertTextAtBodyCaret?.Invoke(token);
-    }
-
-    /// <summary>
-    /// Opens the mock-data picker and inserts the resulting token into the body editor.
-    /// </summary>
-    [RelayCommand]
-    private async Task InsertMockDataToBodyAsync()
-    {
-        var segment = await OpenMockDataConfigAsync(null).ConfigureAwait(true);
-        if (segment is null) return;
-        var token = SegmentSerializer.SerializeSegments([segment]);
-        InsertTextAtBodyCaret?.Invoke(token);
     }
 
     // -------------------------------------------------------------------------
@@ -804,24 +751,23 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 Headers.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
                 StringComparer.OrdinalIgnoreCase);
 
-            var vars = (IReadOnlyDictionary<string, string>)await BuildMergedVarsAsync(ct);
+            var env = await BuildMergedVarsAsync(ct);
 
             // Substitute {{tokens}} in path param values BEFORE URL-encoding.
             var pathParamValues = PathParams.GetEnabledPairs()
                 .Where(p => !string.IsNullOrWhiteSpace(p.Value))
                 .ToDictionary(
                     p => p.Key,
-                    p => VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value);
+                    p => VariableSubstitutionService.Substitute(p.Value, env) ?? p.Value);
 
             var baseUrl = GetBaseUrl(Url);
             var requestUrl = PathTemplateHelper.ApplyPathParams(baseUrl, pathParamValues);
 
-            // Substitute variables in query param keys/values BEFORE URL-encoding so that
-            // {{tokens}} are resolved to their real values rather than being encoded literally.
+            // Substitute variables in query param keys/values BEFORE URL-encoding.
             var substitutedQueryParams = QueryParams.GetEnabledPairs()
                 .Select(p => new KeyValuePair<string, string>(
-                    VariableSubstitutionService.Substitute(p.Key, vars) ?? p.Key,
-                    VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value))
+                    VariableSubstitutionService.Substitute(p.Key, env) ?? p.Key,
+                    VariableSubstitutionService.Substitute(p.Value, env) ?? p.Value))
                 .ToList();
 
             requestUrl = QueryStringHelper.ApplyQueryParams(requestUrl, substitutedQueryParams);
@@ -829,14 +775,14 @@ public sealed partial class RequestTabViewModel : ObservableObject
             ApplyAuthHeaders(headers, requestUrl, out requestUrl);
 
             // Substitute any remaining {{tokens}} in the base URL / path.
-            requestUrl = VariableSubstitutionService.Substitute(requestUrl, vars) ?? requestUrl;
+            requestUrl = VariableSubstitutionService.Substitute(requestUrl, env) ?? requestUrl;
             foreach (var key in headers.Keys.ToList())
-                headers[key] = VariableSubstitutionService.Substitute(headers[key], vars) ?? headers[key];
+                headers[key] = VariableSubstitutionService.Substitute(headers[key], env) ?? headers[key];
 
             var resolvedBody = SelectedBodyType != CollectionRequest.BodyTypes.None
                 && SelectedBodyType != CollectionRequest.BodyTypes.Form
                 && !string.IsNullOrEmpty(Body)
-                ? VariableSubstitutionService.Substitute(Body, vars) ?? Body
+                ? VariableSubstitutionService.Substitute(Body, env) ?? Body
                 : null;
 
             // For form-encoded bodies, build the URL-encoded string from FormParams.
@@ -844,8 +790,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
             {
                 var formPairs = FormParams.GetEnabledPairs()
                     .Select(p => new KeyValuePair<string, string>(
-                        VariableSubstitutionService.Substitute(p.Key, vars) ?? p.Key,
-                        VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value))
+                        VariableSubstitutionService.Substitute(p.Key, env) ?? p.Key,
+                        VariableSubstitutionService.Substitute(p.Value, env) ?? p.Value))
                     .ToList();
                 if (formPairs.Count > 0)
                     resolvedBody = string.Join("&",

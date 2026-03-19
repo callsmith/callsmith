@@ -6,7 +6,9 @@ using Callsmith.Core.Models;
 namespace Callsmith.Core.Services;
 
 /// <summary>
-/// Replaces <c>{{variableName}}</c> and <c>{% faker %}</c> tokens in template strings.
+/// Replaces <c>{{variableName}}</c> tokens in template strings, with support for
+/// mock-data generator variables (evaluated freshly per token reference) and legacy
+/// <c>{% faker %}</c> inline tags for backward compatibility with old imported data.
 /// Unknown variables and unrecognised tags are left unchanged.
 /// Variable values may themselves reference other variables; they are resolved
 /// transitively up to a fixed depth to prevent infinite loops.
@@ -19,26 +21,39 @@ public static partial class VariableSubstitutionService
     [GeneratedRegex(@"\{\{([^}]+)\}\}", RegexOptions.Compiled)]
     private static partial Regex TokenPattern();
 
-    // Matches {% faker 'Category.Field' %}
+    // Retained for backward compatibility: evaluates legacy {% faker %} tags left inline by old imports.
     [GeneratedRegex(@"\{%-?\s*faker\s+'([^']+)'\s*-?%\}", RegexOptions.Compiled)]
     private static partial Regex FakerTag();
 
     /// <summary>
+    /// Substitutes all <c>{{name}}</c> tokens in <paramref name="template"/> using the
+    /// pre-resolved <see cref="ResolvedEnvironment"/>.
+    /// <list type="bullet">
+    ///   <item>Variables in <see cref="ResolvedEnvironment.Variables"/> use their pre-computed value.</item>
+    ///   <item>Variables in <see cref="ResolvedEnvironment.MockGenerators"/> are evaluated freshly per
+    ///     token occurrence so each reference to the same mock var yields a different generated value.</item>
+    /// </list>
+    /// </summary>
+    public static string? Substitute(string? template, ResolvedEnvironment env) =>
+        Substitute(template, env.Variables, env.MockGenerators);
+
+    /// <summary>
     /// Substitutes all <c>{{name}}</c> tokens in <paramref name="template"/>
     /// with the matching value from <paramref name="variables"/>.
-    /// Also evaluates <c>{% faker 'Category.Field' %}</c> mock-data tokens inline.
-    /// Variable values that themselves contain <c>{{token}}</c> placeholders are
-    /// resolved transitively. Circular references and unknown tokens are left intact.
-    /// <para>
-    /// <c>{% response ... %}</c> tokens are <em>not</em> evaluated here — they require
-    /// async I/O and are handled by <see cref="DynamicVariableEvaluatorService"/> at
-    /// environment-resolve time, or by the request-send pipeline for inline field values.
-    /// </para>
+    /// Optionally generates fresh mock values per occurrence for vars in <paramref name="mockGenerators"/>.
+    /// Also evaluates legacy <c>{% faker 'Category.Field' %}</c> inline tokens for backward compatibility.
     /// </summary>
     /// <param name="template">The string that may contain <c>{{token}}</c> placeholders.</param>
     /// <param name="variables">Case-sensitive variable name → value mapping.</param>
+    /// <param name="mockGenerators">
+    /// Optional map of variable names to mock-data catalog entries.
+    /// When a token matches a key here, a fresh value is generated on every occurrence.
+    /// </param>
     /// <returns>The resolved string, or <see langword="null"/> when the input is null.</returns>
-    public static string? Substitute(string? template, IReadOnlyDictionary<string, string> variables)
+    public static string? Substitute(
+        string? template,
+        IReadOnlyDictionary<string, string> variables,
+        IReadOnlyDictionary<string, MockDataEntry>? mockGenerators = null)
     {
         if (string.IsNullOrEmpty(template)) return template;
 
@@ -47,10 +62,13 @@ public static partial class VariableSubstitutionService
         var result = TokenPattern().Replace(template, match =>
         {
             var key = match.Groups[1].Value;
+            // Mock-data vars: generate fresh per reference (never pre-computed).
+            if (mockGenerators?.TryGetValue(key, out var entry) == true)
+                return MockDataCatalog.Generate(entry.Category, entry.Field);
             return resolved.TryGetValue(key, out var value) ? value : match.Value;
         });
 
-        // Evaluate any remaining {% faker %} tags (generated at each call so values differ)
+        // Backward compat: evaluate any remaining {% faker %} tags from old imported data.
         if (result.Contains("{%", StringComparison.Ordinal))
             result = EvaluateFakerTags(result);
 

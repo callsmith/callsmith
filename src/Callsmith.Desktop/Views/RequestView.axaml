@@ -135,18 +135,6 @@
                         Padding="0" FontSize="12" Cursor="Hand"
                         VerticalAlignment="Center"
                         ToolTip.Tip="Pretty-print the JSON body"/>
-                <Button Content="+ Dynamic Value" Command="{Binding InsertDynamicValueToBodyCommand}"
-                        IsVisible="{Binding ShowTextBodyEditor}"
-                        Background="Transparent" Foreground="#4ec9b0" BorderThickness="0"
-                        Padding="0" FontSize="12" Cursor="Hand"
-                        VerticalAlignment="Center"
-                        ToolTip.Tip="Insert a dynamic response-body reference at the cursor"/>
-                <Button Content="+ Mock Data" Command="{Binding InsertMockDataToBodyCommand}"
-                        IsVisible="{Binding ShowTextBodyEditor}"
-                        Background="Transparent" Foreground="#c586c0" BorderThickness="0"
-                        Padding="0" FontSize="12" Cursor="Hand"
-                        VerticalAlignment="Center"
-                        ToolTip.Tip="Insert a mock-data token at the cursor"/>
               </StackPanel>
               <controls:SyntaxEditor x:Name="BodyEditor" Grid.Row="1"
                        Text="{Binding Body}" Language="{Binding BodyLanguage}"

@@ -33,8 +33,8 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
     private string? _collectionFolderPath;
     private List<string> _availableRequestNames = [];
-    private TaskCompletionSource<DynamicValueSegment?>? _pendingDynamicConfigTcs;
-    private TaskCompletionSource<MockDataSegment?>? _pendingMockDataConfigTcs;
+    private TaskCompletionSource<EnvironmentVariable?>? _pendingMockDataTcs;
+    private TaskCompletionSource<EnvironmentVariable?>? _pendingResponseBodyTcs;
 
     // ─── Observable state ────────────────────────────────────────────────────
 
@@ -77,30 +77,26 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     private EnvironmentListItemViewModel? _pendingDeleteItem;
 
     /// <summary>
-    /// Set to the dynamic value config ViewModel just before <see cref="ShowDynamicValueConfig"/>
-    /// becomes true. The view uses this to populate and show the configuration dialog.
-    /// </summary>
-    public DynamicValueConfigViewModel? PendingDynamicConfig { get; private set; }
-
-    /// <summary>
-    /// Setting this to true signals the view to open the dynamic value config dialog.
-    /// The view resets it to false after the dialog closes.
-    /// </summary>
-    [ObservableProperty]
-    private bool _showDynamicValueConfig;
-
-    /// <summary>
-    /// Set to the mock data config ViewModel just before <see cref="ShowMockDataConfig"/>
-    /// becomes true.
+    /// The pending mock-data picker ViewModel. Non-null while <see cref="ShowMockDataConfig"/> is true.
     /// </summary>
     public MockDataConfigViewModel? PendingMockDataConfig { get; private set; }
 
     /// <summary>
-    /// Setting this to true signals the view to open the mock data picker dialog.
-    /// The view resets it to false after the dialog closes.
+    /// Setting this to true signals the view to open the mock-data picker dialog.
     /// </summary>
     [ObservableProperty]
     private bool _showMockDataConfig;
+
+    /// <summary>
+    /// The pending response-body config ViewModel. Non-null while <see cref="ShowResponseBodyConfig"/> is true.
+    /// </summary>
+    public DynamicValueConfigViewModel? PendingResponseBodyConfig { get; private set; }
+
+    /// <summary>
+    /// Setting this to true signals the view to open the response-body config dialog.
+    /// </summary>
+    [ObservableProperty]
+    private bool _showResponseBodyConfig;
 
     // ─── Constructor ─────────────────────────────────────────────────────────
 
@@ -328,88 +324,122 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     // ─── Dynamic variable config (dialog coordination) ────────────────────────
 
     /// <summary>
-    /// Opens the dynamic value configuration dialog for the given segment (null = new config).
-    /// Returns the configured segment if the user confirms, or null if cancelled.
-    /// Called from variable item ViewModels via their <c>EditDynamicSegmentCallback</c>.
+    /// Opens the mock-data picker for the given variable (null = new variable with default state).
+    /// Returns an updated EnvironmentVariable with the new mock-data config, or null if cancelled.
     /// </summary>
-    internal Task<DynamicValueSegment?> OpenDynamicValueConfigAsync(
-        DynamicValueSegment? existing,
+    internal Task<EnvironmentVariable?> OpenMockDataConfigAsync(EnvironmentVariable? existing)
+    {
+        _pendingMockDataTcs?.TrySetResult(null);
+
+        var mockDataSegment = existing?.VariableType == EnvironmentVariable.VariableTypes.MockData
+            ? new MockDataSegment
+              {
+                  Category = existing.MockDataCategory ?? "Internet",
+                  Field = existing.MockDataField ?? "Email",
+              }
+            : null;
+
+        PendingMockDataConfig = new MockDataConfigViewModel(mockDataSegment);
+
+        _pendingMockDataTcs = new TaskCompletionSource<EnvironmentVariable?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        ShowMockDataConfig = true;
+        return _pendingMockDataTcs.Task;
+    }
+
+    /// <summary>Called by the view's code-behind when the mock-data dialog closes.</summary>
+    internal void OnMockDataConfigDialogClosed()
+    {
+        ShowMockDataConfig = false;
+        EnvironmentVariable? result = null;
+        if (PendingMockDataConfig?.IsConfirmed == true && PendingMockDataConfig.ResultSegment is { } seg)
+        {
+            result = new EnvironmentVariable
+            {
+                Name = string.Empty, // caller sets the name
+                Value = string.Empty,
+                VariableType = EnvironmentVariable.VariableTypes.MockData,
+                MockDataCategory = seg.Category,
+                MockDataField = seg.Field,
+            };
+        }
+        _pendingMockDataTcs?.TrySetResult(result);
+        _pendingMockDataTcs = null;
+        PendingMockDataConfig = null;
+    }
+
+    /// <summary>
+    /// Opens the response-body config dialog for the given variable (null = new variable).
+    /// Returns an updated EnvironmentVariable with the new config, or null if cancelled.
+    /// </summary>
+    internal Task<EnvironmentVariable?> OpenResponseBodyConfigAsync(
+        EnvironmentVariable? existing,
         EnvironmentListItemViewModel? sourceEnv = null)
     {
-        _pendingDynamicConfigTcs?.TrySetResult(null);
+        _pendingResponseBodyTcs?.TrySetResult(null);
 
-        // Use the environment that actually owns the variable being edited.
-        // Falling back to SelectedEnvironment is a safety net; in practice
-        // the callback always supplies sourceEnv.
         var envItem = sourceEnv ?? SelectedEnvironment;
         var model = envItem?.BuildModel();
 
-        // Static variable values (used as the base for substitution before dynamic resolution).
         var staticVars = model?.Variables
-            .Where(v => !string.IsNullOrWhiteSpace(v.Name) && v.Segments is not { Count: > 0 })
+            .Where(v => !string.IsNullOrWhiteSpace(v.Name)
+                && v.VariableType == EnvironmentVariable.VariableTypes.Static)
             .ToDictionary(v => v.Name.Trim(), v => v.Value, StringComparer.Ordinal)
             ?? new Dictionary<string, string>();
 
-        PendingDynamicConfig = new DynamicValueConfigViewModel(
+        // Re-use DynamicValueConfigViewModel for the response-body picker dialog.
+        DynamicValueSegment? existingSegment = null;
+        if (existing?.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
+            && existing.ResponseRequestName is not null)
+        {
+            existingSegment = new DynamicValueSegment
+            {
+                RequestName = existing.ResponseRequestName,
+                Path = existing.ResponsePath ?? string.Empty,
+                Frequency = existing.ResponseFrequency,
+                ExpiresAfterSeconds = existing.ResponseExpiresAfterSeconds,
+            };
+        }
+
+        PendingResponseBodyConfig = new DynamicValueConfigViewModel(
             _dynamicEvaluator,
             _collectionFolderPath ?? string.Empty,
             envItem?.FilePath ?? string.Empty,
             _availableRequestNames,
             model?.Variables ?? [],
             staticVars,
-            existing);
+            existingSegment);
 
-        _pendingDynamicConfigTcs = new TaskCompletionSource<DynamicValueSegment?>(
+        _pendingResponseBodyTcs = new TaskCompletionSource<EnvironmentVariable?>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
-        ShowDynamicValueConfig = true;
-        return _pendingDynamicConfigTcs.Task;
+        ShowResponseBodyConfig = true;
+        return _pendingResponseBodyTcs.Task;
     }
 
-    /// <summary>
-    /// Called by the view's code-behind when the dialog closes.
-    /// Completes the pending TCS and resets the dialog-open flag.
-    /// </summary>
-    internal void OnDynamicConfigDialogClosed()
+    /// <summary>Called by the view's code-behind when the response-body config dialog closes.</summary>
+    internal void OnResponseBodyConfigDialogClosed()
     {
-        ShowDynamicValueConfig = false;
-        var result = PendingDynamicConfig?.IsConfirmed == true
-            ? PendingDynamicConfig.ResultSegment
-            : null;
-        _pendingDynamicConfigTcs?.TrySetResult(result);
-        _pendingDynamicConfigTcs = null;
-        PendingDynamicConfig = null;
-    }
-
-    /// <summary>
-    /// Opens the mock data picker dialog for the given segment (null = new segment).
-    /// Returns the configured segment if the user confirms, or null if cancelled.
-    /// </summary>
-    internal Task<MockDataSegment?> OpenMockDataConfigAsync(MockDataSegment? existing)
-    {
-        _pendingMockDataConfigTcs?.TrySetResult(null);
-
-        PendingMockDataConfig = new MockDataConfigViewModel(existing);
-
-        _pendingMockDataConfigTcs = new TaskCompletionSource<MockDataSegment?>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        ShowMockDataConfig = true;
-        return _pendingMockDataConfigTcs.Task;
-    }
-
-    /// <summary>
-    /// Called by the view's code-behind when the mock data dialog closes.
-    /// </summary>
-    internal void OnMockDataConfigDialogClosed()
-    {
-        ShowMockDataConfig = false;
-        var result = PendingMockDataConfig?.IsConfirmed == true
-            ? PendingMockDataConfig.ResultSegment
-            : null;
-        _pendingMockDataConfigTcs?.TrySetResult(result);
-        _pendingMockDataConfigTcs = null;
-        PendingMockDataConfig = null;
+        ShowResponseBodyConfig = false;
+        EnvironmentVariable? result = null;
+        if (PendingResponseBodyConfig?.IsConfirmed == true
+            && PendingResponseBodyConfig.ResultSegment is { } seg)
+        {
+            result = new EnvironmentVariable
+            {
+                Name = string.Empty, // caller sets the name
+                Value = string.Empty,
+                VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                ResponseRequestName = seg.RequestName,
+                ResponsePath = seg.Path,
+                ResponseFrequency = seg.Frequency,
+                ResponseExpiresAfterSeconds = seg.ExpiresAfterSeconds,
+            };
+        }
+        _pendingResponseBodyTcs?.TrySetResult(result);
+        _pendingResponseBodyTcs = null;
+        PendingResponseBodyConfig = null;
     }
 
     // ─── Private helpers ─────────────────────────────────────────────────────
@@ -509,10 +539,8 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             onCloneRequest: (i, ct) => CloneImmediateAsync(i, ct),
             isGlobal: isGlobal);
 
-        // Capture `item` so the dialog receives variables from this specific environment,
-        // not whatever is currently selected in the list.
-        item.EditDynamicSegmentCallback = seg => OpenDynamicValueConfigAsync(seg, item);
-        item.EditMockDataSegmentCallback = seg => OpenMockDataConfigAsync(seg);
+        item.EditMockDataCallback = v => OpenMockDataConfigAsync(v);
+        item.EditResponseBodyCallback = v => OpenResponseBodyConfigAsync(v, item);
         return item;
     }
 

@@ -27,4 +27,13 @@ public sealed class ImportedCollection
     /// Empty when the source format does not support environments or none were defined.
     /// </summary>
     public IReadOnlyList<ImportedEnvironment> Environments { get; init; } = [];
+
+    /// <summary>
+    /// Dynamic variables extracted from inline request-field tokens during import
+    /// (e.g. Insomnia <c>{% faker %}</c> or <c>{% response %}</c> tags found in URLs,
+    /// headers, or bodies). These are written to the collection's global environment so
+    /// that all requests reference them as <c>{{var-name}}</c> rather than embedding
+    /// raw template tags inline.
+    /// </summary>
+    public IReadOnlyList<ImportedDynamicVariable> GlobalDynamicVars { get; init; } = [];
 }

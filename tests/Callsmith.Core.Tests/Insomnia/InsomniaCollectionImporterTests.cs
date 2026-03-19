@@ -943,6 +943,9 @@ public sealed class InsomniaCollectionImporterTests : IDisposable
     public async Task ImportAsync_ImportsDynamicVariablesFromEnvironment()
     {
         // b64::JC50b2tlbg==::46b decodes to "$.token"
+        // Composite value: "AccessToken {% response ... %}" should be split into:
+        //   - a response-body dynamic var named after the path leaf ("token")
+        //   - a static var ("access-token") = "AccessToken {{token}}"
         const string yaml = """
             type: collection.insomnia.rest/5.0
             schema_version: "5.1"
@@ -973,24 +976,22 @@ public sealed class InsomniaCollectionImporterTests : IDisposable
         result.Environments.Should().HaveCount(1);
         var env = result.Environments[0];
 
-        // Static variable should be in the plain dict
+        // The plain static var survives unchanged.
         env.Variables.Should().ContainKey("static-key").WhoseValue.Should().Be("static-value");
-        env.Variables.Should().NotContainKey("access-token");
 
-        // Dynamic variable should be in DynamicVariables
+        // The composite var is stored as a static template referencing the extracted dynamic var.
+        env.Variables.Should().ContainKey("access-token")
+            .WhoseValue.Should().Be("AccessToken {{token}}");
+
+        // The response tag becomes a standalone dynamic var named after the JSONPath leaf.
         env.DynamicVariables.Should().HaveCount(1);
         var dv = env.DynamicVariables[0];
-        dv.Name.Should().Be("access-token");
-        dv.Segments.Should().HaveCount(2);
-
-        var staticSeg = dv.Segments[0].Should().BeOfType<StaticValueSegment>().Subject;
-        staticSeg.Text.Should().Be("AccessToken ");
-
-        var dynSeg = dv.Segments[1].Should().BeOfType<DynamicValueSegment>().Subject;
-        dynSeg.RequestName.Should().Be("Auth Request");
-        dynSeg.Path.Should().Be("$.token");
-        dynSeg.Frequency.Should().Be(DynamicFrequency.IfExpired);
-        dynSeg.ExpiresAfterSeconds.Should().Be(900);
+        dv.Name.Should().Be("token");
+        dv.IsResponseBody.Should().BeTrue();
+        dv.ResponseRequestName.Should().Be("Auth Request");
+        dv.ResponsePath.Should().Be("$.token");
+        dv.ResponseFrequency.Should().Be(DynamicFrequency.IfExpired);
+        dv.ResponseExpiresAfterSeconds.Should().Be(900);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

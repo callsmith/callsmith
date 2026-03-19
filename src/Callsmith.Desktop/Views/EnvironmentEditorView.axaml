@@ -437,8 +437,8 @@
               </TextBlock>
             </Border>
 
-            <!-- Column headers -->
-            <Grid ColumnDefinitions="*,*,Auto,Auto,28"
+            <!-- Column headers: Name(320) | Value(*) | Type(140) -->
+            <Grid ColumnDefinitions="320,*,140,28"
                   Margin="0,0,0,4">
               <TextBlock Grid.Column="0"
                          Text="NAME"
@@ -454,20 +454,19 @@
                          LetterSpacing="1"
                          Margin="6,0"/>
               <TextBlock Grid.Column="2"
-                         Text="SECRET"
+                         Text="TYPE"
                          Foreground="#666"
                          FontSize="10"
                          FontWeight="SemiBold"
                          LetterSpacing="1"
-                         HorizontalAlignment="Center"
-                         ToolTip.Tip="Secret variables are masked in the UI and excluded from history"
                          Margin="4,0"/>
             </Grid>
 
             <ItemsControl ItemsSource="{Binding SelectedEnvironment.Variables}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:EnvironmentVariableItemViewModel">
-                  <Grid ColumnDefinitions="*,*,Auto,Auto,28"
+                  <!-- Columns: Name(320) | Value(*) | Type(140) | Delete(28) -->
+                  <Grid ColumnDefinitions="320,*,140,28"
                         RowDefinitions="Auto,Auto"
                         Margin="0,2">
 
@@ -484,270 +483,132 @@
                              VerticalContentAlignment="Center"
                              FontFamily="Consolas,Menlo,monospace"/>
 
-                    <!-- Value (plain text when not secret or when revealed) -->
-                    <TextBox Grid.Row="0" Grid.Column="1"
-                             Text="{Binding Value}"
-                             Watermark="value"
-                             FontSize="12"
-                             Foreground="#d4d4d4"
-                             Background="#2d2d30"
-                             BorderBrush="#444"
-                             Padding="6,4"
-                             Margin="0,0,6,0"
-                             VerticalContentAlignment="Center"
-                             FontFamily="Consolas,Menlo,monospace"
-                             PasswordChar="•"
-                             RevealPassword="{Binding IsValueRevealed}"
-                             IsVisible="{Binding IsSecret}">
-                      <TextBox.ContextMenu>
-                        <ContextMenu>
-                          <MenuItem Header="Dynamic Value…"
-                                    Command="{Binding AddDynamicValueCommand}"
-                                    IsVisible="{Binding !HasSegments}"/>
-                          <MenuItem Header="Mock Data…"
-                                    Command="{Binding AddMockDataCommand}"
-                                    IsVisible="{Binding !HasSegments}"/>
-                        </ContextMenu>
-                      </TextBox.ContextMenu>
-                    </TextBox>
-
-                    <!-- Value (always-visible when not secret, no segments) -->
-                    <TextBox Grid.Row="0" Grid.Column="1"
-                             Text="{Binding Value}"
-                             Watermark="value"
-                             FontSize="12"
-                             Foreground="#d4d4d4"
-                             Background="#2d2d30"
-                             BorderBrush="#444"
-                             Padding="6,4"
-                             Margin="0,0,6,0"
-                             VerticalContentAlignment="Center"
-                             FontFamily="Consolas,Menlo,monospace"
-                             IsVisible="{Binding ShowPlainValueInput}">
-                      <TextBox.ContextMenu>
-                        <ContextMenu>
-                          <MenuItem Header="Dynamic Value…"
-                                    Command="{Binding AddDynamicValueCommand}"/>
-                          <MenuItem Header="Mock Data…"
-                                    Command="{Binding AddMockDataCommand}"/>
-                        </ContextMenu>
-                      </TextBox.ContextMenu>
-                    </TextBox>
-
-                    <!-- Dynamic segments pill view (when HasSegments is true) -->
-                    <Border Grid.Row="0" Grid.Column="1"
-                            Background="#2d2d30"
-                            BorderBrush="#4ec9b0"
-                            BorderThickness="1"
-                            CornerRadius="3"
-                            Padding="4,2"
-                            Margin="0,0,6,0"
-                            MinHeight="28"
-                            IsVisible="{Binding HasSegments}">
-                      <Border.ContextMenu>
-                        <ContextMenu>
-                          <MenuItem Header="Add Response Body Attribute…"
-                                    Command="{Binding AddDynamicValueCommand}"/>
-                          <MenuItem Header="Mock Data…"
-                                    Command="{Binding AddMockDataCommand}"/>
-                        </ContextMenu>
-                      </Border.ContextMenu>
-                      <Grid ColumnDefinitions="Auto,*">
-                      <ItemsControl Grid.Column="0" ItemsSource="{Binding DisplaySegments}">
-                        <ItemsControl.ItemsPanel>
-                          <ItemsPanelTemplate>
-                            <WrapPanel Orientation="Horizontal"/>
-                          </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                          <DataTemplate x:DataType="vm:EnvironmentVariableItemViewModel+SegmentDisplayItem">
-                            <StackPanel Orientation="Horizontal">
-
-                              <!-- Static text segment — inline editable -->
-                              <TextBox Text="{Binding StaticText, Mode=TwoWay}"
-                                       IsVisible="{Binding IsStatic}"
-                                       Foreground="#cccccc"
-                                       FontFamily="Consolas,Menlo,monospace"
-                                       FontSize="11"
-                                       VerticalAlignment="Center"
-                                       VerticalContentAlignment="Center"
-                                       Margin="2,1"
-                                       Background="Transparent"
-                                       BorderThickness="0"
-                                       Padding="2,1"
-                                       MinWidth="20"
-                                       Watermark="…">
-                                <TextBox.ContextMenu>
-                                  <ContextMenu>
-                                    <MenuItem Header="Add Response Body Attribute…"
-                                              Command="{Binding AddDynamicValueCommand}"/>
-                                    <MenuItem Header="Mock Data…"
-                                              Command="{Binding AddMockDataCommand}"/>
-                                  </ContextMenu>
-                                </TextBox.ContextMenu>
-                                <TextBox.Styles>
-                                  <!-- Suppress Fluent focus highlight inside pill container -->
-                                  <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
-                                    <Setter Property="BorderThickness" Value="0"/>
-                                    <Setter Property="Background" Value="Transparent"/>
-                                  </Style>
-                                </TextBox.Styles>
-                              </TextBox>
-
-                              <!-- Dynamic reference pill -->
-                              <Border Background="#1a3a2a"
-                                      BorderBrush="#2a6a4a"
-                                      BorderThickness="1"
-                                      CornerRadius="10"
-                                      Padding="6,2,2,2"
-                                      Margin="2,2"
-                                    IsVisible="{Binding IsDynamic}"
-                                    VerticalAlignment="Center">
-                              <StackPanel Orientation="Horizontal" Spacing="4">
-
-                                <!-- Pill label — click to edit -->
-                                <Button Content="{Binding PillLabel}"
-                                        Command="{Binding $parent[ItemsControl].((vm:EnvironmentVariableItemViewModel)DataContext).EditDynamicSegmentCommand}"
-                                        CommandParameter="{Binding DynamicSegment}"
-                                        Background="Transparent"
-                                        Foreground="#4ec9b0"
-                                        BorderThickness="0"
-                                        Padding="0"
-                                        FontFamily="Consolas,Menlo,monospace"
-                                        FontSize="11"
-                                        Cursor="Hand"
-                                        ToolTip.Tip="Click to edit dynamic reference"/>
-
-                                <!-- Remove pill -->
-                                <Button Content="×"
-                                        Command="{Binding $parent[ItemsControl].((vm:EnvironmentVariableItemViewModel)DataContext).RemoveDynamicSegmentCommand}"
-                                        CommandParameter="{Binding RawSegment}"
-                                        Background="Transparent"
-                                        Foreground="#888"
-                                        BorderThickness="0"
-                                        Padding="2,0"
-                                        FontSize="12"
-                                        Cursor="Hand"
-                                        ToolTip.Tip="Remove this dynamic reference"/>
-
-                              </StackPanel>
-                            </Border>
-
-                              <!-- Mock data pill -->
-                              <Border Background="#2a1a3a"
-                                      BorderBrush="#6a2a9a"
-                                      BorderThickness="1"
-                                      CornerRadius="10"
-                                      Padding="6,2,2,2"
-                                      Margin="2,2"
-                                      IsVisible="{Binding IsMockData}"
-                                      VerticalAlignment="Center">
-                              <StackPanel Orientation="Horizontal" Spacing="4">
-
-                                <!-- Pill label — click to edit -->
-                                <Button Content="{Binding PillLabel}"
-                                        Command="{Binding $parent[ItemsControl].((vm:EnvironmentVariableItemViewModel)DataContext).EditMockSegmentCommand}"
-                                        CommandParameter="{Binding MockDataSegment}"
-                                        Background="Transparent"
-                                        Foreground="#c586c0"
-                                        BorderThickness="0"
-                                        Padding="0"
-                                        FontFamily="Consolas,Menlo,monospace"
-                                        FontSize="11"
-                                        Cursor="Hand"
-                                        ToolTip.Tip="Click to change mock data generator"/>
-
-                                <!-- Remove pill -->
-                                <Button Content="×"
-                                        Command="{Binding $parent[ItemsControl].((vm:EnvironmentVariableItemViewModel)DataContext).RemoveDynamicSegmentCommand}"
-                                        CommandParameter="{Binding RawSegment}"
-                                        Background="Transparent"
-                                        Foreground="#888"
-                                        BorderThickness="0"
-                                        Padding="2,0"
-                                        FontSize="12"
-                                        Cursor="Hand"
-                                        ToolTip.Tip="Remove this mock data generator"/>
-
-                              </StackPanel>
-                            </Border>
-
-                            </StackPanel>
-                          </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                      </ItemsControl>
-
-                      <!-- Trailing free-form input — fills remaining space after the last pill, hidden when last segment is static -->
-                      <TextBox Grid.Column="1"
-                               IsVisible="{Binding HasTrailingInput}"
-                               Text="{Binding TrailingText, Mode=TwoWay}"
-                               Foreground="#cccccc"
-                               FontFamily="Consolas,Menlo,monospace"
-                               FontSize="11"
-                               VerticalAlignment="Center"
+                    <!-- Value: static plain — text input with inline lock toggle -->
+                    <Grid Grid.Row="0" Grid.Column="1"
+                          ColumnDefinitions="*,Auto"
+                          IsVisible="{Binding IsStaticNotSecret}"
+                          Margin="0,0,6,0">
+                      <TextBox Grid.Column="0"
+                               Text="{Binding Value}"
+                               Watermark="value"
+                               FontSize="12"
+                               Foreground="#d4d4d4"
+                               Background="#2d2d30"
+                               BorderBrush="#444"
+                               Padding="6,4"
                                VerticalContentAlignment="Center"
-                               Background="Transparent"
-                               BorderThickness="0"
-                               Padding="2,1"
-                               HorizontalAlignment="Stretch">
-                        <TextBox.ContextMenu>
-                          <ContextMenu>
-                            <MenuItem Header="Add Response Body Attribute…"
-                                      Command="{Binding AddDynamicValueCommand}"/>
-                            <MenuItem Header="Mock Data…"
-                                      Command="{Binding AddMockDataCommand}"/>
-                          </ContextMenu>
-                        </TextBox.ContextMenu>
-                        <TextBox.Styles>
-                          <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
-                            <Setter Property="BorderThickness" Value="0"/>
-                            <Setter Property="Background" Value="Transparent"/>
-                          </Style>
-                        </TextBox.Styles>
-                      </TextBox>
-                      </Grid>
-                    </Border>
+                               FontFamily="Consolas,Menlo,monospace"/>
+                      <ToggleButton Grid.Column="1"
+                                    IsChecked="{Binding IsSecret}"
+                                    Width="28" Height="26"
+                                    Background="Transparent"
+                                    BorderBrush="#444"
+                                    BorderThickness="1"
+                                    CornerRadius="3"
+                                    Margin="4,0,0,0"
+                                    ToolTip.Tip="Mark as secret — masks the value in the UI">
+                        <TextBlock Text="🔒" FontSize="11"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                      </ToggleButton>
+                    </Grid>
 
-                    <!-- Secret toggle -->
-                    <ToggleButton Grid.Row="0" Grid.Column="2"
-                                  IsChecked="{Binding IsSecret}"
-                                  Width="32" Height="26"
-                                  Background="Transparent"
-                                  BorderBrush="#444"
-                                  BorderThickness="1"
-                                  CornerRadius="3"
-                                  Margin="0,0,4,0"
-                                  ToolTip.Tip="Mark as secret — masks the value in the UI">
-                      <TextBlock Text="🔒"
-                                 FontSize="11"
-                                 HorizontalAlignment="Center"
-                                 VerticalAlignment="Center"/>
-                    </ToggleButton>
+                    <!-- Value: static secret — masked input with inline lock toggle -->
+                    <Grid Grid.Row="0" Grid.Column="1"
+                          ColumnDefinitions="*,Auto"
+                          IsVisible="{Binding IsStaticAndSecret}"
+                          Margin="0,0,6,0">
+                      <TextBox Grid.Column="0"
+                               Text="{Binding Value}"
+                               Watermark="value"
+                               FontSize="12"
+                               Foreground="#d4d4d4"
+                               Background="#2d2d30"
+                               BorderBrush="#444"
+                               Padding="6,4"
+                               VerticalContentAlignment="Center"
+                               FontFamily="Consolas,Menlo,monospace"
+                               PasswordChar="•"
+                               RevealPassword="{Binding IsValueRevealed}"/>
+                      <ToggleButton Grid.Column="1"
+                                    IsChecked="{Binding IsSecret}"
+                                    Width="28" Height="26"
+                                    Background="Transparent"
+                                    BorderBrush="#444"
+                                    BorderThickness="1"
+                                    CornerRadius="3"
+                                    Margin="4,0,0,0"
+                                    ToolTip.Tip="Click to reveal and unlock the value">
+                        <TextBlock Text="🔒" FontSize="11"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                      </ToggleButton>
+                    </Grid>
 
-                    <!-- Reveal toggle (only meaningful when IsSecret) -->
-                    <ToggleButton Grid.Row="0" Grid.Column="3"
-                                  IsChecked="{Binding IsValueRevealed}"
-                                  Width="32" Height="26"
-                                  Background="Transparent"
-                                  BorderBrush="#444"
-                                  BorderThickness="1"
-                                  CornerRadius="3"
-                                  Margin="0,0,4,0"
-                                  IsVisible="{Binding IsSecret}"
-                                  ToolTip.Tip="Reveal / hide value">
-                      <TextBlock Text="👁"
-                                 FontSize="11"
-                                 HorizontalAlignment="Center"
-                                 VerticalAlignment="Center"/>
-                    </ToggleButton>
+                    <!-- Value: mock-data type — configure button + summary -->
+                    <StackPanel Grid.Row="0" Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                IsVisible="{Binding IsMockData}"
+                                VerticalAlignment="Center"
+                                Margin="6,0,6,0">
+                      <Button Content="Configure…"
+                              Command="{Binding OpenMockDataConfigCommand}"
+                              Background="#3a3a3a"
+                              Foreground="#c586c0"
+                              BorderBrush="#555"
+                              BorderThickness="1"
+                              CornerRadius="3"
+                              Padding="8,3"
+                              FontSize="11"
+                              Cursor="Hand"
+                              VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding MockDataSummary}"
+                                 Foreground="#c586c0"
+                                 FontSize="12"
+                                 FontFamily="Consolas,Menlo,monospace"
+                                 VerticalAlignment="Center"
+                                 TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
 
-                    <!-- Placeholder for reveal column when not secret -->
-                    <Border Grid.Row="0" Grid.Column="3"
-                            Width="36"
-                            IsVisible="{Binding !IsSecret}"/>
+                    <!-- Value: response-body type — configure button + "name → path" summary -->
+                    <StackPanel Grid.Row="0" Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                IsVisible="{Binding IsResponseBody}"
+                                VerticalAlignment="Center"
+                                Margin="6,0,6,0">
+                      <Button Content="Configure…"
+                              Command="{Binding OpenResponseBodyConfigCommand}"
+                              Background="#3a3a3a"
+                              Foreground="#4ec9b0"
+                              BorderBrush="#555"
+                              BorderThickness="1"
+                              CornerRadius="3"
+                              Padding="8,3"
+                              FontSize="11"
+                              Cursor="Hand"
+                              VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding ResponseBodySummary}"
+                                 Foreground="#4ec9b0"
+                                 FontSize="12"
+                                 FontFamily="Consolas,Menlo,monospace"
+                                 VerticalAlignment="Center"
+                                 TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+
+                    <!-- Type dropdown -->
+                    <ComboBox Grid.Row="0" Grid.Column="2"
+                              ItemsSource="{x:Static vm:EnvironmentVariableItemViewModel.VariableTypeOptions}"
+                              SelectedItem="{Binding VariableTypeDisplay}"
+                              HorizontalAlignment="Stretch"
+                              FontSize="11"
+                              Margin="0,0,6,0"
+                              VerticalAlignment="Center"
+                              ToolTip.Tip="Variable type"/>
 
                     <!-- Delete -->
-                    <Button Grid.Row="0" Grid.Column="4"
+                    <Button Grid.Row="0" Grid.Column="3"
                             Content="×"
                             Command="{Binding DeleteCommand}"
                             Background="Transparent"
@@ -759,27 +620,27 @@
                             HorizontalAlignment="Center"
                             ToolTip.Tip="Remove variable"/>
 
-                    <!-- Preview row — shown when the value contains {{VAR}} references -->
-                    <Border Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3"
+                    <!-- Preview row — shown when a static value contains {{VAR}} references -->
+                    <Border Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
                             IsVisible="{Binding HasPreview}"
-                            Background="#1a1a1a"
+                            Background="#1e1e1e"
                             BorderBrush="#3a3a3a"
                             BorderThickness="0,1,0,0"
-                            Padding="4,3"
+                            Padding="0,3"
                             Margin="0,0,0,4">
                       <Grid ColumnDefinitions="Auto,*">
                         <TextBlock Grid.Column="0"
                                    Text="PREVIEW"
                                    Foreground="#5a5a5a"
-                                   FontSize="9"
+                                   FontSize="10"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center"
-                                   Margin="0,0,8,0"/>
+                                   Margin="8,0,8,0"/>
                         <TextBlock Grid.Column="1"
                                    Text="{Binding PreviewValue}"
-                                   Foreground="#888888"
+                                   Foreground="#888"
+                                   FontSize="12"
                                    FontFamily="Consolas,Menlo,monospace"
-                                   FontSize="11"
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"/>
                       </Grid>

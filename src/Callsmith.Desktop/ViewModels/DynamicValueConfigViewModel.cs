@@ -136,19 +136,32 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
         {
             var segment = BuildSegment();
 
-            // Resolve all dynamic variables in the environment first so that the target
-            // request can use other dynamic values (e.g. an access-token variable) in its
-            // headers, auth, or body.  Never/IfExpired hits the cache; Always re-executes.
+            // Resolve all dynamic variables in the environment first.
             IReadOnlyDictionary<string, string> resolvedVars = _staticVariables;
-            if (_allVariables.Any(v => v.Segments is { Count: > 0 }))
+            if (_allVariables.Any(v =>
+                v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
+                || v.VariableType == EnvironmentVariable.VariableTypes.Dynamic))
             {
-                resolvedVars = await _evaluator
+                var resolved = await _evaluator
                     .ResolveAsync(_collectionFolderPath, _environmentFilePath, _allVariables, _staticVariables, ct)
                     .ConfigureAwait(true);
+                resolvedVars = resolved.Variables;
             }
 
+            // Build a temporary response-body variable to preview via the evaluator.
+            var previewVar = new EnvironmentVariable
+            {
+                Name = "__preview__",
+                Value = string.Empty,
+                VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                ResponseRequestName = segment.RequestName,
+                ResponsePath = segment.Path,
+                ResponseFrequency = segment.Frequency,
+                ResponseExpiresAfterSeconds = segment.ExpiresAfterSeconds,
+            };
+
             var result = await _evaluator
-                .PreviewAsync(_collectionFolderPath, segment, resolvedVars, ct)
+                .PreviewResponseBodyAsync(_collectionFolderPath, previewVar, resolvedVars, ct)
                 .ConfigureAwait(true);
 
             if (result is null)

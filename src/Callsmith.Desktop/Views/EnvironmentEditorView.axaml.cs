@@ -45,11 +45,11 @@ public partial class EnvironmentEditorView : UserControl
 
     private async void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(EnvironmentEditorViewModel.ShowDynamicValueConfig))
+        if (e.PropertyName == nameof(EnvironmentEditorViewModel.ShowResponseBodyConfig))
         {
-            if (_trackedVm is null || !_trackedVm.ShowDynamicValueConfig)
+            if (_trackedVm is null || !_trackedVm.ShowResponseBodyConfig)
                 return;
-            if (_trackedVm.PendingDynamicConfig is null)
+            if (_trackedVm.PendingResponseBodyConfig is null)
                 return;
 
             var owner = TopLevel.GetTopLevel(this) as Window;
@@ -57,11 +57,11 @@ public partial class EnvironmentEditorView : UserControl
 
             var dialog = new DynamicValueConfigDialog
             {
-                DataContext = _trackedVm.PendingDynamicConfig,
+                DataContext = _trackedVm.PendingResponseBodyConfig,
             };
 
             await dialog.ShowDialog(owner);
-            _trackedVm.OnDynamicConfigDialogClosed();
+            _trackedVm.OnResponseBodyConfigDialogClosed();
         }
         else if (e.PropertyName == nameof(EnvironmentEditorViewModel.ShowMockDataConfig))
         {

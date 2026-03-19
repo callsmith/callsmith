@@ -20,25 +20,12 @@ public partial class RequestView : UserControl
         base.OnDataContextChanged(e);
 
         if (_trackedVm is not null)
-        {
             _trackedVm.PropertyChanged -= OnViewModelPropertyChanged;
-            _trackedVm.InsertTextAtBodyCaret -= OnInsertTextAtBodyCaret;
-        }
 
         _trackedVm = DataContext as RequestTabViewModel;
 
         if (_trackedVm is not null)
-        {
             _trackedVm.PropertyChanged += OnViewModelPropertyChanged;
-            _trackedVm.InsertTextAtBodyCaret += OnInsertTextAtBodyCaret;
-        }
-    }
-
-    private void OnInsertTextAtBodyCaret(string text)
-    {
-        var offset = BodyEditor.CaretOffset;
-        BodyEditor.Document.Insert(offset, text);
-        BodyEditor.CaretOffset = offset + text.Length;
     }
 
     private async void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
