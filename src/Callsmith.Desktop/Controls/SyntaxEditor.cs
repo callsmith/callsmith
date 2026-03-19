@@ -27,9 +27,9 @@ public sealed class SyntaxEditor : TextEditor
 
     static SyntaxEditor()
     {
-        _jsonHighlighting = LoadXshd("avares://Callsmith.Desktop/Highlighting/DarkJson.xshd");
-        _xmlHighlighting  = LoadXshd("avares://Callsmith.Desktop/Highlighting/DarkXml.xshd");
-        _textHighlighting = LoadXshd("avares://Callsmith.Desktop/Highlighting/DarkText.xshd");
+        _jsonHighlighting = LoadXshd("avares://Callsmith/Highlighting/DarkJson.xshd");
+        _xmlHighlighting  = LoadXshd("avares://Callsmith/Highlighting/DarkXml.xshd");
+        _textHighlighting = LoadXshd("avares://Callsmith/Highlighting/DarkText.xshd");
     }
 
     private static IHighlightingDefinition? LoadXshd(string uri)
