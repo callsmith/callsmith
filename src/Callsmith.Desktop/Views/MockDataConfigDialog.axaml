@@ -136,7 +136,7 @@
                    IsVisible="{Binding PreviewValue, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
 
         <Button Grid.Column="2"
-                Content="↺ Regenerate"
+                Content="↺ Refresh Preview"
                 Command="{Binding RegenerateCommand}"
                 Background="#2a1a3a"
                 Foreground="#c586c0"

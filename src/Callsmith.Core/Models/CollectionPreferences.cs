@@ -24,4 +24,11 @@ public sealed class CollectionPreferences
     /// Null when there was no active saved tab.
     /// </summary>
     public string? ActiveTabPath { get; init; }
+
+    /// <summary>
+    /// Relative paths (from the collection folder root) of folders that are expanded
+    /// in the sidebar tree. Null means the preference was never saved and the default
+    /// (all folders expanded) applies. An empty list means all folders are collapsed.
+    /// </summary>
+    public IReadOnlyList<string>? ExpandedFolderPaths { get; init; }
 }

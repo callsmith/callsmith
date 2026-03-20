@@ -282,7 +282,7 @@ public sealed class BrunoCollectionService : ICollectionService
             throw new DirectoryNotFoundException($"Folder not found: '{folderPath}'");
 
         ct.ThrowIfCancellationRequested();
-        Directory.Delete(folderPath, recursive: true);
+        FileSystemHelper.DeleteDirectoryRobust(folderPath);
         _logger.LogDebug("Deleted Bruno folder '{FolderPath}'", folderPath);
         return Task.CompletedTask;
     }

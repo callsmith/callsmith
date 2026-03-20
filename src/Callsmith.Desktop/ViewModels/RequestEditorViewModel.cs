@@ -374,6 +374,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
                 LastActiveEnvironmentFile = current.LastActiveEnvironmentFile,
                 OpenTabPaths = tabPaths.Count > 0 ? tabPaths.AsReadOnly() : null,
                 ActiveTabPath = activePath,
+                ExpandedFolderPaths = current.ExpandedFolderPaths,
             }).ConfigureAwait(false);
         }
         catch (Exception ex)

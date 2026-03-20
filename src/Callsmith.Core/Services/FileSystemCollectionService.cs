@@ -297,7 +297,7 @@ public sealed class FileSystemCollectionService : ICollectionService
             throw new DirectoryNotFoundException($"Folder not found: '{folderPath}'");
 
         ct.ThrowIfCancellationRequested();
-        Directory.Delete(folderPath, recursive: true);
+        FileSystemHelper.DeleteDirectoryRobust(folderPath);
         _logger.LogDebug("Deleted folder '{FolderPath}'", folderPath);
 
         return Task.CompletedTask;

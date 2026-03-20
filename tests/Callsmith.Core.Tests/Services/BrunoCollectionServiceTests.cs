@@ -399,6 +399,46 @@ public sealed class BrunoCollectionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task DeleteFolderAsync_WhenFolderPathIsNull_ThrowsArgumentNullException()
+    {
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            () => _sut.DeleteFolderAsync(null!));
+    }
+
+    [Fact]
+    public async Task DeleteFolderAsync_WhenFolderDoesNotExist_ThrowsDirectoryNotFoundException()
+    {
+        await Assert.ThrowsAsync<DirectoryNotFoundException>(
+            () => _sut.DeleteFolderAsync(Path.Combine(_root, "ghost")));
+    }
+
+    [Fact]
+    public async Task DeleteFolderAsync_DeletesFolderAndAllContentsRecursively()
+    {
+        var sub = Path.Combine(_root, "sub-to-delete");
+        Directory.CreateDirectory(sub);
+        WriteFile(Path.Combine("sub-to-delete", "req.bru"),
+            BruFile("req", "get", "https://example.com", seq: 1));
+
+        await _sut.DeleteFolderAsync(sub);
+
+        Assert.False(Directory.Exists(sub));
+    }
+
+    [Fact]
+    public async Task DeleteFolderAsync_WhenCancelled_ThrowsOperationCanceledException()
+    {
+        var sub = Path.Combine(_root, "cancel-sub");
+        Directory.CreateDirectory(sub);
+        var ct = new CancellationToken(canceled: true);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => _sut.DeleteFolderAsync(sub, ct));
+
+        Assert.True(Directory.Exists(sub)); // folder was NOT deleted
+    }
+
+    [Fact]
     public async Task CreateFolderAsync_CreatesDirectoryWithFolderBru()
     {
         var folder = await _sut.CreateFolderAsync(_root, "MyFolder");

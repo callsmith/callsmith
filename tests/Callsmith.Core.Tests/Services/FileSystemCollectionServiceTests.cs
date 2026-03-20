@@ -374,6 +374,52 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
     }
 
     // -------------------------------------------------------------------------
+    // DeleteFolderAsync
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task DeleteFolderAsync_WhenFolderPathIsNull_ThrowsArgumentNullException()
+    {
+        var act = () => _sut.DeleteFolderAsync(null!);
+
+        await act.Should().ThrowAsync<ArgumentNullException>();
+    }
+
+    [Fact]
+    public async Task DeleteFolderAsync_WhenFolderDoesNotExist_ThrowsDirectoryNotFoundException()
+    {
+        var act = () => _sut.DeleteFolderAsync(Path.Combine(_temp.Path, "ghost"));
+
+        await act.Should().ThrowAsync<DirectoryNotFoundException>();
+    }
+
+    [Fact]
+    public async Task DeleteFolderAsync_DeletesFolderAndAllContentsRecursively()
+    {
+        var folder = _temp.CreateSubDirectory("to-delete");
+        var sub = Path.Combine(folder, "sub");
+        Directory.CreateDirectory(sub);
+        WriteRequestFile(folder, "req-root");
+        WriteRequestFile(sub, "req-sub");
+
+        await _sut.DeleteFolderAsync(folder);
+
+        Directory.Exists(folder).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task DeleteFolderAsync_WhenCancelled_ThrowsOperationCanceledException()
+    {
+        var folder = _temp.CreateSubDirectory("col");
+        var ct = new CancellationToken(canceled: true);
+
+        var act = () => _sut.DeleteFolderAsync(folder, ct);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        Directory.Exists(folder).Should().BeTrue(); // folder was NOT deleted
+    }
+
+    // -------------------------------------------------------------------------
     // RenameRequestAsync
     // -------------------------------------------------------------------------
 

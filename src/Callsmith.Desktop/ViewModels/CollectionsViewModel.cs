@@ -26,7 +26,11 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     private readonly ICollectionService _collectionService;
     private readonly IRecentCollectionsService _recentCollectionsService;
     private readonly ICollectionImportService _importService;
+    private readonly ICollectionPreferencesService _preferencesService;
     private readonly ILogger<CollectionsViewModel> _logger;
+
+    // Cancels any in-flight LoadCollectionAsync when a newer one starts.
+    private CancellationTokenSource? _loadCts;
 
     // -------------------------------------------------------------------------
     // Active request tracking
@@ -121,6 +125,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         ICollectionService collectionService,
         IRecentCollectionsService recentCollectionsService,
         ICollectionImportService importService,
+        ICollectionPreferencesService preferencesService,
         IMessenger messenger,
         ILogger<CollectionsViewModel> logger)
         : base(messenger)
@@ -128,9 +133,11 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         ArgumentNullException.ThrowIfNull(collectionService);
         ArgumentNullException.ThrowIfNull(recentCollectionsService);
         ArgumentNullException.ThrowIfNull(importService);
+        ArgumentNullException.ThrowIfNull(preferencesService);
         _collectionService = collectionService;
         _recentCollectionsService = recentCollectionsService;
         _importService = importService;
+        _preferencesService = preferencesService;
         _logger = logger;
         IsActive = true;
 
@@ -571,9 +578,38 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
 
     private async Task LoadCollectionAsync(string path, bool retainExpansion = false)
     {
-        var expandedPaths = retainExpansion ? CollectExpandedFolderPaths(TreeRoots) : null;
+        // Cancel any in-flight load so stale results cannot overwrite UI state.
+        _loadCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _loadCts = cts;
 
-        var root = await _collectionService.OpenFolderAsync(path);
+        // For a tree refresh: capture current in-memory expansion state.
+        // For a fresh open: restore from persisted preferences.
+        HashSet<string>? expandedPaths;
+        if (retainExpansion)
+        {
+            expandedPaths = CollectExpandedFolderPaths(TreeRoots);
+        }
+        else
+        {
+            CollectionPreferences prefs;
+            try { prefs = await _preferencesService.LoadAsync(path, cts.Token); }
+            catch (OperationCanceledException) { return; }
+
+            // Null means "never saved" — default to all collapsed.
+            // An empty list also means all collapsed (user explicitly closed everything).
+            expandedPaths = (prefs.ExpandedFolderPaths ?? [])
+                .Select(r => Path.GetFullPath(Path.Combine(path, r)))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        CollectionFolder root;
+        try { root = await _collectionService.OpenFolderAsync(path, cts.Token); }
+        catch (OperationCanceledException) { return; }
+
+        // A newer load has already started — silently abandon this one.
+        if (cts.IsCancellationRequested) return;
+
         CollectionPath = path;
         HasCollection = true;
         IsBrunoCollection = BrunoDetector.IsBrunoCollection(path);
@@ -601,6 +637,16 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         _ = UpdateRecentCollectionsAfterPushAsync(path);
 
         StartWatcher(path);
+
+        // Subscribe to IsExpanded changes so future expand/collapse is persisted.
+        SubscribeToExpansionChanges(rootNode);
+
+        // After a tree rebuild (delete/rename/watcher refresh) the in-memory expansion
+        // state is already correct but the prefs file may still reference stale paths
+        // (e.g. a just-deleted folder). Flush the clean state now so the file is always
+        // accurate, even if the user closes the app before touching the tree again.
+        if (retainExpansion)
+            _ = PersistExpandedStateAsync();
     }
 
     private void ApplyActiveState()
@@ -685,6 +731,76 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         }
 
         return null;
+    }
+
+    // -------------------------------------------------------------------------
+    // Expansion state persistence
+    // -------------------------------------------------------------------------
+
+    // Cleanup actions for event handlers wired to the current tree's nodes.
+    // Cleared and re-populated each time the tree is rebuilt.
+    private readonly List<Action> _expansionCleanups = [];
+
+    /// <summary>
+    /// Walks <paramref name="root"/> and subscribes to <c>IsExpanded</c> changes on
+    /// every folder node (and to <c>Children.CollectionChanged</c> so newly-added
+    /// sub-folders are also covered). Old subscriptions are unregistered first.
+    /// </summary>
+    private void SubscribeToExpansionChanges(CollectionTreeItemViewModel root)
+    {
+        foreach (var cleanup in _expansionCleanups)
+            cleanup();
+        _expansionCleanups.Clear();
+        SubscribeRecursive(root);
+    }
+
+    private void SubscribeRecursive(CollectionTreeItemViewModel node)
+    {
+        if (!node.IsFolder) return;
+
+        void PropHandler(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(CollectionTreeItemViewModel.IsExpanded))
+                _ = PersistExpandedStateAsync();
+        }
+        node.PropertyChanged += PropHandler;
+        _expansionCleanups.Add(() => node.PropertyChanged -= PropHandler);
+
+        void ChildHandler(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            if (e.NewItems is null) return;
+            foreach (CollectionTreeItemViewModel newChild in e.NewItems)
+                SubscribeRecursive(newChild);
+        }
+        node.Children.CollectionChanged += ChildHandler;
+        _expansionCleanups.Add(() => node.Children.CollectionChanged -= ChildHandler);
+
+        foreach (var child in node.Children)
+            SubscribeRecursive(child);
+    }
+
+    private async Task PersistExpandedStateAsync()
+    {
+        if (string.IsNullOrEmpty(CollectionPath)) return;
+        try
+        {
+            var collectionPath = CollectionPath;
+            var expandedRelative = CollectExpandedFolderPaths(TreeRoots)
+                .Select(abs => Path.GetRelativePath(collectionPath, abs))
+                .ToList();
+
+            await _preferencesService.UpdateAsync(collectionPath, current => new()
+            {
+                LastActiveEnvironmentFile = current.LastActiveEnvironmentFile,
+                OpenTabPaths = current.OpenTabPaths,
+                ActiveTabPath = current.ActiveTabPath,
+                ExpandedFolderPaths = expandedRelative.AsReadOnly(),
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist expanded state for '{Path}'", CollectionPath);
+        }
     }
 
     /// <summary>

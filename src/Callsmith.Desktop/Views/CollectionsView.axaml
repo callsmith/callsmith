@@ -16,6 +16,11 @@
     <Style Selector="TreeViewItem">
       <Setter Property="Padding" Value="4,2"/>
     </Style>
+    <!-- Two-way IsExpanded sync — keeps CollectionTreeItemViewModel.IsExpanded in
+         step with the TreeViewItem UI control so expansion state can be persisted. -->
+    <Style Selector="TreeViewItem" x:DataType="vm:CollectionTreeItemViewModel">
+      <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+    </Style>
 
     <!-- Tree node label: default appearance -->
     <Style Selector="TextBlock.tree-icon">

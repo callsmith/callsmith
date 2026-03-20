@@ -258,6 +258,7 @@ public sealed partial class EnvironmentViewModel : ObservableRecipient,
                 LastActiveEnvironmentFile = relativeFilePath,
                 OpenTabPaths = current.OpenTabPaths,
                 ActiveTabPath = current.ActiveTabPath,
+                ExpandedFolderPaths = current.ExpandedFolderPaths,
             }).ConfigureAwait(false);
         }
         catch (Exception ex)
