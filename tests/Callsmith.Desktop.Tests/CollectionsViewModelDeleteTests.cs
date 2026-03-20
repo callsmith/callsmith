@@ -31,7 +31,7 @@ public sealed class CollectionsViewModelDeleteTests
           .Returns(new CollectionFolder { Name = "root", FolderPath = FakeCollectionPath, Requests = [], SubFolders = [] });
 
         var recent = Substitute.For<IRecentCollectionsService>();
-        recent.GetRecentAsync(Arg.Any<CancellationToken>()).Returns([]);
+        recent.LoadAsync(Arg.Any<CancellationToken>()).Returns([]);
 
         var import = Substitute.For<ICollectionImportService>();
 
