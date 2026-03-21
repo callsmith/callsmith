@@ -79,6 +79,24 @@ public sealed class SyntaxEditor : TextEditor
         set => SetValue(LanguageProperty, value);
     }
 
+    // ── Env var autocomplete ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Environment variable suggestions for <c>{{…}}</c> autocomplete.
+    /// Bind to the active environment variable list to enable inline completion.
+    /// An empty or null list disables the feature.
+    /// </summary>
+    public static readonly StyledProperty<IReadOnlyList<EnvVarSuggestion>?> SuggestionsProperty =
+        AvaloniaProperty.Register<SyntaxEditor, IReadOnlyList<EnvVarSuggestion>?>(nameof(Suggestions));
+
+    public IReadOnlyList<EnvVarSuggestion>? Suggestions
+    {
+        get => GetValue(SuggestionsProperty);
+        set => SetValue(SuggestionsProperty, value);
+    }
+
+    private SyntaxEditorCompletionHandler? _completionHandler;
+
     // ── Constructor ────────────────────────────────────────────────────────
 
     public SyntaxEditor()
@@ -138,6 +156,11 @@ public sealed class SyntaxEditor : TextEditor
             SyntaxHighlighting = ResolveHighlighting(lang);
             _xmlFoldingStrategy = lang?.ToLowerInvariant() == "xml" ? new XmlFoldingStrategy() : null;
             UpdateFoldings();
+        }
+        else if (change.Property == SuggestionsProperty)
+        {
+            var handler = _completionHandler ??= new SyntaxEditorCompletionHandler(this);
+            handler.UpdateSuggestions(change.GetNewValue<IReadOnlyList<EnvVarSuggestion>?>() ?? []);
         }
     }
 

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
+using Callsmith.Desktop.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
@@ -254,6 +255,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
             Variables.Add(CreateVariableItem(v));
         // Reset dirty flag — initial population of rows from disk is not a user change.
         IsDirty = false;
+        RebuildSuggestions();
     }
 
     private EnvironmentVariableItemViewModel CreateVariableItem(EnvironmentVariable variable)
@@ -404,5 +406,23 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         IsDirty = true;
         foreach (var v in Variables)
             v.NotifyPreviewChanged();
+        RebuildSuggestions();
+    }
+
+    /// <summary>
+    /// Rebuilds the autocomplete suggestion list from all current static variable names
+    /// and pushes it to every row. Called when variables are loaded or changed.
+    /// </summary>
+    private void RebuildSuggestions()
+    {
+        var suggestions = Variables
+            .Where(v => !string.IsNullOrWhiteSpace(v.Name) && v.IsStatic)
+            .Select(v => new EnvVarSuggestion(
+                v.Name.Trim(),
+                v.IsSecret ? "\u2022\u2022\u2022\u2022\u2022" : (v.Value ?? string.Empty)))
+            .ToList();
+
+        foreach (var v in Variables)
+            v.SuggestionNames = suggestions;
     }
 }
