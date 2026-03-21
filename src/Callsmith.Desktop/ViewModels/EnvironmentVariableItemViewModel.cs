@@ -1,5 +1,6 @@
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
+using Callsmith.Desktop.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -44,6 +45,15 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isValueRevealed;
+
+    // ── Environment variable autocomplete suggestions ─────────────────────────
+
+    /// <summary>
+    /// Variable suggestions offered by the active environment. Bound to
+    /// <c>controls:EnvVarCompletion.Suggestions</c> on the value TextBox.
+    /// </summary>
+    [ObservableProperty]
+    private IReadOnlyList<EnvVarSuggestion> _suggestionNames = [];
 
     // ── Mock-data properties ─────────────────────────────────────────────────
 

@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Callsmith.Desktop.ViewModels"
              xmlns:conv="using:Callsmith.Desktop.Converters"
+             xmlns:controls="using:Callsmith.Desktop.Controls"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
@@ -524,7 +525,8 @@
                                BorderBrush="#444"
                                Padding="6,4"
                                VerticalContentAlignment="Center"
-                               FontFamily="Consolas,Menlo,monospace"/>
+                               FontFamily="Consolas,Menlo,monospace"
+                               controls:EnvVarCompletion.Suggestions="{Binding SuggestionNames}"/>
                       <ToggleButton Grid.Column="1"
                                     IsChecked="{Binding IsSecret}"
                                     Width="28" Height="26"
@@ -556,7 +558,8 @@
                                VerticalContentAlignment="Center"
                                FontFamily="Consolas,Menlo,monospace"
                                PasswordChar="•"
-                               RevealPassword="{Binding IsValueRevealed}"/>
+                               RevealPassword="{Binding IsValueRevealed}"
+                               controls:EnvVarCompletion.Suggestions="{Binding SuggestionNames}"/>
                       <ToggleButton Grid.Column="1"
                                     IsChecked="{Binding IsSecret}"
                                     Width="28" Height="26"

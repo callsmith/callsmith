@@ -166,7 +166,8 @@
               </StackPanel>
               <controls:SyntaxEditor x:Name="BodyEditor" Grid.Row="1"
                        Text="{Binding Body}" Language="{Binding BodyLanguage}"
-                       IsVisible="{Binding ShowTextBodyEditor}"/>
+                       IsVisible="{Binding ShowTextBodyEditor}"
+                       Suggestions="{Binding EnvVarNames}"/>
               <Panel Grid.Row="1" IsVisible="{Binding ShowFormBodyEditor}">
                 <views:KeyValueEditorView DataContext="{Binding FormParams}"/>
               </Panel>
@@ -218,7 +219,8 @@
                               <TextBox Text="{Binding StaticText, Mode=TwoWay}" IsVisible="{Binding IsStatic}"
                                        Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
                                        VerticalAlignment="Center" VerticalContentAlignment="Center"
-                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"/>
+                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"
+                                       controls:EnvVarCompletion.Suggestions="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).EnvVarNames}"/>
                               <Border Background="#1a3a2a" BorderBrush="#2a6a4a" BorderThickness="1"
                                       CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
                                       IsVisible="{Binding IsDynamic}" VerticalAlignment="Center">
@@ -258,7 +260,8 @@
                       <TextBox Grid.Column="1" IsVisible="{Binding AuthTokenField.HasTrailingInput}"
                                Text="{Binding AuthTokenField.TrailingText, Mode=TwoWay}"
                                Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
-                               Background="Transparent" BorderThickness="0" Padding="2,1" HorizontalAlignment="Stretch"/>
+                               Background="Transparent" BorderThickness="0" Padding="2,1" HorizontalAlignment="Stretch"
+                               controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
                     </Grid>
                   </Border>
                 </StackPanel>
@@ -296,7 +299,8 @@
                               <TextBox Text="{Binding StaticText, Mode=TwoWay}" IsVisible="{Binding IsStatic}"
                                        Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
                                        VerticalAlignment="Center" VerticalContentAlignment="Center"
-                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"/>
+                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"
+                                       controls:EnvVarCompletion.Suggestions="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).EnvVarNames}"/>
                               <Border Background="#1a3a2a" BorderBrush="#2a6a4a" BorderThickness="1"
                                       CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
                                       IsVisible="{Binding IsDynamic}" VerticalAlignment="Center">
@@ -336,7 +340,8 @@
                       <TextBox Grid.Column="1" IsVisible="{Binding AuthUsernameField.HasTrailingInput}"
                                Text="{Binding AuthUsernameField.TrailingText, Mode=TwoWay}"
                                Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
-                               Background="Transparent" BorderThickness="0" Padding="2,1" HorizontalAlignment="Stretch"/>
+                               Background="Transparent" BorderThickness="0" Padding="2,1" HorizontalAlignment="Stretch"
+                               controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
                     </Grid>
                   </Border>
 
@@ -406,7 +411,8 @@
                               <TextBox Text="{Binding StaticText, Mode=TwoWay}" IsVisible="{Binding IsStatic}"
                                        Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
                                        VerticalAlignment="Center" VerticalContentAlignment="Center"
-                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"/>
+                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"
+                                       controls:EnvVarCompletion.Suggestions="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).EnvVarNames}"/>
                               <Border Background="#1a3a2a" BorderBrush="#2a6a4a" BorderThickness="1"
                                       CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
                                       IsVisible="{Binding IsDynamic}" VerticalAlignment="Center">
@@ -446,7 +452,8 @@
                       <TextBox Grid.Column="1" IsVisible="{Binding AuthPasswordField.HasTrailingInput}"
                                Text="{Binding AuthPasswordField.TrailingText, Mode=TwoWay}"
                                Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
-                               Background="Transparent" BorderThickness="0" Padding="2,1" HorizontalAlignment="Stretch"/>
+                               Background="Transparent" BorderThickness="0" Padding="2,1" HorizontalAlignment="Stretch"
+                               controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
                     </Grid>
                   </Border>
                 </StackPanel>
@@ -484,7 +491,8 @@
                               <TextBox Text="{Binding StaticText, Mode=TwoWay}" IsVisible="{Binding IsStatic}"
                                        Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
                                        VerticalAlignment="Center" VerticalContentAlignment="Center"
-                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"/>
+                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"
+                                       controls:EnvVarCompletion.Suggestions="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).EnvVarNames}"/>
                               <Border Background="#1a3a2a" BorderBrush="#2a6a4a" BorderThickness="1"
                                       CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
                                       IsVisible="{Binding IsDynamic}" VerticalAlignment="Center">
@@ -524,7 +532,8 @@
                       <TextBox Grid.Column="1" IsVisible="{Binding AuthApiKeyNameField.HasTrailingInput}"
                                Text="{Binding AuthApiKeyNameField.TrailingText, Mode=TwoWay}"
                                Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
-                               Background="Transparent" BorderThickness="0" Padding="2,1" HorizontalAlignment="Stretch"/>
+                               Background="Transparent" BorderThickness="0" Padding="2,1" HorizontalAlignment="Stretch"
+                               controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
                     </Grid>
                   </Border>
                   <TextBlock Text="Key value" Foreground="#888" FontSize="11"/>
@@ -562,7 +571,8 @@
                               <TextBox Text="{Binding StaticText, Mode=TwoWay}" IsVisible="{Binding IsStatic}"
                                        Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
                                        VerticalAlignment="Center" VerticalContentAlignment="Center"
-                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"/>
+                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"
+                                       controls:EnvVarCompletion.Suggestions="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).EnvVarNames}"/>
                               <Border Background="#1a3a2a" BorderBrush="#2a6a4a" BorderThickness="1"
                                       CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
                                       IsVisible="{Binding IsDynamic}" VerticalAlignment="Center">
@@ -602,7 +612,8 @@
                       <TextBox Grid.Column="1" IsVisible="{Binding AuthApiKeyValueField.HasTrailingInput}"
                                Text="{Binding AuthApiKeyValueField.TrailingText, Mode=TwoWay}"
                                Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
-                               Background="Transparent" BorderThickness="0" Padding="2,1" HorizontalAlignment="Stretch"/>
+                               Background="Transparent" BorderThickness="0" Padding="2,1" HorizontalAlignment="Stretch"
+                               controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
                     </Grid>
                   </Border>
                   <TextBlock Text="Add to" Foreground="#888" FontSize="11"/>

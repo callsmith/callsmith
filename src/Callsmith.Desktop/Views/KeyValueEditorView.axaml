@@ -121,7 +121,8 @@
                                      BorderThickness="0"
                                      Padding="2,1"
                                      MinWidth="20"
-                                     Watermark="…">
+                                     Watermark="…"
+                                     controls:EnvVarCompletion.Suggestions="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).SuggestionNames}">
                               <TextBox.ContextMenu>
                                 <ContextMenu>
                                   <MenuItem Header="Dynamic Value…" Command="{Binding AddDynamicValueCommand}"/>
@@ -188,7 +189,8 @@
                              Background="Transparent"
                              BorderThickness="0"
                              Padding="2,1"
-                             HorizontalAlignment="Stretch">
+                             HorizontalAlignment="Stretch"
+                             controls:EnvVarCompletion.Suggestions="{Binding SuggestionNames}">
                       <TextBox.ContextMenu>
                         <ContextMenu>
                           <MenuItem Header="Dynamic Value…" Command="{Binding KeyField.AddDynamicValueCommand}"/>
@@ -274,7 +276,8 @@
                                      BorderThickness="0"
                                      Padding="2,1"
                                      MinWidth="20"
-                                     Watermark="…">
+                                     Watermark="…"
+                                     controls:EnvVarCompletion.Suggestions="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).SuggestionNames}">
                               <TextBox.ContextMenu>
                                 <ContextMenu>
                                   <MenuItem Header="Dynamic Value…"
@@ -376,7 +379,8 @@
                              Background="Transparent"
                              BorderThickness="0"
                              Padding="2,1"
-                             HorizontalAlignment="Stretch">
+                             HorizontalAlignment="Stretch"
+                             controls:EnvVarCompletion.Suggestions="{Binding SuggestionNames}">
                       <TextBox.ContextMenu>
                         <ContextMenu>
                           <MenuItem Header="Dynamic Value…"
