@@ -81,6 +81,11 @@ public interface ICollectionService
     Task DeleteFolderAsync(string folderPath, CancellationToken ct = default);
 
     /// <summary>
+    /// Moves a request file into another folder.
+    /// </summary>
+    Task<CollectionRequest> MoveRequestAsync(string filePath, string destinationFolderPath, CancellationToken ct = default);
+
+    /// <summary>
     /// Persists the display order for items inside a folder by writing a <c>_order.json</c> file.
     /// <paramref name="orderedNames"/> should list every item's entry name in the desired display order:
     /// filenames (including <c>.callsmith</c> extension) for requests, and directory names for sub-folders.

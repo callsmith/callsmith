@@ -195,6 +195,53 @@ public sealed class FileSystemCollectionService : ICollectionService
     }
 
     /// <inheritdoc/>
+    public async Task<CollectionRequest> MoveRequestAsync(
+        string filePath,
+        string destinationFolderPath,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(filePath);
+        ArgumentNullException.ThrowIfNull(destinationFolderPath);
+
+        if (!File.Exists(filePath))
+            throw new FileNotFoundException($"Request file not found: '{filePath}'", filePath);
+
+        var request = await LoadRequestAsync(filePath, ct).ConfigureAwait(false);
+
+        var destinationDirectory = destinationFolderPath;
+        Directory.CreateDirectory(destinationDirectory);
+
+        var fileName = Path.GetFileName(filePath);
+        var destinationFilePath = Path.Combine(destinationDirectory, fileName);
+
+        if (File.Exists(destinationFilePath))
+            throw new InvalidOperationException($"A request named '{fileName}' already exists in destination folder.");
+
+        ct.ThrowIfCancellationRequested();
+        File.Move(filePath, destinationFilePath);
+
+        var movedRequest = new CollectionRequest
+        {
+            FilePath = destinationFilePath,
+            Name = request.Name,
+            Method = request.Method,
+            Url = request.Url,
+            Description = request.Description,
+            Headers = request.Headers,
+            PathParams = request.PathParams,
+            QueryParams = request.QueryParams,
+            BodyType = request.BodyType,
+            Body = request.Body,
+            FormParams = request.FormParams,
+            Auth = request.Auth,
+        };
+
+        _logger.LogDebug("Moved request '{OldPath}' → '{NewPath}'", filePath, destinationFilePath);
+
+        return movedRequest;
+    }
+
+    /// <inheritdoc/>
     public async Task<CollectionRequest> CreateRequestAsync(
         string folderPath, string name, CancellationToken ct = default)
     {

@@ -20,7 +20,9 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     IRecipient<EnvironmentChangedMessage>,
     IRecipient<GlobalEnvironmentChangedMessage>,
     IRecipient<CollectionItemDeletedMessage>,
-    IRecipient<CollectionOpenedMessage>
+    IRecipient<CollectionOpenedMessage>,
+    IRecipient<RequestRenamedMessage>,
+    IRecipient<RequestSavedMessage>
 {
     private readonly ITransportRegistry _transportRegistry;
     private readonly ICollectionService _collectionService;
@@ -196,6 +198,35 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         _collectionPath = message.Value;
         _ = UpdateAvailableFoldersAsync(message.Value);
         _ = RestoreTabsAsync(message.Value);
+    }
+
+    /// <summary>
+    /// Called when a request is renamed. Finds any open tab for that request and updates
+    /// its _sourceRequest to reflect the new name and file path. This ensures:
+    /// - Tab title reflects the new name
+    /// - Session persistence stores the new file path
+    /// - Dynamic variable cache keys use the current request name
+    /// </summary>
+    public void Receive(RequestRenamedMessage message)
+    {
+        var tab = Tabs.FirstOrDefault(t =>
+            !string.IsNullOrEmpty(t.SourceFilePath) &&
+            string.Equals(t.SourceFilePath, message.OldFilePath, StringComparison.OrdinalIgnoreCase));
+
+        if (tab is not null)
+        {
+            tab.UpdateSourceRequest(message.Renamed);
+            _ = PersistTabsAsync();
+        }
+    }
+
+    /// <summary>
+    /// Called when a request is saved. Persists the current tab state to ensure
+    /// newly saved tabs are included in session restoration.
+    /// </summary>
+    public void Receive(RequestSavedMessage message)
+    {
+        _ = PersistTabsAsync();
     }
 
     // -------------------------------------------------------------------------

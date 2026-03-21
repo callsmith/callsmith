@@ -42,7 +42,6 @@ public sealed class FileSystemBrunoCollectionMetaService : IBrunoCollectionMetaS
     {
         ArgumentNullException.ThrowIfNull(logger);
         _logger = logger;
-        Directory.CreateDirectory(storeDirectory);
         _storeDirectory = storeDirectory;
     }
 
@@ -82,6 +81,7 @@ public sealed class FileSystemBrunoCollectionMetaService : IBrunoCollectionMetaS
 
         try
         {
+            Directory.CreateDirectory(_storeDirectory);
             await using var stream = File.Open(path, FileMode.Create, FileAccess.Write);
             await JsonSerializer.SerializeAsync(stream, meta, JsonOptions, ct).ConfigureAwait(false);
         }

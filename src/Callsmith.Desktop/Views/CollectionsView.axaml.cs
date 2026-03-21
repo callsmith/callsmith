@@ -12,6 +12,7 @@ namespace Callsmith.Desktop.Views;
 public partial class CollectionsView : UserControl
 {
     private CollectionTreeItemViewModel? _draggedNode;
+    private CollectionTreeItemViewModel? _dropTargetFolder;
     private Point _dragStartPoint;
     private bool _isDragging;
     private const double DragThreshold = 6.0;
@@ -217,6 +218,25 @@ public partial class CollectionsView : UserControl
         var targetTvi = hit?.FindAncestorOfType<TreeViewItem>(includeSelf: true);
         if (targetTvi?.DataContext is not CollectionTreeItemViewModel targetNode) return;
         if (targetNode == _draggedNode) return;
+
+        if (!_draggedNode.IsFolder)
+        {
+            CollectionTreeItemViewModel? candidateFolder = null;
+
+            if (targetNode.IsFolder || targetNode.IsRoot)
+                candidateFolder = targetNode;
+            else
+                candidateFolder = targetNode.Parent;
+
+            if (candidateFolder is not null && candidateFolder != _draggedNode.Parent)
+            {
+                _dropTargetFolder = candidateFolder;
+                return;
+            }
+
+            _dropTargetFolder = null;
+        }
+
         if (targetNode.Parent != _draggedNode.Parent) return; // restrict to siblings
         if (targetNode.IsRoot) return;
 
@@ -237,12 +257,24 @@ public partial class CollectionsView : UserControl
             _ = vm.MoveItemAsync(_draggedNode, targetIndex);
     }
 
-    private void OnTreePointerReleased(object? sender, PointerReleasedEventArgs e)
-        => EndDrag(e.Pointer);
+    private async void OnTreePointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_draggedNode is not null && _dropTargetFolder is not null && DataContext is CollectionsViewModel vm)
+        {
+            if (!_draggedNode.IsFolder && _draggedNode.Parent != _dropTargetFolder)
+            {
+                await vm.MoveRequestToFolderAsync(_draggedNode, _dropTargetFolder);
+            }
+        }
+
+        _dropTargetFolder = null;
+        EndDrag(e.Pointer);
+    }
 
     private void OnTreePointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
     {
         _draggedNode = null;
+        _dropTargetFolder = null;
         _isDragging = false;
         CollectionTree.Cursor = Cursor.Default;
     }

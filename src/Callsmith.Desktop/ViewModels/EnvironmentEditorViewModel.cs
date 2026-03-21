@@ -117,6 +117,9 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     public IEnumerable<EnvironmentListItemViewModel> GlobalPreviewEnvironments =>
         Environments.Where(e => !e.IsGlobal);
 
+    /// <summary>True when there are non-global environments available for preview selection.</summary>
+    public bool HasGlobalPreviewEnvironments => GlobalPreviewEnvironments.Any();
+
     // ─── Constructor ─────────────────────────────────────────────────────────
 
     public EnvironmentEditorViewModel(
@@ -139,7 +142,10 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
         // Re-expose GlobalPreviewEnvironments whenever the Environments list changes
         // (collection is initially empty; environments load asynchronously on open).
-        Environments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(GlobalPreviewEnvironments));
+        Environments.CollectionChanged += (_, _) => {
+            OnPropertyChanged(nameof(GlobalPreviewEnvironments));
+            OnPropertyChanged(nameof(HasGlobalPreviewEnvironments));
+        };
     }
 
     // ─── Commands ────────────────────────────────────────────────────────────

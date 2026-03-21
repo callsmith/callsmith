@@ -636,6 +636,18 @@ public sealed partial class RequestTabViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Updates the source request metadata after a rename.
+    /// This ensures the tab title, session persistence, and dynamic cache all
+    /// reflect the new request name and file path.
+    /// </summary>
+    internal void UpdateSourceRequest(CollectionRequest updated)
+    {
+        _sourceRequest = updated;
+        RequestName = updated.Name;
+        OnPropertyChanged(nameof(SourceFilePath));
+    }
+
     /// <summary>Updates the active environment for variable substitution.</summary>
     public void SetEnvironment(EnvironmentModel? environment)
     {

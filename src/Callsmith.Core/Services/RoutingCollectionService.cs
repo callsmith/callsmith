@@ -70,6 +70,9 @@ public sealed class RoutingCollectionService : ICollectionService
     public Task<CollectionRequest> RenameRequestAsync(string filePath, string newName, CancellationToken ct = default) =>
         ServiceForFile(filePath).RenameRequestAsync(filePath, newName, ct);
 
+    public Task<CollectionRequest> MoveRequestAsync(string filePath, string destinationFolderPath, CancellationToken ct = default) =>
+        ServiceForFile(filePath).MoveRequestAsync(filePath, destinationFolderPath, ct);
+
     // ─────────────────────────────────────────────────────────────────────────
     //  Create operations — route by folder context
     // ─────────────────────────────────────────────────────────────────────────

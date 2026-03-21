@@ -446,12 +446,13 @@
                              VerticalAlignment="Center"/>
                   <ComboBox ItemsSource="{Binding GlobalPreviewEnvironments}"
                             SelectedItem="{Binding SelectedGlobalPreviewEnvironment, Mode=TwoWay}"
-                            PlaceholderText="First environment"
+                            PlaceholderText="(no environment)"
                             MinWidth="160"
                             FontSize="11"
                             Background="#1e2e1e"
                             Foreground="#cccccc"
                             BorderBrush="#2a5a3a"
+                            IsEnabled="{Binding HasGlobalPreviewEnvironments}"
                             ToolTip.Tip="All global dynamic variable previews are resolved using this environment's static variables (e.g. baseUrl, credentials).">
                     <ComboBox.ItemTemplate>
                       <DataTemplate x:DataType="vm:EnvironmentListItemViewModel">

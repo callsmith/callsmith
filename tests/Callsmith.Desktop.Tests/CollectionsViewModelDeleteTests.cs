@@ -241,7 +241,38 @@ public sealed class CollectionsViewModelDeleteTests
 
         root.Children.Should().NotContain(folder);
     }
+    [Fact]
+    public async Task MoveRequestToFolderAsync_CallsCollectionServiceAndReloadsTree()
+    {
+        var cs = Substitute.For<ICollectionService>();
+        cs.OpenFolderAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+          .Returns(new CollectionFolder
+          {
+              Name = "root",
+              FolderPath = FakeCollectionPath,
+              Requests = [],
+              SubFolders = [],
+          });
 
+        var sut = BuildSut(cs);
+        sut.CollectionPath = FakeCollectionPath;
+
+        var (root, folder, request) = BuildTree();
+
+        cs.MoveRequestAsync(request.Request!.FilePath, root.FolderPath, Arg.Any<CancellationToken>())
+          .Returns(new CollectionRequest
+          {
+              FilePath = Path.Combine(root.FolderPath, "login.callsmith"),
+              Name = "login",
+              Method = System.Net.Http.HttpMethod.Post,
+              Url = "https://example.com/auth/login",
+          });
+
+        await sut.MoveRequestToFolderAsync(request, root);
+
+        await cs.Received(1).MoveRequestAsync(request.Request.FilePath, root.FolderPath, Arg.Any<CancellationToken>());
+        sut.TreeRoots.Should().NotBeEmpty();
+    }
     [Fact]
     public async Task ConfirmDelete_FolderNode_SendsMessageWithTrailingSeparator()
     {

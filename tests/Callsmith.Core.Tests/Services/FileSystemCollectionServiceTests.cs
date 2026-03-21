@@ -490,6 +490,47 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
         File.Exists(result.FilePath).Should().BeTrue();
     }
 
+    [Fact]
+    public async Task MoveRequestAsync_WhenDestinationFolderDoesNotExist_MovesFile()
+    {
+        var source = _temp.CreateSubDirectory("col");
+        var destination = Path.Combine(_temp.Path, "col", "target");
+        var filePath = WriteRequestFile(source, "req", url: "https://example.com");
+
+        var moved = await _sut.MoveRequestAsync(filePath, destination);
+
+        moved.Name.Should().Be("req");
+        moved.FilePath.Should().StartWith(destination);
+        File.Exists(filePath).Should().BeFalse();
+        File.Exists(moved.FilePath).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task MoveRequestAsync_WhenDestinationAlreadyHasFile_ThrowsInvalidOperationException()
+    {
+        var source = _temp.CreateSubDirectory("col");
+        var destination = Path.Combine(_temp.Path, "col", "target");
+        Directory.CreateDirectory(destination);
+
+        var sourceFile = WriteRequestFile(source, "req");
+        WriteRequestFile(destination, "req");
+
+        var act = () => _sut.MoveRequestAsync(sourceFile, destination);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task MoveRequestAsync_WhenFileDoesNotExist_ThrowsFileNotFoundException()
+    {
+        var source = Path.Combine(_temp.Path, "col", "missing.callsmith");
+        var destination = Path.Combine(_temp.Path, "col", "target");
+
+        var act = () => _sut.MoveRequestAsync(source, destination);
+
+        await act.Should().ThrowAsync<FileNotFoundException>();
+    }
+
     // -------------------------------------------------------------------------
     // SaveRequestAsync / LoadRequestAsync — new fields (QueryParams, Auth)
     // -------------------------------------------------------------------------

@@ -375,6 +375,43 @@ public sealed class BrunoCollectionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task MoveRequestAsync_WhenDestinationFolderDoesNotExist_MovesFile()
+    {
+        var destination = Path.Combine(_root, "other");
+        WriteFile("req.bru", BruFile("req", "get", "https://example.com", seq: 1));
+        var sourcePath = Path.Combine(_root, "req.bru");
+
+        var moved = await _sut.MoveRequestAsync(sourcePath, destination);
+
+        Assert.Equal("req", moved.Name);
+        Assert.Equal(Path.Combine(destination, "req.bru"), moved.FilePath);
+        Assert.False(File.Exists(sourcePath));
+        Assert.True(File.Exists(moved.FilePath));
+    }
+
+    [Fact]
+    public async Task MoveRequestAsync_WhenDestinationAlreadyHasFile_ThrowsInvalidOperationException()
+    {
+        var destination = Path.Combine(_root, "other");
+        Directory.CreateDirectory(destination);
+        WriteFile("req.bru", BruFile("req", "get", "https://example.com", seq: 1));
+        WriteFile("other/req.bru", BruFile("req", "get", "https://example.com", seq: 1));
+
+        var sourcePath = Path.Combine(_root, "req.bru");
+        var act = () => _sut.MoveRequestAsync(sourcePath, destination);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(act);
+    }
+
+    [Fact]
+    public async Task MoveRequestAsync_WhenFileDoesNotExist_ThrowsFileNotFoundException()
+    {
+        var act = () => _sut.MoveRequestAsync(Path.Combine(_root, "missing.bru"), Path.Combine(_root, "other"));
+
+        await Assert.ThrowsAsync<FileNotFoundException>(act);
+    }
+
+    [Fact]
     public async Task CreateRequestAsync_WritesValidBruFile()
     {
         var created = await _sut.CreateRequestAsync(_root, "Brand New");

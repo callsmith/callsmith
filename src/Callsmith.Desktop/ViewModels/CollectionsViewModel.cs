@@ -357,8 +357,13 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
             {
                 if (!node.IsFolder)
                 {
-                    var updated = await _collectionService.RenameRequestAsync(node.Request!.FilePath, newName);
+                    var oldFilePath = node.Request!.FilePath;
+                    var updated = await _collectionService.RenameRequestAsync(oldFilePath, newName);
                     node.ApplyRename(newName, updated);
+                    
+                    // Notify open tabs of the rename so they can update their state,
+                    // session persistence, and dynamic cache keys.
+                    Messenger.Send(new RequestRenamedMessage(oldFilePath, updated));
                 }
                 else
                 {
@@ -545,6 +550,43 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to save folder order for '{Path}'", parent.FolderPath);
+        }
+        finally
+        {
+            _suppressWatcher = false;
+        }
+    }
+
+    /// <summary>
+    /// Moves a request to another folder by updating the underlying file and
+    /// refreshing the tree from disk, while preserving expanded folders.
+    /// </summary>
+    public async Task MoveRequestToFolderAsync(
+        CollectionTreeItemViewModel requestNode,
+        CollectionTreeItemViewModel destinationFolder)
+    {
+        if (requestNode is null || destinationFolder is null) return;
+        if (requestNode.IsRoot || requestNode.IsFolder) return;
+        if (requestNode.Request is null) return;
+        if (string.IsNullOrEmpty(destinationFolder.FolderPath)) return;
+
+        var sourceFolderPath = requestNode.Parent?.FolderPath;
+        if (string.IsNullOrEmpty(sourceFolderPath)) return;
+
+        if (string.Equals(sourceFolderPath, destinationFolder.FolderPath, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _suppressWatcher = true;
+        try
+        {
+            await _collectionService.MoveRequestAsync(requestNode.Request.FilePath, destinationFolder.FolderPath);
+
+            if (HasCollection)
+                await LoadCollectionAsync(CollectionPath, retainExpansion: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to move request '{Path}' to '{Destination}'", requestNode.Request.FilePath, destinationFolder.FolderPath);
         }
         finally
         {

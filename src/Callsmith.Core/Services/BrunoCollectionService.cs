@@ -181,6 +181,38 @@ public sealed class BrunoCollectionService : ICollectionService
         return existing;
     }
 
+    public async Task<CollectionRequest> MoveRequestAsync(
+        string filePath,
+        string destinationFolderPath,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(filePath);
+        ArgumentNullException.ThrowIfNull(destinationFolderPath);
+
+        if (!File.Exists(filePath))
+            throw new FileNotFoundException($"Request file not found: '{filePath}'", filePath);
+
+        var request = await LoadRequestAsync(filePath, ct).ConfigureAwait(false);
+
+        var destinationDirectory = destinationFolderPath;
+        Directory.CreateDirectory(destinationDirectory);
+
+        var fileName = Path.GetFileName(filePath);
+        var destinationFilePath = Path.Combine(destinationDirectory, fileName);
+
+        if (File.Exists(destinationFilePath))
+            throw new InvalidOperationException($"A request named '{fileName}' already exists in destination folder.");
+
+        ct.ThrowIfCancellationRequested();
+        File.Move(filePath, destinationFilePath);
+
+        var moved = await LoadRequestAsync(destinationFilePath, ct).ConfigureAwait(false);
+
+        _logger.LogDebug("Moved Bruno request '{OldPath}' → '{NewPath}'", filePath, destinationFilePath);
+
+        return moved;
+    }
+
     public async Task<CollectionRequest> CreateRequestAsync(
         string folderPath, string name, CancellationToken ct = default)
     {
