@@ -579,7 +579,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
 
         // Compute the ordered entry names from the updated children list.
         var orderedNames = parent.Children
-            .Select(c => c.IsFolder ? c.Name : Path.GetFileName(c.Request!.FilePath))
+            .Select(c => c.IsFolder ? c.Name : Path.GetFileName(c.Request!.FilePath.Replace('\\', '/')))
             .ToList();
 
         _suppressWatcher = true;
@@ -623,9 +623,9 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
 
         // Build the ordered name list for the destination folder, inserting the
         // moved request at the exact slot the drop indicator showed.
-        var requestFileName = Path.GetFileName(requestNode.Request.FilePath);
+        var requestFileName = Path.GetFileName(requestNode.Request.FilePath.Replace('\\', '/'));
         var destNames = destinationFolder.Children
-            .Select(c => c.IsFolder ? c.Name : Path.GetFileName(c.Request!.FilePath))
+            .Select(c => c.IsFolder ? c.Name : Path.GetFileName(c.Request!.FilePath.Replace('\\', '/')))
             .ToList();
         if (insertAtIndex >= 0 && insertAtIndex <= destNames.Count)
             destNames.Insert(insertAtIndex, requestFileName);
