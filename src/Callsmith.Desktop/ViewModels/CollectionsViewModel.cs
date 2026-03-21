@@ -1,4 +1,4 @@
-using Avalonia.Platform.Storage;
+﻿using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Bruno;
@@ -299,7 +299,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     [RelayCommand]
     private void ToggleRecentPanel() => IsRecentPanelOpen = !IsRecentPanelOpen;
 
-    /// <summary>Opens a request node — called directly from the sidebar on every click.</summary>
+    /// <summary>Opens a request node â€” called directly from the sidebar on every click.</summary>
     [RelayCommand]
     public async Task OpenRequest(CollectionTreeItemViewModel node)
     {
@@ -367,8 +367,48 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
                 }
                 else
                 {
-                    var updated = await _collectionService.RenameFolderAsync(node.FolderPath!, newName);
+                    var oldFolderPath = node.FolderPath!;
+                    var updated = await _collectionService.RenameFolderAsync(oldFolderPath, newName);
                     node.ApplyFolderRename(newName, updated.FolderPath);
+                    
+                    // Persist the updated expanded state so the new folder path is saved
+                    // (old path will no longer be expanded in preferences).
+                    await PersistExpandedStateAsync().ConfigureAwait(true);
+                    
+                    // When a folder is renamed, all requests under it are affected.
+                    // Collect all affected requests and send rename messages for each.
+                    var affectedRequests = node.GetAllRequestsUnder().ToList();
+                    foreach (var requestNode in affectedRequests)
+                    {
+                        if (requestNode.Request is null) continue;
+                        
+                        // Compute old file path (before rename).
+                        var oldRequestFilePath = requestNode.Request.FilePath;
+                        
+                        // Compute new file path: replace the old folder path prefix with the new one.
+                        var newRequestFilePath = oldRequestFilePath.Replace(oldFolderPath, updated.FolderPath, StringComparison.OrdinalIgnoreCase);
+                        
+                        // Create updated request with new file path.
+                        var updatedRequest = new CollectionRequest
+                        {
+                            FilePath = newRequestFilePath,
+                            Name = requestNode.Request.Name,
+                            Method = requestNode.Request.Method,
+                            Url = requestNode.Request.Url,
+                            Description = requestNode.Request.Description,
+                            Headers = requestNode.Request.Headers,
+                            BodyType = requestNode.Request.BodyType,
+                            Body = requestNode.Request.Body,
+                            QueryParams = requestNode.Request.QueryParams,
+                            PathParams = requestNode.Request.PathParams,
+                            Auth = requestNode.Request.Auth,
+                            FormParams = requestNode.Request.FormParams,
+                        };
+                        requestNode.UpdateRequest(updatedRequest);
+                        
+                        // Notify open tabs and environment variables of the rename.
+                        Messenger.Send(new RequestRenamedMessage(oldRequestFilePath, updatedRequest));
+                    }
                 }
             }
             catch (Exception ex)
@@ -496,13 +536,13 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
             }
 
             // Reload the tree to guarantee disk/UI consistency.
-            // This also restarts the watcher via LoadCollectionAsync → StartWatcher.
+            // This also restarts the watcher via LoadCollectionAsync â†’ StartWatcher.
             if (HasCollection)
                 await LoadCollectionAsync(CollectionPath, retainExpansion: true);
         }
         catch (Exception ex)
         {
-            // Deletion failed — node stays in tree; restart watcher.
+            // Deletion failed â€” node stays in tree; restart watcher.
             _logger.LogWarning(ex, "Failed to delete node '{Name}'", node.Name);
             if (HasCollection)
                 StartWatcher(CollectionPath);
@@ -561,9 +601,14 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     /// Moves a request to another folder by updating the underlying file and
     /// refreshing the tree from disk, while preserving expanded folders.
     /// </summary>
+    /// <param name="insertAtIndex">
+    /// Zero-based index at which to insert the request in the destination folder's child order.
+    /// Pass -1 to append at the end (e.g., when dropping directly onto a folder icon).
+    /// </param>
     public async Task MoveRequestToFolderAsync(
         CollectionTreeItemViewModel requestNode,
-        CollectionTreeItemViewModel destinationFolder)
+        CollectionTreeItemViewModel destinationFolder,
+        int insertAtIndex = -1)
     {
         if (requestNode is null || destinationFolder is null) return;
         if (requestNode.IsRoot || requestNode.IsFolder) return;
@@ -576,12 +621,24 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         if (string.Equals(sourceFolderPath, destinationFolder.FolderPath, StringComparison.OrdinalIgnoreCase))
             return;
 
+        // Build the ordered name list for the destination folder, inserting the
+        // moved request at the exact slot the drop indicator showed.
+        var requestFileName = Path.GetFileName(requestNode.Request.FilePath);
+        var destNames = destinationFolder.Children
+            .Select(c => c.IsFolder ? c.Name : Path.GetFileName(c.Request!.FilePath))
+            .ToList();
+        if (insertAtIndex >= 0 && insertAtIndex <= destNames.Count)
+            destNames.Insert(insertAtIndex, requestFileName);
+        else
+            destNames.Add(requestFileName);
+
         _suppressWatcher = true;
         try
         {
             await _collectionService.MoveRequestAsync(requestNode.Request.FilePath, destinationFolder.FolderPath);
+            await _collectionService.SaveFolderOrderAsync(destinationFolder.FolderPath, destNames);
 
-            if (HasCollection)
+            if (!string.IsNullOrEmpty(CollectionPath))
                 await LoadCollectionAsync(CollectionPath, retainExpansion: true);
         }
         catch (Exception ex)
@@ -593,6 +650,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
             _suppressWatcher = false;
         }
     }
+
 
     // -------------------------------------------------------------------------
     // Recently-opened collections
@@ -638,7 +696,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
             try { prefs = await _preferencesService.LoadAsync(path, cts.Token); }
             catch (OperationCanceledException) { return; }
 
-            // Null means "never saved" — default to all collapsed.
+            // Null means "never saved" â€” default to all collapsed.
             // An empty list also means all collapsed (user explicitly closed everything).
             expandedPaths = (prefs.ExpandedFolderPaths ?? [])
                 .Select(r => Path.GetFullPath(Path.Combine(path, r)))
@@ -649,7 +707,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         try { root = await _collectionService.OpenFolderAsync(path, cts.Token); }
         catch (OperationCanceledException) { return; }
 
-        // A newer load has already started — silently abandon this one.
+        // A newer load has already started â€” silently abandon this one.
         if (cts.IsCancellationRequested) return;
 
         CollectionPath = path;
@@ -913,8 +971,8 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         if (_suppressWatcher) return;
 
         // Only react to directory events (no extension) or recognised request files:
-        //   • Callsmith: *.callsmith  (but NOT *.env.callsmith — env files don't affect the tree)
-        //   • Bruno:     *.bru        (but NOT ones inside an "environments" folder)
+        //   â€¢ Callsmith: *.callsmith  (but NOT *.env.callsmith â€” env files don't affect the tree)
+        //   â€¢ Bruno:     *.bru        (but NOT ones inside an "environments" folder)
         var ext = Path.GetExtension(e.FullPath);
         var isDirectory = string.IsNullOrEmpty(ext);
         var isCallsmithRequest = !isDirectory

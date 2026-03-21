@@ -271,8 +271,68 @@ public sealed class CollectionsViewModelDeleteTests
         await sut.MoveRequestToFolderAsync(request, root);
 
         await cs.Received(1).MoveRequestAsync(request.Request.FilePath, root.FolderPath!, Arg.Any<CancellationToken>());
-        sut.TreeRoots.Should().NotBeEmpty();
+        sut.HasCollection.Should().BeTrue();
     }
+
+      [Fact]
+      public async Task MoveRequestToFolderAsync_WhenInsertAtIndexZero_WritesOrderFileWithRequestBeforeExistingItems()
+      {
+          var cs = Substitute.For<ICollectionService>();
+          cs.OpenFolderAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new CollectionFolder
+            {
+                Name = "root",
+                FolderPath = FakeCollectionPath,
+                Requests = [],
+                SubFolders = [],
+            });
+          cs.MoveRequestAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new CollectionRequest { FilePath = Path.Combine(FakeCollectionPath, "login.callsmith"), Name = "login", Method = System.Net.Http.HttpMethod.Post, Url = "" });
+
+          var sut = BuildSut(cs);
+          sut.CollectionPath = FakeCollectionPath;
+
+          var (root, _, request) = BuildTree();
+
+          // Drop the request at index 0 in root — which currently has only the "auth" sub-folder.
+          // Expected order after insert: ["login.callsmith", "auth"]
+          await sut.MoveRequestToFolderAsync(request, root, insertAtIndex: 0);
+
+          await cs.Received(1).SaveFolderOrderAsync(
+              root.FolderPath!,
+              Arg.Is<IReadOnlyList<string>>(l => l.SequenceEqual(new[] { "login.callsmith", "auth" })),
+              Arg.Any<CancellationToken>());
+      }
+
+      [Fact]
+      public async Task MoveRequestToFolderAsync_WhenInsertAtIndexNegative_AppendsRequestAfterExistingItems()
+      {
+          var cs = Substitute.For<ICollectionService>();
+          cs.OpenFolderAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new CollectionFolder
+            {
+                Name = "root",
+                FolderPath = FakeCollectionPath,
+                Requests = [],
+                SubFolders = [],
+            });
+          cs.MoveRequestAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new CollectionRequest { FilePath = Path.Combine(FakeCollectionPath, "login.callsmith"), Name = "login", Method = System.Net.Http.HttpMethod.Post, Url = "" });
+
+          var sut = BuildSut(cs);
+          sut.CollectionPath = FakeCollectionPath;
+
+          var (root, _, request) = BuildTree();
+
+          // -1 = append at end; root currently has only "auth" sub-folder.
+          // Expected order after append: ["auth", "login.callsmith"]
+          await sut.MoveRequestToFolderAsync(request, root, insertAtIndex: -1);
+
+          await cs.Received(1).SaveFolderOrderAsync(
+              root.FolderPath!,
+              Arg.Is<IReadOnlyList<string>>(l => l.SequenceEqual(new[] { "auth", "login.callsmith" })),
+              Arg.Any<CancellationToken>());
+      }
     [Fact]
     public async Task ConfirmDelete_FolderNode_SendsMessageWithTrailingSeparator()
     {

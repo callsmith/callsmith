@@ -25,7 +25,8 @@ namespace Callsmith.Desktop.ViewModels;
 /// the active environment in the request editor stays up-to-date.
 /// </summary>
 public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
-    IRecipient<CollectionOpenedMessage>
+    IRecipient<CollectionOpenedMessage>,
+    IRecipient<RequestRenamedMessage>
 {
     private readonly IEnvironmentService _environmentService;
     private readonly ICollectionService _collectionService;
@@ -353,6 +354,59 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         _collectionFolderPath = message.Value;
         _ = LoadEnvironmentsAsync(message.Value);
         _ = LoadRequestNamesAsync(message.Value);
+    }
+
+    /// <summary>
+    /// Called when a request is renamed. Updates the request selector list
+    /// and updates any response-body variables that referenced the old request name.
+    /// </summary>
+    public void Receive(RequestRenamedMessage message)
+    {
+        if (string.IsNullOrEmpty(_collectionFolderPath))
+            return;
+
+        var oldRequestName = ConvertRequestPathToRequestName(_collectionFolderPath, message.OldFilePath);
+        var newRequestName = ConvertRequestPathToRequestName(_collectionFolderPath, message.Renamed.FilePath);
+
+        if (string.IsNullOrEmpty(oldRequestName) || string.IsNullOrEmpty(newRequestName))
+            return;
+
+        _ = LoadRequestNamesAsync(_collectionFolderPath);
+
+        if (PendingResponseBodyConfig is not null)
+        {
+            var index = PendingResponseBodyConfig.AvailableRequests
+                .IndexOf(oldRequestName);
+            if (index >= 0)
+                PendingResponseBodyConfig.AvailableRequests[index] = newRequestName;
+
+            if (string.Equals(PendingResponseBodyConfig.SelectedRequest, oldRequestName, StringComparison.OrdinalIgnoreCase))
+                PendingResponseBodyConfig.SelectedRequest = newRequestName;
+        }
+
+        foreach (var environment in Environments)
+        {
+            var anyUpdated = false;
+            foreach (var variable in environment.Variables)
+            {
+                if (string.IsNullOrEmpty(variable.ResponseRequestName))
+                    continue;
+
+                if (string.Equals(variable.ResponseRequestName, oldRequestName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(GetLeafName(variable.ResponseRequestName), GetLeafName(oldRequestName), StringComparison.OrdinalIgnoreCase))
+                {
+                    variable.ResponseRequestName = newRequestName;
+                    anyUpdated = true;
+                }
+            }
+
+            if (anyUpdated)
+            {
+                environment.IsDirty = true;
+                foreach (var variable in environment.Variables)
+                    variable.NotifyPreviewChanged();
+            }
+        }
     }
 
     // ─── Dynamic variable config (dialog coordination) ────────────────────────
@@ -1004,6 +1058,25 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         {
             IsBusy = false;
         }
+    }
+
+    private static string GetLeafName(string requestName)
+    {
+        var slash = requestName.LastIndexOf('/');
+        return slash >= 0 ? requestName[(slash + 1)..] : requestName;
+    }
+
+    private static string ConvertRequestPathToRequestName(string collectionFolderPath, string requestFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(collectionFolderPath) || string.IsNullOrWhiteSpace(requestFilePath))
+            return string.Empty;
+
+        var relative = Path.GetRelativePath(collectionFolderPath, requestFilePath);
+        var withoutExt = Path.ChangeExtension(relative, null)?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (string.IsNullOrEmpty(withoutExt))
+            return string.Empty;
+
+        return withoutExt.Replace(Path.DirectorySeparatorChar, '/').Replace(Path.AltDirectorySeparatorChar, '/');
     }
 
     /// <summary>

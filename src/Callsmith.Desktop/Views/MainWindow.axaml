@@ -18,6 +18,7 @@
         <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}"/>
         <KeyBinding Gesture="Ctrl+P" Command="{Binding OpenCommandPaletteCommand}"/>
         <KeyBinding Gesture="Alt+R" Command="{Binding RevealActiveRequestCommand}"/>
+        <KeyBinding Gesture="Ctrl+Enter" Command="{Binding SendCommand}"/>
     </Window.KeyBindings>
 
     <Design.DataContext>

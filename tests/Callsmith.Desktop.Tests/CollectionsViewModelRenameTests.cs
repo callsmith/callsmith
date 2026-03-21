@@ -211,4 +211,159 @@ public sealed class CollectionsViewModelRenameTests
         // Should not crash; logging handles the error
         sut.IsRenameDialogOpen.Should().BeFalse();
     }
+
+    /// <summary>
+    /// When a folder is renamed, all requests under it should have RequestRenamedMessage
+    /// sent for each affected request so that open tabs and environment variables are updated.
+    /// </summary>
+    [Fact]
+    public async Task CommitRenameDialogAsync_WhenRenameFolder_SendsRequestRenamedMessageForAllAffectedRequests()
+    {
+        var oldFolderPath = @"C:\collections\my-api\auth";
+        var newFolderPath = @"C:\collections\my-api\authentication";
+
+        var renamedFolder = new CollectionFolder
+        {
+            Name = "authentication",
+            FolderPath = newFolderPath,
+            Requests = [],
+            SubFolders = [],
+        };
+
+        var collectionService = Substitute.For<ICollectionService>();
+        collectionService.RenameFolderAsync(oldFolderPath, "authentication", Arg.Any<CancellationToken>())
+                         .Returns(renamedFolder);
+
+        var messenger = new WeakReferenceMessenger();
+        var capturedMessages = new List<RequestRenamedMessage>();
+        messenger.Register<RequestRenamedMessage>(this, (_, msg) => capturedMessages.Add(msg));
+
+        var sut = BuildSut(collectionService, messenger);
+        var (_, folder, _) = BuildTree();
+
+        // Manually add a second request to the folder for testing.
+        // Old paths: auth/login.callsmith, auth/register.callsmith
+        var registerRequest = new CollectionRequest
+        {
+            FilePath = @"C:\collections\my-api\auth\register.callsmith",
+            Name = "register",
+            Method = HttpMethod.Post,
+            Url = "https://example.com/auth/register",
+        };
+        var registerNode = CollectionTreeItemViewModel.FromRequest(registerRequest, parent: folder);
+        folder.Children.Add(registerNode);
+
+        sut.BeginRenameCommand.Execute(folder);
+        sut.RenameDialogValue = "authentication";
+
+        await sut.CommitRenameDialogAsync();
+
+        // Should have sent 2 RequestRenamedMessages, one for each request under the folder.
+        capturedMessages.Should().HaveCount(2);
+
+        // Verify first message (login request).
+        capturedMessages[0].OldFilePath.Should().Be(@"C:\collections\my-api\auth\login.callsmith");
+        capturedMessages[0].Renamed.FilePath.Should().Be(@"C:\collections\my-api\authentication\login.callsmith");
+        capturedMessages[0].Renamed.Name.Should().Be("login");
+
+        // Verify second message (register request).
+        capturedMessages[1].OldFilePath.Should().Be(@"C:\collections\my-api\auth\register.callsmith");
+        capturedMessages[1].Renamed.FilePath.Should().Be(@"C:\collections\my-api\authentication\register.callsmith");
+        capturedMessages[1].Renamed.Name.Should().Be("register");
+    }
+
+    /// <summary>
+    /// When a folder is renamed, the folder node should be updated with the new path.
+    /// </summary>
+    [Fact]
+    public async Task CommitRenameDialogAsync_WhenRenameFolder_UpdatesFolderPath()
+    {
+        var oldFolderPath = @"C:\collections\my-api\auth";
+        var newFolderPath = @"C:\collections\my-api\authentication";
+
+        var renamedFolder = new CollectionFolder
+        {
+            Name = "authentication",
+            FolderPath = newFolderPath,
+            Requests = [],
+            SubFolders = [],
+        };
+
+        var collectionService = Substitute.For<ICollectionService>();
+        collectionService.RenameFolderAsync(oldFolderPath, "authentication", Arg.Any<CancellationToken>())
+                         .Returns(renamedFolder);
+
+        var sut = BuildSut(collectionService);
+        var (_, folder, _) = BuildTree();
+
+        sut.BeginRenameCommand.Execute(folder);
+        sut.RenameDialogValue = "authentication";
+
+        await sut.CommitRenameDialogAsync();
+
+        folder.Name.Should().Be("authentication");
+        folder.FolderPath.Should().Be(newFolderPath);
+    }
+
+    /// <summary>
+    /// When a folder is renamed and it was expanded, the persisted expanded folder paths
+    /// should be updated with the new folder path (old path should no longer be in the list).
+    /// </summary>
+    [Fact]
+    public async Task CommitRenameDialogAsync_WhenRenameFolderThatWasExpanded_PersistsNewPathToExpandedFolderPaths()
+    {
+        var oldFolderPath = @"C:\collections\my-api\auth";
+        var newFolderPath = @"C:\collections\my-api\authentication";
+        var collectionPath = FakeCollectionPath;
+
+        var renamedFolder = new CollectionFolder
+        {
+            Name = "authentication",
+            FolderPath = newFolderPath,
+            Requests = [],
+            SubFolders = [],
+        };
+
+        var collectionService = Substitute.For<ICollectionService>();
+        collectionService.RenameFolderAsync(oldFolderPath, "authentication", Arg.Any<CancellationToken>())
+                         .Returns(renamedFolder);
+
+        var preferencesService = Substitute.For<ICollectionPreferencesService>();
+        preferencesService.LoadAsync(collectionPath, Arg.Any<CancellationToken>())
+                          .Returns(new CollectionPreferences 
+                          { 
+                              ExpandedFolderPaths = ["auth"] // old path before rename
+                          });
+        preferencesService.UpdateAsync(Arg.Any<string>(), Arg.Any<Func<CollectionPreferences, CollectionPreferences>>(), Arg.Any<CancellationToken>())
+                          .Returns(x => Task.CompletedTask);
+
+        var sut = new CollectionsViewModel(
+            collectionService,
+            Substitute.For<IRecentCollectionsService>(),
+            Substitute.For<ICollectionImportService>(),
+            preferencesService,
+            new WeakReferenceMessenger(),
+            NullLogger<CollectionsViewModel>.Instance);
+
+        // Set collection path first before building the tree
+        sut.CollectionPath = collectionPath;
+
+        var (_, folder, _) = BuildTree();
+        sut.TreeRoots = [folder.Parent ?? folder];  // set to the tree
+
+        // Expand the folder before renaming.
+        folder.IsExpanded = true;
+
+        // Act: Begin and commit rename
+        sut.BeginRenameCommand.Execute(folder);
+        sut.RenameDialogValue = "authentication";
+
+        await sut.CommitRenameDialogAsync();
+
+        // Assert: UpdateAsync should have been called with the new path in ExpandedFolderPaths
+        await preferencesService.Received(1).UpdateAsync(
+            Arg.Is<string>(path => path == collectionPath),
+            Arg.Any<Func<CollectionPreferences, CollectionPreferences>>(),
+            Arg.Any<CancellationToken>());
+    }
 }

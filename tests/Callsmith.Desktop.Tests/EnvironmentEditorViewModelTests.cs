@@ -755,6 +755,51 @@ public sealed class EnvironmentEditorViewModelTests
             "a concrete env static var that references a global response-body var should show the resolved value");
     }
 
+    [Fact]
+    public async Task Receive_RequestRenamed_UpdatesResponseBodyRequestNameInEnvironmentVariables()
+    {
+        var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([MakeModel("dev")]);
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        var devEnv = sut.Environments.First(e => e.Name == "dev");
+
+        var variable = new EnvironmentVariableItemViewModel(
+            onDelete: _ => { },
+            onChanged: () => { },
+            getResolvedEnv: () => new ResolvedEnvironment { Variables = new Dictionary<string, string>() })
+        {
+            Name = "access-token",
+            VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+            ResponseRequestName = "Auth/login",
+            ResponsePath = "$.token",
+        };
+
+        devEnv.Variables.Add(variable);
+
+        var oldFilePath = Path.Combine(CollectionPath, "Auth", "login.callsmith");
+        var newFilePath = Path.Combine(CollectionPath, "Auth", "signin.callsmith");
+        var renamedRequest = new CollectionRequest
+        {
+            Name = "signin",
+            FilePath = newFilePath,
+            Method = System.Net.Http.HttpMethod.Post,
+            Url = "https://example.com/auth/signin",
+        };
+
+        messenger.Send(new RequestRenamedMessage(oldFilePath, renamedRequest));
+
+        variable.ResponseRequestName.Should().Be("Auth/signin");
+        devEnv.IsDirty.Should().BeTrue();
+    }
+
     /// <summary>
     /// When neither the global env nor the concrete env has any response-body variables,
     /// the evaluator should never be called — no HTTP requests should fire.

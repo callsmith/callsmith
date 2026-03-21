@@ -532,6 +532,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             if (e.PropertyName is
                 nameof(HasUnsavedChanges) or nameof(IsNew) or nameof(IsActive) or nameof(TabTitle) or
                 nameof(TabIsDirty) or nameof(SaveButtonLabel) or
+                nameof(SourceFilePath) or
                 nameof(ShowSaveAsPanel) or nameof(SaveAsName) or nameof(SaveAsFolderPath) or
                 nameof(SaveAsError) or nameof(PendingClose) or
                 nameof(Response) or nameof(IsSending) or nameof(ErrorMessage) or
@@ -643,8 +644,18 @@ public sealed partial class RequestTabViewModel : ObservableObject
     /// </summary>
     internal void UpdateSourceRequest(CollectionRequest updated)
     {
-        _sourceRequest = updated;
-        RequestName = updated.Name;
+        var wasDirty = HasUnsavedChanges;
+        _loading = true;
+        try
+        {
+            _sourceRequest = updated;
+            RequestName = updated.Name;
+        }
+        finally
+        {
+            _loading = false;
+            HasUnsavedChanges = wasDirty;
+        }
         OnPropertyChanged(nameof(SourceFilePath));
     }
 

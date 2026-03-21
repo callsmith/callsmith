@@ -13,9 +13,12 @@ public partial class CollectionsView : UserControl
 {
     private CollectionTreeItemViewModel? _draggedNode;
     private CollectionTreeItemViewModel? _dropTargetFolder;
+    private Border? _previousDropTargetBorder;   // folder drop-target highlight
+    private Border? _previousDropIndicator;        // insertion line indicator
     private Point _dragStartPoint;
     private bool _isDragging;
     private const double DragThreshold = 6.0;
+    private int _dropInsertIndex = -1;
 
     public CollectionsView()
     {
@@ -175,6 +178,8 @@ public partial class CollectionsView : UserControl
     private void OnTreePointerPressed(object? sender, PointerPressedEventArgs e)
     {
         _draggedNode = null;
+        _dropTargetFolder = null;
+        _dropInsertIndex = -1;
         _isDragging = false;
 
         if (!e.GetCurrentPoint(null).Properties.IsLeftButtonPressed) return;
@@ -192,7 +197,7 @@ public partial class CollectionsView : UserControl
 
     private void OnTreePointerMoved(object? sender, PointerEventArgs e)
     {
-        if (_draggedNode is null || DataContext is not CollectionsViewModel vm) return;
+        if (_draggedNode is null) return;
 
         if (!e.GetCurrentPoint(null).Properties.IsLeftButtonPressed)
         {
@@ -209,52 +214,92 @@ public partial class CollectionsView : UserControl
             // regardless of which child element is visually under the cursor.
             e.Pointer.Capture(CollectionTree);
             _isDragging = true;
-            CollectionTree.Cursor = new Cursor(StandardCursorType.SizeNorthSouth);
+            CollectionTree.Cursor = new Cursor(StandardCursorType.Hand);
         }
+
+        // Clear previous visual feedback
+        ClearDropVisuals();
 
         // InputHitTest finds the topmost visual at the current coordinates in the
         // CollectionTree visual subtree — works correctly even with pointer capture active.
         var hit = CollectionTree.InputHitTest(currentPos) as Visual;
         var targetTvi = hit?.FindAncestorOfType<TreeViewItem>(includeSelf: true);
-        if (targetTvi?.DataContext is not CollectionTreeItemViewModel targetNode) return;
+        if (targetTvi?.DataContext is not CollectionTreeItemViewModel targetNode)
+        {
+            if (!_draggedNode.IsFolder && TryShowBottomDropTarget(currentPos))
+                return;
+
+            _dropTargetFolder = null;
+            _dropInsertIndex = -1;
+            return;
+        }
         if (targetNode == _draggedNode) return;
 
         if (!_draggedNode.IsFolder)
         {
             CollectionTreeItemViewModel? candidateFolder = null;
+            TreeViewItem? folderTvi = null;
 
             if (targetNode.IsFolder || targetNode.IsRoot)
+            {
                 candidateFolder = targetNode;
-            else
+                folderTvi = targetTvi;
+            }
+            else if (targetNode.Parent is not null)
+            {
                 candidateFolder = targetNode.Parent;
+                // For parent folder, find its TreeViewItem which is the parent of our current TreeViewItem
+                folderTvi = targetTvi.Parent as TreeViewItem;
+            }
 
             if (candidateFolder is not null && candidateFolder != _draggedNode.Parent)
             {
                 _dropTargetFolder = candidateFolder;
+                _dropInsertIndex = -1; // append at the end of the destination folder
+                // Folder highlight — folder is a direct target, show bg tint on its border.
+                if (folderTvi is not null && FindItemBorder(folderTvi) is Border folderBorder)
+                {
+                    folderBorder.Classes.Add("drop-target");
+                    _previousDropTargetBorder = folderBorder;
+                }
+                return;
+            }
+
+            // Allow dropping between items at a different nesting level by targeting
+            // the parent folder and showing a flat insertion line.
+            if (targetNode.Parent is not null && targetNode.Parent != _draggedNode.Parent)
+            {
+                var localPos = e.GetPosition(targetTvi);
+                var midY = targetTvi.Bounds.Height / 2.0;
+                _dropTargetFolder = targetNode.Parent;
+                var above = localPos.Y <= midY;
+                var targetIndexInParent = targetNode.Parent.Children.IndexOf(targetNode);
+                _dropInsertIndex = above ? targetIndexInParent : targetIndexInParent + 1;
+                ShowDropIndicator(targetTvi, above);
                 return;
             }
 
             _dropTargetFolder = null;
+            _dropInsertIndex = -1;
         }
 
         if (targetNode.Parent != _draggedNode.Parent) return; // restrict to siblings
         if (targetNode.IsRoot) return;
 
-        // Swap only when the cursor crosses the target item's vertical midpoint.
-        var localPos = e.GetPosition(targetTvi);
-        var midY = targetTvi.Bounds.Height / 2.0;
+        // Apply flat insertion-line feedback for same-parent reordering.
+        var sameLevelLocalPos = e.GetPosition(targetTvi);
+        var sameLevelMidY = targetTvi.Bounds.Height / 2.0;
+        var sameLevelAbove = sameLevelLocalPos.Y <= sameLevelMidY;
+        ShowDropIndicator(targetTvi, sameLevelAbove);
 
         var parent = _draggedNode.Parent!;
-        var currentIndex = parent.Children.IndexOf(_draggedNode);
         var targetIndex = parent.Children.IndexOf(targetNode);
-        if (currentIndex < 0 || targetIndex < 0) return;
+        if (targetIndex < 0) return;
 
-        var shouldSwap =
-            (targetIndex == currentIndex + 1 && localPos.Y > midY) ||
-            (targetIndex == currentIndex - 1 && localPos.Y < midY);
-
-        if (shouldSwap)
-            _ = vm.MoveItemAsync(_draggedNode, targetIndex);
+        // For same-parent reorder, store the insertion slot (0..Count) and apply
+        // the move on pointer release instead of swapping while dragging.
+        _dropTargetFolder = parent;
+        _dropInsertIndex = sameLevelAbove ? targetIndex : targetIndex + 1;
     }
 
     private async void OnTreePointerReleased(object? sender, PointerReleasedEventArgs e)
@@ -263,26 +308,125 @@ public partial class CollectionsView : UserControl
         {
             if (!_draggedNode.IsFolder && _draggedNode.Parent != _dropTargetFolder)
             {
-                await vm.MoveRequestToFolderAsync(_draggedNode, _dropTargetFolder);
+                await vm.MoveRequestToFolderAsync(_draggedNode, _dropTargetFolder, _dropInsertIndex);
+            }
+            else if (_draggedNode.Parent == _dropTargetFolder)
+            {
+                var parent = _draggedNode.Parent;
+                if (parent is not null && _dropInsertIndex >= 0)
+                {
+                    var currentIndex = parent.Children.IndexOf(_draggedNode);
+                    if (currentIndex >= 0)
+                    {
+                        // Convert insertion slot to final index expected by MoveItemAsync.
+                        var targetIndex = _dropInsertIndex > currentIndex
+                            ? _dropInsertIndex - 1
+                            : _dropInsertIndex;
+
+                        if (targetIndex >= 0 && targetIndex < parent.Children.Count)
+                            await vm.MoveItemAsync(_draggedNode, targetIndex);
+                    }
+                }
             }
         }
 
         _dropTargetFolder = null;
+        _dropInsertIndex = -1;
         EndDrag(e.Pointer);
     }
 
     private void OnTreePointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
     {
+        ClearDropVisuals();
         _draggedNode = null;
         _dropTargetFolder = null;
+        _dropInsertIndex = -1;
         _isDragging = false;
         CollectionTree.Cursor = Cursor.Default;
     }
 
+    private void ClearDropVisuals()
+    {
+        if (_previousDropTargetBorder is not null)
+        {
+            _previousDropTargetBorder.Classes.Remove("drop-target");
+            _previousDropTargetBorder = null;
+        }
+        if (_previousDropIndicator is not null)
+        {
+            _previousDropIndicator.IsVisible = false;
+            _previousDropIndicator = null;
+        }
+    }
+
+    private Border? FindItemBorder(Visual? source)
+    {
+        if (source is null) return null;
+        if (source is Border b && b.Name == "ItemBorder") return b;
+        foreach (var child in source.GetVisualChildren().OfType<Visual>())
+            if (FindItemBorder(child) is Border found) return found;
+        return null;
+    }
+
+    private Border? FindDropIndicator(Visual? source)
+    {
+        if (source is null) return null;
+        if (source is Border b && b.Name == "DropIndicator") return b;
+        foreach (var child in source.GetVisualChildren().OfType<Visual>())
+            if (FindDropIndicator(child) is Border found) return found;
+        return null;
+    }
+
+    private void ShowDropIndicator(TreeViewItem tvi, bool above)
+    {
+        if (FindDropIndicator(tvi) is not Border indicator) return;
+        indicator.VerticalAlignment = above ? Avalonia.Layout.VerticalAlignment.Top
+                                            : Avalonia.Layout.VerticalAlignment.Bottom;
+        indicator.IsVisible = true;
+        _previousDropIndicator = indicator;
+    }
+
+    private bool TryShowBottomDropTarget(Point currentPos)
+    {
+        if (_draggedNode is null || _draggedNode.IsFolder) return false;
+        if (DataContext is not CollectionsViewModel vm) return false;
+        if (vm.TreeRoots is not [var root]) return false;
+
+        var lastContainer = CollectionTree
+            .GetVisualDescendants()
+            .OfType<TreeViewItem>()
+            .Where(i => i.IsVisible)
+            .Select(i =>
+            {
+                var bottom = i.TranslatePoint(new Point(0, i.Bounds.Height), CollectionTree);
+                return new { Item = i, BottomY = bottom?.Y ?? double.MinValue };
+            })
+            .OrderBy(x => x.BottomY)
+            .LastOrDefault();
+
+        if (lastContainer is null || currentPos.Y < lastContainer.BottomY)
+            return false;
+
+        var destinationFolder = root;
+        if (destinationFolder == _draggedNode.Parent)
+            return false;
+
+        var lineTop = Math.Max(0, lastContainer.BottomY);
+        TreeBottomDropIndicator.Margin = new Thickness(-4, lineTop, -2, 0);
+        _dropTargetFolder = destinationFolder;
+        _dropInsertIndex = destinationFolder.Children.Count;
+        TreeBottomDropIndicator.IsVisible = true;
+        _previousDropIndicator = TreeBottomDropIndicator;
+        return true;
+    }
+
     private void EndDrag(IPointer pointer)
     {
+        ClearDropVisuals();
         if (_draggedNode is null) return;
         _draggedNode = null;
+        _dropTargetFolder = null;
+        _dropInsertIndex = -1;
         _isDragging = false;
         CollectionTree.Cursor = Cursor.Default;
         pointer.Capture(null);

@@ -180,5 +180,24 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
             parent: parent,
             isRoot: false,
             children: Enumerable.Empty<CollectionTreeItemViewModel>());
+
+    /// <summary>
+    /// Recursively collects all request nodes (leaves) under this folder node.
+    /// Returns an empty list if this node is a request node.
+    /// </summary>
+    internal IEnumerable<CollectionTreeItemViewModel> GetAllRequestsUnder()
+    {
+        if (!IsFolder)
+            yield break;
+
+        foreach (var child in Children)
+        {
+            if (!child.IsFolder && child.Request is not null)
+                yield return child;
+            else if (child.IsFolder)
+                foreach (var descendant in child.GetAllRequestsUnder())
+                    yield return descendant;
+        }
+    }
 }
 

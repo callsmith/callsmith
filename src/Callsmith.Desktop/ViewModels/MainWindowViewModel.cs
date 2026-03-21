@@ -69,4 +69,18 @@ public partial class MainWindowViewModel : ViewModelBase
         if (string.IsNullOrEmpty(path)) return;
         Collections.RevealFilePath = path;
     }
+
+    /// <summary>
+    /// Ctrl+Enter handler: sends the currently active request.
+    /// </summary>
+    [RelayCommand]
+    private void Send()
+    {
+        if (RequestEditor.ActiveTab != null && 
+            !RequestEditor.ActiveTab.IsSending &&
+            RequestEditor.ActiveTab.SendCommand.CanExecute(null))
+        {
+            RequestEditor.ActiveTab?.SendCommand.Execute(null);
+        }
+    }
 }

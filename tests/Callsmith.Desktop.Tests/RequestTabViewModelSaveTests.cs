@@ -264,4 +264,27 @@ public sealed class RequestTabViewModelSaveTests
         sut.Url = "https://api.example.com/v3";
         sut.HasUnsavedChanges.Should().BeTrue();
     }
+
+    [Fact]
+    public void UpdateSourceRequest_WhenPathChanges_DoesNotMarkDirty()
+    {
+        var sut = BuildSut();
+        sut.LoadRequest(SampleRequest(url: "https://api.example.com/auth/login"));
+        sut.HasUnsavedChanges.Should().BeFalse();
+
+        var renamed = new CollectionRequest
+        {
+            FilePath = @"c:\tmp\renamed-folder\sample.callsmith",
+            Name = "sample",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com/auth/login",
+            QueryParams = [],
+            PathParams = new Dictionary<string, string>(),
+            Headers = [],
+        };
+
+        sut.UpdateSourceRequest(renamed);
+
+        sut.HasUnsavedChanges.Should().BeFalse();
+    }
 }

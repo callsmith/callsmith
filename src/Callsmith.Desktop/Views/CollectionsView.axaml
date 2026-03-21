@@ -65,6 +65,11 @@
       <Setter Property="Background" Value="#2a2d2e"/>
     </Style>
 
+    <!-- Drop target highlighting -->
+    <Style Selector="Border.drop-target">
+      <Setter Property="Background" Value="#2a4a40"/>
+    </Style>
+
   </UserControl.Styles>
 
   <!-- Sidebar layout: header toolbar + tree + path footer -->
@@ -252,17 +257,22 @@
       </StackPanel>
     </ScrollViewer>
 
-    <!-- ── Tree view ── -->
-    <TreeView IsVisible="{Binding HasCollection}"
-              x:Name="CollectionTree"
-              ItemsSource="{Binding TreeRoots}"
-              Background="Transparent"
-              Margin="0,4,0,0">
+        <!-- ── Tree view ── -->
+        <Grid IsVisible="{Binding HasCollection}"
+          Margin="0,4,0,0">
+        <TreeView x:Name="CollectionTree"
+          ItemsSource="{Binding TreeRoots}"
+          Background="Transparent">
       <TreeView.ItemTemplate>
         <TreeDataTemplate ItemsSource="{Binding Children}"
                           x:DataType="vm:CollectionTreeItemViewModel">
 
-          <Border Classes.active-row="{Binding IsActive}"
+          <!-- Panel wrapper allows the flat DropIndicator to overlay without
+               inheriting ItemBorder's CornerRadius. -->
+          <Panel>
+
+          <Border x:Name="ItemBorder"
+                  Classes.active-row="{Binding IsActive}"
                   CornerRadius="3"
                   Padding="0,1"
                   Margin="-4,-1,-2,-1">
@@ -301,6 +311,18 @@
             </Grid>
           </Border>
 
+          <!-- Flat 2 px insertion indicator. CornerRadius stays 0 regardless of
+               ItemBorder's rounding. Shown/hidden and positioned in code-behind. -->
+          <Border x:Name="DropIndicator"
+                  IsVisible="False"
+                  Height="2"
+                  Background="#4ec9b0"
+                  VerticalAlignment="Top"
+                  Margin="-4,0,-2,0"
+                  IsHitTestVisible="False"/>
+
+          </Panel>
+
         </TreeDataTemplate>
       </TreeView.ItemTemplate>
 
@@ -309,7 +331,17 @@
         <ContextMenu x:Name="TreeContextMenu"/>
       </TreeView.ContextMenu>
 
-    </TreeView>
+        </TreeView>
+
+        <!-- Bottom insertion indicator for dropping after the last visible item. -->
+        <Border x:Name="TreeBottomDropIndicator"
+          IsVisible="False"
+          Height="2"
+          Background="#4ec9b0"
+          VerticalAlignment="Top"
+          Margin="-4,0,-2,0"
+          IsHitTestVisible="False"/>
+        </Grid>
 
     </DockPanel>
 
