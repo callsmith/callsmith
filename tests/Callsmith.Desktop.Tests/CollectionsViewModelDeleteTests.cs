@@ -259,10 +259,10 @@ public sealed class CollectionsViewModelDeleteTests
 
         var (root, folder, request) = BuildTree();
 
-        cs.MoveRequestAsync(request.Request!.FilePath, root.FolderPath, Arg.Any<CancellationToken>())
+        cs.MoveRequestAsync(request.Request!.FilePath, root.FolderPath!, Arg.Any<CancellationToken>())
           .Returns(new CollectionRequest
           {
-              FilePath = Path.Combine(root.FolderPath, "login.callsmith"),
+              FilePath = Path.Combine(root.FolderPath!, "login.callsmith"),
               Name = "login",
               Method = System.Net.Http.HttpMethod.Post,
               Url = "https://example.com/auth/login",
@@ -270,7 +270,7 @@ public sealed class CollectionsViewModelDeleteTests
 
         await sut.MoveRequestToFolderAsync(request, root);
 
-        await cs.Received(1).MoveRequestAsync(request.Request.FilePath, root.FolderPath, Arg.Any<CancellationToken>());
+        await cs.Received(1).MoveRequestAsync(request.Request.FilePath, root.FolderPath!, Arg.Any<CancellationToken>());
         sut.TreeRoots.Should().NotBeEmpty();
     }
     [Fact]
