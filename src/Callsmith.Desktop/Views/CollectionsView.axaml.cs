@@ -52,7 +52,9 @@ public partial class CollectionsView : UserControl
                 if (args.PropertyName == nameof(CollectionsViewModel.RevealFilePath)
                     && !string.IsNullOrEmpty(vm.RevealFilePath))
                 {
-                    RevealRequest(vm.RevealFilePath);
+                    var path = vm.RevealFilePath;
+                    vm.RevealFilePath = string.Empty;
+                    RevealRequest(path);
                 }
             };
         }
