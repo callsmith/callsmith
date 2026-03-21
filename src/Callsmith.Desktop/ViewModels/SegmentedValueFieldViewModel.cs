@@ -35,10 +35,6 @@ public sealed partial class SegmentedValueFieldViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(PreviewValue))]
     private string _text = string.Empty;
 
-    /// <summary>Free-form text typed after the last pill in the segment view.</summary>
-    [ObservableProperty]
-    private string _trailingText = string.Empty;
-
     // ── Display items (pills + inline text boxes) ──────────────────────────────
 
     /// <summary>Pill + inline-text display items. Non-empty when <see cref="HasSegments"/>.</summary>
@@ -49,13 +45,6 @@ public sealed partial class SegmentedValueFieldViewModel : ObservableObject
 
     /// <summary>True when the field should show the plain TextBox (no segments).</summary>
     public bool ShowPlainInput => !HasSegments;
-
-    /// <summary>
-    /// True when a trailing text-input should appear after the last pill
-    /// (only visible when the last segment is dynamic or mock).
-    /// </summary>
-    public bool HasTrailingInput =>
-        HasSegments && _segments?.LastOrDefault() is DynamicValueSegment or MockDataSegment;
 
     // ── Preview (env var substitution preview for static fields) ──────────────
 
@@ -139,7 +128,6 @@ public sealed partial class SegmentedValueFieldViewModel : ObservableObject
 
     /// <summary>
     /// Gets the effective inline-text representation for persistence.
-    /// Includes any uncommitted <see cref="TrailingText"/>.
     /// </summary>
     public string GetInlineText()
     {
@@ -148,15 +136,10 @@ public sealed partial class SegmentedValueFieldViewModel : ObservableObject
         return segs is null ? Text : SegmentSerializer.SerializeSegments(segs);
     }
 
-    /// <summary>Gets the current segment list (including trailing text if present).</summary>
+    /// <summary>Gets the current segment list.</summary>
     public IReadOnlyList<ValueSegment>? GetSegments()
     {
         if (_segments is not { Count: > 0 }) return null;
-        if (!string.IsNullOrEmpty(TrailingText))
-        {
-            var result = new List<ValueSegment>(_segments) { new StaticValueSegment { Text = TrailingText } };
-            return result.AsReadOnly();
-        }
         return _segments.AsReadOnly();
     }
 
@@ -170,7 +153,6 @@ public sealed partial class SegmentedValueFieldViewModel : ObservableObject
 
         _segments ??= [];
         FlushPlainText();
-        FlushTrailingText();
         _segments.Add(result);
         Text = string.Empty;
 
@@ -187,7 +169,6 @@ public sealed partial class SegmentedValueFieldViewModel : ObservableObject
 
         _segments ??= [];
         FlushPlainText();
-        FlushTrailingText();
         _segments.Add(result);
         Text = string.Empty;
 
@@ -230,11 +211,6 @@ public sealed partial class SegmentedValueFieldViewModel : ObservableObject
         if (_segments?.Count == 0)
         {
             _segments = null;
-            if (!string.IsNullOrEmpty(TrailingText))
-            {
-                Text = TrailingText;
-                TrailingText = string.Empty;
-            }
         }
         RebuildDisplaySegments();
         NotifySegmentProperties();
@@ -243,8 +219,7 @@ public sealed partial class SegmentedValueFieldViewModel : ObservableObject
 
     // ── Property change notifications ────────────────────────────────────────
 
-    partial void OnTextChanged(string value)        => _onChanged();
-    partial void OnTrailingTextChanged(string value) => _onChanged();
+    partial void OnTextChanged(string value) => _onChanged();
 
     public void NotifyPreviewChanged()
     {
@@ -260,20 +235,10 @@ public sealed partial class SegmentedValueFieldViewModel : ObservableObject
             _segments!.Insert(0, new StaticValueSegment { Text = Text });
     }
 
-    private void FlushTrailingText()
-    {
-        if (!string.IsNullOrEmpty(TrailingText))
-        {
-            _segments!.Add(new StaticValueSegment { Text = TrailingText });
-            TrailingText = string.Empty;
-        }
-    }
-
     private void NotifySegmentProperties()
     {
         OnPropertyChanged(nameof(HasSegments));
         OnPropertyChanged(nameof(ShowPlainInput));
-        OnPropertyChanged(nameof(HasTrailingInput));
     }
 
     private void RebuildDisplaySegments()
@@ -313,7 +278,6 @@ public sealed partial class SegmentedValueFieldViewModel : ObservableObject
                 DisplaySegments.Add(new SegmentDisplayItem(d, seg));
             }
         }
-        OnPropertyChanged(nameof(HasTrailingInput));
     }
 
     private static bool SegmentsEqual(DynamicValueSegment a, DynamicValueSegment b) =>

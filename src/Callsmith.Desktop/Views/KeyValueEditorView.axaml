@@ -177,31 +177,6 @@
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                    <TextBox Grid.Column="1"
-                             IsVisible="{Binding KeyField.HasTrailingInput}"
-                             Text="{Binding KeyField.TrailingText, Mode=TwoWay}"
-                             Foreground="#cccccc"
-                             FontFamily="Consolas,Menlo,monospace"
-                             FontSize="11"
-                             VerticalAlignment="Center"
-                             VerticalContentAlignment="Center"
-                             Background="Transparent"
-                             BorderThickness="0"
-                             Padding="2,1"
-                             HorizontalAlignment="Stretch">
-                      <TextBox.ContextMenu>
-                        <ContextMenu>
-                          <MenuItem Header="Dynamic Value…" Command="{Binding KeyField.AddDynamicValueCommand}"/>
-                          <MenuItem Header="Mock Data…"     Command="{Binding KeyField.AddMockDataCommand}"/>
-                        </ContextMenu>
-                      </TextBox.ContextMenu>
-                      <TextBox.Styles>
-                        <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
-                          <Setter Property="BorderThickness" Value="0"/>
-                          <Setter Property="Background" Value="Transparent"/>
-                        </Style>
-                      </TextBox.Styles>
-                    </TextBox>
                   </Grid>
                 </Border>
 
@@ -363,35 +338,6 @@
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
                     </ItemsControl>
-
-                    <!-- Trailing free-form input -->
-                    <TextBox Grid.Column="1"
-                             IsVisible="{Binding ValueField.HasTrailingInput}"
-                             Text="{Binding ValueField.TrailingText, Mode=TwoWay}"
-                             Foreground="#cccccc"
-                             FontFamily="Consolas,Menlo,monospace"
-                             FontSize="11"
-                             VerticalAlignment="Center"
-                             VerticalContentAlignment="Center"
-                             Background="Transparent"
-                             BorderThickness="0"
-                             Padding="2,1"
-                             HorizontalAlignment="Stretch">
-                      <TextBox.ContextMenu>
-                        <ContextMenu>
-                          <MenuItem Header="Dynamic Value…"
-                                    Command="{Binding ValueField.AddDynamicValueCommand}"/>
-                          <MenuItem Header="Mock Data…"
-                                    Command="{Binding ValueField.AddMockDataCommand}"/>
-                        </ContextMenu>
-                      </TextBox.ContextMenu>
-                      <TextBox.Styles>
-                        <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
-                          <Setter Property="BorderThickness" Value="0"/>
-                          <Setter Property="Background" Value="Transparent"/>
-                        </Style>
-                      </TextBox.Styles>
-                    </TextBox>
 
                   </Grid>
                 </Border>
