@@ -136,7 +136,7 @@
                                  Padding="8,8,4,8"
                                  VerticalAlignment="Center"
                                  ToolTip.Tip="Drag to reorder"
-                                 Cursor="SizeNorthSouth"
+                                 Cursor="Hand"
                                  IsVisible="{Binding !IsGlobal}"/>
 
                       <!-- Pin badge for the global env -->
@@ -465,23 +465,23 @@
               </StackPanel>
             </Border>
 
-            <!-- Column headers: Name(320) | Value(*) | Type(140) -->
-            <Grid ColumnDefinitions="320,*,140,28"
+            <!-- Column headers: Drag(24) | Name(320) | Value(*) | Type(140) | Delete(28) -->
+            <Grid ColumnDefinitions="24,320,*,140,28"
                   Margin="0,0,0,4">
-              <TextBlock Grid.Column="0"
+              <TextBlock Grid.Column="1"
                          Text="NAME"
                          Foreground="#666"
                          FontSize="10"
                          FontWeight="SemiBold"
                          LetterSpacing="1"/>
-              <TextBlock Grid.Column="1"
+              <TextBlock Grid.Column="2"
                          Text="VALUE"
                          Foreground="#666"
                          FontSize="10"
                          FontWeight="SemiBold"
                          LetterSpacing="1"
                          Margin="6,0"/>
-              <TextBlock Grid.Column="2"
+              <TextBlock Grid.Column="3"
                          Text="TYPE"
                          Foreground="#666"
                          FontSize="10"
@@ -490,16 +490,27 @@
                          Margin="4,0"/>
             </Grid>
 
-            <ItemsControl ItemsSource="{Binding SelectedEnvironment.Variables}">
+            <ItemsControl x:Name="VariableRows"
+                          ItemsSource="{Binding SelectedEnvironment.Variables}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:EnvironmentVariableItemViewModel">
-                  <!-- Columns: Name(320) | Value(*) | Type(140) | Delete(28) -->
-                  <Grid ColumnDefinitions="320,*,140,28"
+                  <!-- Columns: Drag(24) | Name(320) | Value(*) | Type(140) | Delete(28) -->
+                  <Grid ColumnDefinitions="24,320,*,140,28"
                         RowDefinitions="Auto,Auto"
                         Margin="0,2">
 
+                    <!-- Drag handle -->
+                    <TextBlock Grid.Row="0" Grid.Column="0"
+                               Text="⠿"
+                               Foreground="#555"
+                               FontSize="14"
+                               Padding="2,4,4,4"
+                               VerticalAlignment="Center"
+                               ToolTip.Tip="Drag to reorder"
+                               Cursor="Hand"/>
+
                     <!-- Name -->
-                    <TextBox Grid.Row="0" Grid.Column="0"
+                    <TextBox Grid.Row="0" Grid.Column="1"
                              Text="{Binding Name}"
                              Watermark="name"
                              FontSize="12"
@@ -512,7 +523,7 @@
                              FontFamily="Consolas,Menlo,monospace"/>
 
                     <!-- Value: static plain — text input with inline lock toggle -->
-                    <Grid Grid.Row="0" Grid.Column="1"
+                      <Grid Grid.Row="0" Grid.Column="2"
                           ColumnDefinitions="*,Auto"
                           IsVisible="{Binding IsStaticNotSecret}"
                           Margin="0,0,6,0">
@@ -543,7 +554,7 @@
                     </Grid>
 
                     <!-- Value: static secret — masked input with inline lock toggle -->
-                    <Grid Grid.Row="0" Grid.Column="1"
+                      <Grid Grid.Row="0" Grid.Column="2"
                           ColumnDefinitions="*,Auto"
                           IsVisible="{Binding IsStaticAndSecret}"
                           Margin="0,0,6,0">
@@ -576,7 +587,7 @@
                     </Grid>
 
                     <!-- Value: mock-data type — configure button + summary -->
-                    <StackPanel Grid.Row="0" Grid.Column="1"
+                    <StackPanel Grid.Row="0" Grid.Column="2"
                                 Orientation="Horizontal"
                                 Spacing="8"
                                 IsVisible="{Binding IsMockData}"
@@ -602,7 +613,7 @@
                     </StackPanel>
 
                     <!-- Value: response-body type — configure button + "name → path" summary -->
-                    <StackPanel Grid.Row="0" Grid.Column="1"
+                    <StackPanel Grid.Row="0" Grid.Column="2"
                                 Orientation="Horizontal"
                                 Spacing="8"
                                 IsVisible="{Binding IsResponseBody}"
@@ -628,7 +639,7 @@
                     </StackPanel>
 
                     <!-- Type dropdown -->
-                    <ComboBox Grid.Row="0" Grid.Column="2"
+                    <ComboBox Grid.Row="0" Grid.Column="3"
                               ItemsSource="{x:Static vm:EnvironmentVariableItemViewModel.VariableTypeOptions}"
                               SelectedItem="{Binding VariableTypeDisplay}"
                               HorizontalAlignment="Stretch"
@@ -638,7 +649,7 @@
                               ToolTip.Tip="Variable type"/>
 
                     <!-- Delete -->
-                    <Button Grid.Row="0" Grid.Column="3"
+                        <Button Grid.Row="0" Grid.Column="4"
                             Content="×"
                             Command="{Binding DeleteCommand}"
                             Background="Transparent"
@@ -651,7 +662,7 @@
                             ToolTip.Tip="Remove variable"/>
 
                     <!-- Preview row — shown when a static value contains {{VAR}} references -->
-                    <Border Grid.Row="1" Grid.Column="1"
+                        <Border Grid.Row="1" Grid.Column="2"
                             IsVisible="{Binding HasPreview}"
                             Background="#1e1e1e"
                             BorderBrush="#3a3a3a"

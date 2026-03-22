@@ -196,6 +196,20 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         IsDirty = true;
     }
 
+    /// <summary>
+    /// Moves <paramref name="item"/> to <paramref name="targetIndex"/> in the current
+    /// variable list order and marks the environment dirty.
+    /// </summary>
+    internal void MoveVariable(EnvironmentVariableItemViewModel item, int targetIndex)
+    {
+        var currentIndex = Variables.IndexOf(item);
+        if (currentIndex < 0 || currentIndex == targetIndex) return;
+        if (targetIndex < 0 || targetIndex >= Variables.Count) return;
+
+        Variables.Move(currentIndex, targetIndex);
+        OnAnyVariableChanged();
+    }
+
     // ─── Internal helpers ────────────────────────────────────────────────────
 
     partial void OnColorChanged(string? value) => IsDirty = true;

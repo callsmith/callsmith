@@ -12,8 +12,12 @@ namespace Callsmith.Desktop.Views;
 public partial class EnvironmentEditorView : UserControl
 {
     private EnvironmentListItemViewModel? _draggedItem;
+    private EnvironmentVariableItemViewModel? _draggedVariable;
     private Point _dragStartPoint;
+    private Point _variableDragStartPoint;
     private bool _isDragging;
+    private bool _isVariableDragging;
+    private bool _environmentOrderChanged;
     private const double DragThreshold = 6.0;
 
     private EnvironmentEditorViewModel? _trackedVm;
@@ -28,6 +32,11 @@ public partial class EnvironmentEditorView : UserControl
         EnvironmentList.AddHandler(InputElement.PointerMovedEvent, OnListPointerMoved, moveRelease, handledEventsToo: true);
         EnvironmentList.AddHandler(InputElement.PointerReleasedEvent, OnListPointerReleased, moveRelease, handledEventsToo: true);
         EnvironmentList.AddHandler(InputElement.PointerCaptureLostEvent, OnListPointerCaptureLost, RoutingStrategies.Direct);
+
+        VariableRows.AddHandler(InputElement.PointerPressedEvent, OnVariablePointerPressed, RoutingStrategies.Tunnel);
+        VariableRows.AddHandler(InputElement.PointerMovedEvent, OnVariablePointerMoved, moveRelease, handledEventsToo: true);
+        VariableRows.AddHandler(InputElement.PointerReleasedEvent, OnVariablePointerReleased, moveRelease, handledEventsToo: true);
+        VariableRows.AddHandler(InputElement.PointerCaptureLostEvent, OnVariablePointerCaptureLost, RoutingStrategies.Direct);
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -89,6 +98,7 @@ public partial class EnvironmentEditorView : UserControl
     {
         _draggedItem = null;
         _isDragging = false;
+        _environmentOrderChanged = false;
 
         if (!e.GetCurrentPoint(null).Properties.IsLeftButtonPressed) return;
 
@@ -106,7 +116,7 @@ public partial class EnvironmentEditorView : UserControl
 
         if (!e.GetCurrentPoint(null).Properties.IsLeftButtonPressed)
         {
-            EndDrag(e.Pointer);
+            _ = EndDragAsync(e.Pointer);
             return;
         }
 
@@ -119,7 +129,7 @@ public partial class EnvironmentEditorView : UserControl
             // regardless of which child element is visually under the cursor.
             e.Pointer.Capture(EnvironmentList);
             _isDragging = true;
-            EnvironmentList.Cursor = new Cursor(StandardCursorType.SizeNorthSouth);
+            EnvironmentList.Cursor = new Cursor(StandardCursorType.Hand);
         }
 
         var hit = EnvironmentList.InputHitTest(currentPos) as Visual;
@@ -127,41 +137,154 @@ public partial class EnvironmentEditorView : UserControl
         if (targetLbi?.DataContext is not EnvironmentListItemViewModel targetItem) return;
         if (targetItem == _draggedItem || targetItem.IsRenaming) return;
 
-        var localPos = e.GetPosition(targetLbi);
-        var midY = targetLbi.Bounds.Height / 2.0;
-
         var items = vm.Environments;
         var currentIndex = items.IndexOf(_draggedItem);
         var targetIndex = items.IndexOf(targetItem);
         if (currentIndex < 0 || targetIndex < 0) return;
 
-        // Swap only when the cursor crosses the target item's vertical midpoint,
-        // matching the direction of movement to avoid jitter.
-        var shouldSwap =
-            (targetIndex == currentIndex + 1 && localPos.Y > midY) ||
-            (targetIndex == currentIndex - 1 && localPos.Y < midY);
+        var destinationIndex = ComputeDestinationIndex(currentIndex, targetIndex, e.GetPosition(targetLbi).Y, targetLbi.Bounds.Height);
+        if (destinationIndex == currentIndex) return;
 
-        if (shouldSwap)
-            _ = vm.MoveEnvironmentAsync(_draggedItem, targetIndex);
+        if (vm.MoveEnvironment(_draggedItem, destinationIndex))
+            _environmentOrderChanged = true;
     }
 
-    private void OnListPointerReleased(object? sender, PointerReleasedEventArgs e)
-        => EndDrag(e.Pointer);
+    private async void OnListPointerReleased(object? sender, PointerReleasedEventArgs e)
+        => await EndDragAsync(e.Pointer).ConfigureAwait(true);
 
-    private void OnListPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    private async void OnListPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
     {
+        var shouldPersist = _environmentOrderChanged;
         _draggedItem = null;
         _isDragging = false;
+        _environmentOrderChanged = false;
         EnvironmentList.Cursor = Cursor.Default;
+
+        if (shouldPersist && DataContext is EnvironmentEditorViewModel vm)
+            await vm.PersistEnvironmentOrderAsync().ConfigureAwait(true);
     }
 
-    private void EndDrag(IPointer pointer)
+    private async Task EndDragAsync(IPointer pointer)
     {
         if (_draggedItem is null) return;
+        var shouldPersist = _environmentOrderChanged;
         _draggedItem = null;
         _isDragging = false;
+        _environmentOrderChanged = false;
         EnvironmentList.Cursor = Cursor.Default;
         pointer.Capture(null);
+
+        if (shouldPersist && DataContext is EnvironmentEditorViewModel vm)
+            await vm.PersistEnvironmentOrderAsync().ConfigureAwait(true);
+    }
+
+    private void OnVariablePointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _draggedVariable = null;
+        _isVariableDragging = false;
+
+        if (!e.GetCurrentPoint(null).Properties.IsLeftButtonPressed) return;
+
+        if (TryGetVariableItem(e.Source as Visual, out var variable, out _))
+        {
+            _draggedVariable = variable;
+            _variableDragStartPoint = e.GetPosition(VariableRows);
+        }
+    }
+
+    private void OnVariablePointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_draggedVariable is null || DataContext is not EnvironmentEditorViewModel vm)
+            return;
+
+        if (!e.GetCurrentPoint(null).Properties.IsLeftButtonPressed)
+        {
+            EndVariableDrag(e.Pointer);
+            return;
+        }
+
+        var selectedEnv = vm.SelectedEnvironment;
+        if (selectedEnv is null)
+            return;
+
+        var currentPos = e.GetPosition(VariableRows);
+        if (!_isVariableDragging)
+        {
+            if (Math.Abs(currentPos.Y - _variableDragStartPoint.Y) < DragThreshold) return;
+
+            e.Pointer.Capture(VariableRows);
+            _isVariableDragging = true;
+            VariableRows.Cursor = new Cursor(StandardCursorType.Hand);
+        }
+
+        var hit = VariableRows.InputHitTest(currentPos) as Visual;
+        if (!TryGetVariableItem(hit, out var targetVariable, out var targetVisual))
+            return;
+        if (targetVariable == _draggedVariable)
+            return;
+
+        var items = selectedEnv.Variables;
+        var currentIndex = items.IndexOf(_draggedVariable);
+        var targetIndex = items.IndexOf(targetVariable);
+        if (currentIndex < 0 || targetIndex < 0) return;
+
+        var destinationIndex = ComputeDestinationIndex(currentIndex, targetIndex, e.GetPosition(targetVisual).Y, targetVisual.Bounds.Height);
+        if (destinationIndex == currentIndex) return;
+
+        selectedEnv.MoveVariable(_draggedVariable, destinationIndex);
+    }
+
+    private void OnVariablePointerReleased(object? sender, PointerReleasedEventArgs e)
+        => EndVariableDrag(e.Pointer);
+
+    private void OnVariablePointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    {
+        _draggedVariable = null;
+        _isVariableDragging = false;
+        VariableRows.Cursor = Cursor.Default;
+    }
+
+    private void EndVariableDrag(IPointer pointer)
+    {
+        if (_draggedVariable is null) return;
+        _draggedVariable = null;
+        _isVariableDragging = false;
+        VariableRows.Cursor = Cursor.Default;
+        pointer.Capture(null);
+    }
+
+    private static bool TryGetVariableItem(
+        Visual? source,
+        out EnvironmentVariableItemViewModel variable,
+        out Visual visual)
+    {
+        var current = source;
+        while (current is not null)
+        {
+            if (current is StyledElement element
+                && element.DataContext is EnvironmentVariableItemViewModel item)
+            {
+                variable = item;
+                visual = current;
+                return true;
+            }
+
+            current = current.GetVisualParent();
+        }
+
+        variable = null!;
+        visual = null!;
+        return false;
+    }
+
+    private static int ComputeDestinationIndex(int currentIndex, int targetIndex, double localY, double height)
+    {
+        var insertAfterTarget = localY >= height / 2.0;
+
+        if (currentIndex < targetIndex)
+            return insertAfterTarget ? targetIndex : targetIndex - 1;
+
+        return insertAfterTarget ? targetIndex + 1 : targetIndex;
     }
 
 }

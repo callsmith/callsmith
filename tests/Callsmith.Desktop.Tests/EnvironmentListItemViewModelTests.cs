@@ -8,6 +8,32 @@ namespace Callsmith.Desktop.Tests;
 public sealed class EnvironmentListItemViewModelTests
 {
     [Fact]
+    public void MoveVariable_MovesItemAndMarksEnvironmentDirty()
+    {
+        var vm = CreateEnvironmentVm("mock-var");
+        vm.IsDirty.Should().BeFalse();
+
+        var first = vm.Variables[0];
+
+        vm.MoveVariable(first, 1);
+
+        vm.Variables[1].Should().BeSameAs(first);
+        vm.IsDirty.Should().BeTrue();
+    }
+
+    [Fact]
+    public void MoveVariable_WhenTargetIsOutOfRange_DoesNothing()
+    {
+        var vm = CreateEnvironmentVm("mock-var");
+        var snapshot = vm.Variables.Select(v => v.Name).ToArray();
+
+        vm.MoveVariable(vm.Variables[0], 99);
+
+        vm.Variables.Select(v => v.Name).Should().Equal(snapshot);
+        vm.IsDirty.Should().BeFalse();
+    }
+
+    [Fact]
     public void MockDataFieldChange_UpdatesReferencedStaticPreviewToNewGeneratorType()
     {
         var vm = CreateEnvironmentVm("mock-var");

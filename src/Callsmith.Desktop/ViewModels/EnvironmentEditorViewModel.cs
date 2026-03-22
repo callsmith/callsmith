@@ -39,6 +39,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     private TaskCompletionSource<EnvironmentVariable?>? _pendingMockDataTcs;
     private TaskCompletionSource<EnvironmentVariable?>? _pendingResponseBodyTcs;
     private CancellationTokenSource? _dynPreviewCts;
+    private bool _syncingGlobalPreviewSelection;
     // Guard: true while LoadEnvironmentsAsync is restoring saved state from disk.
     // Prevents changes driven by the load (e.g. restoring GlobalPreviewEnvironmentName)
     // from marking environments dirty before the user has touched anything.
@@ -621,8 +622,41 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
     partial void OnSelectedGlobalPreviewEnvironmentChanged(EnvironmentListItemViewModel? value)
     {
+        if (_syncingGlobalPreviewSelection)
+            return;
+
         var globalEnv = Environments.FirstOrDefault(e => e.IsGlobal);
         if (globalEnv is null) return;
+
+        var persistedPreviewName = globalEnv.BuildModel().GlobalPreviewEnvironmentName;
+
+        // Reordering concrete environments can cause a transient null selection in the
+        // preview ComboBox. If the persisted preview environment still exists, restore it
+        // and treat this as a non-user change.
+        if (value is null && !string.IsNullOrWhiteSpace(persistedPreviewName))
+        {
+            var persistedItem = Environments
+                .FirstOrDefault(e => !e.IsGlobal
+                    && string.Equals(e.Name, persistedPreviewName, StringComparison.OrdinalIgnoreCase));
+
+            if (persistedItem is not null)
+            {
+                _syncingGlobalPreviewSelection = true;
+                try
+                {
+                    SelectedGlobalPreviewEnvironment = persistedItem;
+                }
+                finally
+                {
+                    _syncingGlobalPreviewSelection = false;
+                }
+                return;
+            }
+        }
+
+        // No effective change from the persisted value.
+        if (string.Equals(persistedPreviewName, value?.Name, StringComparison.OrdinalIgnoreCase))
+            return;
 
         // Only mark dirty if this is a user change, not a programmatic restore during load.
         if (!_loadingEnvironments)
@@ -907,18 +941,26 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
     /// <summary>
     /// Moves <paramref name="item"/> to <paramref name="targetIndex"/> in the
-    /// <see cref="Environments"/> list, persists the new order to collection preferences,
-    /// and notifies the environment dropdown to refresh its ordering.
+    /// <see cref="Environments"/> list immediately during drag.
+    /// Returns <see langword="true"/> when the order changed.
     /// </summary>
-    public async Task MoveEnvironmentAsync(EnvironmentListItemViewModel item, int targetIndex)
+    public bool MoveEnvironment(EnvironmentListItemViewModel item, int targetIndex)
     {
         var currentIndex = Environments.IndexOf(item);
-        if (currentIndex < 0 || currentIndex == targetIndex) return;
+        if (currentIndex < 0 || currentIndex == targetIndex) return false;
         // Index 0 is always the pinned Global env — never move to or from it.
-        if (currentIndex == 0 || targetIndex <= 0 || targetIndex >= Environments.Count) return;
+        if (currentIndex == 0 || targetIndex <= 0 || targetIndex >= Environments.Count) return false;
 
         Environments.Move(currentIndex, targetIndex);
 
+        return true;
+    }
+
+    /// <summary>
+    /// Persists the current environment order after a drag completes and refreshes the selector.
+    /// </summary>
+    public async Task PersistEnvironmentOrderAsync()
+    {
         await PersistCurrentOrderAsync().ConfigureAwait(true);
         if (_collectionFolderPath is not null)
             Messenger.Send(new EnvironmentOrderChangedMessage(_collectionFolderPath));
