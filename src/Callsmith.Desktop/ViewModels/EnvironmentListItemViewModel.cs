@@ -276,6 +276,8 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
             onDelete: v => { Variables.Remove(v); OnAnyVariableChanged(); },
             onChanged: OnAnyVariableChanged,
             getResolvedEnv: BuildResolvedEnvironment,
+            onInvalidateDynamicPreviewCache: InvalidateDynamicPreviewCache,
+            onUpdateDynamicPreviewCache: UpdateDynamicPreviewCache,
             editMockData: v => EditMockDataCallback?.Invoke(v) ?? Task.FromResult<EnvironmentVariable?>(null),
             editResponseBody: v => EditResponseBodyCallback?.Invoke(v) ?? Task.FromResult<EnvironmentVariable?>(null))
         {
@@ -397,7 +399,13 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
 
     /// <summary>
     /// Stores pre-evaluated dynamic variable values so that static variable previews
-    /// can fully resolve <c>{{token}}</c>-style references to response-body or mock-data vars.
+    /// can fully resolve <c>{{token}}</c>-style references to response-body or mock-data vars,
+    /// and so dynamic variables (mock-data / response-body) can display their resolved preview values.
+    /// 
+    /// For mock data, we generate the preview value once and cache it in _resolvedDynVars so that
+    /// subsequent substitutions during this refresh cycle reuse the same value instead of generating
+    /// fresh ones on every property change.
+    /// 
     /// Called by <see cref="EnvironmentEditorViewModel"/> after an async evaluation pass.
     /// </summary>
     internal void SetDynamicPreviewValues(
@@ -406,6 +414,78 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     {
         _resolvedDynVars = new Dictionary<string, string>(dynVars, StringComparer.Ordinal);
         _mockGenerators = generators;
+        
+        // Pass the preview values to each dynamic variable item
+        foreach (var v in Variables)
+        {
+            if (v.IsMockData)
+            {
+                // For mock data: generate a sample value from the catalog
+                if (generators.TryGetValue(v.Name, out var entry))
+                {
+                    var generatedValue = Callsmith.Core.MockData.MockDataCatalog.Generate(entry.Category, entry.Field);
+                    v.DynamicPreviewValue = generatedValue;
+                    
+                    // Also cache the generated value in _resolvedDynVars so that when static variables
+                    // reference this mock var, the substitution uses the cached value instead of
+                    // generating fresh each keystroke. Send-time will still generate fresh.
+                    _resolvedDynVars[v.Name] = generatedValue;
+                }
+                else
+                {
+                    v.DynamicPreviewValue = null;
+                }
+            }
+            else if (v.IsResponseBody)
+            {
+                // For response body: look up the resolved value
+                if (dynVars.TryGetValue(v.Name, out var previewValue))
+                {
+                    v.DynamicPreviewValue = previewValue;
+                }
+                else
+                {
+                    v.DynamicPreviewValue = null;
+                }
+            }
+            v.NotifyPreviewChanged();
+        }
+    }
+
+    /// <summary>
+    /// Invalidates the cached preview value for a dynamic variable when its type changes.
+    /// This ensures that when a variable changes from mock-data to static (or vice versa),
+    /// the old cached mock value is cleared and will be regenerated on the next refresh.
+    /// </summary>
+    private void InvalidateDynamicPreviewCache(string variableName)
+    {
+        // Remove from the resolved cache so old values don't persist
+        _resolvedDynVars.Remove(variableName);
+        
+        // Clear the preview on the variable item itself
+        var variable = Variables.FirstOrDefault(v => v.Name == variableName);
+        if (variable != null)
+        {
+            variable.DynamicPreviewValue = null;
+            variable.NotifyPreviewChanged();
+        }
+    }
+
+    /// <summary>
+    /// Updates the cached preview value for a dynamic variable when its mock data configuration changes.
+    /// This ensures that static variables referencing this mock var will immediately show the updated
+    /// preview without requiring navigation away and back.
+    /// </summary>
+    private void UpdateDynamicPreviewCache(string variableName, string newValue)
+    {
+        // Update the resolved cache FIRST so when previews are recalculated, 
+        // they will see the new value in BuildResolvedEnvironment()
+        _resolvedDynVars[variableName] = newValue;
+        
+        // Refresh previews for ALL variables so static variables that reference this 
+        // dynamic variable will recalculate their substitution using the updated _resolvedDynVars.
+        // We do NOT call OnAnyVariableChanged() here because that marks the environment dirty
+        // and fires VariablesChanged event. Instead we just refresh previews directly.
         foreach (var v in Variables)
             v.NotifyPreviewChanged();
     }
@@ -419,3 +499,4 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         VariablesChanged?.Invoke(this, EventArgs.Empty);
     }
 }
+

@@ -15,6 +15,8 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
 {
     private readonly Action<EnvironmentVariableItemViewModel> _onDelete;
     private readonly Action _onChanged;
+    private readonly Action<string> _onInvalidateDynamicPreviewCache;
+    private readonly Action<string, string> _onUpdateDynamicPreviewCache;
     private readonly Func<ResolvedEnvironment> _getResolvedEnv;
     private readonly Func<EnvironmentVariable?, Task<EnvironmentVariable?>> _editMockData;
     private readonly Func<EnvironmentVariable?, Task<EnvironmentVariable?>> _editResponseBody;
@@ -49,14 +51,23 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     [ObservableProperty]
     private IReadOnlyList<EnvVarSuggestion> _suggestionNames = [];
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PreviewValue))]
+    [NotifyPropertyChangedFor(nameof(HasPreview))]
+    private string? _dynamicPreviewValue;
+
     // ── Mock-data properties ─────────────────────────────────────────────────
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(MockDataSummary))]
+    [NotifyPropertyChangedFor(nameof(PreviewValue))]
+    [NotifyPropertyChangedFor(nameof(HasPreview))]
     private string? _mockDataCategory;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(MockDataSummary))]
+    [NotifyPropertyChangedFor(nameof(PreviewValue))]
+    [NotifyPropertyChangedFor(nameof(HasPreview))]
     private string? _mockDataField;
 
     public string MockDataSummary =>
@@ -127,18 +138,35 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
         }
     }
 
-    // ── Preview (static vars with {{token}} references) ──────────────────────
+    // ── Preview ───────────────────────────────────────────────────────────────
+    // For static variables: expand {{token}} references using resolved environment.
+    // For dynamic variables: show the resolved preview value (mock data or response body).
 
     public string? PreviewValue
     {
         get
         {
-            if (!IsStatic || !TokenPattern().IsMatch(Value)) return null;
-            return VariableSubstitutionService.Substitute(Value, _getResolvedEnv());
+            if (IsSecret) return null;
+
+            // For static variables with {{token}} references, substitute them
+            if (IsStatic && TokenPattern().IsMatch(Value))
+            {
+                return VariableSubstitutionService.Substitute(Value, _getResolvedEnv());
+            }
+
+            // For dynamic variables (mock data or response body), show the cached preview value
+            if ((IsMockData || IsResponseBody) && DynamicPreviewValue != null)
+            {
+                return DynamicPreviewValue;
+            }
+
+            return null;
         }
     }
 
-    public bool HasPreview => IsStatic && !IsSecret && TokenPattern().IsMatch(Value);
+    public bool HasPreview => !IsSecret && 
+        ((IsStatic && TokenPattern().IsMatch(Value)) ||
+         ((IsMockData || IsResponseBody) && DynamicPreviewValue != null));
 
     [System.Text.RegularExpressions.GeneratedRegex(@"\{\{[^}]+\}\}")]
     private static partial System.Text.RegularExpressions.Regex TokenPattern();
@@ -151,6 +179,8 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
         Action<EnvironmentVariableItemViewModel> onDelete,
         Action onChanged,
         Func<ResolvedEnvironment> getResolvedEnv,
+        Action<string>? onInvalidateDynamicPreviewCache = null,
+        Action<string, string>? onUpdateDynamicPreviewCache = null,
         Func<EnvironmentVariable?, Task<EnvironmentVariable?>>? editMockData = null,
         Func<EnvironmentVariable?, Task<EnvironmentVariable?>>? editResponseBody = null)
     {
@@ -160,6 +190,8 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
         _onDelete = onDelete;
         _onChanged = onChanged;
         _getResolvedEnv = getResolvedEnv;
+        _onInvalidateDynamicPreviewCache = onInvalidateDynamicPreviewCache ?? (_ => { });
+        _onUpdateDynamicPreviewCache = onUpdateDynamicPreviewCache ?? ((_, __) => { });
         _editMockData = editMockData ?? (_ => Task.FromResult<EnvironmentVariable?>(null));
         _editResponseBody = editResponseBody ?? (_ => Task.FromResult<EnvironmentVariable?>(null));
         DeleteCommand = new RelayCommand(() => _onDelete(this));
@@ -237,14 +269,57 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     // ── Property change hooks ────────────────────────────────────────────────
 
     partial void OnNameChanged(string value) => _onChanged();
+    
     partial void OnValueChanged(string value) => _onChanged();
-    partial void OnVariableTypeChanged(string value) => _onChanged();
+    
+    partial void OnVariableTypeChanged(string value)
+    {
+        _onChanged();
+        // Invalidate the cached preview when type changes so it will be regenerated
+        // on the next refresh cycle
+        _onInvalidateDynamicPreviewCache(Name);
+    }
 
     partial void OnIsSecretChanged(bool value)
     {
         _onChanged();
         OnPropertyChanged(nameof(IsStaticNotSecret));
         OnPropertyChanged(nameof(IsStaticAndSecret));
+    }
+
+    partial void OnMockDataCategoryChanged(string? value)
+    {
+        _onChanged();
+        // Regenerate the preview immediately when mock data config changes
+        RegenerateMockDataPreview();
+    }
+
+    partial void OnMockDataFieldChanged(string? value)
+    {
+        _onChanged();
+        // Regenerate the preview immediately when mock data config changes
+        RegenerateMockDataPreview();
+    }
+
+    /// <summary>
+    /// Regenerates the mock data preview value immediately when the mock data configuration 
+    /// (category/field) changes, so the UI shows the new value without navigating away.
+    /// Also updates the parent's cache so static variables that reference this mock var
+    /// will show the updated value in their previews.
+    /// </summary>
+    private void RegenerateMockDataPreview()
+    {
+        if (IsMockData && MockDataCategory is not null && MockDataField is not null)
+        {
+            var newValue = Callsmith.Core.MockData.MockDataCatalog.Generate(MockDataCategory, MockDataField);
+            DynamicPreviewValue = newValue;
+            // Update the parent's cache so static vars that reference this mock var get the new value
+            _onUpdateDynamicPreviewCache(Name, newValue);
+        }
+        else
+        {
+            DynamicPreviewValue = null;
+        }
     }
 
     public void NotifyPreviewChanged()

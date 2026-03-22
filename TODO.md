@@ -189,7 +189,10 @@
   - [x] Add, rename, delete environments
   - [x] Per-variable: choose type (static), edit value
   - [x] Secret variables — masked in UI, excluded from logs, never written to history in plaintext
-- [ ] Resolved variable values shown in the request preview before sending
+  - [x] Resolved variable values shown in the environment editor:
+    - [x] Mock data and response-body variables display cached preview values
+    - [x] Static variables that reference dynamic variables show substituted values
+    - [x] Cascading updates when dynamic variable config changes
 - [x] Write unit tests for the substitution engine and file service
 
 ---
