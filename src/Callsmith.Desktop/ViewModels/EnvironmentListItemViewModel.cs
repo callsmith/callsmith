@@ -418,10 +418,13 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         // Pass the preview values to each dynamic variable item
         foreach (var v in Variables)
         {
+            var key = NormalizeVariableName(v.Name);
+
             if (v.IsMockData)
             {
                 // For mock data: generate a sample value from the catalog
-                if (generators.TryGetValue(v.Name, out var entry))
+                if (generators.TryGetValue(key, out var entry)
+                    || generators.TryGetValue(v.Name, out entry))
                 {
                     var generatedValue = Callsmith.Core.MockData.MockDataCatalog.Generate(entry.Category, entry.Field);
                     v.DynamicPreviewValue = generatedValue;
@@ -429,7 +432,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
                     // Also cache the generated value in _resolvedDynVars so that when static variables
                     // reference this mock var, the substitution uses the cached value instead of
                     // generating fresh each keystroke. Send-time will still generate fresh.
-                    _resolvedDynVars[v.Name] = generatedValue;
+                    _resolvedDynVars[key] = generatedValue;
                 }
                 else
                 {
@@ -439,7 +442,8 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
             else if (v.IsResponseBody)
             {
                 // For response body: look up the resolved value
-                if (dynVars.TryGetValue(v.Name, out var previewValue))
+                if (dynVars.TryGetValue(key, out var previewValue)
+                    || dynVars.TryGetValue(v.Name, out previewValue))
                 {
                     v.DynamicPreviewValue = previewValue;
                 }
@@ -459,11 +463,22 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     /// </summary>
     private void InvalidateDynamicPreviewCache(string variableName)
     {
+        var key = NormalizeVariableName(variableName);
+
         // Remove from the resolved cache so old values don't persist
-        _resolvedDynVars.Remove(variableName);
+        _resolvedDynVars.Remove(key);
+
+        // Keep mock generator cache in sync so substitutions do not use stale generator types.
+        if (_mockGenerators.Count > 0)
+        {
+            var updatedGenerators = new Dictionary<string, MockDataEntry>(_mockGenerators, StringComparer.Ordinal);
+            updatedGenerators.Remove(key);
+            _mockGenerators = updatedGenerators;
+        }
         
         // Clear the preview on the variable item itself
-        var variable = Variables.FirstOrDefault(v => v.Name == variableName);
+        var variable = Variables.FirstOrDefault(v =>
+            string.Equals(NormalizeVariableName(v.Name), key, StringComparison.Ordinal));
         if (variable != null)
         {
             variable.DynamicPreviewValue = null;
@@ -478,9 +493,38 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     /// </summary>
     private void UpdateDynamicPreviewCache(string variableName, string newValue)
     {
+        var key = NormalizeVariableName(variableName);
+
         // Update the resolved cache FIRST so when previews are recalculated, 
         // they will see the new value in BuildResolvedEnvironment()
-        _resolvedDynVars[variableName] = newValue;
+        _resolvedDynVars[key] = newValue;
+
+        // Keep mock generator metadata in sync with the current variable config. Variable
+        // substitution checks MockGenerators before Variables, so stale generator entries can
+        // otherwise keep producing the old type (e.g. Email after switching to Username).
+        var updatedGenerators = new Dictionary<string, MockDataEntry>(_mockGenerators, StringComparer.Ordinal);
+        var variable = Variables.FirstOrDefault(v =>
+            string.Equals(NormalizeVariableName(v.Name), key, StringComparison.Ordinal));
+
+        if (variable is { IsMockData: true }
+            && !string.IsNullOrWhiteSpace(variable.MockDataCategory)
+            && !string.IsNullOrWhiteSpace(variable.MockDataField))
+        {
+            var entry = MockDataCatalog.All.FirstOrDefault(e =>
+                e.Category == variable.MockDataCategory
+                && e.Field == variable.MockDataField);
+
+            if (entry is not null)
+                updatedGenerators[key] = entry;
+            else
+                updatedGenerators.Remove(key);
+        }
+        else
+        {
+            updatedGenerators.Remove(key);
+        }
+
+        _mockGenerators = updatedGenerators;
         
         // Refresh previews for ALL variables so static variables that reference this 
         // dynamic variable will recalculate their substitution using the updated _resolvedDynVars.
@@ -489,6 +533,8 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         foreach (var v in Variables)
             v.NotifyPreviewChanged();
     }
+
+    private static string NormalizeVariableName(string value) => value.Trim();
 
     /// <summary>Marks the environment dirty and refreshes all variable previews.</summary>
     private void OnAnyVariableChanged()

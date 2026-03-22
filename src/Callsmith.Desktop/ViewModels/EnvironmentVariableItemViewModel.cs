@@ -314,7 +314,7 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
             var newValue = Callsmith.Core.MockData.MockDataCatalog.Generate(MockDataCategory, MockDataField);
             DynamicPreviewValue = newValue;
             // Update the parent's cache so static vars that reference this mock var get the new value
-            _onUpdateDynamicPreviewCache(Name, newValue);
+            _onUpdateDynamicPreviewCache(Name.Trim(), newValue);
         }
         else
         {
