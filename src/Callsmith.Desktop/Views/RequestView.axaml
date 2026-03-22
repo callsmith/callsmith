@@ -166,6 +166,7 @@
               </StackPanel>
               <controls:SyntaxEditor x:Name="BodyEditor" Grid.Row="1"
                        Text="{Binding Body}" Language="{Binding BodyLanguage}"
+                       controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"
                        IsVisible="{Binding ShowTextBodyEditor}"/>
               <Panel Grid.Row="1" IsVisible="{Binding ShowFormBodyEditor}">
                 <views:KeyValueEditorView DataContext="{Binding FormParams}"/>
@@ -218,7 +219,8 @@
                               <TextBox Text="{Binding StaticText, Mode=TwoWay}" IsVisible="{Binding IsStatic}"
                                        Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
                                        VerticalAlignment="Center" VerticalContentAlignment="Center"
-                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"/>
+                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"
+                                       controls:EnvVarCompletion.Suggestions="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).EnvVarNames}"/>
                               <Border Background="#1a3a2a" BorderBrush="#2a6a4a" BorderThickness="1"
                                       CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
                                       IsVisible="{Binding IsDynamic}" VerticalAlignment="Center">
@@ -292,7 +294,8 @@
                               <TextBox Text="{Binding StaticText, Mode=TwoWay}" IsVisible="{Binding IsStatic}"
                                        Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
                                        VerticalAlignment="Center" VerticalContentAlignment="Center"
-                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"/>
+                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"
+                                       controls:EnvVarCompletion.Suggestions="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).EnvVarNames}"/>
                               <Border Background="#1a3a2a" BorderBrush="#2a6a4a" BorderThickness="1"
                                       CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
                                       IsVisible="{Binding IsDynamic}" VerticalAlignment="Center">
@@ -398,7 +401,8 @@
                               <TextBox Text="{Binding StaticText, Mode=TwoWay}" IsVisible="{Binding IsStatic}"
                                        Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
                                        VerticalAlignment="Center" VerticalContentAlignment="Center"
-                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"/>
+                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"
+                                       controls:EnvVarCompletion.Suggestions="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).EnvVarNames}"/>
                               <Border Background="#1a3a2a" BorderBrush="#2a6a4a" BorderThickness="1"
                                       CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
                                       IsVisible="{Binding IsDynamic}" VerticalAlignment="Center">
@@ -472,7 +476,8 @@
                               <TextBox Text="{Binding StaticText, Mode=TwoWay}" IsVisible="{Binding IsStatic}"
                                        Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
                                        VerticalAlignment="Center" VerticalContentAlignment="Center"
-                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"/>
+                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"
+                                       controls:EnvVarCompletion.Suggestions="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).EnvVarNames}"/>
                               <Border Background="#1a3a2a" BorderBrush="#2a6a4a" BorderThickness="1"
                                       CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
                                       IsVisible="{Binding IsDynamic}" VerticalAlignment="Center">
@@ -546,7 +551,8 @@
                               <TextBox Text="{Binding StaticText, Mode=TwoWay}" IsVisible="{Binding IsStatic}"
                                        Foreground="#cccccc" FontFamily="Consolas,Menlo,monospace" FontSize="11"
                                        VerticalAlignment="Center" VerticalContentAlignment="Center"
-                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"/>
+                                       Background="Transparent" BorderThickness="0" Padding="2,1" MinWidth="20" Watermark="…"
+                                       controls:EnvVarCompletion.Suggestions="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).EnvVarNames}"/>
                               <Border Background="#1a3a2a" BorderBrush="#2a6a4a" BorderThickness="1"
                                       CornerRadius="10" Padding="6,2,2,2" Margin="2,2"
                                       IsVisible="{Binding IsDynamic}" VerticalAlignment="Center">

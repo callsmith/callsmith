@@ -20,6 +20,7 @@ public sealed class SyntaxEditor : TextEditor
 {
     private static readonly IHighlightingDefinition? _jsonHighlighting;
     private static readonly IHighlightingDefinition? _xmlHighlighting;
+    private static readonly IHighlightingDefinition? _htmlHighlighting;
     private static readonly IHighlightingDefinition? _textHighlighting;
     private bool _updatingText;
     private FoldingManager? _foldingManager;
@@ -29,6 +30,7 @@ public sealed class SyntaxEditor : TextEditor
     {
         _jsonHighlighting = LoadXshd("avares://Callsmith/Highlighting/DarkJson.xshd");
         _xmlHighlighting  = LoadXshd("avares://Callsmith/Highlighting/DarkXml.xshd");
+        _htmlHighlighting = LoadXshd("avares://Callsmith/Highlighting/DarkHtml.xshd");
         _textHighlighting = LoadXshd("avares://Callsmith/Highlighting/DarkText.xshd");
     }
 
@@ -153,6 +155,7 @@ public sealed class SyntaxEditor : TextEditor
         {
             "json" => _jsonHighlighting,
             "xml"  => _xmlHighlighting,
+            "html" => _htmlHighlighting,
             "text" => _textHighlighting,
             _      => null,
         };

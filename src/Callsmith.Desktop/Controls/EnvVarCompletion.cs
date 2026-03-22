@@ -7,6 +7,10 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.VisualTree;
+using AvaloniaEdit;
+using AvaloniaEdit.Document;
+using AvaloniaEdit.Editing;
+using AvaloniaEdit.Rendering;
 
 namespace Callsmith.Desktop.Controls;
 
@@ -27,8 +31,8 @@ public static class EnvVarCompletion
     // Avalonia requires a non-static owner type for attached-property registration.
     private sealed class Owner { }
 
-    // One handler per TextBox; kept alive while the TextBox is alive.
-    private static readonly ConditionalWeakTable<TextBox, CompletionHandler> Handlers = new();
+    private static readonly ConditionalWeakTable<TextBox, TextBoxCompletionHandler> TextBoxHandlers = new();
+    private static readonly ConditionalWeakTable<SyntaxEditor, SyntaxEditorCompletionHandler> SyntaxEditorHandlers = new();
 
     /// <summary>
     /// List of variable names to offer as completions.
@@ -36,22 +40,29 @@ public static class EnvVarCompletion
     /// An empty or null list disables the feature.
     /// </summary>
     public static readonly AttachedProperty<IReadOnlyList<EnvVarSuggestion>?> SuggestionsProperty =
-        AvaloniaProperty.RegisterAttached<Owner, TextBox, IReadOnlyList<EnvVarSuggestion>?>("Suggestions");
+        AvaloniaProperty.RegisterAttached<Owner, InputElement, IReadOnlyList<EnvVarSuggestion>?>("Suggestions");
 
     static EnvVarCompletion()
     {
-        SuggestionsProperty.Changed.AddClassHandler<TextBox>(OnSuggestionsChanged);
+        SuggestionsProperty.Changed.AddClassHandler<TextBox>(OnTextBoxSuggestionsChanged);
+        SuggestionsProperty.Changed.AddClassHandler<SyntaxEditor>(OnSyntaxEditorSuggestionsChanged);
     }
 
-    public static IReadOnlyList<EnvVarSuggestion>? GetSuggestions(TextBox element)
+    public static IReadOnlyList<EnvVarSuggestion>? GetSuggestions(InputElement element)
         => element.GetValue(SuggestionsProperty);
 
-    public static void SetSuggestions(TextBox element, IReadOnlyList<EnvVarSuggestion>? value)
+    public static void SetSuggestions(InputElement element, IReadOnlyList<EnvVarSuggestion>? value)
         => element.SetValue(SuggestionsProperty, value);
 
-    private static void OnSuggestionsChanged(TextBox textBox, AvaloniaPropertyChangedEventArgs e)
+    private static void OnTextBoxSuggestionsChanged(TextBox textBox, AvaloniaPropertyChangedEventArgs e)
     {
-        var handler = Handlers.GetValue(textBox, static tb => new CompletionHandler(tb));
+        var handler = TextBoxHandlers.GetValue(textBox, static tb => new TextBoxCompletionHandler(tb));
+        handler.UpdateSuggestions((e.NewValue as IReadOnlyList<EnvVarSuggestion>) ?? []);
+    }
+
+    private static void OnSyntaxEditorSuggestionsChanged(SyntaxEditor editor, AvaloniaPropertyChangedEventArgs e)
+    {
+        var handler = SyntaxEditorHandlers.GetValue(editor, static value => new SyntaxEditorCompletionHandler(value));
         handler.UpdateSuggestions((e.NewValue as IReadOnlyList<EnvVarSuggestion>) ?? []);
     }
 }
@@ -65,7 +76,7 @@ public static class EnvVarCompletion
 /// Uses OverlayLayer to render the panel so it floats above all other content
 /// without requiring a Popup logical-parent relationship.
 /// </summary>
-internal sealed class CompletionHandler
+internal sealed class TextBoxCompletionHandler
 {
     private readonly TextBox _textBox;
 
@@ -83,7 +94,7 @@ internal sealed class CompletionHandler
     private TopLevel? _topLevel;
     private EventHandler<PointerPressedEventArgs>? _dismissHandler;
 
-    public CompletionHandler(TextBox textBox)
+    public TextBoxCompletionHandler(TextBox textBox)
     {
         _textBox = textBox;
         _textBox.TextChanged += OnTextChanged;
@@ -335,6 +346,332 @@ internal sealed class CompletionHandler
             ZIndex = 9999,
             Child = _listBox,
         };
+    }
+
+    private sealed record TriggerContext(int StartIndex, string Prefix);
+}
+
+internal sealed class SyntaxEditorCompletionHandler
+{
+    private readonly SyntaxEditor _editor;
+
+    private IReadOnlyList<EnvVarSuggestion> _suggestions = [];
+    private List<EnvVarSuggestion> _currentItems = [];
+
+    private Border? _overlayPanel;
+    private ListBox? _listBox;
+    private bool _isVisible;
+    private bool _suppressChange;
+
+    private TopLevel? _topLevel;
+    private EventHandler<PointerPressedEventArgs>? _dismissHandler;
+
+    public SyntaxEditorCompletionHandler(SyntaxEditor editor)
+    {
+        _editor = editor;
+        _editor.TextChanged += OnTextChanged;
+        _editor.KeyDown += OnKeyDown;
+        _editor.AttachedToVisualTree += OnAttachedToVisualTree;
+        _editor.DetachedFromVisualTree += OnDetachedFromVisualTree;
+    }
+
+    public void UpdateSuggestions(IReadOnlyList<EnvVarSuggestion> suggestions)
+    {
+        _suggestions = suggestions;
+        if (_isVisible)
+            OnTextChanged(null, EventArgs.Empty);
+    }
+
+    private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        _topLevel = TopLevel.GetTopLevel(_editor);
+        if (_topLevel is null)
+            return;
+
+        _dismissHandler = OnTopLevelPointerPressed;
+        _topLevel.AddHandler(
+            InputElement.PointerPressedEvent,
+            _dismissHandler,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+    }
+
+    private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        ClosePanel();
+
+        if (_overlayPanel != null)
+        {
+            var overlay = OverlayLayer.GetOverlayLayer(_editor);
+            overlay?.Children.Remove(_overlayPanel);
+        }
+
+        if (_topLevel is not null && _dismissHandler is not null)
+        {
+            _topLevel.RemoveHandler(InputElement.PointerPressedEvent, _dismissHandler);
+            _topLevel = null;
+            _dismissHandler = null;
+        }
+    }
+
+    private void OnTopLevelPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!_isVisible)
+            return;
+
+        if (_overlayPanel is not null && e.Source is Visual source)
+        {
+            if (_overlayPanel == source || _overlayPanel.IsVisualAncestorOf(source))
+                return;
+        }
+
+        ClosePanel();
+    }
+
+    private void OnTextChanged(object? sender, EventArgs e)
+    {
+        if (_suppressChange)
+            return;
+
+        var trigger = FindTrigger();
+        if (trigger is null || _suggestions.Count == 0)
+        {
+            ClosePanel();
+            return;
+        }
+
+        var filtered = _suggestions
+            .Where(s => s.Name.StartsWith(trigger.Prefix, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (filtered.Count == 0)
+        {
+            ClosePanel();
+            return;
+        }
+
+        OpenPanel(filtered);
+    }
+
+    private void OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (!_isVisible)
+            return;
+
+        switch (e.Key)
+        {
+            case Key.Down:
+                MoveSelection(+1);
+                e.Handled = true;
+                break;
+            case Key.Up:
+                MoveSelection(-1);
+                e.Handled = true;
+                break;
+            case Key.Enter:
+            case Key.Tab:
+                CommitSelection();
+                e.Handled = true;
+                break;
+            case Key.Escape:
+                ClosePanel();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void OpenPanel(List<EnvVarSuggestion> items)
+    {
+        _currentItems = items;
+        EnsurePanelCreated();
+
+        _listBox!.ItemsSource = items;
+        _listBox.SelectedIndex = 0;
+
+        var overlay = OverlayLayer.GetOverlayLayer(_editor);
+        if (overlay is null)
+            return;
+
+        if (!overlay.Children.Contains(_overlayPanel!))
+            overlay.Children.Add(_overlayPanel!);
+
+        var pos = GetCaretAnchorPoint(overlay) ?? _editor.TranslatePoint(new Point(0, _editor.Bounds.Height), overlay);
+        if (pos.HasValue)
+        {
+            Canvas.SetLeft(_overlayPanel!, pos.Value.X);
+            Canvas.SetTop(_overlayPanel!, pos.Value.Y);
+        }
+
+        _overlayPanel!.Width = Math.Max(240, _editor.Bounds.Width);
+        _overlayPanel.IsVisible = true;
+        _isVisible = true;
+    }
+
+    private void ClosePanel()
+    {
+        if (_overlayPanel is not null)
+            _overlayPanel.IsVisible = false;
+        _isVisible = false;
+    }
+
+    private void CommitSelection()
+    {
+        if (_listBox?.SelectedItem is not EnvVarSuggestion chosen)
+            return;
+
+        var trigger = FindTrigger();
+        if (trigger is null)
+        {
+            ClosePanel();
+            return;
+        }
+
+        var caret = GetCaretOffset();
+        var token = $"{{{{{chosen.Name}}}}}";
+
+        _suppressChange = true;
+        try
+        {
+            if (_editor.Document is not null)
+            {
+                _editor.Document.Replace(trigger.StartIndex, caret - trigger.StartIndex, token);
+                _editor.TextArea.Caret.Offset = trigger.StartIndex + token.Length;
+            }
+            else
+            {
+                var text = _editor.Text ?? string.Empty;
+                _editor.Text = string.Concat(text[..trigger.StartIndex], token, text[caret..]);
+                _editor.TextArea.Caret.Offset = trigger.StartIndex + token.Length;
+            }
+        }
+        finally
+        {
+            _suppressChange = false;
+        }
+
+        ClosePanel();
+        _editor.Focus();
+    }
+
+    private void MoveSelection(int delta)
+    {
+        if (_listBox is null || _currentItems.Count == 0)
+            return;
+
+        var idx = Math.Clamp(_listBox.SelectedIndex + delta, 0, _currentItems.Count - 1);
+        _listBox.SelectedIndex = idx;
+        _listBox.ScrollIntoView(_currentItems[idx]);
+    }
+
+    private TriggerContext? FindTrigger()
+    {
+        var text = _editor.Text ?? string.Empty;
+        var caret = GetCaretOffset();
+        if (caret == 0 || caret > text.Length)
+            return null;
+
+        var preceding = text[..caret];
+        var idx = preceding.LastIndexOf("{{", StringComparison.Ordinal);
+        if (idx < 0)
+            return null;
+
+        var after = preceding[(idx + 2)..];
+        if (after.Contains("}}", StringComparison.Ordinal))
+            return null;
+
+        return new TriggerContext(idx, after);
+    }
+
+    private int GetCaretOffset()
+    {
+        var offset = _editor.TextArea.Caret.Offset;
+        return Math.Clamp(offset, 0, (_editor.Text ?? string.Empty).Length);
+    }
+
+    private Point? GetCaretAnchorPoint(Visual overlay)
+    {
+        var textView = _editor.TextArea.TextView;
+        var document = _editor.Document;
+        if (document is null)
+            return null;
+
+        try
+        {
+            textView.EnsureVisualLines();
+
+            var offset = GetCaretOffset();
+            var location = document.GetLocation(offset);
+            var visualPosition = textView.GetVisualPosition(
+                new TextViewPosition(location.Line, location.Column),
+                VisualYPosition.LineBottom);
+
+            return textView.TranslatePoint(visualPosition, overlay);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void EnsurePanelCreated()
+    {
+        if (_overlayPanel is not null)
+            return;
+
+        _listBox = BuildListBox(CommitSelection);
+
+        _overlayPanel = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#252526")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#555555")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            BoxShadow = BoxShadows.Parse("0 4 14 2 #AA000000"),
+            IsVisible = false,
+            ZIndex = 9999,
+            Child = _listBox,
+        };
+    }
+
+    private static ListBox BuildListBox(Action onCommit)
+    {
+        var listBox = new ListBox
+        {
+            Background = new SolidColorBrush(Color.Parse("#252526")),
+            Foreground = new SolidColorBrush(Color.Parse("#d4d4d4")),
+            MaxHeight = 200,
+            Padding = new Thickness(2),
+        };
+
+        listBox.ItemTemplate = new FuncDataTemplate(
+            typeof(EnvVarSuggestion),
+            (item, _) =>
+            {
+                var suggestion = (EnvVarSuggestion)item!;
+                var panel = new StackPanel();
+                panel.Children.Add(new TextBlock
+                {
+                    Text = "{{" + suggestion.Name + "}}",
+                    Padding = new Thickness(8, 4, 8, 1),
+                    FontFamily = new FontFamily("Consolas,Menlo,monospace"),
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush(Color.Parse("#4ec9b0")),
+                });
+                panel.Children.Add(new TextBlock
+                {
+                    Text = suggestion.Value.Length > 40 ? suggestion.Value[..40] + "\u2026" : suggestion.Value,
+                    Padding = new Thickness(8, 1, 8, 4),
+                    FontFamily = new FontFamily("Consolas,Menlo,monospace"),
+                    FontSize = 11,
+                    Foreground = new SolidColorBrush(Color.Parse("#808080")),
+                });
+                return panel;
+            },
+            supportsRecycling: false);
+
+        listBox.Tapped += (_, _) => onCommit();
+        return listBox;
     }
 
     private sealed record TriggerContext(int StartIndex, string Prefix);

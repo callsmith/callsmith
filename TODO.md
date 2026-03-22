@@ -259,6 +259,10 @@
 - [ ] Syntax-highlighted JSON viewer with collapsible tree + raw toggle
 - [ ] XML formatter and viewer
 - [ ] HTML preview (rendered in a sandboxed view)
+  - Use `Avalonia.WebView` (wraps WebView2/WKWebView/WebKitGTK per platform)
+  - Must intercept navigation and block external resource loads by default
+  - Requires a "Preview" toggle — raw formatted body and rendered view side by side
+  - AngleSharp (already a dependency) can sanitise the DOM before handing to the webview if needed
 - [ ] Binary response handling (show MIME type and size, offer save-to-file)
 - [ ] Response header descriptions on hover (common headers explained inline)
 - [ ] Copy response body to clipboard button

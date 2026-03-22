@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
+using Callsmith.Desktop.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
@@ -36,6 +37,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     // and similar global mock vars resolve in the preview column of concrete environments.
     private IReadOnlyDictionary<string, MockDataEntry> _globalMockGenerators
         = new Dictionary<string, MockDataEntry>();
+    private IReadOnlyList<EnvVarSuggestion> _suggestions = [];
 
     // ─── Observable state ────────────────────────────────────────────────────
 
@@ -73,6 +75,8 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
 
     /// <summary>Editable variable rows for this environment.</summary>
     public ObservableCollection<EnvironmentVariableItemViewModel> Variables { get; } = [];
+
+    public event EventHandler? VariablesChanged;
 
     /// <summary>
     /// Callback provided by the host that opens the mock-data picker dialog.
@@ -247,6 +251,13 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         return _model with { Variables = variables, Color = Color };
     }
 
+    internal void SetSuggestions(IReadOnlyList<EnvVarSuggestion> suggestions)
+    {
+        _suggestions = suggestions;
+        foreach (var variable in Variables)
+            variable.SuggestionNames = suggestions;
+    }
+
     private void LoadVariables(IReadOnlyList<EnvironmentVariable> variables)
     {
         Variables.Clear();
@@ -271,6 +282,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
             Name = migrated.Name,
             Value = migrated.Value,
             IsSecret = migrated.IsSecret,
+            SuggestionNames = _suggestions,
             VariableType = migrated.VariableType,
             MockDataCategory = migrated.MockDataCategory,
             MockDataField = migrated.MockDataField,
@@ -404,5 +416,6 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         IsDirty = true;
         foreach (var v in Variables)
             v.NotifyPreviewChanged();
+        VariablesChanged?.Invoke(this, EventArgs.Empty);
     }
 }

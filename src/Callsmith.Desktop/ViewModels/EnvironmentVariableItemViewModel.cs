@@ -1,5 +1,6 @@
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
+using Callsmith.Desktop.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -44,6 +45,9 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isValueRevealed;
+
+    [ObservableProperty]
+    private IReadOnlyList<EnvVarSuggestion> _suggestionNames = [];
 
     // ── Mock-data properties ─────────────────────────────────────────────────
 

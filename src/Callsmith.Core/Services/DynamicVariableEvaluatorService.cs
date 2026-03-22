@@ -455,7 +455,13 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         // Headers + auth
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var h in req.Headers.Where(h => h.IsEnabled))
-            headers[h.Key] = VariableSubstitutionService.Substitute(h.Value, vars) ?? h.Value;
+        {
+            var key = VariableSubstitutionService.Substitute(h.Key, vars) ?? h.Key;
+            if (string.IsNullOrWhiteSpace(key))
+                continue;
+
+            headers[key] = VariableSubstitutionService.Substitute(h.Value, vars) ?? h.Value;
+        }
 
         ApplyAuth(req.Auth, headers, vars, ref requestUrl);
 
@@ -500,12 +506,16 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
                 break;
 
             case AuthConfig.AuthTypes.ApiKey when !string.IsNullOrEmpty(auth.ApiKeyName):
+                var keyName = VariableSubstitutionService.Substitute(auth.ApiKeyName, vars) ?? auth.ApiKeyName;
                 var keyValue = VariableSubstitutionService.Substitute(auth.ApiKeyValue ?? string.Empty, vars) ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(keyName))
+                    break;
+
                 if (auth.ApiKeyIn == AuthConfig.ApiKeyLocations.Header)
-                    headers[auth.ApiKeyName] = keyValue;
+                    headers[keyName] = keyValue;
                 else
                     url = QueryStringHelper.ApplyQueryParams(url,
-                        [new KeyValuePair<string, string>(auth.ApiKeyName, keyValue)]);
+                        [new KeyValuePair<string, string>(keyName, keyValue)]);
                 break;
         }
     }

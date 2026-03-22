@@ -3,6 +3,7 @@ using System.IO;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
+using Callsmith.Desktop.Controls;
 using Callsmith.Desktop.Messages;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -610,6 +611,8 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     /// </summary>
     partial void OnSelectedEnvironmentChanged(EnvironmentListItemViewModel? value)
     {
+        RefreshSelectedEnvironmentSuggestions();
+
         _dynPreviewCts?.Cancel();
         _dynPreviewCts = new CancellationTokenSource();
         if (value is not null)
@@ -632,6 +635,47 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             _dynPreviewCts = new CancellationTokenSource();
             _ = RefreshDynamicPreviewsAsync(globalEnv, _dynPreviewCts.Token);
         }
+    }
+
+    private void RefreshSelectedEnvironmentSuggestions()
+    {
+        if (SelectedEnvironment is null)
+            return;
+
+        SelectedEnvironment.SetSuggestions(BuildSuggestionsFor(SelectedEnvironment));
+    }
+
+    private IReadOnlyList<EnvVarSuggestion> BuildSuggestionsFor(EnvironmentListItemViewModel env)
+    {
+        var merged = new Dictionary<string, EnvironmentVariable>(StringComparer.Ordinal);
+
+        if (!env.IsGlobal)
+        {
+            var global = Environments.FirstOrDefault(item => item.IsGlobal);
+            if (global is not null)
+            {
+                foreach (var variable in global.BuildModel().Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
+                    merged[variable.Name.Trim()] = variable;
+            }
+        }
+
+        foreach (var variable in env.BuildModel().Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
+            merged[variable.Name.Trim()] = variable;
+
+        return merged.Values
+            .OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(v => new EnvVarSuggestion(v.Name.Trim(), v.IsSecret ? "\u2022\u2022\u2022\u2022\u2022" : v.Value))
+            .ToList();
+    }
+
+    private void OnEnvironmentVariablesChanged(object? sender, EventArgs e)
+    {
+        if (SelectedEnvironment is null || sender is not EnvironmentListItemViewModel changed)
+            return;
+
+        if (ReferenceEquals(changed, SelectedEnvironment)
+            || (!SelectedEnvironment.IsGlobal && changed.IsGlobal))
+            RefreshSelectedEnvironmentSuggestions();
     }
 
     /// <summary>
@@ -966,6 +1010,8 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             onDeleteRequest: (i, ct) => { BeginDelete(i); return Task.CompletedTask; },
             onCloneRequest: (i, ct) => CloneImmediateAsync(i, ct),
             isGlobal: isGlobal);
+
+        item.VariablesChanged += OnEnvironmentVariablesChanged;
 
         item.EditMockDataCallback = v => OpenMockDataConfigAsync(v);
         item.EditResponseBodyCallback = v => OpenResponseBodyConfigAsync(v, item);

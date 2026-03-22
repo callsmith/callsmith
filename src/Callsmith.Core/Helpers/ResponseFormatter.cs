@@ -1,3 +1,6 @@
+using AngleSharp;
+using AngleSharp.Html;
+using AngleSharp.Html.Parser;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Xml.Linq;
@@ -27,6 +30,9 @@ public static class ResponseFormatter
         if (ct.Contains("xml") || ct.Contains("xhtml"))
             return TryFormatXml(body) ?? body;
 
+        if (ct.Contains("html"))
+            return TryFormatHtml(body);
+
         return body;
     }
 
@@ -49,6 +55,27 @@ public static class ResponseFormatter
         catch (JsonException)
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Pretty-prints <paramref name="html"/> using AngleSharp's <see cref="PrettyMarkupFormatter"/>.
+    /// Always returns a formatted result — AngleSharp tolerates malformed HTML5.
+    /// </summary>
+    public static string TryFormatHtml(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return html;
+        try
+        {
+            var parser = new HtmlParser();
+            using var document = parser.ParseDocument(html);
+            var sw = new System.IO.StringWriter();
+            document.ToHtml(sw, new PrettyMarkupFormatter { Indentation = "  ", NewLine = "\n" });
+            return sw.ToString();
+        }
+        catch
+        {
+            return html;
         }
     }
 

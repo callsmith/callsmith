@@ -121,7 +121,8 @@
                                      BorderThickness="0"
                                      Padding="2,1"
                                      MinWidth="20"
-                                     Watermark="…">
+                                     Watermark="…"
+                                     controls:EnvVarCompletion.Suggestions="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).SuggestionNames}">
                               <TextBox.ContextMenu>
                                 <ContextMenu>
                                   <MenuItem Header="Dynamic Value…" Command="{Binding AddDynamicValueCommand}"/>
@@ -249,7 +250,8 @@
                                      BorderThickness="0"
                                      Padding="2,1"
                                      MinWidth="20"
-                                     Watermark="…">
+                                     Watermark="…"
+                                     controls:EnvVarCompletion.Suggestions="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).SuggestionNames}">
                               <TextBox.ContextMenu>
                                 <ContextMenu>
                                   <MenuItem Header="Dynamic Value…"

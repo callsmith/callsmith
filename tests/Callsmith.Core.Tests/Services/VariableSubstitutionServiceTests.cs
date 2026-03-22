@@ -62,6 +62,26 @@ public sealed class VariableSubstitutionServiceTests
         result.Should().Be("https://x.com/a and https://x.com/b");
     }
 
+    [Fact]
+    public void Substitute_TokenWithWhitespace_ResolvesTrimmedName()
+    {
+        var result = VariableSubstitutionService.Substitute(
+            "{{ a }}={{a}}",
+            Vars(("a", "b")));
+
+        result.Should().Be("b=b");
+    }
+
+    [Fact]
+    public void Substitute_VariableNameStoredWithBraces_ResolvesBareToken()
+    {
+        var result = VariableSubstitutionService.Substitute(
+            "{{a}}={{a}}",
+            Vars(("{{a}}", "b")));
+
+        result.Should().Be("b=b");
+    }
+
     // ─── Unknown token behaviour ─────────────────────────────────────────────
 
     [Fact]

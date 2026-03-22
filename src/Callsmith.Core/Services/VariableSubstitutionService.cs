@@ -61,11 +61,14 @@ public static partial class VariableSubstitutionService
 
         var result = TokenPattern().Replace(template, match =>
         {
-            var key = match.Groups[1].Value;
+            var key = NormalizeTokenName(match.Groups[1].Value);
             // Mock-data vars: generate fresh per reference (never pre-computed).
-            if (mockGenerators?.TryGetValue(key, out var entry) == true)
+            if (TryGetByTokenName(mockGenerators, key, out var entry))
                 return MockDataCatalog.Generate(entry.Category, entry.Field);
-            return resolved.TryGetValue(key, out var value) ? value : match.Value;
+
+            return TryGetByTokenName(resolved, key, out var value)
+                ? value
+                : match.Value;
         });
 
         // Backward compat: evaluate any remaining {% faker %} tags from old imported data.
@@ -124,10 +127,14 @@ public static partial class VariableSubstitutionService
             {
                 var expanded = TokenPattern().Replace(resolved[key], match =>
                 {
-                    var refKey = match.Groups[1].Value;
+                    var refKey = NormalizeTokenName(match.Groups[1].Value);
                     // Leave self-references in place to prevent infinite expansion.
-                    if (refKey == key) return match.Value;
-                    return snapshot.TryGetValue(refKey, out var val) ? val : match.Value;
+                    if (NormalizeTokenName(refKey) == NormalizeTokenName(key))
+                        return match.Value;
+
+                    return TryGetByTokenName(snapshot, refKey, out var val)
+                        ? val
+                        : match.Value;
                 });
 
                 if (expanded != resolved[key])
@@ -141,5 +148,42 @@ public static partial class VariableSubstitutionService
         }
 
         return resolved;
+    }
+
+    private static string NormalizeTokenName(string tokenName)
+    {
+        var trimmed = tokenName.Trim();
+        return IsWrappedToken(trimmed)
+            ? trimmed[2..^2].Trim()
+            : trimmed;
+    }
+
+    private static bool IsWrappedToken(string value) =>
+        value.Length >= 4
+        && value.StartsWith("{{", StringComparison.Ordinal)
+        && value.EndsWith("}}", StringComparison.Ordinal);
+
+    private static IEnumerable<string> CandidateKeys(string normalizedKey)
+    {
+        yield return normalizedKey;
+        yield return $"{{{{{normalizedKey}}}}}";
+    }
+
+    private static bool TryGetByTokenName<T>(
+        IReadOnlyDictionary<string, T>? source,
+        string normalizedKey,
+        out T value)
+    {
+        if (source is not null)
+        {
+            foreach (var candidate in CandidateKeys(normalizedKey))
+            {
+                if (source.TryGetValue(candidate, out value!))
+                    return true;
+            }
+        }
+
+        value = default!;
+        return false;
     }
 }

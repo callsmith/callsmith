@@ -1,6 +1,7 @@
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
+using Callsmith.Desktop.Controls;
 using Callsmith.Desktop.Messages;
 using Callsmith.Desktop.ViewModels;
 using CommunityToolkit.Mvvm.Messaging;
@@ -309,6 +310,84 @@ public sealed class EnvironmentEditorViewModelTests
         await sut.SaveSelectedCommand.ExecuteAsync(null);
 
         sut.SelectedEnvironment.IsDirty.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SelectedConcreteEnvironment_BuildsSuggestionsFromGlobalAndOwnVariables()
+    {
+        var service = Substitute.For<IEnvironmentService>();
+        service.LoadGlobalEnvironmentAsync(CollectionPath, Arg.Any<CancellationToken>())
+            .Returns(new EnvironmentModel
+            {
+                FilePath = GlobalEnvPath,
+                Name = "Global",
+                Variables =
+                [
+                    new EnvironmentVariable { Name = "base-url", Value = "https://api.example.com" },
+                ],
+            });
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+            .Returns(
+            [
+                new EnvironmentModel
+                {
+                    Name = "dev",
+                    FilePath = @"C:\collections\my-api\environment\dev.env.callsmith",
+                    Variables =
+                    [
+                        new EnvironmentVariable { Name = "token", Value = "secret-token", IsSecret = true },
+                    ],
+                },
+            ]);
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        var variable = sut.SelectedEnvironment!.Variables.Single();
+
+        variable.SuggestionNames.Should().BeEquivalentTo(
+        [
+            new EnvVarSuggestion("base-url", "https://api.example.com"),
+            new EnvVarSuggestion("token", "•••••"),
+        ]);
+    }
+
+    [Fact]
+    public async Task EditingSelectedEnvironmentVariableName_RefreshesSuggestionsForVisibleRows()
+    {
+        var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+            .Returns(
+            [
+                new EnvironmentModel
+                {
+                    Name = "dev",
+                    FilePath = @"C:\collections\my-api\environment\dev.env.callsmith",
+                    Variables =
+                    [
+                        new EnvironmentVariable { Name = "token", Value = "abc" },
+                    ],
+                },
+            ]);
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        sut.SelectedEnvironment!.AddVariableCommand.Execute(null);
+        var newVariable = sut.SelectedEnvironment.Variables.Last();
+        newVariable.Name = "base-url";
+
+        sut.SelectedEnvironment.Variables.First().SuggestionNames
+            .Should().ContainEquivalentOf(new EnvVarSuggestion("base-url", string.Empty));
+        newVariable.SuggestionNames
+            .Should().ContainEquivalentOf(new EnvVarSuggestion("base-url", string.Empty));
     }
 
     [Fact]

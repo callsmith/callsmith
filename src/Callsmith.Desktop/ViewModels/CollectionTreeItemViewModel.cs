@@ -105,6 +105,8 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
     internal void UpdateRequest(CollectionRequest updated)
     {
         Request = updated;
+        OnPropertyChanged(nameof(MethodName));
+        OnPropertyChanged(nameof(MethodPillLabel));
     }
 
     /// <summary>Applies a folder rename, updating path and display name.</summary>

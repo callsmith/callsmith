@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark-theme HTML syntax highlighting for Callsmith -->
+<SyntaxDefinition name="DarkHtml" extensions=".html;.htm"
+    xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+
+  <!-- VS Code Dark+-inspired palette -->
+  <Color name="Comment"          foreground="#6a9955" />   <!-- green — html comments -->
+  <Color name="DynamicTag"       foreground="#c586c0" fontWeight="bold"/> <!-- purple — {% %} dynamic/mock tags -->
+  <Color name="EnvVar"           foreground="#4ec9b0" fontWeight="bold"/> <!-- teal — {{ }} env-var references -->
+  <Color name="CData"            foreground="#ce9178" />   <!-- orange — CDATA -->
+  <Color name="DocType"          foreground="#808080" />   <!-- grey -->
+  <Color name="HtmlTag"          foreground="#808080" />   <!-- grey — <> brackets -->
+  <Color name="TagName"          foreground="#569cd6" />   <!-- blue — element names (html uses blue, xml uses teal) -->
+  <Color name="AttributeName"    foreground="#9cdcfe" />   <!-- light blue — attr names -->
+  <Color name="AttributeValue"   foreground="#ce9178" />   <!-- orange — attr values -->
+  <Color name="Entity"           foreground="#4ec9b0" />   <!-- teal — &amp; etc. -->
+  <Color name="BrokenEntity"     foreground="#f44747" />   <!-- red — malformed entities -->
+  <Color name="ScriptTag"        foreground="#569cd6" />   <!-- blue — <script> / <style> tags -->
+
+  <RuleSet>
+    <Span color="Comment" multiline="true">
+      <Begin>&lt;!--</Begin>
+      <End>--&gt;</End>
+    </Span>
+    <Span color="CData" multiline="true">
+      <Begin>&lt;!\[CDATA\[</Begin>
+      <End>]]&gt;</End>
+    </Span>
+    <Span color="DocType" multiline="true">
+      <Begin>&lt;!DOCTYPE</Begin>
+      <End>&gt;</End>
+    </Span>
+    <Span color="HtmlTag" multiline="true">
+      <Begin>&lt;</Begin>
+      <End>&gt;</End>
+      <RuleSet>
+        <Span color="AttributeValue" multiline="true" ruleSet="EntitySet">
+          <Begin>"</Begin>
+          <End>"|(?=&lt;)</End>
+        </Span>
+        <Span color="AttributeValue" multiline="true" ruleSet="EntitySet">
+          <Begin>'</Begin>
+          <End>'|(?=&lt;)</End>
+        </Span>
+        <Rule color="AttributeName">[\d\w_\-\.]+(?=(\s*=))</Rule>
+        <Rule color="AttributeValue">=</Rule>
+        <Rule color="TagName">[/\w][\w\d\-]*</Rule>
+      </RuleSet>
+    </Span>
+    <Import ruleSet="EntitySet" />
+    <Import ruleSet="DynamicHighlights" />
+  </RuleSet>
+
+  <RuleSet name="EntitySet">
+    <Rule color="Entity">
+      &amp;[\w\d\#]+;
+    </Rule>
+    <Rule color="BrokenEntity">
+      &amp;[\w\d\#]*
+    </Rule>
+  </RuleSet>
+
+  <!-- Dynamic/mock tags and env-var references — overlaid on top of HTML structure -->
+  <RuleSet name="DynamicHighlights">
+    <Span color="DynamicTag" multiline="false">
+      <Begin>\{%</Begin>
+      <End>%\}</End>
+    </Span>
+    <Span color="EnvVar" multiline="false">
+      <Begin>\{\{</Begin>
+      <End>\}\}</End>
+    </Span>
+  </RuleSet>
+
+</SyntaxDefinition>

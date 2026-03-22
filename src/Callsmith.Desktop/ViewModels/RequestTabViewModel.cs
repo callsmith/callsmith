@@ -415,6 +415,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             if (ct.Contains("json", StringComparison.OrdinalIgnoreCase)) return "json";
             if (ct.Contains("xml",  StringComparison.OrdinalIgnoreCase) ||
                 ct.Contains("xhtml", StringComparison.OrdinalIgnoreCase)) return "xml";
+            if (ct.Contains("html", StringComparison.OrdinalIgnoreCase)) return "html";
             return string.Empty;
         }
     }
@@ -911,15 +912,11 @@ public sealed partial class RequestTabViewModel : ObservableObject
         requestUrl = QueryStringHelper.ApplyQueryParams(requestUrl, substitutedQueryParams);
 
         // Headers + auth
-        var headers = new Dictionary<string, string>(
-            Headers.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
-            StringComparer.OrdinalIgnoreCase);
+        var headers = ResolveHeaders(Headers.GetEnabledPairs(), env.Variables);
 
-        ApplyAuthHeaders(headers, requestUrl, out requestUrl);
+        ApplyAuthHeaders(headers, requestUrl, env.Variables, out requestUrl);
 
         requestUrl = VariableSubstitutionService.Substitute(requestUrl, env) ?? requestUrl;
-        foreach (var key in headers.Keys.ToList())
-            headers[key] = VariableSubstitutionService.Substitute(headers[key], env) ?? headers[key];
 
         // Body
         string? resolvedBody = null;
@@ -954,11 +951,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         CurlAuthMaskInfo? authMask = null;
         if (AuthType == AuthConfig.AuthTypes.ApiKey && !string.IsNullOrEmpty(AuthApiKeyName))
         {
-            // Header param name is stored as-is (header keys are not var-substituted).
-            // Query param name may have been substituted into the URL, so resolve it.
-            var resolvedName = AuthApiKeyIn == AuthConfig.ApiKeyLocations.Query
-                ? VariableSubstitutionService.Substitute(AuthApiKeyName, env) ?? AuthApiKeyName
-                : AuthApiKeyName;
+            var resolvedName = VariableSubstitutionService.Substitute(AuthApiKeyName, env.Variables) ?? AuthApiKeyName;
 
             authMask = AuthApiKeyIn == AuthConfig.ApiKeyLocations.Header
                 ? new CurlAuthMaskInfo(ApiKeyHeaderName: resolvedName, ApiKeyQueryParamName: null)
@@ -985,11 +978,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
         try
         {
-            var headers = new Dictionary<string, string>(
-                Headers.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
-                StringComparer.OrdinalIgnoreCase);
-
             var env = await BuildMergedVarsAsync(ct);
+            var headers = ResolveHeaders(Headers.GetEnabledPairs(), env.Variables);
 
             var pathParamValues = PathParams.GetEnabledPairs()
                 .Where(p => !string.IsNullOrWhiteSpace(p.Value))
@@ -1009,12 +999,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
             requestUrl = QueryStringHelper.ApplyQueryParams(requestUrl, substitutedQueryParams);
 
-            ApplyAuthHeaders(headers, requestUrl, out requestUrl);
+            ApplyAuthHeaders(headers, requestUrl, env.Variables, out requestUrl);
 
             // Substitute any remaining {{tokens}} in the base URL / path.
             requestUrl = VariableSubstitutionService.Substitute(requestUrl, env) ?? requestUrl;
-            foreach (var key in headers.Keys.ToList())
-                headers[key] = VariableSubstitutionService.Substitute(headers[key], env) ?? headers[key];
 
             var resolvedBody = SelectedBodyType != CollectionRequest.BodyTypes.None
                 && SelectedBodyType != CollectionRequest.BodyTypes.Form
@@ -1347,27 +1335,57 @@ public sealed partial class RequestTabViewModel : ObservableObject
     // Auth helpers
     // -------------------------------------------------------------------------
 
-    private void ApplyAuthHeaders(Dictionary<string, string> headers, string requestUrl, out string url)
+    private static Dictionary<string, string> ResolveHeaders(
+        IEnumerable<KeyValuePair<string, string>> source,
+        IReadOnlyDictionary<string, string> vars)
+    {
+        var resolved = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in source)
+        {
+            var key = VariableSubstitutionService.Substitute(pair.Key, vars) ?? pair.Key;
+            if (string.IsNullOrWhiteSpace(key))
+                continue;
+
+            var value = VariableSubstitutionService.Substitute(pair.Value, vars) ?? pair.Value;
+            resolved[key] = value;
+        }
+
+        return resolved;
+    }
+
+    private void ApplyAuthHeaders(
+        Dictionary<string, string> headers,
+        string requestUrl,
+        IReadOnlyDictionary<string, string> vars,
+        out string url)
     {
         url = requestUrl;
         switch (AuthType)
         {
             case AuthConfig.AuthTypes.Bearer when !string.IsNullOrEmpty(AuthToken):
-                headers["Authorization"] = $"Bearer {AuthToken}";
+                var token = VariableSubstitutionService.Substitute(AuthToken, vars) ?? AuthToken;
+                headers["Authorization"] = $"Bearer {token}";
                 break;
             case AuthConfig.AuthTypes.Basic when !string.IsNullOrEmpty(AuthUsername):
+                var username = VariableSubstitutionService.Substitute(AuthUsername, vars) ?? AuthUsername;
+                var password = VariableSubstitutionService.Substitute(AuthPassword, vars) ?? AuthPassword;
                 var encoded = Convert.ToBase64String(
-                    Encoding.UTF8.GetBytes($"{AuthUsername}:{AuthPassword}"));
+                    Encoding.UTF8.GetBytes($"{username}:{password}"));
                 headers["Authorization"] = $"Basic {encoded}";
                 break;
             case AuthConfig.AuthTypes.ApiKey when !string.IsNullOrEmpty(AuthApiKeyName)
                                                && !string.IsNullOrEmpty(AuthApiKeyValue):
+                var resolvedName = VariableSubstitutionService.Substitute(AuthApiKeyName, vars) ?? AuthApiKeyName;
+                var resolvedValue = VariableSubstitutionService.Substitute(AuthApiKeyValue, vars) ?? AuthApiKeyValue;
+                if (string.IsNullOrWhiteSpace(resolvedName))
+                    break;
+
                 if (AuthApiKeyIn == AuthConfig.ApiKeyLocations.Header)
-                    headers[AuthApiKeyName] = AuthApiKeyValue;
+                    headers[resolvedName] = resolvedValue;
                 else
                     url = QueryStringHelper.ApplyQueryParams(
                         requestUrl,
-                        [new KeyValuePair<string, string>(AuthApiKeyName, AuthApiKeyValue)]);
+                        [new KeyValuePair<string, string>(resolvedName, resolvedValue)]);
                 break;
         }
     }
