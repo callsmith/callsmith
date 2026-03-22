@@ -1383,7 +1383,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 if (AuthApiKeyIn == AuthConfig.ApiKeyLocations.Header)
                     headers[resolvedName] = resolvedValue;
                 else
-                    url = QueryStringHelper.ApplyQueryParams(
+                    url = QueryStringHelper.AppendQueryParams(
                         requestUrl,
                         [new KeyValuePair<string, string>(resolvedName, resolvedValue)]);
                 break;

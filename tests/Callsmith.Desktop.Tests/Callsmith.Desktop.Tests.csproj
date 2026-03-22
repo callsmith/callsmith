@@ -21,7 +21,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Callsmith.Desktop\Callsmith.Desktop.csproj" />
+    <ProjectReference Include="..\..\src\Callsmith.Desktop\Callsmith.Desktop.csproj"
+                      AdditionalProperties="BuildForTesting=true" />
   </ItemGroup>
 
 </Project>

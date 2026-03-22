@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <UseAppHost Condition="'$(BuildForTesting)' == 'true'">false</UseAppHost>
     <AssemblyName>Callsmith</AssemblyName>
     <ApplicationIcon>Assets\callsmith.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>

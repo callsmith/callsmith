@@ -63,4 +63,18 @@ public static class QueryStringHelper
 
         return $"{baseUrl}?{qs}";
     }
+
+    /// <summary>
+    /// Returns the URL with the supplied key/value pairs appended after any existing query string.
+    /// Existing query parameters are preserved in order.
+    /// </summary>
+    public static string AppendQueryParams(string url, IEnumerable<KeyValuePair<string, string>> queryParams)
+    {
+        var appended = queryParams.ToList();
+        if (appended.Count == 0)
+            return url;
+
+        var merged = ParseQueryParams(url).Concat(appended).ToList();
+        return ApplyQueryParams(url, merged);
+    }
 }

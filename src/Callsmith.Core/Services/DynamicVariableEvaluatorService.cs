@@ -514,7 +514,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
                 if (auth.ApiKeyIn == AuthConfig.ApiKeyLocations.Header)
                     headers[keyName] = keyValue;
                 else
-                    url = QueryStringHelper.ApplyQueryParams(url,
+                    url = QueryStringHelper.AppendQueryParams(url,
                         [new KeyValuePair<string, string>(keyName, keyValue)]);
                 break;
         }
