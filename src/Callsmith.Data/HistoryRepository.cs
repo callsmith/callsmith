@@ -101,6 +101,35 @@ public sealed class HistoryRepository : IHistoryService
     }
 
     /// <inheritdoc/>
+    public async Task<HistoryEntry?> GetLatestForRequestInEnvironmentAsync(
+        Guid requestId,
+        string? environmentName,
+        CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        await EnsureHistorySchemaAsync(db, ct);
+
+        var query = db.HistoryEntries
+            .AsNoTracking()
+            .Where(e => e.RequestId == requestId);
+
+        if (string.IsNullOrWhiteSpace(environmentName))
+        {
+            query = query.Where(e => e.EnvironmentName == null || e.EnvironmentName == string.Empty);
+        }
+        else
+        {
+            query = query.Where(e => e.EnvironmentName == environmentName);
+        }
+
+        var entity = await query
+            .OrderByDescending(e => e.SentAtUnixMs)
+            .FirstOrDefaultAsync(ct);
+
+        return entity is null ? null : ToDomainMasked(entity);
+    }
+
+    /// <inheritdoc/>
     public async Task<HistoryEntry?> GetByIdAsync(long id, CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);

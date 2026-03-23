@@ -267,14 +267,14 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         tab.CollectionRootPath = _collectionPath;
         tab.AvailableRequestNames = _availableRequestNames;
         tab.SaveAsFolderPath = string.Empty;
+        tab.SetEnvironment(_activeEnvironment);
+        tab.SetGlobalEnvironment(_globalEnvironment);
 
         if (request is not null)
             tab.LoadRequest(request);
         else
             tab.IsNew = true;
 
-        tab.SetEnvironment(_activeEnvironment);
-        tab.SetGlobalEnvironment(_globalEnvironment);
         return tab;
     }
 

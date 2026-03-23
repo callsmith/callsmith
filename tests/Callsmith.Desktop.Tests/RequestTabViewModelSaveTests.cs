@@ -321,4 +321,131 @@ public sealed class RequestTabViewModelSaveTests
 
         sut.HasUnsavedChanges.Should().BeFalse();
     }
+
+    [Fact]
+    public async Task LoadRequest_LoadsMostRecentResponseForSelectedEnvironment()
+    {
+        var requestId = Guid.NewGuid();
+        var historyService = Substitute.For<IHistoryService>();
+        var expected = new HistoryEntry
+        {
+            RequestId = requestId,
+            SentAt = new DateTimeOffset(2026, 3, 23, 12, 0, 0, TimeSpan.Zero),
+            EnvironmentName = "dev",
+            ResponseSnapshot = new ResponseSnapshot
+            {
+                StatusCode = 201,
+                ReasonPhrase = "Created",
+                Headers = new Dictionary<string, string> { ["Content-Type"] = "application/json" },
+                Body = "{\"env\":\"dev\"}",
+                FinalUrl = "https://api.example.com/dev",
+                ElapsedMs = 42,
+            },
+        };
+
+        historyService
+            .GetLatestForRequestInEnvironmentAsync(requestId, "dev", Arg.Any<CancellationToken>())
+            .Returns(expected);
+
+        var sut = new RequestTabViewModel(
+            new TransportRegistry(),
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { },
+            null,
+            historyService);
+
+        sut.SetEnvironment(new EnvironmentModel { FilePath = "dev.env.callsmith", Name = "dev", Variables = [] });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/request.callsmith",
+            RequestId = requestId,
+            Name = "request",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com/users",
+            QueryParams = [],
+            PathParams = new Dictionary<string, string>(),
+            Headers = [],
+        });
+
+        await AssertEventuallyAsync(() => sut.IsResponseFromHistory);
+
+        sut.Response.Should().NotBeNull();
+        sut.Response!.StatusCode.Should().Be(201);
+        sut.Response.Body.Should().Be("{\"env\":\"dev\"}");
+
+        await historyService.Received(1)
+            .GetLatestForRequestInEnvironmentAsync(requestId, "dev", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetEnvironment_ReloadsHistoryForNewEnvironment_AndClearsWhenNoneExists()
+    {
+        var requestId = Guid.NewGuid();
+        var historyService = Substitute.For<IHistoryService>();
+        historyService
+            .GetLatestForRequestInEnvironmentAsync(requestId, "dev", Arg.Any<CancellationToken>())
+            .Returns(new HistoryEntry
+            {
+                RequestId = requestId,
+                SentAt = new DateTimeOffset(2026, 3, 23, 12, 0, 0, TimeSpan.Zero),
+                EnvironmentName = "dev",
+                ResponseSnapshot = new ResponseSnapshot
+                {
+                    StatusCode = 200,
+                    ReasonPhrase = "OK",
+                    Headers = new Dictionary<string, string>(),
+                    Body = "dev-response",
+                    FinalUrl = "https://api.example.com/dev",
+                    ElapsedMs = 5,
+                },
+            });
+        historyService
+            .GetLatestForRequestInEnvironmentAsync(requestId, "prod", Arg.Any<CancellationToken>())
+            .Returns((HistoryEntry?)null);
+
+        var sut = new RequestTabViewModel(
+            new TransportRegistry(),
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { },
+            null,
+            historyService);
+
+        sut.SetEnvironment(new EnvironmentModel { FilePath = "dev.env.callsmith", Name = "dev", Variables = [] });
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/request.callsmith",
+            RequestId = requestId,
+            Name = "request",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com/users",
+            QueryParams = [],
+            PathParams = new Dictionary<string, string>(),
+            Headers = [],
+        });
+
+        await AssertEventuallyAsync(() => string.Equals(sut.Response?.Body, "dev-response", StringComparison.Ordinal));
+
+        sut.SetEnvironment(new EnvironmentModel { FilePath = "prod.env.callsmith", Name = "prod", Variables = [] });
+
+        await AssertEventuallyAsync(() => sut.Response is null && !sut.IsResponseFromHistory);
+
+        await historyService.Received(1)
+            .GetLatestForRequestInEnvironmentAsync(requestId, "prod", Arg.Any<CancellationToken>());
+    }
+
+    private static async Task AssertEventuallyAsync(Func<bool> condition)
+    {
+        for (var attempt = 0; attempt < 50; attempt++)
+        {
+            if (condition())
+                return;
+
+            await Task.Delay(10);
+        }
+
+        condition().Should().BeTrue();
+    }
 }

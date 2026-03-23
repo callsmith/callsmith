@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Text;
+using Avalonia.Threading;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Helpers;
 using Callsmith.Core.MockData;
@@ -37,6 +38,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private bool _saving;
     private bool _syncingUrl;
     private bool _syncingPathParams;
+    private long _historyHydrationVersion;
 
     // -------------------------------------------------------------------------
     // Tab identity
@@ -662,8 +664,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             IsNew = false;
         }
 
-        if (_historyService is not null && req.RequestId is not null)
-            _ = HydrateResponseFromHistoryAsync(req.RequestId.Value);
+        QueueHistoryResponseRefresh();
     }
 
     /// <summary>
@@ -694,6 +695,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     {
         _activeEnvironment = environment;
         UpdateEnvSuggestions();
+        QueueHistoryResponseRefresh();
     }
 
     /// <summary>Updates the global environment variables used as the baseline for substitution.</summary>
@@ -1456,7 +1458,33 @@ public sealed partial class RequestTabViewModel : ObservableObject
         }
     }
 
-    private async Task HydrateResponseFromHistoryAsync(Guid requestId)
+    private void QueueHistoryResponseRefresh()
+    {
+        var hydrationVersion = Interlocked.Increment(ref _historyHydrationVersion);
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (hydrationVersion != Interlocked.Read(ref _historyHydrationVersion))
+                return;
+
+            Response = null;
+            IsResponseFromHistory = false;
+            HistoryResponseDate = null;
+
+            if (_historyService is null || _sourceRequest?.RequestId is not { } requestId)
+                return;
+
+            _ = HydrateResponseFromHistoryAsync(
+                requestId,
+                _activeEnvironment?.Name,
+                hydrationVersion);
+        }, DispatcherPriority.Background);
+    }
+
+    private async Task HydrateResponseFromHistoryAsync(
+        Guid requestId,
+        string? environmentName,
+        long hydrationVersion)
     {
         try
         {
@@ -1464,13 +1492,18 @@ public sealed partial class RequestTabViewModel : ObservableObject
             // multiple tabs are being restored. Add a small delay to stagger concurrent requests.
             await Task.Delay(10).ConfigureAwait(false);
             
-            var latest = await _historyService!.GetLatestForRequestAsync(requestId, CancellationToken.None)
+            var latest = await _historyService!
+                .GetLatestForRequestInEnvironmentAsync(requestId, environmentName, CancellationToken.None)
                 .ConfigureAwait(false);
+
+            if (hydrationVersion != Interlocked.Read(ref _historyHydrationVersion))
+                return;
+
             if (latest?.ResponseSnapshot is null)
                 return;
 
             var snapshot = latest.ResponseSnapshot;
-            Response = new ResponseModel
+            var response = new ResponseModel
             {
                 StatusCode = snapshot.StatusCode,
                 ReasonPhrase = snapshot.ReasonPhrase,
@@ -1481,8 +1514,15 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 Elapsed = TimeSpan.FromMilliseconds(snapshot.ElapsedMs),
             };
 
-            IsResponseFromHistory = true;
-            HistoryResponseDate = latest.SentAt;
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (hydrationVersion != Interlocked.Read(ref _historyHydrationVersion))
+                    return;
+
+                Response = response;
+                IsResponseFromHistory = true;
+                HistoryResponseDate = latest.SentAt;
+            });
         }
         catch
         {
