@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Net.Http;
+using Avalonia.Threading;
 using Callsmith.Core;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
@@ -456,8 +457,14 @@ public sealed class RequestTabViewModelSaveTests
 
     private static async Task AssertEventuallyAsync(Func<bool> condition)
     {
-        for (var attempt = 0; attempt < 50; attempt++)
+        for (var attempt = 0; attempt < 300; attempt++)
         {
+            // Pump queued Dispatcher work so ViewModel callbacks posted to UI thread run in tests.
+            if (Dispatcher.UIThread.CheckAccess())
+                Dispatcher.UIThread.RunJobs();
+            else
+                await Dispatcher.UIThread.InvokeAsync(static () => Dispatcher.UIThread.RunJobs());
+
             if (condition())
                 return;
 
