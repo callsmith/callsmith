@@ -145,13 +145,13 @@
                                         CommandParameter="{Binding DynamicSegment}"
                                         Background="Transparent" Foreground="#4ec9b0"
                                         BorderThickness="0" Padding="0"
-                                        FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"
+                                  FontFamily="Consolas,Menlo,monospace" FontSize="11"
                                         ToolTip.Tip="Click to edit dynamic reference"/>
                                 <Button Content="×"
                                         Command="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).KeyField.RemoveSegmentCommand}"
                                         CommandParameter="{Binding RawSegment}"
                                         Background="Transparent" Foreground="#888"
-                                        BorderThickness="0" Padding="2,0" FontSize="12" Cursor="Hand"
+                                  BorderThickness="0" Padding="2,0" FontSize="12"
                                         ToolTip.Tip="Remove this dynamic reference"/>
                               </StackPanel>
                             </Border>
@@ -164,13 +164,13 @@
                                         CommandParameter="{Binding MockDataSegment}"
                                         Background="Transparent" Foreground="#c586c0"
                                         BorderThickness="0" Padding="0"
-                                        FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"
+                                  FontFamily="Consolas,Menlo,monospace" FontSize="11"
                                         ToolTip.Tip="Click to change mock data generator"/>
                                 <Button Content="×"
                                         Command="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).KeyField.RemoveSegmentCommand}"
                                         CommandParameter="{Binding RawSegment}"
                                         Background="Transparent" Foreground="#888"
-                                        BorderThickness="0" Padding="2,0" FontSize="12" Cursor="Hand"
+                                  BorderThickness="0" Padding="2,0" FontSize="12"
                                         ToolTip.Tip="Remove this mock data generator"/>
                               </StackPanel>
                             </Border>
@@ -287,7 +287,6 @@
                                         Padding="0"
                                         FontFamily="Consolas,Menlo,monospace"
                                         FontSize="11"
-                                        Cursor="Hand"
                                         ToolTip.Tip="Click to edit dynamic reference"/>
                                 <Button Content="×"
                                         Command="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).ValueField.RemoveSegmentCommand}"
@@ -297,7 +296,6 @@
                                         BorderThickness="0"
                                         Padding="2,0"
                                         FontSize="12"
-                                        Cursor="Hand"
                                         ToolTip.Tip="Remove this dynamic reference"/>
                               </StackPanel>
                             </Border>
@@ -321,7 +319,6 @@
                                         Padding="0"
                                         FontFamily="Consolas,Menlo,monospace"
                                         FontSize="11"
-                                        Cursor="Hand"
                                         ToolTip.Tip="Click to change mock data generator"/>
                                 <Button Content="×"
                                         Command="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).ValueField.RemoveSegmentCommand}"
@@ -331,7 +328,6 @@
                                         BorderThickness="0"
                                         Padding="2,0"
                                         FontSize="12"
-                                        Cursor="Hand"
                                         ToolTip.Tip="Remove this mock data generator"/>
                               </StackPanel>
                             </Border>
@@ -363,7 +359,6 @@
 
         <Button Content="+ Add"
                 Command="{Binding AddItemCommand}"
-                Cursor="Hand"
                 IsVisible="{Binding ShowAddButton}"
                 Background="Transparent"
                 Foreground="#4ec9b0"

@@ -49,14 +49,33 @@ dotnet_style_prefer_is_null_check_over_reference_equality_method = true:warning
 # Unnecessary code
 dotnet_diagnostic.IDE0059.severity = warning
 dotnet_diagnostic.IDE0060.severity = warning
+dotnet_diagnostic.IDE1006.severity = none
 
 # Private fields must be _camelCase (required by CONVENTIONS.md)
+dotnet_naming_rule.private_static_fields_pascal.symbols = private_static_fields
+dotnet_naming_rule.private_static_fields_pascal.style = pascal_case
+dotnet_naming_rule.private_static_fields_pascal.severity = warning
+
+dotnet_naming_rule.private_const_fields_pascal.symbols = private_const_fields
+dotnet_naming_rule.private_const_fields_pascal.style = pascal_case
+dotnet_naming_rule.private_const_fields_pascal.severity = warning
+
 dotnet_naming_rule.private_fields_underscore_camel.symbols = private_fields
 dotnet_naming_rule.private_fields_underscore_camel.style = underscore_camel_case
 dotnet_naming_rule.private_fields_underscore_camel.severity = warning
 
+dotnet_naming_symbols.private_static_fields.applicable_kinds = field
+dotnet_naming_symbols.private_static_fields.applicable_accessibilities = private
+dotnet_naming_symbols.private_static_fields.required_modifiers = static
+
+dotnet_naming_symbols.private_const_fields.applicable_kinds = field
+dotnet_naming_symbols.private_const_fields.applicable_accessibilities = private
+dotnet_naming_symbols.private_const_fields.required_modifiers = const
+
 dotnet_naming_symbols.private_fields.applicable_kinds = field
 dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+
+dotnet_naming_style.pascal_case.capitalization = pascal_case
 
 dotnet_naming_style.underscore_camel_case.capitalization = camel_case
 dotnet_naming_style.underscore_camel_case.required_prefix = _

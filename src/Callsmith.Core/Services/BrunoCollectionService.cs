@@ -73,6 +73,15 @@ public sealed class BrunoCollectionService : ICollectionService
 
         var text = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
         var doc = BruParser.Parse(text);
+        if (!TryGetRequestId(doc, out _))
+        {
+            SetMetaRequestId(doc, Guid.NewGuid());
+            var updatedText = BruWriter.Write(doc.Blocks);
+            await File.WriteAllTextAsync(filePath, updatedText, ct).ConfigureAwait(false);
+            text = updatedText;
+            doc = BruParser.Parse(text);
+        }
+
         var request = DocToRequest(doc, filePath)
                ?? throw new InvalidOperationException($"Not a valid HTTP request file: '{filePath}'");
 
@@ -232,18 +241,7 @@ public sealed class BrunoCollectionService : ICollectionService
         await File.WriteAllTextAsync(filePath, content, ct).ConfigureAwait(false);
         _logger.LogDebug("Created Bruno request '{FilePath}'", filePath);
 
-        return new CollectionRequest
-        {
-            FilePath = filePath,
-            Name = name,
-            Method = HttpMethod.Get,
-            Url = string.Empty,
-            Headers = [],
-            PathParams = new Dictionary<string, string>(),
-            QueryParams = [],
-            BodyType = CollectionRequest.BodyTypes.None,
-            Auth = new AuthConfig(),
-        };
+        return await LoadRequestAsync(filePath, ct).ConfigureAwait(false);
     }
 
     public async Task<CollectionFolder> CreateFolderAsync(
@@ -503,6 +501,7 @@ public sealed class BrunoCollectionService : ICollectionService
 
         return new CollectionRequest
         {
+            RequestId = TryGetRequestId(doc, out var requestId) ? requestId : null,
             FilePath = filePath,
             Name = name,
             Method = new HttpMethod(httpMethod),
@@ -603,12 +602,17 @@ public sealed class BrunoCollectionService : ICollectionService
     private static string BuildBruContent(CollectionRequest request, BruDocument? existing)
     {
         var blocks = new List<BruBlock>();
+        var requestId = request.RequestId
+            ?? (existing is not null && TryGetRequestId(existing, out var existingRequestId)
+                ? existingRequestId
+                : Guid.NewGuid());
 
         // meta
         var meta = new BruBlock("meta");
         meta.Items.Add(new BruKv("name", request.Name));
         meta.Items.Add(new BruKv("type", "http"));
         meta.Items.Add(new BruKv("seq", existing?.GetValue("meta", "seq") ?? "1"));
+        meta.Items.Add(new BruKv("requestId", requestId.ToString("D")));
         blocks.Add(meta);
 
         // HTTP method block
@@ -747,6 +751,7 @@ public sealed class BrunoCollectionService : ICollectionService
         meta.Items.Add(new BruKv("name", name));
         meta.Items.Add(new BruKv("type", "http"));
         meta.Items.Add(new BruKv("seq", seq.ToString()));
+        meta.Items.Add(new BruKv("requestId", Guid.NewGuid().ToString("D")));
         blocks.Add(meta);
 
         var get = new BruBlock("get");
@@ -810,6 +815,27 @@ public sealed class BrunoCollectionService : ICollectionService
             meta.Items[idx] = nameKv;
         else
             meta.Items.Insert(0, nameKv);
+    }
+
+    private static bool TryGetRequestId(BruDocument doc, out Guid requestId)
+    {
+        var raw = doc.GetValue("meta", "requestId");
+        return Guid.TryParse(raw, out requestId);
+    }
+
+    private static void SetMetaRequestId(BruDocument doc, Guid requestId)
+    {
+        var meta = doc.Find("meta");
+        if (meta is null) return;
+
+        var idx = meta.Items.FindIndex(
+            kv => string.Equals(kv.Key, "requestId", StringComparison.OrdinalIgnoreCase));
+        var requestIdKv = new BruKv("requestId", requestId.ToString("D"));
+
+        if (idx >= 0)
+            meta.Items[idx] = requestIdKv;
+        else
+            meta.Items.Add(requestIdKv);
     }
 
     private static string SanitizeFileName(string name)

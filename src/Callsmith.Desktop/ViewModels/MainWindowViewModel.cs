@@ -1,5 +1,7 @@
+using Callsmith.Desktop.Messages;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 
 namespace Callsmith.Desktop.ViewModels;
 
@@ -10,29 +12,46 @@ namespace Callsmith.Desktop.ViewModels;
 /// </summary>
 public partial class MainWindowViewModel : ViewModelBase
 {
+    private readonly IMessenger _messenger;
+
     public CollectionsViewModel Collections { get; }
     public RequestEditorViewModel RequestEditor { get; }
     public EnvironmentViewModel Environment { get; }
     public EnvironmentEditorViewModel EnvironmentEditor { get; }
     public CommandPaletteViewModel CommandPalette { get; }
+    public HistoryPanelViewModel HistoryPanel { get; }
 
     public MainWindowViewModel(
         CollectionsViewModel collections,
         RequestEditorViewModel requestEditor,
         EnvironmentViewModel environment,
         EnvironmentEditorViewModel environmentEditor,
-        CommandPaletteViewModel commandPalette)
+        CommandPaletteViewModel commandPalette,
+        HistoryPanelViewModel historyPanel,
+        IMessenger messenger)
     {
         ArgumentNullException.ThrowIfNull(collections);
         ArgumentNullException.ThrowIfNull(requestEditor);
         ArgumentNullException.ThrowIfNull(environment);
         ArgumentNullException.ThrowIfNull(environmentEditor);
         ArgumentNullException.ThrowIfNull(commandPalette);
+        ArgumentNullException.ThrowIfNull(historyPanel);
+        ArgumentNullException.ThrowIfNull(messenger);
+        _messenger = messenger;
         Collections = collections;
         RequestEditor = requestEditor;
         Environment = environment;
         EnvironmentEditor = environmentEditor;
         CommandPalette = commandPalette;
+        HistoryPanel = historyPanel;
+
+        _messenger.Register<MainWindowViewModel, OpenHistoryMessage>(this, static (recipient, message) =>
+        {
+            if (message.RequestId is { } requestId)
+                recipient.HistoryPanel.OpenForRequest(requestId, message.RequestName);
+            else
+                recipient.HistoryPanel.OpenGlobal();
+        });
     }
 
     /// <summary>
@@ -69,6 +88,23 @@ public partial class MainWindowViewModel : ViewModelBase
         if (string.IsNullOrEmpty(path)) return;
         Collections.RevealFilePath = path;
     }
+
+    [RelayCommand]
+    private void OpenActiveRequestHistory()
+    {
+        var activeTab = RequestEditor.ActiveTab;
+        if (activeTab is null || !activeTab.CanOpenRequestHistory)
+            return;
+
+        if (activeTab.OpenRequestHistoryCommand.CanExecute(null))
+            activeTab.OpenRequestHistoryCommand.Execute(null);
+    }
+
+    [RelayCommand]
+    private void OpenGlobalHistory() => HistoryPanel.OpenGlobal();
+
+    [RelayCommand]
+    private void OpenHistory() => OpenGlobalHistory();
 
     /// <summary>
     /// Ctrl+Enter handler: sends the currently active request.

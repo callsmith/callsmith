@@ -1,7 +1,7 @@
+using System.Globalization;
 using Avalonia.Data.Converters;
 using Avalonia.Media;
 using Callsmith.Desktop.ViewModels;
-using System.Globalization;
 
 namespace Callsmith.Desktop.Converters;
 

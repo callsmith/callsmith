@@ -6,10 +6,10 @@ using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
 using Callsmith.Desktop.Controls;
+using Callsmith.Desktop.Messages;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
-using Callsmith.Desktop.Messages;
 using Microsoft.Extensions.Logging;
 
 namespace Callsmith.Desktop.ViewModels;
@@ -26,6 +26,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private readonly IDynamicVariableEvaluator? _dynamicEvaluator;
     private readonly IMessenger _messenger;
     private readonly Action<RequestTabViewModel> _requestClose;
+    private readonly IHistoryService? _historyService;
 
     /// <summary>Source request loaded from disk. Null for brand-new unsaved tabs.</summary>
     private CollectionRequest? _sourceRequest;
@@ -59,6 +60,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     /// <summary>File path of the loaded request, or empty string if the tab is new.</summary>
     public string SourceFilePath => _sourceRequest?.FilePath ?? string.Empty;
+
+    /// <summary>True when this tab is backed by a saved request with a stable RequestId.</summary>
+    public bool CanOpenRequestHistory => _sourceRequest?.RequestId is not null;
 
     /// <summary>Text shown on the tab chip: request name or "New Request".</summary>
     public string TabTitle => string.IsNullOrWhiteSpace(RequestName) ? "New Request" : RequestName;
@@ -194,6 +198,21 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     [ObservableProperty] private bool _isSending;
     [ObservableProperty] private string? _errorMessage;
+
+    /// <summary>True when the displayed response was loaded from history, not from a live send.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HistoryResponseDisplay))]
+    private bool _isResponseFromHistory;
+
+    /// <summary>The timestamp of the history entry that was loaded, or null.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HistoryResponseDisplay))]
+    private DateTimeOffset? _historyResponseDate;
+
+    public string HistoryResponseDisplay =>
+        IsResponseFromHistory && HistoryResponseDate is not null
+            ? $"Loaded from history ({HistoryResponseDate.Value.LocalDateTime:yyyy-MM-dd HH:mm:ss})"
+            : string.Empty;
 
     // -------------------------------------------------------------------------
     // Key-value editors
@@ -478,7 +497,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         ICollectionService collectionService,
         IMessenger messenger,
         Action<RequestTabViewModel> requestClose,
-        IDynamicVariableEvaluator? dynamicEvaluator = null)
+        IDynamicVariableEvaluator? dynamicEvaluator = null,
+        IHistoryService? historyService = null)
     {
         ArgumentNullException.ThrowIfNull(transportRegistry);
         ArgumentNullException.ThrowIfNull(collectionService);
@@ -490,6 +510,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _dynamicEvaluator = dynamicEvaluator;
         _messenger = messenger;
         _requestClose = requestClose;
+        _historyService = historyService;
 
         // Initialize auth segment fields — sync back to plain string properties.
         SegmentedValueFieldViewModel? authTokenField = null;
@@ -537,6 +558,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(ShowSaveAsPanel) or nameof(SaveAsName) or nameof(SaveAsFolderPath) or
                 nameof(SaveAsError) or nameof(PendingClose) or
                 nameof(Response) or nameof(IsSending) or nameof(ErrorMessage) or
+                nameof(IsResponseFromHistory) or nameof(HistoryResponseDate) or nameof(HistoryResponseDisplay) or
                 nameof(StatusDisplay) or nameof(ElapsedDisplay) or nameof(SizeDisplay) or
                 nameof(StatusBadgeColor) or nameof(MethodColor) or
                 nameof(ShowBodyEditor) or nameof(ShowTextBodyEditor) or nameof(ShowFormBodyEditor) or
@@ -591,6 +613,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         try
         {
             RequestName = req.Name;
+            OnPropertyChanged(nameof(CanOpenRequestHistory));
             SelectedMethod = req.Method.Method;
 
             _syncingUrl = true;
@@ -628,6 +651,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
             AuthApiKeyValueField.LoadFromText(AuthApiKeyValue);
             AuthApiKeyIn = req.Auth.ApiKeyIn;
             Response = null;
+            IsResponseFromHistory = false;
+            HistoryResponseDate = null;
             ErrorMessage = null;
         }
         finally
@@ -636,6 +661,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
             HasUnsavedChanges = false;
             IsNew = false;
         }
+
+        if (_historyService is not null && req.RequestId is not null)
+            _ = HydrateResponseFromHistoryAsync(req.RequestId.Value);
     }
 
     /// <summary>
@@ -650,6 +678,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         try
         {
             _sourceRequest = updated;
+            OnPropertyChanged(nameof(CanOpenRequestHistory));
             RequestName = updated.Name;
         }
         finally
@@ -877,6 +906,15 @@ public sealed partial class RequestTabViewModel : ObservableObject
             Body = formatted;
     }
 
+    [RelayCommand]
+    private void OpenRequestHistory()
+    {
+        if (_sourceRequest?.RequestId is not { } requestId)
+            return;
+
+        _messenger.Send(new OpenHistoryMessage(requestId, RequestName));
+    }
+
     // -------------------------------------------------------------------------
     // Commands — View as cURL
     // -------------------------------------------------------------------------
@@ -1035,15 +1073,21 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
             var transport = _transportRegistry.Resolve(request);
             Response = await transport.SendAsync(request, ct);
+            IsResponseFromHistory = false;
+            HistoryResponseDate = null;
+                var sentAt = DateTimeOffset.UtcNow - (Response?.Elapsed ?? TimeSpan.Zero);
+
+                if (_historyService is not null && Response is not null)
+                    _ = RecordHistoryAsync(env, Response, requestUrl, sentAt);
 
             // If this is a saved request, update the dynamic variable cache for any
             // environment variables that reference this request, so subsequent resolutions
             // pick up the fresh response without executing the request again.
             if (_dynamicEvaluator is not null
                 && _sourceRequest is not null
-                && !string.IsNullOrEmpty(Response.Body))
+                && !string.IsNullOrEmpty(Response?.Body))
             {
-                await UpdateDynamicCacheFromResponseAsync(Response.Body, ct).ConfigureAwait(false);
+                await UpdateDynamicCacheFromResponseAsync(Response!.Body, ct).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -1130,6 +1174,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             FilePath = filePath,
             Name = name,
             Method = new HttpMethod(SelectedMethod),
+            RequestId = Guid.NewGuid(),
             Url = string.Empty, // PerformSaveAsync will overwrite from editor state
             Headers = [],
             PathParams = new Dictionary<string, string>(),
@@ -1213,6 +1258,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             Name = RequestName,
             Method = new HttpMethod(SelectedMethod),
             Url = baseUrl,
+            RequestId = _sourceRequest.RequestId ?? Guid.NewGuid(),
             Description = _sourceRequest.Description,
             Headers = Headers.GetAllKv(),
             PathParams = PathParams.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
@@ -1239,6 +1285,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             _sourceRequest = updated;
             HasUnsavedChanges = false;
             ErrorMessage = null;
+            OnPropertyChanged(nameof(CanOpenRequestHistory));
             _messenger.Send(new RequestSavedMessage(updated));
         }
         catch (OperationCanceledException)
@@ -1409,6 +1456,40 @@ public sealed partial class RequestTabViewModel : ObservableObject
         }
     }
 
+    private async Task HydrateResponseFromHistoryAsync(Guid requestId)
+    {
+        try
+        {
+            // Run history query on thread pool to avoid blocking UI during app startup when
+            // multiple tabs are being restored. Add a small delay to stagger concurrent requests.
+            await Task.Delay(10).ConfigureAwait(false);
+            
+            var latest = await _historyService!.GetLatestForRequestAsync(requestId, CancellationToken.None)
+                .ConfigureAwait(false);
+            if (latest?.ResponseSnapshot is null)
+                return;
+
+            var snapshot = latest.ResponseSnapshot;
+            Response = new ResponseModel
+            {
+                StatusCode = snapshot.StatusCode,
+                ReasonPhrase = snapshot.ReasonPhrase,
+                Headers = snapshot.Headers,
+                Body = snapshot.Body,
+                BodyBytes = System.Text.Encoding.UTF8.GetBytes(snapshot.Body ?? string.Empty),
+                FinalUrl = snapshot.FinalUrl,
+                Elapsed = TimeSpan.FromMilliseconds(snapshot.ElapsedMs),
+            };
+
+            IsResponseFromHistory = true;
+            HistoryResponseDate = latest.SentAt;
+        }
+        catch
+        {
+            // Non-critical: if hydration fails, tab still opens with a clean empty response pane.
+        }
+    }
+
     private string? GetContentType() => SelectedBodyType switch
     {
         CollectionRequest.BodyTypes.Json => "application/json",
@@ -1418,4 +1499,117 @@ public sealed partial class RequestTabViewModel : ObservableObject
         CollectionRequest.BodyTypes.Multipart => "multipart/form-data",
         _ => null,
     };
+
+    // -------------------------------------------------------------------------
+    // History helpers
+    // -------------------------------------------------------------------------
+
+    private async Task RecordHistoryAsync(
+        ResolvedEnvironment env,
+        ResponseModel response,
+        string resolvedUrl,
+        DateTimeOffset sentAt)
+    {
+        try
+        {
+            var secretNames = BuildSecretVarNames();
+            var bindings = new List<VariableBinding>();
+
+            void Collect(string? template) =>
+                VariableSubstitutionService.SubstituteCollecting(
+                    template, env.Variables, secretNames, bindings, env.MockGenerators);
+
+            Collect(Url);
+            foreach (var p in QueryParams.GetAllKv()) { Collect(p.Key); Collect(p.Value); }
+            foreach (var p in Headers.GetAllKv())    { Collect(p.Key); Collect(p.Value); }
+            Collect(Body);
+            foreach (var p in FormParams.GetAllKv())  { Collect(p.Key); Collect(p.Value); }
+            foreach (var p in PathParams.GetEnabledPairs()) Collect(p.Value);
+            Collect(AuthToken);
+            Collect(AuthUsername);
+            Collect(AuthPassword);
+            Collect(AuthApiKeyName);
+            Collect(AuthApiKeyValue);
+
+            // Deduplicate — same token may appear in multiple fields.
+            var dedupedBindings = bindings
+                .GroupBy(b => b.Token)
+                .Select(g => g.First())
+                .ToList();
+
+            var contentType = GetContentType();
+            IReadOnlyList<RequestKv> autoAppliedHeaders = contentType is not null
+                ? [new RequestKv("Content-Type", contentType)]
+                : [];
+
+            var snapshot = new ConfiguredRequestSnapshot
+            {
+                Method = SelectedMethod,
+                Url = Url,
+                Headers = Headers.GetAllKv(),
+                AutoAppliedHeaders = autoAppliedHeaders,
+                QueryParams = QueryParams.GetAllKv(),
+                PathParams = PathParams.GetEnabledPairs()
+                    .ToDictionary(p => p.Key, p => p.Value),
+                BodyType = SelectedBodyType,
+                Body = string.IsNullOrEmpty(Body) ? null : Body,
+                FormParams = FormParams.GetAllKv()
+                    .Select(kv => new KeyValuePair<string, string>(kv.Key, kv.Value))
+                    .ToList(),
+                Auth = new AuthConfig
+                {
+                    AuthType = AuthType,
+                    Token = string.IsNullOrEmpty(AuthToken) ? null : AuthToken,
+                    Username = string.IsNullOrEmpty(AuthUsername) ? null : AuthUsername,
+                    Password = string.IsNullOrEmpty(AuthPassword) ? null : AuthPassword,
+                    ApiKeyName = string.IsNullOrEmpty(AuthApiKeyName) ? null : AuthApiKeyName,
+                    ApiKeyValue = string.IsNullOrEmpty(AuthApiKeyValue) ? null : AuthApiKeyValue,
+                    ApiKeyIn = AuthApiKeyIn,
+                },
+            };
+
+            var collectionName = !string.IsNullOrEmpty(CollectionRootPath)
+                ? Path.GetFileName(CollectionRootPath.TrimEnd(Path.DirectorySeparatorChar,
+                    Path.AltDirectorySeparatorChar))
+                : null;
+
+            var entry = new HistoryEntry
+            {
+                RequestId = _sourceRequest?.RequestId,
+                SentAt = sentAt,
+                Method = SelectedMethod,
+                StatusCode = response.StatusCode,
+                ResolvedUrl = resolvedUrl,
+                RequestName = _sourceRequest is not null ? RequestName : null,
+                CollectionName = collectionName,
+                EnvironmentName = _activeEnvironment?.Name,
+                EnvironmentColor = _activeEnvironment?.Color,
+                CollectionPath = string.IsNullOrEmpty(CollectionRootPath) ? null : CollectionRootPath,
+                ElapsedMs = (long)response.Elapsed.TotalMilliseconds,
+                ConfiguredSnapshot = snapshot,
+                VariableBindings = dedupedBindings,
+                ResponseSnapshot = ResponseSnapshot.FromResponseModel(response),
+            };
+
+            await _historyService!.RecordAsync(entry, CancellationToken.None);
+        }
+        catch
+        {
+            // History recording must never disrupt the request UX. Errors are swallowed here;
+            // the repository implementation is responsible for its own internal logging.
+        }
+    }
+
+    private HashSet<string> BuildSecretVarNames()
+    {
+        var secrets = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var v in _globalEnvironment.Variables)
+            if (v.IsSecret && !string.IsNullOrWhiteSpace(v.Name))
+                secrets.Add(v.Name);
+        if (_activeEnvironment is not null)
+            foreach (var v in _activeEnvironment.Variables)
+                if (v.IsSecret && !string.IsNullOrWhiteSpace(v.Name))
+                    secrets.Add(v.Name);
+        return secrets;
+    }
 }

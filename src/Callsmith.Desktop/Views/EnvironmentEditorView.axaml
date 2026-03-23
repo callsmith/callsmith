@@ -255,7 +255,6 @@
             <!-- "Add" button — normal state -->
             <Button Content="+ Add Environment"
                     Command="{Binding BeginAddEnvironmentCommand}"
-                    Cursor="Hand"
                     IsVisible="{Binding !IsAddingEnvironment}"
                     Background="Transparent"
                     Foreground="#4ec9b0"
@@ -602,7 +601,6 @@
                               CornerRadius="3"
                               Padding="8,3"
                               FontSize="11"
-                              Cursor="Hand"
                               VerticalAlignment="Center"/>
                       <TextBlock Text="{Binding MockDataSummary}"
                                  Foreground="#c586c0"
@@ -628,7 +626,6 @@
                               CornerRadius="3"
                               Padding="8,3"
                               FontSize="11"
-                              Cursor="Hand"
                               VerticalAlignment="Center"/>
                       <TextBlock Text="{Binding ResponseBodySummary}"
                                  Foreground="#4ec9b0"
@@ -695,7 +692,6 @@
             <!-- Add variable button -->
             <Button Content="+ Add Variable"
                     Command="{Binding SelectedEnvironment.AddVariableCommand}"
-                    Cursor="Hand"
                     Background="Transparent"
                     Foreground="#4ec9b0"
                     BorderThickness="0"

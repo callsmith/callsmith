@@ -28,6 +28,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private readonly ICollectionService _collectionService;
     private readonly ICollectionPreferencesService _preferencesService;
     private readonly IDynamicVariableEvaluator _dynamicEvaluator;
+    private readonly IHistoryService? _historyService;
     private readonly ILogger<RequestEditorViewModel> _logger;
 
     private EnvironmentModel? _activeEnvironment;
@@ -71,7 +72,8 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         ICollectionPreferencesService preferencesService,
         IDynamicVariableEvaluator dynamicEvaluator,
         IMessenger messenger,
-        ILogger<RequestEditorViewModel> logger)
+        ILogger<RequestEditorViewModel> logger,
+        IHistoryService? historyService = null)
         : base(messenger)
     {
         ArgumentNullException.ThrowIfNull(transportRegistry);
@@ -83,6 +85,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         _collectionService = collectionService;
         _preferencesService = preferencesService;
         _dynamicEvaluator = dynamicEvaluator;
+        _historyService = historyService;
         _logger = logger;
         IsActive = true;
 
@@ -257,7 +260,8 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             _collectionService,
             Messenger,
             RemoveTab,
-            _dynamicEvaluator);
+            _dynamicEvaluator,
+            _historyService);
 
         tab.AvailableFolders = AvailableFolders;
         tab.CollectionRootPath = _collectionPath;

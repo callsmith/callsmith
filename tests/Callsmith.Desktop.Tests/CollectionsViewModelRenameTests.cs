@@ -1,3 +1,4 @@
+using System.Net.Http;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
 using Callsmith.Desktop.Messages;
@@ -6,7 +7,6 @@ using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
-using System.Net.Http;
 
 namespace Callsmith.Desktop.Tests;
 
@@ -303,6 +303,47 @@ public sealed class CollectionsViewModelRenameTests
 
         folder.Name.Should().Be("authentication");
         folder.FolderPath.Should().Be(newFolderPath);
+    }
+
+    [Fact]
+    public async Task CommitRenameDialogAsync_WhenRenameFolder_PreservesRequestIdsOnAffectedRequests()
+    {
+        var oldFolderPath = @"C:\collections\my-api\auth";
+        var newFolderPath = @"C:\collections\my-api\authentication";
+        var requestId = Guid.NewGuid();
+
+        var renamedFolder = new CollectionFolder
+        {
+            Name = "authentication",
+            FolderPath = newFolderPath,
+            Requests = [],
+            SubFolders = [],
+        };
+
+        var collectionService = Substitute.For<ICollectionService>();
+        collectionService.RenameFolderAsync(oldFolderPath, "authentication", Arg.Any<CancellationToken>())
+                         .Returns(renamedFolder);
+
+        var sut = BuildSut(collectionService);
+        var (root, folder, _) = BuildTree();
+        sut.TreeRoots = [root];
+
+        var requestNode = (CollectionTreeItemViewModel)folder.Children[0];
+        requestNode.UpdateRequest(new CollectionRequest
+        {
+            RequestId = requestId,
+            FilePath = requestNode.Request!.FilePath,
+            Name = requestNode.Request.Name,
+            Method = requestNode.Request.Method,
+            Url = requestNode.Request.Url,
+        });
+
+        sut.BeginRenameCommand.Execute(folder);
+        sut.RenameDialogValue = "authentication";
+
+        await sut.CommitRenameDialogAsync();
+
+        requestNode.Request!.RequestId.Should().Be(requestId);
     }
 
     /// <summary>

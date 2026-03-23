@@ -11,6 +11,14 @@ namespace Callsmith.Core.Models;
 public sealed class CollectionRequest
 {
     /// <summary>
+    /// Stable identity for this request that persists across renames and moves.
+    /// Generated on first save for requests created after this field was introduced;
+    /// <see langword="null"/> only for requests loaded from old files that have never
+    /// been saved since the upgrade (lazily assigned on next save).
+    /// </summary>
+    public Guid? RequestId { get; init; }
+
+    /// <summary>
     /// The file path on disk where this request is stored.
     /// Used as the stable identity for load/save operations.
     /// </summary>

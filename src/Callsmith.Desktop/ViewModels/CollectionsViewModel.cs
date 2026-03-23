@@ -1,4 +1,5 @@
-﻿using Avalonia.Platform.Storage;
+﻿using System.Text.RegularExpressions;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Bruno;
@@ -8,7 +9,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
-using System.Text.RegularExpressions;
 
 namespace Callsmith.Desktop.ViewModels;
 
@@ -319,6 +319,15 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         }
     }
 
+    [RelayCommand]
+    public void ViewRequestHistory(CollectionTreeItemViewModel node)
+    {
+        if (node.Request?.RequestId is not { } requestId)
+            return;
+
+        Messenger.Send(new OpenHistoryMessage(requestId, node.Request.Name));
+    }
+
     // -------------------------------------------------------------------------
     // Rename dialog (modal)
     // -------------------------------------------------------------------------
@@ -391,6 +400,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
                         // Create updated request with new file path.
                         var updatedRequest = new CollectionRequest
                         {
+                            RequestId = requestNode.Request.RequestId,
                             FilePath = newRequestFilePath,
                             Name = requestNode.Request.Name,
                             Method = requestNode.Request.Method,

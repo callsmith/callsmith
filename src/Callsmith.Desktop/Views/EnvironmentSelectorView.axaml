@@ -37,7 +37,6 @@
             Padding="8,2"
             Margin="8,0,0,0"
             VerticalAlignment="Center"
-            Cursor="Hand"
             ToolTip.Tip="Open the environment variable editor"/>
 
     <!-- Environment picker — hidden while any editor is open -->

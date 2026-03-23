@@ -86,6 +86,13 @@ public sealed class FileSystemCollectionService : ICollectionService
         var dto = JsonSerializer.Deserialize<RequestFileDto>(json, JsonOptions)
             ?? throw new InvalidOperationException($"Failed to deserialise request file: '{filePath}'");
 
+        if (dto.RequestId is null)
+        {
+            dto.RequestId = Guid.NewGuid();
+            var updatedJson = JsonSerializer.Serialize(dto, JsonOptions);
+            await File.WriteAllTextAsync(filePath, updatedJson, ct);
+        }
+
         _logger.LogDebug("Loaded request from '{FilePath}'", filePath);
 
         string? basicAuthPassword = null;
@@ -175,6 +182,7 @@ public sealed class FileSystemCollectionService : ICollectionService
 
         var renamed = new CollectionRequest
         {
+            RequestId = existing.RequestId,
             FilePath = newFilePath,
             Name = newName,
             Method = existing.Method,
@@ -222,6 +230,7 @@ public sealed class FileSystemCollectionService : ICollectionService
 
         var movedRequest = new CollectionRequest
         {
+            RequestId = request.RequestId,
             FilePath = destinationFilePath,
             Name = request.Name,
             Method = request.Method,
@@ -259,6 +268,7 @@ public sealed class FileSystemCollectionService : ICollectionService
 
         var newRequest = new CollectionRequest
         {
+            RequestId = Guid.NewGuid(),
             FilePath = filePath,
             Name = name,
             Method = System.Net.Http.HttpMethod.Get,
@@ -490,6 +500,7 @@ public sealed class FileSystemCollectionService : ICollectionService
 
         return new CollectionRequest
         {
+            RequestId = dto.RequestId,
             FilePath = filePath,
             Name = Path.GetFileNameWithoutExtension(filePath),
             Method = new HttpMethod(dto.Method ?? HttpMethod.Get.Method),
@@ -524,6 +535,7 @@ public sealed class FileSystemCollectionService : ICollectionService
     private static RequestFileDto RequestToDto(CollectionRequest request) =>
         new()
         {
+            RequestId = request.RequestId ?? Guid.NewGuid(),
             Method = request.Method.Method,
             Url = request.Url,
             Description = request.Description,
@@ -575,6 +587,7 @@ public sealed class FileSystemCollectionService : ICollectionService
     /// </summary>
     private sealed class RequestFileDto
     {
+        public Guid? RequestId { get; set; }
         public string? Method { get; set; }
         public string? Url { get; set; }
         public string? Description { get; set; }

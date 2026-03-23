@@ -94,6 +94,9 @@ public partial class CollectionsView : UserControl
             }
             else
             {
+                if (node.Request?.RequestId is not null)
+                    menu.Items.Add(MakeMenuItem("View History", () => vm.ViewRequestHistoryCommand.Execute(node)));
+
                 menu.Items.Add(MakeMenuItem("Rename", () => vm.BeginRenameCommand.Execute(node)));
                 menu.Items.Add(new Separator());
                 menu.Items.Add(MakeMenuItem("Delete Request", () => vm.DeleteNodeCommand.Execute(node), isDestructive: true));

@@ -1,3 +1,4 @@
+using System.Xml;
 using Avalonia;
 using Avalonia.Controls.Primitives;
 using Avalonia.Data;
@@ -6,7 +7,6 @@ using AvaloniaEdit;
 using AvaloniaEdit.Folding;
 using AvaloniaEdit.Highlighting;
 using AvaloniaEdit.Highlighting.Xshd;
-using System.Xml;
 
 namespace Callsmith.Desktop.Controls;
 

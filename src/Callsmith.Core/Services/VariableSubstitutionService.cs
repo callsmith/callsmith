@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using Callsmith.Core.Helpers;
 using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
@@ -28,11 +28,6 @@ public static partial class VariableSubstitutionService
     /// <summary>
     /// Substitutes all <c>{{name}}</c> tokens in <paramref name="template"/> using the
     /// pre-resolved <see cref="ResolvedEnvironment"/>.
-    /// <list type="bullet">
-    ///   <item>Variables in <see cref="ResolvedEnvironment.Variables"/> use their pre-computed value.</item>
-    ///   <item>Variables in <see cref="ResolvedEnvironment.MockGenerators"/> are evaluated freshly per
-    ///     token occurrence so each reference to the same mock var yields a different generated value.</item>
-    /// </list>
     /// </summary>
     public static string? Substitute(string? template, ResolvedEnvironment env) =>
         Substitute(template, env.Variables, env.MockGenerators);
@@ -40,16 +35,7 @@ public static partial class VariableSubstitutionService
     /// <summary>
     /// Substitutes all <c>{{name}}</c> tokens in <paramref name="template"/>
     /// with the matching value from <paramref name="variables"/>.
-    /// Optionally generates fresh mock values per occurrence for vars in <paramref name="mockGenerators"/>.
-    /// Also evaluates legacy <c>{% faker 'Category.Field' %}</c> inline tokens for backward compatibility.
     /// </summary>
-    /// <param name="template">The string that may contain <c>{{token}}</c> placeholders.</param>
-    /// <param name="variables">Case-sensitive variable name → value mapping.</param>
-    /// <param name="mockGenerators">
-    /// Optional map of variable names to mock-data catalog entries.
-    /// When a token matches a key here, a fresh value is generated on every occurrence.
-    /// </param>
-    /// <returns>The resolved string, or <see langword="null"/> when the input is null.</returns>
     public static string? Substitute(
         string? template,
         IReadOnlyDictionary<string, string> variables,
@@ -62,7 +48,6 @@ public static partial class VariableSubstitutionService
         var result = TokenPattern().Replace(template, match =>
         {
             var key = NormalizeTokenName(match.Groups[1].Value);
-            // Mock-data vars: generate fresh per reference (never pre-computed).
             if (TryGetByTokenName(mockGenerators, key, out var entry))
                 return MockDataCatalog.Generate(entry.Category, entry.Field);
 
@@ -71,7 +56,6 @@ public static partial class VariableSubstitutionService
                 : match.Value;
         });
 
-        // Backward compat: evaluate any remaining {% faker %} tags from old imported data.
         if (result.Contains("{%", StringComparison.Ordinal))
             result = EvaluateFakerTags(result);
 
@@ -79,9 +63,48 @@ public static partial class VariableSubstitutionService
     }
 
     /// <summary>
-    /// Evaluates <c>{% faker 'Category.Field' %}</c> tokens in the string,
-    /// replacing each with a freshly generated mock value.
+    /// Substitutes all <c>{{name}}</c> tokens in <paramref name="template"/> and records
+    /// each substitution in <paramref name="collector"/> as a <see cref="VariableBinding"/>.
     /// </summary>
+    public static string? SubstituteCollecting(
+        string? template,
+        IReadOnlyDictionary<string, string> variables,
+        IReadOnlySet<string> secretVariableNames,
+        IList<VariableBinding> collector,
+        IReadOnlyDictionary<string, MockDataEntry>? mockGenerators = null)
+    {
+        if (string.IsNullOrEmpty(template)) return template;
+
+        var resolved = ResolveVariables(variables);
+
+        var result = TokenPattern().Replace(template, match =>
+        {
+            var tokenText = match.Value;
+            var key = NormalizeTokenName(match.Groups[1].Value);
+
+            if (TryGetByTokenName(mockGenerators, key, out var entry))
+            {
+                var generated = MockDataCatalog.Generate(entry.Category, entry.Field);
+                collector.Add(new VariableBinding(tokenText, generated, IsSecret: false));
+                return generated;
+            }
+
+            if (TryGetByTokenName(resolved, key, out var value))
+            {
+                var isSecret = secretVariableNames.Contains(key);
+                collector.Add(new VariableBinding(tokenText, value, isSecret));
+                return value;
+            }
+
+            return match.Value;
+        });
+
+        if (result.Contains("{%", StringComparison.Ordinal))
+            result = EvaluateFakerTags(result);
+
+        return result;
+    }
+
     private static string EvaluateFakerTags(string input) =>
         FakerTag().Replace(input, match =>
         {
@@ -90,7 +113,6 @@ public static partial class VariableSubstitutionService
             if (segments is [MockDataSegment mockSeg])
                 return MockDataCatalog.Generate(mockSeg.Category, mockSeg.Field);
 
-            // Fallback: parse the key directly
             var dotIdx = key.IndexOf('.', StringComparison.Ordinal);
             if (dotIdx > 0)
             {
@@ -100,11 +122,10 @@ public static partial class VariableSubstitutionService
                 if (!string.IsNullOrEmpty(generated)) return generated;
             }
 
-            // Try Bogus-name lookup
             var entry = MockDataCatalog.FindByBogusName(key);
             return entry is not null
                 ? MockDataCatalog.Generate(entry.Category, entry.Field)
-                : match.Value; // unknown — leave intact
+                : match.Value;
         });
 
     /// <summary>
@@ -118,8 +139,6 @@ public static partial class VariableSubstitutionService
 
         for (var pass = 0; pass < MaxResolutionDepth; pass++)
         {
-            // Snapshot the values at the start of this pass so each variable
-            // expands against the same generation of values.
             var snapshot = new Dictionary<string, string>(resolved);
             var changed = false;
 
@@ -128,7 +147,6 @@ public static partial class VariableSubstitutionService
                 var expanded = TokenPattern().Replace(resolved[key], match =>
                 {
                     var refKey = NormalizeTokenName(match.Groups[1].Value);
-                    // Leave self-references in place to prevent infinite expansion.
                     if (NormalizeTokenName(refKey) == NormalizeTokenName(key))
                         return match.Value;
 

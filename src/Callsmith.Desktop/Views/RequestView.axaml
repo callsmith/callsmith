@@ -31,7 +31,7 @@
       <Grid RowDefinitions="Auto,Auto,*,Auto">
 
         <!-- Row 0: Method + URL + Send/Cancel + Save -->
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,8,*,8,Auto,8,Auto">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,8,*,8,Auto,8,Auto,8,Auto">
           <ComboBox Grid.Column="0"
                     ItemsSource="{Binding HttpMethods}"
                     SelectedItem="{Binding SelectedMethod}"
@@ -98,6 +98,8 @@
                   Background="#1e7340" Foreground="White" FontWeight="SemiBold"
                   Padding="16,6" CornerRadius="4"
                   ToolTip.Tip="Save changes (Ctrl+S)"/>
+
+
         </Grid>
 
         <!-- Row 1: Preview URL bar -->
@@ -118,7 +120,7 @@
                     x:Name="CopyPreviewUrlButton"
                     Content="&#x2398;" ToolTip.Tip="Copy URL to clipboard"
                     Background="Transparent" Foreground="#888" BorderThickness="0"
-                    Padding="6,2" FontSize="14" Cursor="Hand" Margin="6,0,0,0"/>
+                  Padding="6,2" FontSize="14" Margin="6,0,0,0"/>
           </Grid>
         </Border>
 
@@ -160,7 +162,7 @@
                 <Button Content="Format" Command="{Binding FormatBodyCommand}"
                         IsVisible="{Binding IsBodyJson}"
                         Background="Transparent" Foreground="#4ec9b0" BorderThickness="0"
-                        Padding="0" FontSize="12" Cursor="Hand"
+                  Padding="0" FontSize="12"
                         VerticalAlignment="Center"
                         ToolTip.Tip="Pretty-print the JSON body"/>
               </StackPanel>
@@ -229,12 +231,12 @@
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthTokenField.EditDynamicSegmentCommand}"
                                           CommandParameter="{Binding DynamicSegment}"
                                           Background="Transparent" Foreground="#4ec9b0" BorderThickness="0"
-                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                      Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11"/>
                                   <Button Content="×"
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthTokenField.RemoveSegmentCommand}"
                                           CommandParameter="{Binding RawSegment}"
                                           Background="Transparent" Foreground="#888" BorderThickness="0"
-                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                      Padding="2,0" FontSize="12"/>
                                 </StackPanel>
                               </Border>
                               <Border Background="#2a1a3a" BorderBrush="#6a2a9a" BorderThickness="1"
@@ -245,12 +247,12 @@
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthTokenField.EditMockSegmentCommand}"
                                           CommandParameter="{Binding MockDataSegment}"
                                           Background="Transparent" Foreground="#c586c0" BorderThickness="0"
-                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                      Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11"/>
                                   <Button Content="×"
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthTokenField.RemoveSegmentCommand}"
                                           CommandParameter="{Binding RawSegment}"
                                           Background="Transparent" Foreground="#888" BorderThickness="0"
-                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                      Padding="2,0" FontSize="12"/>
                                 </StackPanel>
                               </Border>
                             </StackPanel>
@@ -304,12 +306,12 @@
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthUsernameField.EditDynamicSegmentCommand}"
                                           CommandParameter="{Binding DynamicSegment}"
                                           Background="Transparent" Foreground="#4ec9b0" BorderThickness="0"
-                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                      Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11"/>
                                   <Button Content="×"
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthUsernameField.RemoveSegmentCommand}"
                                           CommandParameter="{Binding RawSegment}"
                                           Background="Transparent" Foreground="#888" BorderThickness="0"
-                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                      Padding="2,0" FontSize="12"/>
                                 </StackPanel>
                               </Border>
                               <Border Background="#2a1a3a" BorderBrush="#6a2a9a" BorderThickness="1"
@@ -320,12 +322,12 @@
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthUsernameField.EditMockSegmentCommand}"
                                           CommandParameter="{Binding MockDataSegment}"
                                           Background="Transparent" Foreground="#c586c0" BorderThickness="0"
-                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                      Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11"/>
                                   <Button Content="×"
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthUsernameField.RemoveSegmentCommand}"
                                           CommandParameter="{Binding RawSegment}"
                                           Background="Transparent" Foreground="#888" BorderThickness="0"
-                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                      Padding="2,0" FontSize="12"/>
                                 </StackPanel>
                               </Border>
                             </StackPanel>
@@ -411,12 +413,12 @@
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthPasswordField.EditDynamicSegmentCommand}"
                                           CommandParameter="{Binding DynamicSegment}"
                                           Background="Transparent" Foreground="#4ec9b0" BorderThickness="0"
-                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                      Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11"/>
                                   <Button Content="×"
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthPasswordField.RemoveSegmentCommand}"
                                           CommandParameter="{Binding RawSegment}"
                                           Background="Transparent" Foreground="#888" BorderThickness="0"
-                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                      Padding="2,0" FontSize="12"/>
                                 </StackPanel>
                               </Border>
                               <Border Background="#2a1a3a" BorderBrush="#6a2a9a" BorderThickness="1"
@@ -427,12 +429,12 @@
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthPasswordField.EditMockSegmentCommand}"
                                           CommandParameter="{Binding MockDataSegment}"
                                           Background="Transparent" Foreground="#c586c0" BorderThickness="0"
-                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                      Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11"/>
                                   <Button Content="×"
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthPasswordField.RemoveSegmentCommand}"
                                           CommandParameter="{Binding RawSegment}"
                                           Background="Transparent" Foreground="#888" BorderThickness="0"
-                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                      Padding="2,0" FontSize="12"/>
                                 </StackPanel>
                               </Border>
                             </StackPanel>
@@ -486,12 +488,12 @@
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthApiKeyNameField.EditDynamicSegmentCommand}"
                                           CommandParameter="{Binding DynamicSegment}"
                                           Background="Transparent" Foreground="#4ec9b0" BorderThickness="0"
-                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                      Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11"/>
                                   <Button Content="×"
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthApiKeyNameField.RemoveSegmentCommand}"
                                           CommandParameter="{Binding RawSegment}"
                                           Background="Transparent" Foreground="#888" BorderThickness="0"
-                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                      Padding="2,0" FontSize="12"/>
                                 </StackPanel>
                               </Border>
                               <Border Background="#2a1a3a" BorderBrush="#6a2a9a" BorderThickness="1"
@@ -502,12 +504,12 @@
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthApiKeyNameField.EditMockSegmentCommand}"
                                           CommandParameter="{Binding MockDataSegment}"
                                           Background="Transparent" Foreground="#c586c0" BorderThickness="0"
-                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                      Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11"/>
                                   <Button Content="×"
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthApiKeyNameField.RemoveSegmentCommand}"
                                           CommandParameter="{Binding RawSegment}"
                                           Background="Transparent" Foreground="#888" BorderThickness="0"
-                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                      Padding="2,0" FontSize="12"/>
                                 </StackPanel>
                               </Border>
                             </StackPanel>
@@ -561,12 +563,12 @@
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthApiKeyValueField.EditDynamicSegmentCommand}"
                                           CommandParameter="{Binding DynamicSegment}"
                                           Background="Transparent" Foreground="#4ec9b0" BorderThickness="0"
-                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                      Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11"/>
                                   <Button Content="×"
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthApiKeyValueField.RemoveSegmentCommand}"
                                           CommandParameter="{Binding RawSegment}"
                                           Background="Transparent" Foreground="#888" BorderThickness="0"
-                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                      Padding="2,0" FontSize="12"/>
                                 </StackPanel>
                               </Border>
                               <Border Background="#2a1a3a" BorderBrush="#6a2a9a" BorderThickness="1"
@@ -577,12 +579,12 @@
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthApiKeyValueField.EditMockSegmentCommand}"
                                           CommandParameter="{Binding MockDataSegment}"
                                           Background="Transparent" Foreground="#c586c0" BorderThickness="0"
-                                          Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11" Cursor="Hand"/>
+                                      Padding="0" FontFamily="Consolas,Menlo,monospace" FontSize="11"/>
                                   <Button Content="×"
                                           Command="{Binding $parent[ItemsControl].((vm:RequestTabViewModel)DataContext).AuthApiKeyValueField.RemoveSegmentCommand}"
                                           CommandParameter="{Binding RawSegment}"
                                           Background="Transparent" Foreground="#888" BorderThickness="0"
-                                          Padding="2,0" FontSize="12" Cursor="Hand"/>
+                                      Padding="2,0" FontSize="12"/>
                                 </StackPanel>
                               </Border>
                             </StackPanel>
@@ -655,14 +657,35 @@
 
       <Border Grid.Row="0" Background="#2d2d30" Padding="16,8"
               IsVisible="{Binding Response, Converter={x:Static conv:NotNullConverter.Instance}}">
-        <StackPanel Orientation="Horizontal" Spacing="16">
-          <Border CornerRadius="3" Padding="8,3"
-                  Background="{Binding StatusBadgeColor, Converter={x:Static conv:HexColorToBrushConverter.Instance}}">
-            <TextBlock Text="{Binding StatusDisplay}" Foreground="White" FontWeight="SemiBold" FontSize="12"/>
-          </Border>
-          <TextBlock Text="{Binding ElapsedDisplay}" Foreground="#888" FontSize="12" VerticalAlignment="Center"/>
-          <TextBlock Text="{Binding SizeDisplay}" Foreground="#888" FontSize="12" VerticalAlignment="Center"/>
-        </StackPanel>
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16">
+            <Border CornerRadius="3" Padding="8,3"
+                    Background="{Binding StatusBadgeColor, Converter={x:Static conv:HexColorToBrushConverter.Instance}}">
+              <TextBlock Text="{Binding StatusDisplay}" Foreground="White" FontWeight="SemiBold" FontSize="12"/>
+            </Border>
+            <TextBlock Text="{Binding ElapsedDisplay}" Foreground="#888" FontSize="12" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding SizeDisplay}" Foreground="#888" FontSize="12" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding HistoryResponseDisplay}"
+                       Foreground="#dcdcaa"
+                       FontSize="11"
+                       VerticalAlignment="Center"
+                       IsVisible="{Binding IsResponseFromHistory}"/>
+          </StackPanel>
+          <!-- Request History button (floats right) -->
+          <Button Grid.Column="1"
+                  Content="Request History"
+                  Command="{Binding OpenRequestHistoryCommand}"
+                  IsVisible="{Binding CanOpenRequestHistory}"
+                  Background="Transparent"
+                  Foreground="#9cdcfe"
+                  BorderBrush="#555"
+                  BorderThickness="1"
+                  Padding="10,3"
+                  CornerRadius="3"
+                  FontSize="11"
+                  VerticalAlignment="Center"
+                  ToolTip.Tip="Open history scoped to this request"/>
+        </Grid>
       </Border>
 
       <StackPanel Grid.Row="1" IsVisible="{Binding IsSending}"

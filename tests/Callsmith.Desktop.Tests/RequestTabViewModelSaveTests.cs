@@ -287,4 +287,38 @@ public sealed class RequestTabViewModelSaveTests
 
         sut.HasUnsavedChanges.Should().BeFalse();
     }
+
+    [Fact]
+    public void LoadingHistoryResponse_DoesNotMarkTabDirty()
+    {
+        // When a history response is loaded (IsResponseFromHistory is set),
+        // the request should NOT be marked dirty since this is display state, not config.
+        var mockHistoryService = Substitute.For<IHistoryService>();
+        var sut = new RequestTabViewModel(
+            new TransportRegistry(),
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { },
+            null,
+            mockHistoryService);
+
+        sut.LoadRequest(SampleRequest());
+        sut.HasUnsavedChanges.Should().BeFalse();
+
+        // Simulate what HydrateResponseFromHistoryAsync does
+        sut.Response = new ResponseModel
+        {
+            StatusCode = 200,
+            ReasonPhrase = "OK",
+            Body = "response body",
+            Headers = new Dictionary<string, string>(),
+            BodyBytes = System.Text.Encoding.UTF8.GetBytes("response body"),
+            FinalUrl = "https://api.example.com/users",
+            Elapsed = TimeSpan.FromMilliseconds(100),
+        };
+        sut.IsResponseFromHistory = true;
+        sut.HistoryResponseDate = DateTimeOffset.UtcNow;
+
+        sut.HasUnsavedChanges.Should().BeFalse();
+    }
 }

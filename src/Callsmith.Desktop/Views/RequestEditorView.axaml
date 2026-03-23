@@ -165,8 +165,7 @@
                   FontSize="18"
                   FontWeight="Light"
                   VerticalAlignment="Center"
-                  ToolTip.Tip="New tab (blank request)"
-                  Cursor="Hand"/>
+                  ToolTip.Tip="New tab (blank request)"/>
         </StackPanel>
       </ScrollViewer>
     </Border>

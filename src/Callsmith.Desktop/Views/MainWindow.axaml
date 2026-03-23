@@ -17,6 +17,8 @@
     <Window.KeyBindings>
         <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}"/>
         <KeyBinding Gesture="Ctrl+P" Command="{Binding OpenCommandPaletteCommand}"/>
+        <KeyBinding Gesture="Ctrl+H" Command="{Binding OpenActiveRequestHistoryCommand}"/>
+        <KeyBinding Gesture="Ctrl+Shift+H" Command="{Binding OpenGlobalHistoryCommand}"/>
         <KeyBinding Gesture="Alt+R" Command="{Binding RevealActiveRequestCommand}"/>
         <KeyBinding Gesture="Ctrl+Enter" Command="{Binding SendCommand}"/>
     </Window.KeyBindings>
@@ -50,13 +52,28 @@
         <Grid Grid.Column="2" RowDefinitions="Auto,*"
               IsVisible="{Binding !Environment.IsAnyEditorOpen}">
 
-            <!-- Environment selector toolbar -->
+            <!-- Environment selector toolbar + History button -->
             <Border Grid.Row="0"
                     Background="#2d2d30"
                     BorderBrush="#444"
                     BorderThickness="0,0,0,1"
                     Padding="12,6">
-                <views:EnvironmentSelectorView DataContext="{Binding Environment}"/>
+                <Grid ColumnDefinitions="*,Auto">
+                    <views:EnvironmentSelectorView Grid.Column="0" DataContext="{Binding Environment}"/>
+                    <Button Grid.Column="1"
+                            Content="Global History"
+                            Command="{Binding OpenHistoryCommand}"
+                            Background="Transparent"
+                            Foreground="#9cdcfe"
+                            BorderThickness="1"
+                            BorderBrush="#555"
+                            CornerRadius="3"
+                            FontSize="11"
+                            Padding="10,3"
+                            Margin="8,0,0,0"
+                            VerticalAlignment="Center"
+                            ToolTip.Tip="View sent request history"/>
+                </Grid>
             </Border>
 
             <!-- Request editor + Response viewer -->
@@ -69,11 +86,20 @@
              Full-width collection environment editor panel
              Spans all columns so the collection sidebar is not visible.
              ================================================================ -->
-        <!-- Full-width collection environment editor panel -->
+           <!-- Full-width collection environment editor panel -->
         <Panel Grid.Column="0" Grid.ColumnSpan="3"
                IsVisible="{Binding Environment.IsEditorOpen}">
             <views:EnvironmentEditorView DataContext="{Binding EnvironmentEditor}"/>
         </Panel>
+
+           <!-- ================================================================
+               Full-width history panel
+               Spans all columns; shown when HistoryPanel.IsOpen is true.
+               ================================================================ -->
+           <Panel Grid.Column="0" Grid.ColumnSpan="3"
+                IsVisible="{Binding HistoryPanel.IsOpen}">
+              <views:HistoryPanelView DataContext="{Binding HistoryPanel}"/>
+           </Panel>
 
         <!-- ================================================================
              Command palette overlay — floats over all content, manages its

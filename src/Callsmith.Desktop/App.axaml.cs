@@ -1,16 +1,18 @@
-﻿using Avalonia;
+﻿using System.Linq;
+using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Data.Core.Plugins;
-using System.Linq;
 using Avalonia.Markup.Xaml;
+using Callsmith.Core;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Insomnia;
 using Callsmith.Core.Services;
 using Callsmith.Core.Transports.Http;
-using Callsmith.Core;
+using Callsmith.Data;
 using Callsmith.Desktop.ViewModels;
 using Callsmith.Desktop.Views;
 using CommunityToolkit.Mvvm.Messaging;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -99,12 +101,19 @@ public partial class App : Application
             sp.GetRequiredService<FileSystemEnvironmentService>(),
             sp.GetRequiredService<ILogger<CollectionImportService>>()));
 
+        // History
+        services.AddSingleton<IHistoryEncryptionService, AesHistoryEncryptionService>();
+        services.AddDbContextFactory<CallsmithDbContext>(options =>
+            options.UseSqlite($"Data Source={CallsmithDbContext.GetDbPath()}"));
+        services.AddSingleton<IHistoryService, HistoryRepository>();
+
         // ViewModels
         services.AddSingleton<CollectionsViewModel>();
         services.AddSingleton<RequestEditorViewModel>();
         services.AddSingleton<EnvironmentViewModel>();
         services.AddSingleton<EnvironmentEditorViewModel>();
         services.AddSingleton<CommandPaletteViewModel>();
+        services.AddSingleton<HistoryPanelViewModel>();
         services.AddSingleton<MainWindowViewModel>();
 
         return services;

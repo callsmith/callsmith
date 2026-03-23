@@ -1,0 +1,604 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Callsmith.Desktop.ViewModels"
+             xmlns:controls="using:Callsmith.Desktop.Controls"
+             xmlns:conv="using:Callsmith.Desktop.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="700"
+             x:Class="Callsmith.Desktop.Views.HistoryPanelView"
+             x:DataType="vm:HistoryPanelViewModel"
+             Background="#1e1e1e">
+
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Ctrl+Enter" Command="{Binding SearchCommand}"/>
+  </UserControl.KeyBindings>
+
+  <Grid RowDefinitions="Auto,Auto,*">
+
+    <!-- ======================================================================
+         Header bar
+         ====================================================================== -->
+    <Border Grid.Row="0"
+            Background="#252526"
+            BorderBrush="#444"
+            BorderThickness="0,0,0,1"
+            Padding="16,10">
+      <Grid ColumnDefinitions="*,Auto">
+
+        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <TextBlock Text="Request History"
+                     Foreground="#d4d4d4"
+                     FontSize="14"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center"/>
+          <TextBlock Text="{Binding ScopeLabel}"
+                     Foreground="#8aa7bf"
+                     FontSize="11"
+                     FontStyle="Italic"
+                     LineHeight="15"
+                     Padding="0,1,2,0"
+                     Margin="8,1,12,0"
+                     VerticalAlignment="Center"/>
+          <Button Content="Show Global History"
+            Command="{Binding ShowAllHistoryCommand}"
+            IsVisible="{Binding IsRequestScoped}"
+            FontSize="11"
+            Background="Transparent"
+            Foreground="#dcdcaa"
+            BorderBrush="#555"
+            BorderThickness="1"
+            Padding="8,2"/>
+          <Border Background="#5a1a1a"
+                  CornerRadius="4"
+                  Padding="8,3"
+                  IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding ErrorMessage}"
+                       Foreground="#f48771"
+                       FontSize="12"/>
+          </Border>
+        </StackPanel>
+
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+          <Button Content="Clear &gt; 30d"
+                  Command="{Binding RequestClearOlderThan30DaysCommand}"
+                  FontSize="11"
+                  Background="Transparent"
+                  Foreground="#ce9178"
+                  BorderThickness="1"
+                  BorderBrush="#555"
+                  Padding="8,3"/>
+          <Button Content="Clear All"
+                  Command="{Binding RequestClearAllCommand}"
+                  FontSize="11"
+                  Background="Transparent"
+                  Foreground="#f48771"
+                  BorderThickness="1"
+                  BorderBrush="#555"
+                  Padding="8,3"/>
+          <Button Content="← Back to Editor"
+                  Command="{Binding CloseCommand}"
+                  FontSize="11"
+                  Background="Transparent"
+                  Foreground="#4ec9b0"
+                  BorderThickness="0"
+                  Padding="8,3"
+                  ToolTip.Tip="Return to the request editor"/>
+        </StackPanel>
+
+      </Grid>
+    </Border>
+
+    <!-- ======================================================================
+         Filter bar
+         ====================================================================== -->
+    <Border Grid.Row="1"
+            Background="#252526"
+            BorderBrush="#333"
+            BorderThickness="0,0,0,1"
+            Padding="12,8">
+      <StackPanel Orientation="Horizontal" Spacing="10">
+
+        <ComboBox ItemsSource="{Binding EnvironmentOptions}"
+            SelectedItem="{Binding SelectedEnvironmentOption}"
+            Width="170"
+            FontSize="12"
+            Background="#1e1e1e"
+            Foreground="#d4d4d4"
+            BorderBrush="#555">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:HistoryEnvironmentOptionViewModel">
+              <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <Border Width="10" Height="10"
+                        CornerRadius="2"
+                        Background="{Binding Color, Converter={x:Static conv:HexColorToBrushConverter.Instance}}"
+                        IsVisible="{Binding Color, Converter={x:Static StringConverters.IsNotNullOrEmpty}, FallbackValue=False}"
+                        VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+              </StackPanel>
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+
+        <Grid Width="260">
+          <TextBox Text="{Binding FilterText}"
+             Watermark="General: URL, request name, collection…"
+             FontSize="12"
+             Background="#1e1e1e"
+             Foreground="#d4d4d4"
+             BorderBrush="#555"
+             VerticalContentAlignment="Center"
+             Padding="6,0,24,0"/>
+          <Button Content="×"
+            Command="{Binding ClearFilterTextCommand}"
+            IsVisible="{Binding FilterText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Center"
+            Focusable="False"
+            Width="18"
+            Height="18"
+            Margin="0,0,5,0"
+            Background="Transparent"
+            Foreground="#888"
+            BorderThickness="0"
+            Padding="0"
+            FontSize="12"
+            ToolTip.Tip="Clear"/>
+        </Grid>
+
+        <Grid Width="240">
+          <TextBox Text="{Binding FilterRequestContains}"
+             Watermark="Request contains: body, headers, params…"
+             FontSize="12"
+             Background="#1e1e1e"
+             Foreground="#d4d4d4"
+             BorderBrush="#555"
+             VerticalContentAlignment="Center"
+             Padding="6,0,24,0"/>
+          <Button Content="×"
+            Command="{Binding ClearFilterRequestContainsCommand}"
+            IsVisible="{Binding FilterRequestContains, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Center"
+            Focusable="False"
+            Width="18"
+            Height="18"
+            Margin="0,0,5,0"
+            Background="Transparent"
+            Foreground="#888"
+            BorderThickness="0"
+            Padding="0"
+            FontSize="12"
+            ToolTip.Tip="Clear"/>
+        </Grid>
+
+        <Grid Width="240">
+          <TextBox Text="{Binding FilterResponseContains}"
+             Watermark="Response contains: body or headers…"
+             FontSize="12"
+             Background="#1e1e1e"
+             Foreground="#d4d4d4"
+             BorderBrush="#555"
+             VerticalContentAlignment="Center"
+             Padding="6,0,24,0"/>
+          <Button Content="×"
+            Command="{Binding ClearFilterResponseContainsCommand}"
+            IsVisible="{Binding FilterResponseContains, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Center"
+            Focusable="False"
+            Width="18"
+            Height="18"
+            Margin="0,0,5,0"
+            Background="Transparent"
+            Foreground="#888"
+            BorderThickness="0"
+            Padding="0"
+            FontSize="12"
+            ToolTip.Tip="Clear"/>
+        </Grid>
+
+        <TextBox Text="{Binding FilterMinStatus}"
+                 Watermark="Min status"
+                 Width="90"
+                 FontSize="12"
+                 Background="#1e1e1e"
+                 Foreground="#d4d4d4"
+                 BorderBrush="#555"/>
+
+        <TextBox Text="{Binding FilterMaxStatus}"
+                 Watermark="Max status"
+                 Width="90"
+                 FontSize="12"
+                 Background="#1e1e1e"
+                 Foreground="#d4d4d4"
+                 BorderBrush="#555"/>
+
+        <ComboBox ItemsSource="{Binding DateRangeOptions}"
+            SelectedItem="{Binding SelectedDateRange}"
+            MinWidth="130"
+            FontSize="12"
+            Background="#1e1e1e"
+            Foreground="#d4d4d4"
+            BorderBrush="#555"/>
+
+        <Button Content="Search"
+                Command="{Binding SearchCommand}"
+                FontSize="12"
+                Background="#0d7377"
+                Foreground="#ffffff"
+                BorderThickness="0"
+                Padding="12,4"/>
+
+        <TextBlock Text="{Binding TotalCount, StringFormat='Showing {0} results'}"
+                   Foreground="#888"
+                   FontSize="11"
+                   VerticalAlignment="Center"
+                   IsVisible="{Binding !IsLoading}"/>
+        <TextBlock Text="Loading…"
+                   Foreground="#888"
+                   FontSize="11"
+                   VerticalAlignment="Center"
+                   IsVisible="{Binding IsLoading}"/>
+
+      </StackPanel>
+    </Border>
+
+    <!-- ======================================================================
+         Main body: list (left) + detail (right)
+         ====================================================================== -->
+    <Grid Grid.Row="2" ColumnDefinitions="420,1,*">
+
+      <!-- ────────────────────────────────────────────────────────────────────
+           Left: history list
+           ──────────────────────────────────────────────────────────────────── -->
+      <Grid Grid.Column="0" RowDefinitions="*,Auto" Background="#1e1e1e">
+
+        <ListBox x:Name="HistoryEntriesList"
+           Grid.Row="0"
+                 ItemsSource="{Binding Entries}"
+                 SelectedItem="{Binding SelectedEntry, Mode=TwoWay}"
+                 Background="Transparent"
+                 BorderThickness="0"
+                 Padding="0">
+          <ListBox.Styles>
+            <Style Selector="ListBoxItem">
+              <Setter Property="Padding" Value="0"/>
+              <Setter Property="Margin" Value="0"/>
+              <Setter Property="Background" Value="Transparent"/>
+            </Style>
+            <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+              <Setter Property="Background" Value="#2d2d30"/>
+            </Style>
+            <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+              <Setter Property="Background" Value="#2a2a2a"/>
+            </Style>
+          </ListBox.Styles>
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:HistoryEntryRowViewModel">
+              <Border BorderBrush="#333"
+                      BorderThickness="0,0,0,1"
+                      Padding="12,8">
+                <Grid ColumnDefinitions="52,*,70,80">
+
+                  <!-- Method badge -->
+                  <Border Grid.Column="0"
+                          Background="#2d2d2d"
+                          CornerRadius="3"
+                          Padding="4,2"
+                          VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Method}"
+                               Foreground="{Binding MethodColor}"
+                               FontSize="10"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Center"/>
+                  </Border>
+
+                  <!-- Request name -->
+                  <StackPanel Grid.Column="1" Margin="8,0,8,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding RequestName}"
+                               Foreground="#d4d4d4"
+                               FontSize="12"
+                               IsVisible="{Binding RequestName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               TextTrimming="CharacterEllipsis"/>
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="4"
+                                IsVisible="{Binding EnvironmentName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                      <Border Width="8"
+                              Height="8"
+                              CornerRadius="2"
+                              Margin="0,0,0,2"
+                              Background="{Binding EnvironmentColor, Converter={x:Static conv:HexColorToBrushConverter.Instance}}"
+                              IsVisible="{Binding EnvironmentColor, Converter={x:Static StringConverters.IsNotNullOrEmpty}, FallbackValue=False}"
+                              VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding EnvironmentName, StringFormat='Env: {0}'}"
+                                 Foreground="#6fb1d6"
+                                 FontSize="10"
+                                 TextTrimming="CharacterEllipsis"
+                                 VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </StackPanel>
+
+                  <!-- Status code -->
+                  <TextBlock Grid.Column="2"
+                             Text="{Binding StatusCode}"
+                             Foreground="{Binding StatusColor}"
+                             FontSize="12"
+                             FontWeight="SemiBold"
+                             VerticalAlignment="Center"
+                             HorizontalAlignment="Right"/>
+
+                  <!-- Sent At + elapsed -->
+                  <StackPanel Grid.Column="3" Margin="8,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding SentAtDisplay}"
+                               Foreground="#888"
+                               FontSize="10"
+                               HorizontalAlignment="Right"/>
+                    <TextBlock Text="{Binding ElapsedDisplay}"
+                               Foreground="#666"
+                               FontSize="10"
+                               HorizontalAlignment="Right"/>
+                  </StackPanel>
+
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+          <ListBox.ContextMenu>
+            <ContextMenu x:Name="HistoryEntryContextMenu"/>
+          </ListBox.ContextMenu>
+        </ListBox>
+
+        <!-- Load more button -->
+        <Button Grid.Row="1"
+                Content="Load more…"
+                Command="{Binding LoadMoreCommand}"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                FontSize="12"
+                Background="#252526"
+                Foreground="#888"
+                BorderThickness="0,1,0,0"
+                BorderBrush="#333"
+                Padding="0,8"
+                IsVisible="{Binding !IsLoading}"/>
+
+              <!-- Delete confirmation popup (matches collection delete UX) -->
+              <Border Grid.Row="0"
+                Grid.RowSpan="2"
+                IsVisible="{Binding PendingDeleteEntry, Converter={x:Static conv:NotNullConverter.Instance}}"
+                Background="#66000000">
+                <Border HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Width="230"
+                  Background="#2d2d30"
+                  BorderBrush="#555"
+                  BorderThickness="1"
+                  CornerRadius="6"
+                  Padding="14,12"
+                  BoxShadow="0 4 20 0 #CC000000">
+                  <StackPanel Spacing="10">
+                    <TextBlock Foreground="#f0c060"
+                   FontSize="13"
+                   FontWeight="SemiBold"
+                   TextWrapping="Wrap"
+                   Text="{Binding PendingDeleteEntryLabel, StringFormat='Delete &quot;{0}&quot;?', FallbackValue=''}"/>
+                    <TextBlock Foreground="#999"
+                   FontSize="11"
+                   TextWrapping="Wrap"
+                   Text="This cannot be undone."/>
+                    <StackPanel Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="6">
+                <Button Content="Cancel"
+                  Command="{Binding CancelRemoveEntryDeleteCommand}"
+                  Background="#3a3a3a"
+                  Foreground="#ccc"
+                  BorderThickness="0"
+                  Padding="12,4"
+                  FontSize="11"
+                  CornerRadius="3"/>
+                <Button Content="Delete"
+                  Command="{Binding ConfirmRemoveEntryDeleteCommand}"
+                  Background="#922"
+                  Foreground="White"
+                  BorderThickness="0"
+                  Padding="12,4"
+                  FontSize="11"
+                  CornerRadius="3"/>
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+              </Border>
+
+      </Grid>
+
+      <!-- vertical separator -->
+      <Border Grid.Column="1" Background="#333"/>
+
+      <!-- ────────────────────────────────────────────────────────────────────
+           Right: detail panel
+           ──────────────────────────────────────────────────────────────────── -->
+      <Grid Grid.Column="2" RowDefinitions="Auto,*" Background="#1e1e1e">
+
+        <!-- Detail header -->
+        <Border Grid.Row="0"
+                Background="#252526"
+                BorderBrush="#333"
+                BorderThickness="0,0,0,1"
+                Padding="12,8"
+                IsVisible="{Binding HasDetail}">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="Entry Detail"
+                       Foreground="#d4d4d4"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center"/>
+            <StackPanel Orientation="Horizontal" IsVisible="{Binding HasHiddenSecrets}">
+              <Button Content="Reveal Secrets"
+                    Command="{Binding RevealSecretsCommand}"
+                    IsVisible="{Binding !IsSecretShown}"
+                    IsEnabled="{Binding !IsRevealingSecrets}"
+                    FontSize="11"
+                    Background="Transparent"
+                    Foreground="#dcdcaa"
+                    BorderThickness="1"
+                    BorderBrush="#555"
+                    Padding="8,3"/>
+              <Button Content="Hide Secrets"
+                    Command="{Binding HideSecretsCommand}"
+                    IsVisible="{Binding IsSecretShown}"
+                    FontSize="11"
+                    Background="Transparent"
+                    Foreground="#dcdcaa"
+                    BorderThickness="1"
+                    BorderBrush="#555"
+                    Padding="8,3"/>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <!-- Empty state -->
+        <TextBlock Grid.Row="0" Grid.RowSpan="2"
+                   Text="Select an entry to see details"
+                   Foreground="#555"
+                   FontSize="13"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   IsVisible="{Binding !HasDetail}"/>
+
+        <!-- Three-section detail scroll -->
+        <ScrollViewer Grid.Row="1"
+                      IsVisible="{Binding HasDetail}"
+                      VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="12" Spacing="16">
+
+            <!-- Configured request -->
+            <StackPanel Spacing="4">
+              <TextBlock Text="CONFIGURED REQUEST"
+                         Foreground="#888"
+                         FontSize="10"
+                         FontWeight="Bold"
+                         LetterSpacing="1"/>
+              <Border Background="#252526"
+                      CornerRadius="4"
+                      Padding="10">
+                <TextBlock Text="{Binding DetailConfigured}"
+                           Foreground="#d4d4d4"
+                           FontFamily="Consolas,Cascadia Mono,monospace"
+                           FontSize="12"
+                           TextWrapping="Wrap"/>
+              </Border>
+            </StackPanel>
+
+            <!-- Resolved request -->
+            <StackPanel Spacing="4">
+              <TextBlock Text="RESOLVED REQUEST"
+                         Foreground="#888"
+                         FontSize="10"
+                         FontWeight="Bold"
+                         LetterSpacing="1"/>
+              <Border Background="#252526"
+                      CornerRadius="4"
+                      Padding="10">
+                <TextBlock Text="{Binding DetailResolved}"
+                           Foreground="#d4d4d4"
+                           FontFamily="Consolas,Cascadia Mono,monospace"
+                           FontSize="12"
+                           TextWrapping="Wrap"/>
+              </Border>
+            </StackPanel>
+
+            <!-- Response headers -->
+            <StackPanel Spacing="4"
+                        IsVisible="{Binding DetailResponseHeaders, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+              <TextBlock Text="RESPONSE HEADERS"
+                         Foreground="#888"
+                         FontSize="10"
+                         FontWeight="Bold"
+                         LetterSpacing="1"/>
+              <Border Background="#252526"
+                      CornerRadius="4"
+                      Padding="10">
+                <TextBlock Text="{Binding DetailResponseHeaders}"
+                           Foreground="#9cdcfe"
+                           FontFamily="Consolas,Cascadia Mono,monospace"
+                           FontSize="12"
+                           TextWrapping="Wrap"/>
+              </Border>
+            </StackPanel>
+
+            <!-- Response body -->
+            <StackPanel Spacing="4">
+              <TextBlock Text="RESPONSE BODY"
+                         Foreground="#888"
+                         FontSize="10"
+                         FontWeight="Bold"
+                         LetterSpacing="1"/>
+              <Border Background="#252526"
+                      CornerRadius="4"
+                      Padding="10">
+                <controls:SyntaxEditor Text="{Binding DetailResponse}"
+                                       Language="{Binding DetailResponseLanguage}"
+                                       IsReadOnly="True"/>
+              </Border>
+            </StackPanel>
+
+          </StackPanel>
+        </ScrollViewer>
+
+      </Grid>
+
+    </Grid>
+
+    <!-- Clear history confirmation popup (centered on full history panel) -->
+    <Border Grid.Row="0"
+            Grid.RowSpan="3"
+            IsVisible="{Binding IsClearHistoryConfirmOpen}"
+            Background="#66000000">
+      <Border HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Width="230"
+              Background="#2d2d30"
+              BorderBrush="#555"
+              BorderThickness="1"
+              CornerRadius="6"
+              Padding="14,12"
+              BoxShadow="0 4 20 0 #CC000000">
+        <StackPanel Spacing="10">
+          <TextBlock Foreground="#f0c060"
+                     FontSize="13"
+                     FontWeight="SemiBold"
+                     TextWrapping="Wrap"
+                     Text="{Binding ClearHistoryConfirmTitle}"/>
+          <TextBlock Foreground="#999"
+                     FontSize="11"
+                     TextWrapping="Wrap"
+                     Text="{Binding ClearHistoryConfirmDescription}"/>
+          <StackPanel Orientation="Horizontal"
+                      HorizontalAlignment="Right"
+                      Spacing="6">
+            <Button Content="Cancel"
+                    Command="{Binding CancelClearHistoryCommand}"
+                    Background="#3a3a3a"
+                    Foreground="#ccc"
+                    BorderThickness="0"
+                    Padding="12,4"
+                    FontSize="11"
+                    CornerRadius="3"/>
+            <Button Content="{Binding ClearHistoryConfirmButtonLabel}"
+                    Command="{Binding ConfirmClearHistoryCommand}"
+                    Background="#922"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Padding="12,4"
+                    FontSize="11"
+                    CornerRadius="3"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
+
+  </Grid>
+
+</UserControl>

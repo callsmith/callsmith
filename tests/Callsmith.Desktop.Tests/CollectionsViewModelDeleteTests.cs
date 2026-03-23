@@ -1,3 +1,4 @@
+using System.Net.Http;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
 using Callsmith.Desktop.Messages;
@@ -6,7 +7,6 @@ using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
-using System.Net.Http;
 
 namespace Callsmith.Desktop.Tests;
 

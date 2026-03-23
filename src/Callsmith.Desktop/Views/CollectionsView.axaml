@@ -88,7 +88,6 @@
                   Background="Transparent"
                   BorderThickness="0"
                   Padding="0"
-                  Cursor="Hand"
                   ToolTip.Tip="Show recent collections"
                   Command="{Binding ToggleRecentPanelCommand}">
             <StackPanel Orientation="Horizontal" Spacing="4">
@@ -120,7 +119,6 @@
                   Background="Transparent"
                   BorderThickness="0"
                   Padding="6,0"
-                  Cursor="Hand"
                   ToolTip.Tip="Open collection folder (Callsmith, Bruno)"
                   Command="{Binding OpenFolderCommand}"
                   CommandParameter="{Binding $parent[Window].StorageProvider}"/>
@@ -132,7 +130,6 @@
                   Background="Transparent"
                   BorderThickness="0"
                   Padding="4,0"
-                  Cursor="Hand"
                   ToolTip.Tip="Import collection (Postman, Insomnia)"
                   Command="{Binding ImportCollectionCommand}"
                   CommandParameter="{Binding $parent[Window].StorageProvider}"/>
@@ -178,7 +175,6 @@
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Left"
                         Padding="12,5"
-                        Cursor="Hand"
                         ToolTip.Tip="{Binding .}">
                   <StackPanel Spacing="1">
                     <TextBlock Text="{Binding ., Converter={x:Static conv:PathToCollectionNameConverter.Instance}}"

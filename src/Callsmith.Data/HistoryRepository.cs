@@ -1,0 +1,701 @@
+using System.Data;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Callsmith.Core.Abstractions;
+using Callsmith.Core.Models;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+
+namespace Callsmith.Data;
+
+/// <summary>
+/// SQLite-backed implementation of <see cref="IHistoryService"/>.
+/// </summary>
+public sealed class HistoryRepository : IHistoryService
+{
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    private const string MaskedValue = "****";
+    private const string HistoryTableName = "HistoryEntries";
+
+    private static readonly SemaphoreSlim SchemaLock = new(1, 1);
+    private static volatile bool _schemaChecked;
+
+    private readonly IDbContextFactory<CallsmithDbContext> _dbFactory;
+    private readonly IHistoryEncryptionService _encryption;
+    private readonly ILogger<HistoryRepository> _logger;
+
+    public HistoryRepository(
+        IDbContextFactory<CallsmithDbContext> dbFactory,
+        IHistoryEncryptionService encryption,
+        ILogger<HistoryRepository> logger)
+    {
+        _dbFactory = dbFactory;
+        _encryption = encryption;
+        _logger = logger;
+    }
+
+    /// <inheritdoc/>
+    public async Task RecordAsync(HistoryEntry entry, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        var entity = ToEntity(entry);
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        await EnsureHistorySchemaAsync(db, ct);
+
+        db.HistoryEntries.Add(entity);
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)> QueryAsync(
+        HistoryFilter filter,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(filter);
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        await EnsureHistorySchemaAsync(db, ct);
+
+        var query = db.HistoryEntries.AsNoTracking().AsQueryable();
+
+        query = ApplyIndexedFilters(query, filter);
+
+        var totalCount = await query.LongCountAsync(ct);
+
+        query = filter.NewestFirst
+            ? query.OrderByDescending(e => e.SentAtUnixMs)
+            : query.OrderBy(e => e.SentAtUnixMs);
+
+        var pageSize = Math.Max(1, filter.PageSize);
+        var page = Math.Max(0, filter.Page);
+
+        query = query.Skip(page * pageSize).Take(pageSize);
+
+        var entities = await query.ToListAsync(ct);
+        var entries = entities.Select(ToDomainMasked).ToList();
+
+        return (entries, totalCount);
+    }
+
+    /// <inheritdoc/>
+    public async Task<HistoryEntry?> GetLatestForRequestAsync(Guid requestId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        await EnsureHistorySchemaAsync(db, ct);
+
+        var entity = await db.HistoryEntries
+            .AsNoTracking()
+            .Where(e => e.RequestId == requestId)
+            .OrderByDescending(e => e.SentAtUnixMs)
+            .FirstOrDefaultAsync(ct);
+
+        return entity is null ? null : ToDomainMasked(entity);
+    }
+
+    /// <inheritdoc/>
+    public async Task<HistoryEntry?> GetByIdAsync(long id, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        await EnsureHistorySchemaAsync(db, ct);
+
+        var entity = await db.HistoryEntries
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == id, ct);
+
+        return entity is null ? null : ToDomainMasked(entity);
+    }
+
+    /// <inheritdoc/>
+    public async Task<long> GetCountAsync(CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        await EnsureHistorySchemaAsync(db, ct);
+        return await db.HistoryEntries.LongCountAsync(ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<string>> GetEnvironmentNamesAsync(
+        Guid? requestId = null,
+        CancellationToken ct = default)
+    {
+        var options = await GetEnvironmentOptionsAsync(requestId, ct);
+        return options.Select(static o => o.Name).ToList();
+    }
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<HistoryEnvironmentOption>> GetEnvironmentOptionsAsync(
+        Guid? requestId = null,
+        CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        await EnsureHistorySchemaAsync(db, ct);
+
+        var query = db.HistoryEntries
+            .AsNoTracking()
+            .Where(e => e.EnvironmentName != null && e.EnvironmentName != string.Empty);
+
+        if (requestId.HasValue)
+            query = query.Where(e => e.RequestId == requestId.Value);
+
+        var rows = await query
+            .OrderByDescending(e => e.SentAtUnixMs)
+            .Select(e => new { e.EnvironmentName, e.EnvironmentColor })
+            .ToListAsync(ct);
+
+        var map = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in rows)
+        {
+            var name = row.EnvironmentName;
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            if (!map.TryGetValue(name, out var existingColor))
+            {
+                map[name] = string.IsNullOrWhiteSpace(row.EnvironmentColor) ? null : row.EnvironmentColor;
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(existingColor) && !string.IsNullOrWhiteSpace(row.EnvironmentColor))
+                map[name] = row.EnvironmentColor;
+        }
+
+        return map
+            .OrderBy(static kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(static kv => new HistoryEnvironmentOption
+            {
+                Name = kv.Key,
+                Color = kv.Value,
+            })
+            .ToList();
+    }
+
+    /// <inheritdoc/>
+    public async Task<HistoryEntry> RevealSensitiveFieldsAsync(
+        HistoryEntry entry,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        var revealedBindings = entry.VariableBindings
+            .Select(b =>
+            {
+                if (!b.IsSecret || b.CiphertextValue is null)
+                    return b;
+
+                try
+                {
+                    var plaintext = _encryption.Decrypt(b.CiphertextValue);
+                    return b with { ResolvedValue = plaintext };
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to decrypt secret binding for token {Token}.", b.Token);
+                    return b;
+                }
+            })
+            .ToList();
+
+        return await Task.FromResult(entry with { VariableBindings = revealedBindings });
+    }
+
+    /// <inheritdoc/>
+    public async Task DeleteByIdAsync(long id, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        await EnsureHistorySchemaAsync(db, ct);
+
+        await db.HistoryEntries
+            .Where(e => e.Id == id)
+            .ExecuteDeleteAsync(ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task PurgeOlderThanAsync(DateTimeOffset cutoff, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        await EnsureHistorySchemaAsync(db, ct);
+        var cutoffUnixMs = cutoff.ToUnixTimeMilliseconds();
+        await db.HistoryEntries
+            .Where(e => e.SentAtUnixMs < cutoffUnixMs)
+            .ExecuteDeleteAsync(ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task PurgeAllAsync(CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        await EnsureHistorySchemaAsync(db, ct);
+        await db.HistoryEntries.ExecuteDeleteAsync(ct);
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    private HistoryEntryEntity ToEntity(HistoryEntry entry)
+    {
+        var bindingDtos = entry.VariableBindings
+            .Select(b => new BindingDto(
+                b.Token,
+                b.IsSecret ? _encryption.Encrypt(b.ResolvedValue) : b.ResolvedValue,
+                b.IsSecret))
+            .ToList();
+
+        return new HistoryEntryEntity
+        {
+            Id = entry.Id,
+            RequestId = entry.RequestId,
+            SentAt = entry.SentAt,
+            SentAtUnixMs = entry.SentAt.ToUnixTimeMilliseconds(),
+            Method = entry.Method,
+            StatusCode = entry.StatusCode,
+            ResolvedUrl = entry.ResolvedUrl,
+            RequestName = entry.RequestName,
+            CollectionName = entry.CollectionName,
+            EnvironmentName = entry.EnvironmentName,
+            EnvironmentColor = entry.EnvironmentColor,
+            CollectionPath = entry.CollectionPath,
+            ElapsedMs = entry.ElapsedMs,
+            RequestSearchText = BuildRequestSearchText(entry),
+            ResponseSearchText = BuildResponseSearchText(entry.ResponseSnapshot),
+            ConfiguredSnapshotJson = JsonSerializer.Serialize(entry.ConfiguredSnapshot, JsonOpts),
+            VariableBindingsJson = JsonSerializer.Serialize(bindingDtos, JsonOpts),
+            ResponseSnapshotJson = entry.ResponseSnapshot is null
+                ? null
+                : JsonSerializer.Serialize(entry.ResponseSnapshot, JsonOpts),
+        };
+    }
+
+    private HistoryEntry ToDomainMasked(HistoryEntryEntity entity)
+    {
+        ConfiguredRequestSnapshot? snapshot = null;
+        try
+        {
+            snapshot = JsonSerializer.Deserialize<ConfiguredRequestSnapshot>(
+                entity.ConfiguredSnapshotJson, JsonOpts);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to deserialize ConfiguredSnapshot for history entry {Id}.", entity.Id);
+        }
+
+        var bindingDtos = DeserializeBindings(entity.VariableBindingsJson, entity.Id);
+
+        var bindings = bindingDtos
+            .Select(dto => dto.IsSecret
+                ? new VariableBinding(dto.Token, MaskedValue, IsSecret: true, CiphertextValue: dto.ResolvedValue)
+                : new VariableBinding(dto.Token, dto.ResolvedValue, IsSecret: false))
+            .ToList();
+
+        ResponseSnapshot? response = null;
+        if (entity.ResponseSnapshotJson is not null)
+        {
+            try
+            {
+                response = JsonSerializer.Deserialize<ResponseSnapshot>(
+                    entity.ResponseSnapshotJson, JsonOpts);
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to deserialize ResponseSnapshot for history entry {Id}.", entity.Id);
+            }
+        }
+
+        return new HistoryEntry
+        {
+            Id = entity.Id,
+            RequestId = entity.RequestId,
+            SentAt = entity.SentAt,
+            Method = entity.Method,
+            StatusCode = entity.StatusCode,
+            ResolvedUrl = entity.ResolvedUrl,
+            RequestName = entity.RequestName,
+            CollectionName = entity.CollectionName,
+            EnvironmentName = entity.EnvironmentName,
+            EnvironmentColor = entity.EnvironmentColor,
+            CollectionPath = entity.CollectionPath,
+            ElapsedMs = entity.ElapsedMs,
+            ConfiguredSnapshot = snapshot ?? new ConfiguredRequestSnapshot
+            {
+                Method = entity.Method,
+                Url = entity.ResolvedUrl,
+            },
+            VariableBindings = bindings,
+            ResponseSnapshot = response,
+        };
+    }
+
+    private List<BindingDto> DeserializeBindings(string json, long entryId)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<List<BindingDto>>(json, JsonOpts) ?? [];
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to deserialize VariableBindings for history entry {Id}.", entryId);
+            return [];
+        }
+    }
+
+    private static IQueryable<HistoryEntryEntity> ApplyIndexedFilters(
+        IQueryable<HistoryEntryEntity> query,
+        HistoryFilter filter)
+    {
+        if (filter.SentAfter.HasValue)
+            query = query.Where(e => e.SentAtUnixMs >= filter.SentAfter.Value.ToUnixTimeMilliseconds());
+
+        if (filter.SentBefore.HasValue)
+            query = query.Where(e => e.SentAtUnixMs <= filter.SentBefore.Value.ToUnixTimeMilliseconds());
+
+        if (filter.MinStatusCode.HasValue)
+            query = query.Where(e => e.StatusCode >= filter.MinStatusCode.Value);
+
+        if (filter.MaxStatusCode.HasValue)
+            query = query.Where(e => e.StatusCode <= filter.MaxStatusCode.Value);
+
+        if (filter.RequestId.HasValue)
+            query = query.Where(e => e.RequestId == filter.RequestId.Value);
+
+        if (!string.IsNullOrWhiteSpace(filter.CollectionName))
+            query = query.Where(e => e.CollectionName == filter.CollectionName);
+
+        if (!string.IsNullOrWhiteSpace(filter.RequestName))
+            query = query.Where(e =>
+                e.RequestName != null && e.RequestName.Contains(filter.RequestName));
+
+        if (!string.IsNullOrWhiteSpace(filter.EnvironmentName))
+        {
+            var env = NormalizeSearchText(filter.EnvironmentName);
+            query = query.Where(e =>
+                e.EnvironmentName != null &&
+                EF.Functions.Like(e.EnvironmentName.ToLower(), $"%{env}%"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.TextSearch))
+        {
+            var text = NormalizeSearchText(filter.TextSearch);
+            query = query.Where(e =>
+                e.ResolvedUrl.Contains(text) ||
+                (e.RequestName != null && e.RequestName.Contains(text)) ||
+                (e.CollectionName != null && e.CollectionName.Contains(text)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.RequestContains))
+        {
+            var text = NormalizeSearchText(filter.RequestContains);
+            query = query.Where(e => e.RequestSearchText.Contains(text));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.ResponseContains))
+        {
+            var text = NormalizeSearchText(filter.ResponseContains);
+            query = query.Where(e => e.ResponseSearchText.Contains(text));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.UrlPattern))
+        {
+            query = filter.UrlMatch switch
+            {
+                UrlMatchMode.StartsWith => query.Where(e => e.ResolvedUrl.StartsWith(filter.UrlPattern)),
+                // Regex matching requires client-side evaluation; Contains used as fallback.
+                _ => query.Where(e => e.ResolvedUrl.Contains(filter.UrlPattern)),
+            };
+        }
+
+        return query;
+    }
+
+    private async Task EnsureHistorySchemaAsync(CallsmithDbContext db, CancellationToken ct)
+    {
+        if (_schemaChecked) return;
+
+        await SchemaLock.WaitAsync(ct);
+        try
+        {
+            if (_schemaChecked) return;
+
+            await db.Database.EnsureCreatedAsync(ct);
+
+            var connection = db.Database.GetDbConnection();
+            if (connection.State != ConnectionState.Open)
+                await connection.OpenAsync(ct);
+
+            var hasSentAtUnixMs = false;
+            await using (var pragma = connection.CreateCommand())
+            {
+                pragma.CommandText = $"PRAGMA table_info('{HistoryTableName}');";
+                await using var reader = await pragma.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    // PRAGMA table_info result: cid, name, type, notnull, dflt_value, pk
+                    if (string.Equals(reader.GetString(1), "SentAtUnixMs", StringComparison.Ordinal))
+                    {
+                        hasSentAtUnixMs = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!hasSentAtUnixMs)
+            {
+                await using var alter = connection.CreateCommand();
+                alter.CommandText =
+                    $"ALTER TABLE {HistoryTableName} ADD COLUMN SentAtUnixMs INTEGER NOT NULL DEFAULT 0;";
+                await alter.ExecuteNonQueryAsync(ct);
+
+                // Backfill existing rows from SentAt for stable ordering of pre-upgrade history.
+                await using var backfill = connection.CreateCommand();
+                backfill.CommandText =
+                    $"UPDATE {HistoryTableName} SET SentAtUnixMs = CAST(strftime('%s', SentAt) AS INTEGER) * 1000 WHERE SentAtUnixMs = 0;";
+                await backfill.ExecuteNonQueryAsync(ct);
+            }
+
+            await EnsureSearchTextColumnsAsync(connection, ct);
+            await EnsureEnvironmentNameColumnAsync(connection, ct);
+            await EnsureEnvironmentColorColumnAsync(connection, ct);
+
+            await BackfillSearchTextAsync(db, ct);
+
+            await using var index = connection.CreateCommand();
+            index.CommandText =
+                $"CREATE INDEX IF NOT EXISTS IX_{HistoryTableName}_SentAtUnixMs ON {HistoryTableName} (SentAtUnixMs);";
+            await index.ExecuteNonQueryAsync(ct);
+
+            _schemaChecked = true;
+        }
+        finally
+        {
+            SchemaLock.Release();
+        }
+    }
+
+    private static async Task EnsureSearchTextColumnsAsync(System.Data.Common.DbConnection connection, CancellationToken ct)
+    {
+        var hasRequestSearchText = false;
+        var hasResponseSearchText = false;
+
+        await using (var pragma = connection.CreateCommand())
+        {
+            pragma.CommandText = $"PRAGMA table_info('{HistoryTableName}');";
+            await using var reader = await pragma.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                var name = reader.GetString(1);
+                if (string.Equals(name, nameof(HistoryEntryEntity.RequestSearchText), StringComparison.Ordinal))
+                    hasRequestSearchText = true;
+                else if (string.Equals(name, nameof(HistoryEntryEntity.ResponseSearchText), StringComparison.Ordinal))
+                    hasResponseSearchText = true;
+            }
+        }
+
+        if (!hasRequestSearchText)
+        {
+            await using var alter = connection.CreateCommand();
+            alter.CommandText =
+                $"ALTER TABLE {HistoryTableName} ADD COLUMN RequestSearchText TEXT NOT NULL DEFAULT '';";
+            await alter.ExecuteNonQueryAsync(ct);
+        }
+
+        if (!hasResponseSearchText)
+        {
+            await using var alter = connection.CreateCommand();
+            alter.CommandText =
+                $"ALTER TABLE {HistoryTableName} ADD COLUMN ResponseSearchText TEXT NOT NULL DEFAULT '';";
+            await alter.ExecuteNonQueryAsync(ct);
+        }
+    }
+
+    private static async Task EnsureEnvironmentNameColumnAsync(System.Data.Common.DbConnection connection, CancellationToken ct)
+    {
+        var hasEnvironmentName = false;
+
+        await using var pragma = connection.CreateCommand();
+        pragma.CommandText = $"PRAGMA table_info('{HistoryTableName}');";
+        await using var reader = await pragma.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            if (string.Equals(reader.GetString(1), nameof(HistoryEntryEntity.EnvironmentName), StringComparison.Ordinal))
+            {
+                hasEnvironmentName = true;
+                break;
+            }
+        }
+
+        if (!hasEnvironmentName)
+        {
+            await using var alter = connection.CreateCommand();
+            alter.CommandText =
+                $"ALTER TABLE {HistoryTableName} ADD COLUMN EnvironmentName TEXT NULL;";
+            await alter.ExecuteNonQueryAsync(ct);
+        }
+    }
+
+    private static async Task EnsureEnvironmentColorColumnAsync(System.Data.Common.DbConnection connection, CancellationToken ct)
+    {
+        var hasEnvironmentColor = false;
+
+        await using var pragma = connection.CreateCommand();
+        pragma.CommandText = $"PRAGMA table_info('{HistoryTableName}');";
+        await using var reader = await pragma.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            if (string.Equals(reader.GetString(1), nameof(HistoryEntryEntity.EnvironmentColor), StringComparison.Ordinal))
+            {
+                hasEnvironmentColor = true;
+                break;
+            }
+        }
+
+        if (!hasEnvironmentColor)
+        {
+            await using var alter = connection.CreateCommand();
+            alter.CommandText =
+                $"ALTER TABLE {HistoryTableName} ADD COLUMN EnvironmentColor TEXT NULL;";
+            await alter.ExecuteNonQueryAsync(ct);
+        }
+    }
+
+    private async Task BackfillSearchTextAsync(CallsmithDbContext db, CancellationToken ct)
+    {
+        var rows = await db.HistoryEntries
+            .Where(e => e.RequestSearchText == "" || e.ResponseSearchText == "")
+            .ToListAsync(ct);
+
+        if (rows.Count == 0)
+            return;
+
+        foreach (var row in rows)
+        {
+            ConfiguredRequestSnapshot? snapshot = null;
+            ResponseSnapshot? response = null;
+
+            try
+            {
+                snapshot = JsonSerializer.Deserialize<ConfiguredRequestSnapshot>(row.ConfiguredSnapshotJson, JsonOpts);
+            }
+            catch (JsonException) { }
+
+            if (row.ResponseSnapshotJson is not null)
+            {
+                try
+                {
+                    response = JsonSerializer.Deserialize<ResponseSnapshot>(row.ResponseSnapshotJson, JsonOpts);
+                }
+                catch (JsonException) { }
+            }
+
+            if (string.IsNullOrEmpty(row.RequestSearchText))
+            {
+                row.RequestSearchText = BuildRequestSearchText(new HistoryEntry
+                {
+                    Method = row.Method,
+                    ResolvedUrl = row.ResolvedUrl,
+                    RequestName = row.RequestName,
+                    CollectionName = row.CollectionName,
+                    EnvironmentName = row.EnvironmentName,
+                    ConfiguredSnapshot = snapshot ?? new ConfiguredRequestSnapshot
+                    {
+                        Method = row.Method,
+                        Url = row.ResolvedUrl,
+                    },
+                });
+            }
+
+            if (string.IsNullOrEmpty(row.ResponseSearchText))
+                row.ResponseSearchText = BuildResponseSearchText(response);
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static string BuildRequestSearchText(HistoryEntry entry)
+    {
+        var snapshot = entry.ConfiguredSnapshot;
+        var builder = new StringBuilder();
+
+        Append(builder, entry.RequestName);
+        Append(builder, entry.CollectionName);
+        Append(builder, entry.EnvironmentName);
+        Append(builder, entry.Method);
+        Append(builder, entry.ResolvedUrl);
+        Append(builder, snapshot.Url);
+        AppendKvList(builder, snapshot.Headers);
+        AppendKvList(builder, snapshot.AutoAppliedHeaders);
+        AppendKvList(builder, snapshot.QueryParams);
+
+        foreach (var part in snapshot.PathParams)
+        {
+            Append(builder, part.Key);
+            Append(builder, part.Value);
+        }
+
+        Append(builder, snapshot.Body);
+
+        foreach (var part in snapshot.FormParams)
+        {
+            Append(builder, part.Key);
+            Append(builder, part.Value);
+        }
+
+        Append(builder, snapshot.Auth.AuthType);
+        Append(builder, snapshot.Auth.Username);
+        Append(builder, snapshot.Auth.ApiKeyName);
+        Append(builder, snapshot.Auth.ApiKeyIn);
+
+        return NormalizeSearchText(builder.ToString());
+    }
+
+    private static string BuildResponseSearchText(ResponseSnapshot? snapshot)
+    {
+        if (snapshot is null)
+            return string.Empty;
+
+        var builder = new StringBuilder();
+        Append(builder, snapshot.FinalUrl);
+        Append(builder, snapshot.ReasonPhrase);
+        Append(builder, snapshot.Body);
+        foreach (var header in snapshot.Headers)
+        {
+            Append(builder, header.Key);
+            Append(builder, header.Value);
+        }
+
+        return NormalizeSearchText(builder.ToString());
+    }
+
+    private static void AppendKvList(StringBuilder builder, IEnumerable<RequestKv> items)
+    {
+        foreach (var item in items)
+        {
+            Append(builder, item.Key);
+            Append(builder, item.Value);
+        }
+    }
+
+    private static void Append(StringBuilder builder, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return;
+
+        builder.Append(value);
+        builder.Append('\n');
+    }
+
+    private static string NormalizeSearchText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? string.Empty : value.ToLowerInvariant();
+
+    // DTO used only for JSON serialization of the VariableBindings column.
+    private sealed record BindingDto(string Token, string ResolvedValue, bool IsSecret);
+}

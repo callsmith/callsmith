@@ -1,9 +1,9 @@
 using System.Linq;
 using Callsmith.Core.Insomnia;
 using Callsmith.Core.Models;
+using Callsmith.Core.Tests.TestHelpers;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Callsmith.Core.Tests.TestHelpers;
 
 namespace Callsmith.Core.Tests.Insomnia;
 

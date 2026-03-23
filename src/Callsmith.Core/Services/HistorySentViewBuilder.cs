@@ -1,0 +1,199 @@
+using System.Net.Http;
+using System.Text;
+using Callsmith.Core.Helpers;
+using Callsmith.Core.Models;
+
+namespace Callsmith.Core.Services;
+
+/// <summary>
+/// Reconstructs the wire-level ("Resolved") representation of a request from a
+/// <see cref="ConfiguredRequestSnapshot"/> and its associated <see cref="VariableBinding"/> list,
+/// without requiring a live environment or collection on disk.
+/// <para>
+/// Use cases:
+/// <list type="bullet">
+///   <item>Rendering the "Resolved" detail tab in the history UI.</item>
+///   <item>Powering the "Replay exact" re-send action (produces a ready-to-dispatch
+///     <see cref="RequestModel"/>).</item>
+/// </list>
+/// </para>
+/// </summary>
+public static class HistorySentViewBuilder
+{
+    /// <summary>
+    /// Builds a <see cref="RequestModel"/> from a <see cref="ConfiguredRequestSnapshot"/>
+    /// and its corresponding variable bindings, exactly as it was (or would have been) sent.
+    /// </summary>
+    /// <param name="snapshot">The configured snapshot captured at send time.</param>
+    /// <param name="bindings">
+    /// All variable substitutions that occurred during the original send. Secret bindings
+    /// should already be decrypted (call
+    /// <see cref="Abstractions.IHistoryService.RevealSensitiveFieldsAsync"/> first if needed).
+    /// </param>
+    public static RequestModel Build(
+        ConfiguredRequestSnapshot snapshot,
+        IReadOnlyList<VariableBinding> bindings)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(bindings);
+
+        // Build a flat variable map from the bindings for reuse across all field resolutions.
+        // Each binding's Token is e.g. "{{baseUrl}}" — strip the braces for the lookup key.
+        var vars = BuildVariableMap(bindings);
+
+        // 1. Resolve path params and substitute into the base URL.
+        var resolvedPathParams = snapshot.PathParams
+            .Where(p => !string.IsNullOrWhiteSpace(p.Value))
+            .ToDictionary(
+                p => p.Key,
+                   p => Substitute(p.Value, vars) ?? p.Value);
+
+        var baseUrl = QueryStringHelper.GetBaseUrl(snapshot.Url);
+           var requestUrl = PathTemplateHelper.ApplyPathParams(baseUrl, resolvedPathParams);
+
+        // 2. Resolve and append query params.
+        var resolvedQueryParams = snapshot.QueryParams
+            .Where(p => p.IsEnabled)
+            .Select(p => new KeyValuePair<string, string>(
+                Substitute(p.Key, vars) ?? p.Key,
+                Substitute(p.Value, vars) ?? p.Value))
+            .ToList();
+
+        requestUrl = QueryStringHelper.ApplyQueryParams(requestUrl, resolvedQueryParams);
+
+        // 3. Resolve headers (user-authored).
+        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var h in snapshot.Headers.Where(h => h.IsEnabled))
+        {
+            var key = Substitute(h.Key, vars) ?? h.Key;
+            if (!string.IsNullOrWhiteSpace(key))
+                headers[key] = Substitute(h.Value, vars) ?? h.Value;
+        }
+
+        // 4. Apply auto-applied headers (Content-Type, etc.) — these don't need substitution.
+        foreach (var h in snapshot.AutoAppliedHeaders.Where(h => h.IsEnabled))
+        {
+            if (!string.IsNullOrWhiteSpace(h.Key))
+                headers[h.Key] = h.Value;
+        }
+
+        // 5. Apply auth headers (mirrors RequestTabViewModel.ApplyAuthHeaders).
+        ApplyAuthHeaders(snapshot.Auth, headers, vars, ref requestUrl);
+
+        // 6. Substitute any remaining tokens in the final URL.
+        requestUrl = Substitute(requestUrl, vars) ?? requestUrl;
+
+        // 7. Resolve body.
+        string? resolvedBody = null;
+        if (snapshot.BodyType != CollectionRequest.BodyTypes.None
+            && snapshot.BodyType != CollectionRequest.BodyTypes.Form)
+        {
+            resolvedBody = string.IsNullOrEmpty(snapshot.Body)
+                ? null
+                : Substitute(snapshot.Body, vars);
+        }
+        else if (snapshot.BodyType == CollectionRequest.BodyTypes.Form
+            && snapshot.FormParams.Count > 0)
+        {
+            var formPairs = snapshot.FormParams
+                .Select(p => new KeyValuePair<string, string>(
+                    Substitute(p.Key, vars) ?? p.Key,
+                    Substitute(p.Value, vars) ?? p.Value))
+                .ToList();
+            resolvedBody = string.Join("&",
+                formPairs.Select(p =>
+                    Uri.EscapeDataString(p.Key) + "=" + Uri.EscapeDataString(p.Value)));
+        }
+
+        // 8. Determine Content-Type from the snapshot body type.
+        var contentType = snapshot.BodyType switch
+        {
+            CollectionRequest.BodyTypes.Json => "application/json",
+            CollectionRequest.BodyTypes.Text => "text/plain",
+            CollectionRequest.BodyTypes.Xml => "application/xml",
+            CollectionRequest.BodyTypes.Form => "application/x-www-form-urlencoded",
+            CollectionRequest.BodyTypes.Multipart => "multipart/form-data",
+            _ => null,
+        };
+
+        return new RequestModel
+        {
+            Method = new HttpMethod(snapshot.Method),
+            Url = requestUrl,
+            Headers = headers,
+            Body = resolvedBody,
+            ContentType = contentType,
+        };
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Converts a <see cref="VariableBinding"/> list into a plain name → value dictionary
+    /// suitable for use with <see cref="VariableSubstitutionService.Substitute"/>.
+    /// Strips the <c>{{ }}</c> braces from token names if present.
+    /// </summary>
+    internal static IReadOnlyDictionary<string, string> BuildVariableMap(
+        IReadOnlyList<VariableBinding> bindings)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var b in bindings)
+        {
+            // Token may be stored as "{{name}}" or bare "name" — normalise to bare name.
+            var name = b.Token.Length >= 4
+                && b.Token.StartsWith("{{", StringComparison.Ordinal)
+                && b.Token.EndsWith("}}", StringComparison.Ordinal)
+                ? b.Token[2..^2].Trim()
+                : b.Token.Trim();
+
+            // Last-write wins for duplicate tokens — consistent with substitution order.
+            map[name] = b.ResolvedValue;
+        }
+        return map;
+    }
+
+    private static string? Substitute(string? template, IReadOnlyDictionary<string, string> vars) =>
+        VariableSubstitutionService.Substitute(template, vars);
+
+    /// <summary>Mirrors the auth-injection logic applied at actual send time.</summary>
+    private static void ApplyAuthHeaders(
+        AuthConfig auth,
+        Dictionary<string, string> headers,
+        IReadOnlyDictionary<string, string> vars,
+        ref string url)
+    {
+        switch (auth.AuthType)
+        {
+            case AuthConfig.AuthTypes.Bearer when !string.IsNullOrEmpty(auth.Token):
+                var token = Substitute(auth.Token, vars) ?? auth.Token;
+                headers["Authorization"] = $"Bearer {token}";
+                break;
+
+            case AuthConfig.AuthTypes.Basic when !string.IsNullOrEmpty(auth.Username):
+                var username = Substitute(auth.Username, vars) ?? auth.Username;
+                var password = Substitute(auth.Password ?? string.Empty, vars) ?? string.Empty;
+                var encoded = Convert.ToBase64String(
+                    Encoding.UTF8.GetBytes($"{username}:{password}"));
+                headers["Authorization"] = $"Basic {encoded}";
+                break;
+
+            case AuthConfig.AuthTypes.ApiKey
+                when !string.IsNullOrEmpty(auth.ApiKeyName)
+                  && !string.IsNullOrEmpty(auth.ApiKeyValue):
+                var resolvedName = Substitute(auth.ApiKeyName, vars) ?? auth.ApiKeyName;
+                var resolvedValue = Substitute(auth.ApiKeyValue, vars) ?? auth.ApiKeyValue;
+                if (string.IsNullOrWhiteSpace(resolvedName))
+                    break;
+
+                if (auth.ApiKeyIn == AuthConfig.ApiKeyLocations.Header)
+                    headers[resolvedName] = resolvedValue;
+                else
+                    url = QueryStringHelper.AppendQueryParams(
+                        url,
+                        [new KeyValuePair<string, string>(resolvedName, resolvedValue)]);
+                break;
+        }
+    }
+}

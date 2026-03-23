@@ -1095,11 +1095,6 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         }
     }
 
-    private void BeginClone(EnvironmentListItemViewModel sourceItem)
-    {
-        // Replaced by CloneImmediateAsync — kept as dead code guard.
-    }
-
     private async Task CloneImmediateAsync(
         EnvironmentListItemViewModel sourceItem, CancellationToken ct)
     {

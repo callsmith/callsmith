@@ -739,6 +739,34 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task LoadRequestAsync_LegacyFileWithoutRequestId_BackfillsAndPersistsRequestId()
+    {
+        var folder = _temp.CreateSubDirectory("col");
+        var filePath = WriteRequestFile(folder, "legacy");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+
+        loaded.RequestId.Should().NotBeNull();
+
+        var fileContents = await File.ReadAllTextAsync(filePath);
+        fileContents.Should().Contain("requestId");
+        fileContents.Should().Contain(loaded.RequestId!.Value.ToString());
+    }
+
+    [Fact]
+    public async Task CreateRequestAsync_AssignsStableRequestIdImmediately()
+    {
+        var folder = _temp.CreateSubDirectory("col");
+
+        var created = await _sut.CreateRequestAsync(folder, "new-request");
+
+        created.RequestId.Should().NotBeNull();
+
+        var reloaded = await _sut.LoadRequestAsync(created.FilePath);
+        reloaded.RequestId.Should().Be(created.RequestId);
+    }
+
+    [Fact]
     public async Task SaveAndLoad_WithDisabledQueryParam_PreservesEnabledState()
     {
         var folder = _temp.CreateSubDirectory("col");

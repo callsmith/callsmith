@@ -1,9 +1,9 @@
-using AngleSharp;
-using AngleSharp.Html;
-using AngleSharp.Html.Parser;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Xml.Linq;
+using AngleSharp;
+using AngleSharp.Html;
+using AngleSharp.Html.Parser;
 
 namespace Callsmith.Core.Helpers;
 

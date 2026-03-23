@@ -1,11 +1,11 @@
+using System.IO;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
+using Callsmith.Desktop.Messages;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
-using Callsmith.Desktop.Messages;
 using Microsoft.Extensions.Logging;
-using System.IO;
 
 namespace Callsmith.Desktop.ViewModels;
 

@@ -202,14 +202,14 @@
 > Goal: Every request ever sent is recorded and searchable with powerful filters.
 > History is a first-class feature, not a log.
 
-- [ ] Define `HistoryEntry` model:
+- [x] Define `HistoryEntry` model:
   - Timestamp, method, URL, request headers, request body
   - Response status code, response headers, response body, elapsed time
   - Collection name and request name (if sent from a saved request)
-- [ ] Define `IHistoryService` interface
-- [ ] Implement `HistoryRepository` backed by SQLite (history is too large for flat files)
-- [ ] Auto-record every sent request+response pair
-- [ ] History panel with columns: timestamp, method, URL, status code, elapsed time
+- [x] Define `IHistoryService` interface
+- [x] Implement `HistoryRepository` backed by SQLite (history is too large for flat files)
+- [x] Auto-record every sent request+response pair
+- [x] History panel with columns: timestamp, method, URL, status code, elapsed time
 - [ ] Filter history by:
   - [ ] Status code or status code range (e.g. `>= 400`, `= 200`)
   - [ ] Response body contains string
@@ -218,9 +218,9 @@
   - [ ] URL pattern (contains, starts with, regex)
   - [ ] Date range
 - [ ] Combine multiple filters at once
-- [ ] Click a history entry to open the full request/response in a read-only detail view
+- [x] Click a history entry to open the full request/response in a read-only detail view
 - [ ] Re-send a history entry (loads it into the request editor)
-- [ ] Clear history: all, or entries older than N days
+- [x] Clear history: all, or entries older than N days
 - [ ] Write unit tests for filter logic
 
 ---

@@ -238,6 +238,21 @@ public sealed class BrunoCollectionServiceTests : IDisposable
         Assert.Contains(request.FormParams, p => p.Key == "username" && p.Value == "user@example.com");
     }
 
+      [Fact]
+      public async Task LoadRequestAsync_WhenBruFileHasNoRequestId_BackfillsAndPersistsMetaRequestId()
+      {
+        WriteFile("legacy.bru", BruFile("legacy", "get", "https://example.com", seq: 1));
+        var filePath = Path.Combine(_root, "legacy.bru");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+
+        Assert.NotNull(loaded.RequestId);
+
+        var content = await File.ReadAllTextAsync(filePath);
+        Assert.Contains("requestId:", content);
+        Assert.Contains(loaded.RequestId!.Value.ToString("D"), content);
+      }
+
     // ─────────────────────────────────────────────────────────────────────────
     //  SaveRequestAsync — round-trip fidelity
     // ─────────────────────────────────────────────────────────────────────────
@@ -418,9 +433,11 @@ public sealed class BrunoCollectionServiceTests : IDisposable
 
         Assert.True(File.Exists(created.FilePath));
         Assert.Equal("Brand New", created.Name);
+      Assert.NotNull(created.RequestId);
 
         var content = await File.ReadAllTextAsync(created.FilePath);
         Assert.Contains("name: Brand New", content);
+      Assert.Contains("requestId:", content);
         Assert.Contains("get {", content);
     }
 

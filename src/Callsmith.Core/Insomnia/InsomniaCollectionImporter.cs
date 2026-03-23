@@ -9,9 +9,9 @@ using Callsmith.Core.Models;
 using Microsoft.Extensions.Logging;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
-using BodyTypes = Callsmith.Core.Models.CollectionRequest.BodyTypes;
-using AuthTypes = Callsmith.Core.Models.AuthConfig.AuthTypes;
 using ApiKeyLocations = Callsmith.Core.Models.AuthConfig.ApiKeyLocations;
+using AuthTypes = Callsmith.Core.Models.AuthConfig.AuthTypes;
+using BodyTypes = Callsmith.Core.Models.CollectionRequest.BodyTypes;
 
 namespace Callsmith.Core.Insomnia;
 
