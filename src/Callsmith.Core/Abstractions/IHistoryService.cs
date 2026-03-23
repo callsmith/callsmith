@@ -92,12 +92,25 @@ public interface IHistoryService
     /// Permanently deletes all history entries with <see cref="HistoryEntry.SentAt"/>
     /// earlier than <paramref name="cutoff"/>. Requires explicit user confirmation in the UI
     /// before this method is called.
+    /// When <paramref name="environmentName"/> is provided, only entries from that
+    /// environment are deleted. When <paramref name="requestId"/> is provided, only
+    /// entries for that request are deleted.
     /// </summary>
-    Task PurgeOlderThanAsync(DateTimeOffset cutoff, CancellationToken ct = default);
+    Task PurgeOlderThanAsync(
+        DateTimeOffset cutoff,
+        string? environmentName = null,
+        Guid? requestId = null,
+        CancellationToken ct = default);
 
     /// <summary>
     /// Permanently deletes every history entry. Requires explicit user confirmation in the
     /// UI before this method is called.
+    /// When <paramref name="environmentName"/> is provided, only entries from that
+    /// environment are deleted. When <paramref name="requestId"/> is provided, only
+    /// entries for that request are deleted.
     /// </summary>
-    Task PurgeAllAsync(CancellationToken ct = default);
+    Task PurgeAllAsync(
+        string? environmentName = null,
+        Guid? requestId = null,
+        CancellationToken ct = default);
 }

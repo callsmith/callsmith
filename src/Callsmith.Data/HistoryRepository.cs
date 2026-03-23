@@ -218,22 +218,45 @@ public sealed class HistoryRepository : IHistoryService
     }
 
     /// <inheritdoc/>
-    public async Task PurgeOlderThanAsync(DateTimeOffset cutoff, CancellationToken ct = default)
+    public async Task PurgeOlderThanAsync(
+        DateTimeOffset cutoff,
+        string? environmentName = null,
+        Guid? requestId = null,
+        CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         await EnsureHistorySchemaAsync(db, ct);
         var cutoffUnixMs = cutoff.ToUnixTimeMilliseconds();
-        await db.HistoryEntries
-            .Where(e => e.SentAtUnixMs < cutoffUnixMs)
+        var query = db.HistoryEntries
+            .Where(e => e.SentAtUnixMs < cutoffUnixMs);
+
+        if (!string.IsNullOrWhiteSpace(environmentName))
+            query = query.Where(e => e.EnvironmentName == environmentName);
+
+        if (requestId.HasValue)
+            query = query.Where(e => e.RequestId == requestId.Value);
+
+        await query
             .ExecuteDeleteAsync(ct);
     }
 
     /// <inheritdoc/>
-    public async Task PurgeAllAsync(CancellationToken ct = default)
+    public async Task PurgeAllAsync(
+        string? environmentName = null,
+        Guid? requestId = null,
+        CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
         await EnsureHistorySchemaAsync(db, ct);
-        await db.HistoryEntries.ExecuteDeleteAsync(ct);
+        var query = db.HistoryEntries.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(environmentName))
+            query = query.Where(e => e.EnvironmentName == environmentName);
+
+        if (requestId.HasValue)
+            query = query.Where(e => e.RequestId == requestId.Value);
+
+        await query.ExecuteDeleteAsync(ct);
     }
 
     // -------------------------------------------------------------------------

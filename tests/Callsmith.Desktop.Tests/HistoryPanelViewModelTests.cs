@@ -118,6 +118,104 @@ public sealed class HistoryPanelViewModelTests
         sut.HasHiddenSecrets.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task ConfirmClearHistory_UsesSelectedEnvironmentAndDaysFromPurgeDialog()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        historyService.GetEnvironmentOptionsAsync(Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<HistoryEnvironmentOption>>(
+            [
+                new HistoryEnvironmentOption { Name = "Dev", Color = "#00AAFF" },
+                new HistoryEnvironmentOption { Name = "Prod", Color = "#00DD88" },
+            ]));
+        historyService.QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>(([], 0)));
+
+        var sut = new HistoryPanelViewModel(historyService);
+        sut.OpenGlobal();
+
+        await AssertEventuallyAsync(() => sut.EnvironmentOptions.Count >= 3);
+
+        sut.SelectedEnvironmentOption = sut.EnvironmentOptions.First(option => option.Name == "Prod");
+        sut.OpenPurgeDialogCommand.Execute(null);
+
+        sut.PurgeOlderThanDaysText = "45";
+        sut.ConfirmPurgeDialogCommand.Execute(null);
+
+        await sut.ConfirmClearHistoryCommand.ExecuteAsync(null);
+
+        await historyService.Received(1).PurgeOlderThanAsync(
+            Arg.Is<DateTimeOffset>(cutoff => cutoff <= DateTimeOffset.UtcNow.AddDays(-44) && cutoff >= DateTimeOffset.UtcNow.AddDays(-46)),
+            "Prod",
+            null,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ConfirmClearHistory_WhenScoped_PassesScopedRequestId()
+    {
+        var requestId = Guid.NewGuid();
+        var historyService = Substitute.For<IHistoryService>();
+        historyService.GetEnvironmentOptionsAsync(Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<HistoryEnvironmentOption>>([]));
+        historyService.QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>(([], 0)));
+
+        var sut = new HistoryPanelViewModel(historyService);
+        sut.OpenForRequest(requestId, "Sample");
+
+        await AssertEventuallyAsync(() => sut.IsOpen);
+
+        sut.OpenPurgeDialogCommand.Execute(null);
+        sut.PurgeOlderThanDaysText = "90";
+        sut.ConfirmPurgeDialogCommand.Execute(null);
+
+        await sut.ConfirmClearHistoryCommand.ExecuteAsync(null);
+
+        await historyService.Received(1).PurgeOlderThanAsync(
+            Arg.Any<DateTimeOffset>(),
+            null,
+            requestId,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ConfirmClearHistory_WhenAllTimeChecked_UsesPurgeAllForSelectedEnvironment()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        historyService.GetEnvironmentOptionsAsync(Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<HistoryEnvironmentOption>>(
+            [
+                new HistoryEnvironmentOption { Name = "Dev", Color = "#00AAFF" },
+            ]));
+        historyService.QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>(([], 0)));
+
+        var sut = new HistoryPanelViewModel(historyService);
+        sut.OpenGlobal();
+
+        await AssertEventuallyAsync(() => sut.EnvironmentOptions.Count >= 2);
+
+        sut.SelectedEnvironmentOption = sut.EnvironmentOptions.First(option => option.Name == "Dev");
+        sut.OpenPurgeDialogCommand.Execute(null);
+
+        sut.IsPurgeAllTime = true;
+        sut.PurgeOlderThanDaysText = "not-a-number";
+        sut.ConfirmPurgeDialogCommand.Execute(null);
+
+        await sut.ConfirmClearHistoryCommand.ExecuteAsync(null);
+
+        await historyService.Received(1).PurgeAllAsync(
+            "Dev",
+            null,
+            Arg.Any<CancellationToken>());
+        await historyService.DidNotReceive().PurgeOlderThanAsync(
+            Arg.Any<DateTimeOffset>(),
+            Arg.Any<string?>(),
+            Arg.Any<Guid?>(),
+            Arg.Any<CancellationToken>());
+    }
+
     private static HistoryEntry CreateEntry(AuthConfig auth)
     {
         return new HistoryEntry

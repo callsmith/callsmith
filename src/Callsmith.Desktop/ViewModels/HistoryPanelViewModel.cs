@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Text;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Helpers;
@@ -15,13 +16,6 @@ namespace Callsmith.Desktop.ViewModels;
 /// </summary>
 public sealed partial class HistoryPanelViewModel : ObservableObject
 {
-    private enum PendingHistoryClearAction
-    {
-        None,
-        ClearAll,
-        ClearOlderThan30Days,
-    }
-
     private const string AllEnvironmentsOption = "All environments";
     private readonly IHistoryService _historyService;
     private readonly EnvironmentViewModel? _environmentViewModel;
@@ -29,7 +23,9 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private const int PageSize = 100;
     private Guid? _scopedRequestId;
     private string? _scopedRequestName;
-    private PendingHistoryClearAction _pendingClearAction;
+    private string? _pendingPurgeEnvironmentName;
+    private int? _pendingPurgeDays;
+    private bool _pendingPurgeAllTime;
 
     // -------------------------------------------------------------------------
     // List state
@@ -116,6 +112,21 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private bool _isClearHistoryConfirmOpen;
 
     [ObservableProperty]
+    private bool _isPurgeDialogOpen;
+
+    [ObservableProperty]
+    private HistoryEnvironmentOptionViewModel? _selectedPurgeEnvironmentOption;
+
+    [ObservableProperty]
+    private string _purgeOlderThanDaysText = "90";
+
+    [ObservableProperty]
+    private bool _isPurgeAllTime;
+
+    [ObservableProperty]
+    private string? _purgeDialogErrorMessage;
+
+    [ObservableProperty]
     private HistoryEntryRowViewModel? _pendingDeleteEntry;
 
     public string PendingDeleteEntryLabel
@@ -135,26 +146,23 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         }
     }
 
-    public string ClearHistoryConfirmTitle => _pendingClearAction switch
-    {
-        PendingHistoryClearAction.ClearAll => "Clear all history?",
-        PendingHistoryClearAction.ClearOlderThan30Days => "Clear history older than 30 days?",
-        _ => string.Empty,
-    };
+    public string ClearHistoryConfirmTitle => "Delete records?";
 
-    public string ClearHistoryConfirmDescription => _pendingClearAction switch
-    {
-        PendingHistoryClearAction.ClearAll => "This cannot be undone.",
-        PendingHistoryClearAction.ClearOlderThan30Days => "This cannot be undone.",
-        _ => string.Empty,
-    };
+    public string ClearHistoryConfirmDescription => "This cannot be undone. Continue?";
 
-    public string ClearHistoryConfirmButtonLabel => _pendingClearAction switch
-    {
-        PendingHistoryClearAction.ClearAll => "Clear All",
-        PendingHistoryClearAction.ClearOlderThan30Days => "Clear > 30d",
-        _ => "Clear",
-    };
+    public string ClearHistoryConfirmButtonLabel => "Delete";
+
+    public string ClearHistoryConfirmEnvironmentLabel =>
+        _pendingPurgeEnvironmentName ?? AllEnvironmentsOption;
+
+    public string ClearHistoryConfirmDaysLabel =>
+        (_pendingPurgeDays ?? 0).ToString(CultureInfo.InvariantCulture);
+
+    public bool ClearHistoryConfirmIsAllTime => _pendingPurgeAllTime;
+
+    public bool CanConfirmPurgeDialog =>
+        SelectedPurgeEnvironmentOption is not null &&
+        (IsPurgeAllTime || TryParsePurgeDays(PurgeOlderThanDaysText, out _));
 
     // -------------------------------------------------------------------------
     // Visibility
@@ -181,12 +189,28 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     partial void OnIsClearHistoryConfirmOpenChanged(bool value)
     {
         if (!value)
-        {
-            _pendingClearAction = PendingHistoryClearAction.None;
-            OnPropertyChanged(nameof(ClearHistoryConfirmTitle));
-            OnPropertyChanged(nameof(ClearHistoryConfirmDescription));
-            OnPropertyChanged(nameof(ClearHistoryConfirmButtonLabel));
-        }
+            ClearPendingPurgeSelection();
+    }
+
+    partial void OnIsPurgeDialogOpenChanged(bool value)
+    {
+        if (value)
+            PurgeDialogErrorMessage = null;
+    }
+
+    partial void OnSelectedPurgeEnvironmentOptionChanged(HistoryEnvironmentOptionViewModel? value)
+        => OnPropertyChanged(nameof(CanConfirmPurgeDialog));
+
+    partial void OnPurgeOlderThanDaysTextChanged(string value)
+    {
+        PurgeDialogErrorMessage = null;
+        OnPropertyChanged(nameof(CanConfirmPurgeDialog));
+    }
+
+    partial void OnIsPurgeAllTimeChanged(bool value)
+    {
+        PurgeDialogErrorMessage = null;
+        OnPropertyChanged(nameof(CanConfirmPurgeDialog));
     }
 
     partial void OnSelectedEntryChanged(HistoryEntryRowViewModel? value)
@@ -303,26 +327,79 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void RequestClearAll() => OpenClearHistoryConfirm(PendingHistoryClearAction.ClearAll);
+    private void OpenPurgeDialog()
+    {
+        PurgeDialogErrorMessage = null;
+        PurgeOlderThanDaysText = "90";
+        IsPurgeAllTime = false;
+        SelectedPurgeEnvironmentOption = ResolveEnvironmentOption(SelectedEnvironmentOption?.Name)
+            ?? EnvironmentOptions.FirstOrDefault();
+        IsPurgeDialogOpen = true;
+    }
 
     [RelayCommand]
-    private void RequestClearOlderThan30Days() => OpenClearHistoryConfirm(PendingHistoryClearAction.ClearOlderThan30Days);
+    private void CancelPurgeDialog()
+    {
+        PurgeDialogErrorMessage = null;
+        IsPurgeDialogOpen = false;
+    }
+
+    [RelayCommand]
+    private void ConfirmPurgeDialog()
+    {
+        if (SelectedPurgeEnvironmentOption is null)
+        {
+            PurgeDialogErrorMessage = "Select an environment scope to continue.";
+            return;
+        }
+
+        if (IsPurgeAllTime)
+        {
+            QueuePurgeConfirmation(SelectedPurgeEnvironmentOption, null, purgeAllTime: true);
+            IsPurgeDialogOpen = false;
+            return;
+        }
+
+        if (!TryParsePurgeDays(PurgeOlderThanDaysText, out var days))
+        {
+            PurgeDialogErrorMessage = "Enter a whole number of days greater than zero, or choose All time.";
+            return;
+        }
+
+        QueuePurgeConfirmation(SelectedPurgeEnvironmentOption, days, purgeAllTime: false);
+        IsPurgeDialogOpen = false;
+    }
 
     [RelayCommand]
     private async Task ConfirmClearHistoryAsync()
     {
-        var action = _pendingClearAction;
+        var pendingEnvironmentName = _pendingPurgeEnvironmentName;
+        var pendingDays = _pendingPurgeDays;
+        var pendingPurgeAllTime = _pendingPurgeAllTime;
         IsClearHistoryConfirmOpen = false;
 
-        switch (action)
+        if (pendingPurgeAllTime)
         {
-            case PendingHistoryClearAction.ClearAll:
-                await ClearAllAsync();
-                break;
-            case PendingHistoryClearAction.ClearOlderThan30Days:
-                await ClearOlderThan30DaysAsync();
-                break;
+            await _historyService.PurgeAllAsync(
+                pendingEnvironmentName,
+                _scopedRequestId,
+                CancellationToken.None);
         }
+        else
+        {
+            if (!pendingDays.HasValue || pendingDays.Value <= 0)
+                return;
+
+            var cutoff = DateTimeOffset.UtcNow.AddDays(-pendingDays.Value);
+            await _historyService.PurgeOlderThanAsync(
+                cutoff,
+                pendingEnvironmentName,
+                _scopedRequestId,
+                CancellationToken.None);
+        }
+
+        _currentPage = 0;
+        await LoadPageAsync(reset: true);
     }
 
     [RelayCommand]
@@ -404,29 +481,52 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         }
     }
 
-    private void OpenClearHistoryConfirm(PendingHistoryClearAction action)
+    private void QueuePurgeConfirmation(
+        HistoryEnvironmentOptionViewModel selectedScope,
+        int? days,
+        bool purgeAllTime)
     {
-        _pendingClearAction = action;
+        _pendingPurgeEnvironmentName = string.Equals(selectedScope.Name, AllEnvironmentsOption, StringComparison.Ordinal)
+            ? null
+            : selectedScope.Name;
+        _pendingPurgeDays = days;
+        _pendingPurgeAllTime = purgeAllTime;
         OnPropertyChanged(nameof(ClearHistoryConfirmTitle));
         OnPropertyChanged(nameof(ClearHistoryConfirmDescription));
         OnPropertyChanged(nameof(ClearHistoryConfirmButtonLabel));
+        OnPropertyChanged(nameof(ClearHistoryConfirmEnvironmentLabel));
+        OnPropertyChanged(nameof(ClearHistoryConfirmDaysLabel));
+        OnPropertyChanged(nameof(ClearHistoryConfirmIsAllTime));
         IsClearHistoryConfirmOpen = true;
     }
 
-    private async Task ClearAllAsync()
+    private void ClearPendingPurgeSelection()
     {
-        await _historyService.PurgeAllAsync(CancellationToken.None);
-        Entries.Clear();
-        TotalCount = 0;
-        SelectedEntry = null;
-        await RefreshEnvironmentOptionsAsync();
+        _pendingPurgeEnvironmentName = null;
+        _pendingPurgeDays = null;
+        _pendingPurgeAllTime = false;
+        OnPropertyChanged(nameof(ClearHistoryConfirmEnvironmentLabel));
+        OnPropertyChanged(nameof(ClearHistoryConfirmDaysLabel));
+        OnPropertyChanged(nameof(ClearHistoryConfirmIsAllTime));
     }
 
-    private async Task ClearOlderThan30DaysAsync()
+    private static bool TryParsePurgeDays(string? text, out int days)
     {
-        var cutoff = DateTimeOffset.UtcNow.AddDays(-30);
-        await _historyService.PurgeOlderThanAsync(cutoff, CancellationToken.None);
-        await LoadPageAsync(reset: true);
+        if (!int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out days))
+            return false;
+
+        return days > 0;
+    }
+
+    private HistoryEnvironmentOptionViewModel? ResolveEnvironmentOption(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return EnvironmentOptions.FirstOrDefault();
+
+        return EnvironmentOptions.FirstOrDefault(option =>
+                   string.Equals(option.Name, name, StringComparison.Ordinal))
+               ?? EnvironmentOptions.FirstOrDefault(option =>
+                   string.Equals(option.Name, name, StringComparison.OrdinalIgnoreCase));
     }
 
     private HistoryFilter BuildFilter()
