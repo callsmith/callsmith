@@ -216,6 +216,47 @@ public sealed class HistoryPanelViewModelTests
             Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task SearchCommand_PassesGlobalSearchText_ToQueryFilter()
+    {
+        HistoryFilter? captured = null;
+        var historyService = Substitute.For<IHistoryService>();
+        historyService.GetEnvironmentOptionsAsync(Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<HistoryEnvironmentOption>>([]));
+        historyService.QueryAsync(Arg.Do<HistoryFilter>(f => captured = f), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>(([], 0)));
+
+        var sut = new HistoryPanelViewModel(historyService);
+        sut.GlobalSearchText = "  my search  ";
+
+        await sut.SearchCommand.ExecuteAsync(null);
+
+        captured.Should().NotBeNull();
+        captured!.GlobalSearch.Should().Be("my search");
+    }
+
+    [Fact]
+    public void HasActiveAdvancedFilters_IsFalse_Initially()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var sut = new HistoryPanelViewModel(historyService);
+
+        sut.HasActiveAdvancedFilters.Should().BeFalse();
+        sut.ActiveAdvancedFilterCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void HasActiveAdvancedFilters_IsTrue_WhenAdvancedSearchHasFilters()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var sut = new HistoryPanelViewModel(historyService);
+
+        sut.AdvancedSearch.RequestContains = "token";
+
+        sut.HasActiveAdvancedFilters.Should().BeTrue();
+        sut.ActiveAdvancedFilterCount.Should().Be(1);
+    }
+
     private static HistoryEntry CreateEntry(AuthConfig auth)
     {
         return new HistoryEntry

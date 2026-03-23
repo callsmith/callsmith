@@ -427,6 +427,26 @@ public sealed class HistoryRepository : IHistoryService
             query = query.Where(e => e.ResponseSearchText.Contains(text));
         }
 
+        if (!string.IsNullOrWhiteSpace(filter.GlobalSearch))
+        {
+            var text = NormalizeSearchText(filter.GlobalSearch);
+            query = query.Where(e =>
+                e.RequestSearchText.Contains(text) ||
+                e.ResponseSearchText.Contains(text));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Method))
+        {
+            var method = NormalizeSearchText(filter.Method);
+            query = query.Where(e => e.Method.ToLower().Contains(method));
+        }
+
+        if (filter.MinElapsedMs.HasValue)
+            query = query.Where(e => e.ElapsedMs >= filter.MinElapsedMs.Value);
+
+        if (filter.MaxElapsedMs.HasValue)
+            query = query.Where(e => e.ElapsedMs <= filter.MaxElapsedMs.Value);
+
         if (!string.IsNullOrWhiteSpace(filter.UrlPattern))
         {
             query = filter.UrlMatch switch

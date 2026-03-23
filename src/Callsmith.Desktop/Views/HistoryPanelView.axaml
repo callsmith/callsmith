@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Callsmith.Desktop.ViewModels"
+             xmlns:views="using:Callsmith.Desktop.Views"
              xmlns:controls="using:Callsmith.Desktop.Controls"
              xmlns:conv="using:Callsmith.Desktop.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -91,6 +92,7 @@
             Padding="12,8">
       <StackPanel Orientation="Horizontal" Spacing="10">
 
+        <!-- Environment selector -->
         <ComboBox ItemsSource="{Binding EnvironmentOptions}"
             SelectedItem="{Binding SelectedEnvironmentOption}"
             Width="170"
@@ -112,108 +114,62 @@
           </ComboBox.ItemTemplate>
         </ComboBox>
 
-        <Grid Width="260">
-          <TextBox Text="{Binding FilterText}"
-             Watermark="General: URL, request name, collection…"
-             FontSize="12"
-             Background="#1e1e1e"
-             Foreground="#d4d4d4"
-             BorderBrush="#555"
-             VerticalContentAlignment="Center"
-             Padding="6,0,24,0"/>
+        <!-- Global search -->
+        <Grid Width="280">
+          <TextBox Text="{Binding GlobalSearchText}"
+                   Watermark="Search all — URL, name, headers, body…"
+                   FontSize="12"
+                   Background="#1e1e1e"
+                   Foreground="#d4d4d4"
+                   BorderBrush="#555"
+                   VerticalContentAlignment="Center"
+                   Padding="6,0,24,0"/>
           <Button Content="×"
-            Command="{Binding ClearFilterTextCommand}"
-            IsVisible="{Binding FilterText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-            HorizontalAlignment="Right"
-            VerticalAlignment="Center"
-            Focusable="False"
-            Width="18"
-            Height="18"
-            Margin="0,0,5,0"
-            Background="Transparent"
-            Foreground="#888"
-            BorderThickness="0"
-            Padding="0"
-            FontSize="12"
-            ToolTip.Tip="Clear"/>
+                  Command="{Binding ClearGlobalSearchTextCommand}"
+                  IsVisible="{Binding GlobalSearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Center"
+                  Focusable="False"
+                  Width="18" Height="18" Margin="0,0,5,0"
+                  Background="Transparent" Foreground="#888"
+                  BorderThickness="0" Padding="0" FontSize="12"
+                  ToolTip.Tip="Clear"/>
         </Grid>
 
-        <Grid Width="240">
-          <TextBox Text="{Binding FilterRequestContains}"
-             Watermark="Request contains: body, headers, params…"
-             FontSize="12"
-             Background="#1e1e1e"
-             Foreground="#d4d4d4"
-             BorderBrush="#555"
-             VerticalContentAlignment="Center"
-             Padding="6,0,24,0"/>
-          <Button Content="×"
-            Command="{Binding ClearFilterRequestContainsCommand}"
-            IsVisible="{Binding FilterRequestContains, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-            HorizontalAlignment="Right"
-            VerticalAlignment="Center"
-            Focusable="False"
-            Width="18"
-            Height="18"
-            Margin="0,0,5,0"
-            Background="Transparent"
-            Foreground="#888"
-            BorderThickness="0"
-            Padding="0"
-            FontSize="12"
-            ToolTip.Tip="Clear"/>
-        </Grid>
+        <!-- Advanced search button -->
+        <Button Content="Advanced Search"
+                Command="{Binding OpenAdvancedSearchCommand}"
+                FontSize="12"
+                Background="Transparent"
+                Foreground="#9cdcfe"
+                BorderBrush="#555"
+                BorderThickness="1"
+                Padding="10,4"/>
 
-        <Grid Width="240">
-          <TextBox Text="{Binding FilterResponseContains}"
-             Watermark="Response contains: body or headers…"
-             FontSize="12"
-             Background="#1e1e1e"
-             Foreground="#d4d4d4"
-             BorderBrush="#555"
-             VerticalContentAlignment="Center"
-             Padding="6,0,24,0"/>
-          <Button Content="×"
-            Command="{Binding ClearFilterResponseContainsCommand}"
-            IsVisible="{Binding FilterResponseContains, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-            HorizontalAlignment="Right"
-            VerticalAlignment="Center"
-            Focusable="False"
-            Width="18"
-            Height="18"
-            Margin="0,0,5,0"
-            Background="Transparent"
-            Foreground="#888"
-            BorderThickness="0"
-            Padding="0"
-            FontSize="12"
-            ToolTip.Tip="Clear"/>
-        </Grid>
+        <!-- Active advanced filters badge -->
+        <Border Background="#1a3a5a"
+                CornerRadius="4"
+                Padding="6,2,2,2"
+                IsVisible="{Binding HasActiveAdvancedFilters}"
+                VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <TextBlock Text="{Binding ActiveAdvancedFilterCount, StringFormat='{}{0} filter active', FallbackValue=''}"
+                       Foreground="#9cdcfe"
+                       FontSize="11"
+                       VerticalAlignment="Center"/>
+            <Button Content="×"
+                    Command="{Binding ClearAdvancedFiltersCommand}"
+                    Background="Transparent"
+                    Foreground="#9cdcfe"
+                    BorderThickness="0"
+                    Padding="2,0"
+                    Focusable="False"
+                    FontSize="12"
+                    ToolTip.Tip="Clear all advanced filters"/>
+          </StackPanel>
+        </Border>
 
-        <TextBox Text="{Binding FilterMinStatus}"
-                 Watermark="Min status"
-                 Width="90"
-                 FontSize="12"
-                 Background="#1e1e1e"
-                 Foreground="#d4d4d4"
-                 BorderBrush="#555"/>
-
-        <TextBox Text="{Binding FilterMaxStatus}"
-                 Watermark="Max status"
-                 Width="90"
-                 FontSize="12"
-                 Background="#1e1e1e"
-                 Foreground="#d4d4d4"
-                 BorderBrush="#555"/>
-
-        <ComboBox ItemsSource="{Binding DateRangeOptions}"
-            SelectedItem="{Binding SelectedDateRange}"
-            MinWidth="130"
-            FontSize="12"
-            Background="#1e1e1e"
-            Foreground="#d4d4d4"
-            BorderBrush="#555"/>
-
+        <!-- Search button -->
         <Button Content="Search"
                 Command="{Binding SearchCommand}"
                 FontSize="12"
@@ -222,6 +178,7 @@
                 BorderThickness="0"
                 Padding="12,4"/>
 
+        <!-- Result count -->
         <TextBlock Text="{Binding TotalCount, StringFormat='Showing {0} results'}"
                    Foreground="#888"
                    FontSize="11"
@@ -641,6 +598,16 @@
           </StackPanel>
         </StackPanel>
       </Border>
+    </Border>
+
+    <!-- Advanced search modal -->
+    <Border Grid.Row="0"
+            Grid.RowSpan="3"
+            IsVisible="{Binding IsAdvancedSearchOpen}"
+            Background="#66000000">
+      <views:AdvancedHistorySearchView DataContext="{Binding AdvancedSearch}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
     </Border>
 
     <!-- Clear history confirmation popup (centered on full history panel) -->

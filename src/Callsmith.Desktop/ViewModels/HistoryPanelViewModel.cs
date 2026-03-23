@@ -50,13 +50,16 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     // -------------------------------------------------------------------------
 
     [ObservableProperty]
-    private string _filterText = string.Empty;
+    private string _globalSearchText = string.Empty;
+
+    public AdvancedHistorySearchViewModel AdvancedSearch { get; }
 
     [ObservableProperty]
-    private string _filterRequestContains = string.Empty;
+    private bool _isAdvancedSearchOpen;
 
-    [ObservableProperty]
-    private string _filterResponseContains = string.Empty;
+    public bool HasActiveAdvancedFilters => AdvancedSearch.ActiveFilterCount > 0;
+
+    public int ActiveAdvancedFilterCount => AdvancedSearch.ActiveFilterCount;
 
     public ObservableCollection<HistoryEnvironmentOptionViewModel> EnvironmentOptions { get; } =
     [new HistoryEnvironmentOptionViewModel { Name = AllEnvironmentsOption, Color = null }];
@@ -64,18 +67,6 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     [ObservableProperty]
     private HistoryEnvironmentOptionViewModel? _selectedEnvironmentOption =
         new HistoryEnvironmentOptionViewModel { Name = AllEnvironmentsOption, Color = null };
-
-    [ObservableProperty]
-    private string _filterMinStatus = string.Empty;
-
-    [ObservableProperty]
-    private string _filterMaxStatus = string.Empty;
-
-    [ObservableProperty]
-    private string _selectedDateRange = "All time";
-
-    public IReadOnlyList<string> DateRangeOptions { get; } =
-        ["All time", "Last 24h", "Last 7 days", "Last 30 days"];
 
     // -------------------------------------------------------------------------
     // Detail state
@@ -244,6 +235,24 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(historyService);
         _historyService = historyService;
         _environmentViewModel = environmentViewModel;
+
+        AdvancedSearch = new AdvancedHistorySearchViewModel();
+        AdvancedSearch.Applied += (_, _) =>
+        {
+            IsAdvancedSearchOpen = false;
+            OnPropertyChanged(nameof(HasActiveAdvancedFilters));
+            OnPropertyChanged(nameof(ActiveAdvancedFilterCount));
+            _ = SearchAsync();
+        };
+        AdvancedSearch.Cancelled += (_, _) => IsAdvancedSearchOpen = false;
+        AdvancedSearch.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(AdvancedHistorySearchViewModel.ActiveFilterCount))
+            {
+                OnPropertyChanged(nameof(HasActiveAdvancedFilters));
+                OnPropertyChanged(nameof(ActiveAdvancedFilterCount));
+            }
+        };
     }
 
     // -------------------------------------------------------------------------
@@ -281,13 +290,20 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ClearFilterText() => FilterText = string.Empty;
+    private void ClearGlobalSearchText() => GlobalSearchText = string.Empty;
 
     [RelayCommand]
-    private void ClearFilterRequestContains() => FilterRequestContains = string.Empty;
+    private void OpenAdvancedSearch() => IsAdvancedSearchOpen = true;
 
     [RelayCommand]
-    private void ClearFilterResponseContains() => FilterResponseContains = string.Empty;
+    private void ClearAdvancedFilters()
+    {
+        AdvancedSearch.ClearAllCommand.Execute(null);
+        // ClearAll fires Applied which already triggers a search and closes the modal;
+        // also ensure badge updates even if the modal is not open.
+        OnPropertyChanged(nameof(HasActiveAdvancedFilters));
+        OnPropertyChanged(nameof(ActiveAdvancedFilterCount));
+    }
 
     [RelayCommand]
     private async Task LoadMoreAsync()
@@ -531,31 +547,25 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
 
     private HistoryFilter BuildFilter()
     {
-        int? minStatus = null;
-        int? maxStatus = null;
-        if (int.TryParse(FilterMinStatus, out var min)) minStatus = min;
-        if (int.TryParse(FilterMaxStatus, out var max)) maxStatus = max;
-
+        var adv = AdvancedSearch;
         return new HistoryFilter
         {
             Page = _currentPage,
             PageSize = PageSize,
             NewestFirst = true,
-            TextSearch = string.IsNullOrWhiteSpace(FilterText) ? null : FilterText.Trim(),
-            RequestContains = string.IsNullOrWhiteSpace(FilterRequestContains) ? null : FilterRequestContains.Trim(),
-            ResponseContains = string.IsNullOrWhiteSpace(FilterResponseContains) ? null : FilterResponseContains.Trim(),
+            GlobalSearch = string.IsNullOrWhiteSpace(GlobalSearchText) ? null : GlobalSearchText.Trim(),
             EnvironmentName = string.Equals(SelectedEnvironmentOption?.Name, AllEnvironmentsOption, StringComparison.Ordinal)
                 ? null
                 : SelectedEnvironmentOption?.Name,
-            MinStatusCode = minStatus,
-            MaxStatusCode = maxStatus,
-            SentAfter = SelectedDateRange switch
-            {
-                "Last 24h" => DateTimeOffset.UtcNow.AddHours(-24),
-                "Last 7 days" => DateTimeOffset.UtcNow.AddDays(-7),
-                "Last 30 days" => DateTimeOffset.UtcNow.AddDays(-30),
-                _ => null,
-            },
+            RequestContains = string.IsNullOrWhiteSpace(adv.RequestContains) ? null : adv.RequestContains.Trim(),
+            ResponseContains = string.IsNullOrWhiteSpace(adv.ResponseContains) ? null : adv.ResponseContains.Trim(),
+            Method = string.IsNullOrWhiteSpace(adv.MethodSearch) ? null : adv.MethodSearch.Trim(),
+            MinStatusCode = adv.MinStatusCode,
+            MaxStatusCode = adv.MaxStatusCode,
+            SentAfter = adv.SentAfter,
+            SentBefore = adv.SentBefore,
+            MinElapsedMs = adv.MinElapsedMs,
+            MaxElapsedMs = adv.MaxElapsedMs,
             RequestId = _scopedRequestId,
         };
     }

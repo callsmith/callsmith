@@ -59,6 +59,14 @@ public sealed class HistoryFilter
     public string? TextSearch { get; init; }
 
     /// <summary>
+    /// Global free-text search applied as OR across <em>both</em> the request search text
+    /// (body, headers, params, URL, name) and the response search text (headers, body).
+    /// Case-insensitive. Takes precedence over — and is independent from — the more
+    /// specific <see cref="RequestContains"/> and <see cref="ResponseContains"/> filters.
+    /// </summary>
+    public string? GlobalSearch { get; init; }
+
+    /// <summary>
     /// Case-insensitive substring search over persisted request search text.
     /// This includes the configured request URL, headers, body, form fields,
     /// query/path parameters, and non-secret auth metadata such as API key header names.
@@ -132,6 +140,33 @@ public sealed class HistoryFilter
     /// Used by the per-request recent history strip.
     /// </summary>
     public Guid? RequestId { get; init; }
+
+    // -------------------------------------------------------------------------
+    // Method
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Case-insensitive substring match against the HTTP method (or transport-specific
+    /// method string, e.g. "GET", "ws:connect", "grpc:unary").
+    /// Null means no method filter.
+    /// </summary>
+    public string? Method { get; init; }
+
+    // -------------------------------------------------------------------------
+    // Elapsed time
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Minimum round-trip time in milliseconds (inclusive).
+    /// Null means no lower bound.
+    /// </summary>
+    public long? MinElapsedMs { get; init; }
+
+    /// <summary>
+    /// Maximum round-trip time in milliseconds (inclusive).
+    /// Null means no upper bound.
+    /// </summary>
+    public long? MaxElapsedMs { get; init; }
 }
 
 /// <summary>Controls how a URL pattern is matched.</summary>
