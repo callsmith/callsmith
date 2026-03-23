@@ -71,8 +71,8 @@ public sealed class HistoryRepository : IHistoryService
         var totalCount = await query.LongCountAsync(ct);
 
         query = filter.NewestFirst
-            ? query.OrderByDescending(e => e.SentAtUnixMs)
-            : query.OrderBy(e => e.SentAtUnixMs);
+            ? query.OrderByDescending(e => e.SentAtUnixMs).ThenByDescending(e => e.Id)
+            : query.OrderBy(e => e.SentAtUnixMs).ThenBy(e => e.Id);
 
         var pageSize = Math.Max(1, filter.PageSize);
         var page = Math.Max(0, filter.Page);

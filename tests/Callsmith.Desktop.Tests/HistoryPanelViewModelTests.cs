@@ -257,6 +257,98 @@ public sealed class HistoryPanelViewModelTests
         sut.ActiveAdvancedFilterCount.Should().Be(1);
     }
 
+    [Fact]
+    public async Task OpenGlobal_LoadsInitialChunk_AndTracksRemainingResults()
+    {
+        var entries = Enumerable.Range(1, 100).Select(i => CreateEntry(new AuthConfig()) with { Id = i, RequestName = $"Request {i}" }).ToList();
+        var historyService = Substitute.For<IHistoryService>();
+        historyService.GetEnvironmentOptionsAsync(Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<HistoryEnvironmentOption>>([]));
+        historyService.QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>((entries, 250)));
+
+        var sut = new HistoryPanelViewModel(historyService);
+        sut.OpenGlobal();
+
+        await AssertEventuallyAsync(() => sut.Entries.Count == 100);
+
+        sut.Entries.Should().HaveCount(100);
+        sut.TotalCount.Should().Be(250);
+        sut.HasMoreEntries.Should().BeTrue();
+        sut.ResultCountLabel.Should().Be("Showing 100 of 250 results");
+    }
+
+    [Fact]
+    public async Task EnsureMoreEntriesAsync_AppendsNextChunk()
+    {
+        var entries1 = Enumerable.Range(1, 100).Select(i => CreateEntry(new AuthConfig()) with { Id = i }).ToList();
+        var entries2 = Enumerable.Range(101, 100).Select(i => CreateEntry(new AuthConfig()) with { Id = i }).ToList();
+
+        var historyService = Substitute.For<IHistoryService>();
+        historyService.GetEnvironmentOptionsAsync(Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<HistoryEnvironmentOption>>([]));
+
+        historyService.QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>())
+            .Returns(x =>
+            {
+                var filter = x.Arg<HistoryFilter>();
+                if (filter.Page == 0)
+                    return Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>((entries1, 200));
+                else
+                    return Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>((entries2, 200));
+            });
+
+        var sut = new HistoryPanelViewModel(historyService);
+        sut.OpenGlobal();
+
+        await AssertEventuallyAsync(() => sut.Entries.Count == 100);
+        sut.HasMoreEntries.Should().BeTrue();
+
+        await sut.EnsureMoreEntriesAsync();
+        await AssertEventuallyAsync(() => sut.Entries.Count == 200);
+
+        sut.Entries.Should().HaveCount(200);
+        sut.HasMoreEntries.Should().BeFalse();
+        sut.HistoryListStatusMessage.Should().Be("You've reached the end of history.");
+    }
+
+    [Fact]
+    public async Task EnsureMoreEntriesAsync_WhenIncrementalLoadIsInFlight_DoesNotStartAnotherQuery()
+    {
+        var entries = Enumerable.Range(1, 100).Select(i => CreateEntry(new AuthConfig()) with { Id = i }).ToList();
+
+        var historyService = Substitute.For<IHistoryService>();
+        historyService.GetEnvironmentOptionsAsync(Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<HistoryEnvironmentOption>>([]));
+
+        var tcs = new TaskCompletionSource<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>();
+        historyService.QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>())
+            .Returns(x =>
+            {
+                var filter = x.Arg<HistoryFilter>();
+                if (filter.Page == 0)
+                    return Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>((entries, 200));
+                return tcs.Task;
+            });
+
+        var sut = new HistoryPanelViewModel(historyService);
+        sut.OpenGlobal();
+
+        await AssertEventuallyAsync(() => sut.Entries.Count == 100 && sut.HasMoreEntries);
+
+        var task1 = sut.EnsureMoreEntriesAsync();
+        await Task.Delay(5);
+        sut.IsIncrementalLoading.Should().BeTrue();
+
+        var task2 = sut.EnsureMoreEntriesAsync();
+        task2.IsCompleted.Should().BeTrue();
+
+        tcs.SetResult(([], 200));
+        await task1;
+
+        await historyService.Received(2).QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>());
+    }
+
     private static HistoryEntry CreateEntry(AuthConfig auth)
     {
         return new HistoryEntry

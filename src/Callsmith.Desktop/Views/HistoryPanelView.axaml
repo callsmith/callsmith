@@ -179,7 +179,7 @@
                 Padding="12,4"/>
 
         <!-- Result count -->
-        <TextBlock Text="{Binding TotalCount, StringFormat='Showing {0} results'}"
+        <TextBlock Text="{Binding ResultCountLabel}"
                    Foreground="#888"
                    FontSize="11"
                    VerticalAlignment="Center"
@@ -210,6 +210,11 @@
                  Background="Transparent"
                  BorderThickness="0"
                  Padding="0">
+                    <ListBox.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <VirtualizingStackPanel/>
+                      </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
           <ListBox.Styles>
             <Style Selector="ListBoxItem">
               <Setter Property="Padding" Value="0"/>
@@ -298,19 +303,19 @@
           </ListBox.ContextMenu>
         </ListBox>
 
-        <!-- Load more button -->
-        <Button Grid.Row="1"
-                Content="Load more…"
-                Command="{Binding LoadMoreCommand}"
-                HorizontalAlignment="Stretch"
-                HorizontalContentAlignment="Center"
-                FontSize="12"
-                Background="#252526"
-                Foreground="#888"
-                BorderThickness="0,1,0,0"
-                BorderBrush="#333"
-                Padding="0,8"
-                IsVisible="{Binding !IsLoading}"/>
+        <!-- Status message footer -->
+        <Border Grid.Row="1"
+          Background="#252526"
+          BorderBrush="#333"
+          BorderThickness="0,1,0,0"
+          Padding="12,8"
+          IsVisible="{Binding HistoryListStatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+          <TextBlock Text="{Binding HistoryListStatusMessage}"
+               Foreground="#888"
+               FontSize="12"
+               HorizontalAlignment="Center"
+               VerticalAlignment="Center"/>
+        </Border>
 
               <!-- Delete confirmation popup (matches collection delete UX) -->
               <Border Grid.Row="0"

@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Callsmith.Desktop.ViewModels;
 
@@ -19,6 +20,46 @@ public partial class HistoryPanelView : UserControl
 
         if (HistoryEntryContextMenu is { } menu)
             menu.Opening += OnHistoryEntryContextMenuOpening;
+    }
+    
+    private const double LoadMoreTriggerDistance = 240d;
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        _ = Dispatcher.UIThread.InvokeAsync(AttachHistoryEntriesScrollViewer, DispatcherPriority.Loaded);
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        DetachHistoryEntriesScrollViewer();
+    }
+
+    private void AttachHistoryEntriesScrollViewer()
+    {
+        var scrollViewer = HistoryEntriesList.FindDescendantOfType<ScrollViewer>();
+        if (scrollViewer is not null)
+            scrollViewer.ScrollChanged += OnHistoryEntriesScrollChanged;
+    }
+
+    private void DetachHistoryEntriesScrollViewer()
+    {
+        var scrollViewer = HistoryEntriesList.FindDescendantOfType<ScrollViewer>();
+        if (scrollViewer is not null)
+            scrollViewer.ScrollChanged -= OnHistoryEntriesScrollChanged;
+    }
+
+    private void OnHistoryEntriesScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        if (sender is not ScrollViewer scrollViewer || DataContext is not HistoryPanelViewModel vm)
+            return;
+
+        var remainingDistance = scrollViewer.Extent.Height - scrollViewer.Offset.Y - scrollViewer.Viewport.Height;
+        if (remainingDistance < LoadMoreTriggerDistance && vm.HasMoreEntries && !vm.IsIncrementalLoading)
+        {
+            _ = vm.EnsureMoreEntriesAsync();
+        }
     }
 
     private void OnHistoryEntriesPointerPressed(object? sender, PointerPressedEventArgs e)

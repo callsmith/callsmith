@@ -19,8 +19,10 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private const string AllEnvironmentsOption = "All environments";
     private readonly IHistoryService _historyService;
     private readonly EnvironmentViewModel? _environmentViewModel;
-    private int _currentPage;
-    private const int PageSize = 100;
+    private int _nextPage = 0;
+    private long _queryTotalCount = 0;
+    private const int InitialChunkSize = 100;
+    private const int IncrementalChunkSize = 100;
     private Guid? _scopedRequestId;
     private string? _scopedRequestName;
     private string? _pendingPurgeEnvironmentName;
@@ -44,6 +46,15 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
 
     [ObservableProperty]
     private string? _errorMessage;
+
+    [ObservableProperty]
+    private bool _isIncrementalLoading;
+
+    [ObservableProperty]
+    private string _historyListStatusMessage = string.Empty;
+
+    [ObservableProperty]
+    private string _resultCountLabel = string.Empty;
 
     // -------------------------------------------------------------------------
     // Filter state
@@ -162,6 +173,8 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     [ObservableProperty]
     private bool _isOpen;
 
+    public bool HasMoreEntries => Entries.Count < _queryTotalCount;
+
     public bool IsRequestScoped => _scopedRequestId is not null;
 
     public string ScopeLabel => IsRequestScoped
@@ -171,7 +184,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     partial void OnIsOpenChanged(bool value)
     {
         if (value)
-            _ = LoadPageAsync(reset: true);
+            _ = ReloadEntriesAsync();
     }
 
     partial void OnPendingDeleteEntryChanged(HistoryEntryRowViewModel? value)
@@ -269,8 +282,8 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         _scopedRequestName = null;
         OnPropertyChanged(nameof(IsRequestScoped));
         OnPropertyChanged(nameof(ScopeLabel));
-        _currentPage = 0;
-        _ = LoadPageAsync(reset: true);
+        _nextPage = 0;
+        _ = ReloadEntriesAsync();
     }
 
     [RelayCommand]
@@ -285,8 +298,8 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     [RelayCommand]
     private async Task SearchAsync()
     {
-        _currentPage = 0;
-        await LoadPageAsync(reset: true);
+        _nextPage = 0;
+        await ReloadEntriesAsync();
     }
 
     [RelayCommand]
@@ -305,11 +318,23 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         OnPropertyChanged(nameof(ActiveAdvancedFilterCount));
     }
 
-    [RelayCommand]
-    private async Task LoadMoreAsync()
+    public async Task EnsureMoreEntriesAsync()
     {
-        _currentPage++;
-        await LoadPageAsync(reset: false);
+        if (IsIncrementalLoading || !HasMoreEntries)
+            return;
+
+        IsIncrementalLoading = true;
+        HistoryListStatusMessage = "Loading more records...";
+
+        try
+        {
+            await LoadEntriesAsync(reset: false);
+        }
+        finally
+        {
+            IsIncrementalLoading = false;
+            UpdateHistoryListStatusMessage();
+        }
     }
 
     [RelayCommand]
@@ -414,8 +439,8 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                 CancellationToken.None);
         }
 
-        _currentPage = 0;
-        await LoadPageAsync(reset: true);
+        _nextPage = 0;
+        await ReloadEntriesAsync();
     }
 
     [RelayCommand]
@@ -432,8 +457,8 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
 
         await _historyService.DeleteByIdAsync(row.Entry.Id, CancellationToken.None);
 
-        _currentPage = 0;
-        await LoadPageAsync(reset: true);
+        _nextPage = 0;
+        await ReloadEntriesAsync();
     }
 
     [RelayCommand]
@@ -462,30 +487,50 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     // Internal
     // -------------------------------------------------------------------------
 
-    private async Task LoadPageAsync(bool reset)
+    private async Task ReloadEntriesAsync()
+    {
+        Entries.Clear();
+        SelectedEntry = null;
+        _nextPage = 0;
+        _queryTotalCount = 0;
+        TotalCount = 0;
+        ResultCountLabel = string.Empty;
+        HistoryListStatusMessage = string.Empty;
+
+        await LoadEntriesAsync(reset: true);
+    }
+
+    private async Task LoadEntriesAsync(bool reset)
     {
         if (IsLoading) return;
         IsLoading = true;
         ErrorMessage = null;
 
-        if (reset)
-        {
-            Entries.Clear();
-            SelectedEntry = null;
-        }
-
         try
         {
             await RefreshEnvironmentOptionsAsync();
-            var filter = BuildFilter();
+
+            var pageSize = reset ? InitialChunkSize : IncrementalChunkSize;
+            var filter = BuildFilter(_nextPage, pageSize);
+
             var (entries, total) = await _historyService.QueryAsync(filter, CancellationToken.None);
+            _queryTotalCount = total;
             TotalCount = total;
 
             foreach (var e in entries)
                 Entries.Add(new HistoryEntryRowViewModel(e));
 
+            if (entries.Count > 0)
+                _nextPage++;
+
             if (reset)
                 SelectedEntry = Entries.FirstOrDefault();
+
+            ResultCountLabel = TotalCount > 0
+                ? $"Showing {Entries.Count} of {TotalCount} results"
+                : string.Empty;
+            UpdateHistoryListStatusMessage();
+            OnPropertyChanged(nameof(HasMoreEntries));
         }
         catch (Exception ex)
         {
@@ -495,6 +540,20 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         {
             IsLoading = false;
         }
+    }
+
+    private void UpdateHistoryListStatusMessage()
+    {
+        if (IsIncrementalLoading)
+        {
+            HistoryListStatusMessage = "Loading more records...";
+            return;
+        }
+
+        if (!HasMoreEntries && Entries.Count > 0)
+            HistoryListStatusMessage = "You've reached the end of history.";
+        else
+            HistoryListStatusMessage = string.Empty;
     }
 
     private void QueuePurgeConfirmation(
@@ -545,13 +604,13 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                    string.Equals(option.Name, name, StringComparison.OrdinalIgnoreCase));
     }
 
-    private HistoryFilter BuildFilter()
+    private HistoryFilter BuildFilter(int page, int pageSize)
     {
         var adv = AdvancedSearch;
         return new HistoryFilter
         {
-            Page = _currentPage,
-            PageSize = PageSize,
+            Page = page,
+            PageSize = pageSize,
             NewestFirst = true,
             GlobalSearch = string.IsNullOrWhiteSpace(GlobalSearchText) ? null : GlobalSearchText.Trim(),
             EnvironmentName = string.Equals(SelectedEnvironmentOption?.Name, AllEnvironmentsOption, StringComparison.Ordinal)
@@ -572,24 +631,26 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
 
     public void OpenGlobal()
     {
+        var wasOpen = IsOpen;
         _scopedRequestId = null;
         _scopedRequestName = null;
         OnPropertyChanged(nameof(IsRequestScoped));
         OnPropertyChanged(nameof(ScopeLabel));
         IsOpen = true;
-        _currentPage = 0;
-        _ = LoadPageAsync(reset: true);
+        if (wasOpen)
+            _ = ReloadEntriesAsync();
     }
 
     public void OpenForRequest(Guid requestId, string? requestName)
     {
+        var wasOpen = IsOpen;
         _scopedRequestId = requestId;
         _scopedRequestName = requestName;
         OnPropertyChanged(nameof(IsRequestScoped));
         OnPropertyChanged(nameof(ScopeLabel));
         IsOpen = true;
-        _currentPage = 0;
-        _ = LoadPageAsync(reset: true);
+        if (wasOpen)
+            _ = ReloadEntriesAsync();
     }
 
     private async Task RefreshEnvironmentOptionsAsync()
