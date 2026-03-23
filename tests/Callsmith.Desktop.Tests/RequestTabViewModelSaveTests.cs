@@ -332,6 +332,11 @@ public sealed class RequestTabViewModelSaveTests
             RequestId = requestId,
             SentAt = new DateTimeOffset(2026, 3, 23, 12, 0, 0, TimeSpan.Zero),
             EnvironmentName = "dev",
+            ConfiguredSnapshot = new ConfiguredRequestSnapshot
+            {
+                Method = "GET",
+                Url = "https://api.example.com/users",
+            },
             ResponseSnapshot = new ResponseSnapshot
             {
                 StatusCode = 201,
@@ -339,6 +344,7 @@ public sealed class RequestTabViewModelSaveTests
                 Headers = new Dictionary<string, string> { ["Content-Type"] = "application/json" },
                 Body = "{\"env\":\"dev\"}",
                 FinalUrl = "https://api.example.com/dev",
+                BodySizeBytes = 13,
                 ElapsedMs = 42,
             },
         };
@@ -384,6 +390,7 @@ public sealed class RequestTabViewModelSaveTests
     {
         var requestId = Guid.NewGuid();
         var historyService = Substitute.For<IHistoryService>();
+        var prodLookupRequested = false;
         historyService
             .GetLatestForRequestInEnvironmentAsync(requestId, "dev", Arg.Any<CancellationToken>())
             .Returns(new HistoryEntry
@@ -391,6 +398,11 @@ public sealed class RequestTabViewModelSaveTests
                 RequestId = requestId,
                 SentAt = new DateTimeOffset(2026, 3, 23, 12, 0, 0, TimeSpan.Zero),
                 EnvironmentName = "dev",
+                ConfiguredSnapshot = new ConfiguredRequestSnapshot
+                {
+                    Method = "GET",
+                    Url = "https://api.example.com/users",
+                },
                 ResponseSnapshot = new ResponseSnapshot
                 {
                     StatusCode = 200,
@@ -398,12 +410,17 @@ public sealed class RequestTabViewModelSaveTests
                     Headers = new Dictionary<string, string>(),
                     Body = "dev-response",
                     FinalUrl = "https://api.example.com/dev",
+                    BodySizeBytes = 12,
                     ElapsedMs = 5,
                 },
             });
         historyService
             .GetLatestForRequestInEnvironmentAsync(requestId, "prod", Arg.Any<CancellationToken>())
-            .Returns((HistoryEntry?)null);
+            .Returns(_ =>
+            {
+                prodLookupRequested = true;
+                return (HistoryEntry?)null;
+            });
 
         var sut = new RequestTabViewModel(
             new TransportRegistry(),
@@ -430,6 +447,7 @@ public sealed class RequestTabViewModelSaveTests
 
         sut.SetEnvironment(new EnvironmentModel { FilePath = "prod.env.callsmith", Name = "prod", Variables = [] });
 
+        await AssertEventuallyAsync(() => prodLookupRequested);
         await AssertEventuallyAsync(() => sut.Response is null && !sut.IsResponseFromHistory);
 
         await historyService.Received(1)
