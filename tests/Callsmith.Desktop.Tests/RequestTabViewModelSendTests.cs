@@ -1,6 +1,7 @@
 using System.Net.Http;
 using Callsmith.Core;
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
 using Callsmith.Desktop.ViewModels;
 using CommunityToolkit.Mvvm.Messaging;
@@ -114,6 +115,102 @@ public sealed class RequestTabViewModelSendTests
                     entry.EnvironmentId == environmentId),
                 Arg.Any<CancellationToken>());
         });
+    }
+
+    [Fact]
+    public async Task Send_HistoryVariableBindings_UseSendTimeValues_ForMockDataVariables()
+    {
+        // Arrange
+        var transport = new CapturingTransport();
+        var registry = new TransportRegistry();
+        registry.Register(transport);
+
+        var historyService = Substitute.For<IHistoryService>();
+        HistoryEntry? recordedEntry = null;
+        historyService
+            .RecordAsync(Arg.Do<HistoryEntry>(e => recordedEntry = e), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        var mockEmailEntry = MockDataCatalog.All.First(e =>
+            e.Category == "Internet" && e.Field == "Email");
+
+        var evaluator = Substitute.For<IDynamicVariableEvaluator>();
+        evaluator
+            .ResolveAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
+                Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new ResolvedEnvironment
+            {
+                Variables = new Dictionary<string, string>(),
+                MockGenerators = new Dictionary<string, MockDataEntry>
+                {
+                    ["mockEmail"] = mockEmailEntry,
+                },
+            });
+
+        var sut = new RequestTabViewModel(
+            registry,
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { },
+            evaluator,
+            historyService);
+
+        sut.SetGlobalEnvironment(new EnvironmentModel
+        {
+            FilePath = "global.env.callsmith",
+            Name = "Global",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "mockEmail",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.MockData,
+                    MockDataCategory = "Internet",
+                    MockDataField = "Email",
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/test.callsmith",
+            Name = "test",
+            Method = HttpMethod.Post,
+            Url = "https://api.example.com/users",
+            BodyType = CollectionRequest.BodyTypes.Json,
+            Body = "{{mockEmail}}",
+        });
+
+        // Act
+        await sut.SendCommand.ExecuteAsync(null);
+
+        // Assert — wait for the fire-and-forget history recording to complete.
+        await AssertEventuallyAsync(async () =>
+        {
+            await historyService.Received(1).RecordAsync(
+                Arg.Any<HistoryEntry>(),
+                Arg.Any<CancellationToken>());
+        });
+
+        recordedEntry.Should().NotBeNull();
+
+        // The transport received the resolved body (the generated email address).
+        var sentBody = transport.LastRequest!.Body;
+        sentBody.Should().NotBeNullOrWhiteSpace();
+
+        // The history binding for {{mockEmail}} must be the same value that was sent —
+        // not a freshly re-generated value produced after the request completed.
+        var emailBinding = recordedEntry!.VariableBindings
+            .FirstOrDefault(b => b.Token == "{{mockEmail}}");
+        emailBinding.Should().NotBeNull("the mock-data variable should be recorded in history");
+        emailBinding!.ResolvedValue.Should().Be(sentBody,
+            "the history binding must reflect what was actually transmitted, not a re-generated value");
     }
 
     private static async Task AssertEventuallyAsync(Func<Task> assertion, int retries = 50, int delayMs = 20)
