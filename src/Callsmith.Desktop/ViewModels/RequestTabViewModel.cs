@@ -1019,13 +1019,16 @@ public sealed partial class RequestTabViewModel : ObservableObject
         try
         {
             var env = await BuildMergedVarsAsync(ct);
-            var headers = ResolveHeaders(Headers.GetEnabledPairs(), env.Variables);
+            var secretNames = BuildSecretVarNames();
+            var sentBindings = new List<VariableBinding>();
+
+            var headers = ResolveHeaders(Headers.GetEnabledPairs(), env.Variables, env.MockGenerators, secretNames, sentBindings);
 
             var pathParamValues = PathParams.GetEnabledPairs()
                 .Where(p => !string.IsNullOrWhiteSpace(p.Value))
                 .ToDictionary(
                     p => p.Key,
-                    p => VariableSubstitutionService.Substitute(p.Value, env) ?? p.Value);
+                    p => VariableSubstitutionService.SubstituteCollecting(p.Value, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Value);
 
             var baseUrl = GetBaseUrl(Url);
             var requestUrl = PathTemplateHelper.ApplyPathParams(baseUrl, pathParamValues);
@@ -1033,21 +1036,21 @@ public sealed partial class RequestTabViewModel : ObservableObject
             // Substitute variables in query param keys/values BEFORE URL-encoding.
             var substitutedQueryParams = QueryParams.GetEnabledPairs()
                 .Select(p => new KeyValuePair<string, string>(
-                    VariableSubstitutionService.Substitute(p.Key, env) ?? p.Key,
-                    VariableSubstitutionService.Substitute(p.Value, env) ?? p.Value))
+                    VariableSubstitutionService.SubstituteCollecting(p.Key, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Key,
+                    VariableSubstitutionService.SubstituteCollecting(p.Value, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Value))
                 .ToList();
 
             requestUrl = QueryStringHelper.ApplyQueryParams(requestUrl, substitutedQueryParams);
 
-            ApplyAuthHeaders(headers, requestUrl, env.Variables, out requestUrl);
+            ApplyAuthHeaders(headers, requestUrl, env.Variables, out requestUrl, env.MockGenerators, secretNames, sentBindings);
 
             // Substitute any remaining {{tokens}} in the base URL / path.
-            requestUrl = VariableSubstitutionService.Substitute(requestUrl, env) ?? requestUrl;
+            requestUrl = VariableSubstitutionService.SubstituteCollecting(requestUrl, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? requestUrl;
 
             var resolvedBody = SelectedBodyType != CollectionRequest.BodyTypes.None
                 && SelectedBodyType != CollectionRequest.BodyTypes.Form
                 && !string.IsNullOrEmpty(Body)
-                ? VariableSubstitutionService.Substitute(Body, env) ?? Body
+                ? VariableSubstitutionService.SubstituteCollecting(Body, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? Body
                 : null;
 
             // For form-encoded bodies, build the URL-encoded string from FormParams.
@@ -1055,8 +1058,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
             {
                 var formPairs = FormParams.GetEnabledPairs()
                     .Select(p => new KeyValuePair<string, string>(
-                        VariableSubstitutionService.Substitute(p.Key, env) ?? p.Key,
-                        VariableSubstitutionService.Substitute(p.Value, env) ?? p.Value))
+                        VariableSubstitutionService.SubstituteCollecting(p.Key, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Key,
+                        VariableSubstitutionService.SubstituteCollecting(p.Value, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Value))
                     .ToList();
                 if (formPairs.Count > 0)
                     resolvedBody = string.Join("&",
@@ -1080,7 +1083,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 var sentAt = DateTimeOffset.UtcNow - (Response?.Elapsed ?? TimeSpan.Zero);
 
                 if (_historyService is not null && Response is not null)
-                    _ = RecordHistoryAsync(env, Response, requestUrl, sentAt);
+                    _ = RecordHistoryAsync(env, Response, requestUrl, sentAt, sentBindings);
 
             // If this is a saved request, update the dynamic variable cache for any
             // environment variables that reference this request, so subsequent resolutions
@@ -1386,16 +1389,27 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     private static Dictionary<string, string> ResolveHeaders(
         IEnumerable<KeyValuePair<string, string>> source,
-        IReadOnlyDictionary<string, string> vars)
+        IReadOnlyDictionary<string, string> vars,
+        IReadOnlyDictionary<string, MockDataEntry>? mockGenerators = null,
+        IReadOnlySet<string>? secretVariableNames = null,
+        IList<VariableBinding>? collector = null)
     {
         var resolved = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var pair in source)
         {
-            var key = VariableSubstitutionService.Substitute(pair.Key, vars) ?? pair.Key;
-            if (string.IsNullOrWhiteSpace(key))
-                continue;
+            string key, value;
+            if (collector is not null && secretVariableNames is not null)
+            {
+                key = VariableSubstitutionService.SubstituteCollecting(pair.Key, vars, secretVariableNames, collector, mockGenerators) ?? pair.Key;
+                value = VariableSubstitutionService.SubstituteCollecting(pair.Value, vars, secretVariableNames, collector, mockGenerators) ?? pair.Value;
+            }
+            else
+            {
+                key = VariableSubstitutionService.Substitute(pair.Key, vars) ?? pair.Key;
+                value = VariableSubstitutionService.Substitute(pair.Value, vars) ?? pair.Value;
+            }
 
-            var value = VariableSubstitutionService.Substitute(pair.Value, vars) ?? pair.Value;
+            if (string.IsNullOrWhiteSpace(key)) continue;
             resolved[key] = value;
         }
 
@@ -1406,26 +1420,35 @@ public sealed partial class RequestTabViewModel : ObservableObject
         Dictionary<string, string> headers,
         string requestUrl,
         IReadOnlyDictionary<string, string> vars,
-        out string url)
+        out string url,
+        IReadOnlyDictionary<string, MockDataEntry>? mockGenerators = null,
+        IReadOnlySet<string>? secretVariableNames = null,
+        IList<VariableBinding>? collector = null)
     {
         url = requestUrl;
+
+        string Resolve(string? template) =>
+            collector is not null && secretVariableNames is not null
+                ? VariableSubstitutionService.SubstituteCollecting(template, vars, secretVariableNames, collector, mockGenerators) ?? template ?? string.Empty
+                : VariableSubstitutionService.Substitute(template, vars) ?? template ?? string.Empty;
+
         switch (AuthType)
         {
             case AuthConfig.AuthTypes.Bearer when !string.IsNullOrEmpty(AuthToken):
-                var token = VariableSubstitutionService.Substitute(AuthToken, vars) ?? AuthToken;
+                var token = Resolve(AuthToken);
                 headers["Authorization"] = $"Bearer {token}";
                 break;
             case AuthConfig.AuthTypes.Basic when !string.IsNullOrEmpty(AuthUsername):
-                var username = VariableSubstitutionService.Substitute(AuthUsername, vars) ?? AuthUsername;
-                var password = VariableSubstitutionService.Substitute(AuthPassword, vars) ?? AuthPassword;
+                var username = Resolve(AuthUsername);
+                var password = Resolve(AuthPassword);
                 var encoded = Convert.ToBase64String(
                     Encoding.UTF8.GetBytes($"{username}:{password}"));
                 headers["Authorization"] = $"Basic {encoded}";
                 break;
             case AuthConfig.AuthTypes.ApiKey when !string.IsNullOrEmpty(AuthApiKeyName)
                                                && !string.IsNullOrEmpty(AuthApiKeyValue):
-                var resolvedName = VariableSubstitutionService.Substitute(AuthApiKeyName, vars) ?? AuthApiKeyName;
-                var resolvedValue = VariableSubstitutionService.Substitute(AuthApiKeyValue, vars) ?? AuthApiKeyValue;
+                var resolvedName = Resolve(AuthApiKeyName);
+                var resolvedValue = Resolve(AuthApiKeyValue);
                 if (string.IsNullOrWhiteSpace(resolvedName))
                     break;
 
@@ -1548,16 +1571,25 @@ public sealed partial class RequestTabViewModel : ObservableObject
         ResolvedEnvironment env,
         ResponseModel response,
         string resolvedUrl,
-        DateTimeOffset sentAt)
+        DateTimeOffset sentAt,
+        IReadOnlyList<VariableBinding>? sentBindings = null)
     {
         try
         {
             var secretNames = BuildSecretVarNames();
             var bindings = new List<VariableBinding>();
 
+            // Seed with the bindings captured at send time so that mock-data and
+            // response-body variables reflect the exact values that were transmitted.
+            if (sentBindings is not null)
+                bindings.AddRange(sentBindings);
+
+            // Also collect from all fields (including disabled ones) using only the
+            // static/pre-resolved variables — no mock generators — so that disabled
+            // fields are documented but mock variables are not re-generated here.
             void Collect(string? template) =>
                 VariableSubstitutionService.SubstituteCollecting(
-                    template, env.Variables, secretNames, bindings, env.MockGenerators);
+                    template, env.Variables, secretNames, bindings, mockGenerators: null);
 
             Collect(Url);
             foreach (var p in QueryParams.GetAllKv()) { Collect(p.Key); Collect(p.Value); }
