@@ -43,6 +43,7 @@ public sealed class CollectionsViewModelRenameTests
             recent,
             import,
             prefs,
+            Substitute.For<IHistoryService>(),
             messenger ?? new WeakReferenceMessenger(),
             NullLogger<CollectionsViewModel>.Instance);
     }
@@ -383,6 +384,7 @@ public sealed class CollectionsViewModelRenameTests
             Substitute.For<IRecentCollectionsService>(),
             Substitute.For<ICollectionImportService>(),
             preferencesService,
+            Substitute.For<IHistoryService>(),
             new WeakReferenceMessenger(),
             NullLogger<CollectionsViewModel>.Instance);
 

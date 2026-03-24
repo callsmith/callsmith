@@ -27,6 +27,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     private readonly IRecentCollectionsService _recentCollectionsService;
     private readonly ICollectionImportService _importService;
     private readonly ICollectionPreferencesService _preferencesService;
+    private readonly IHistoryService _historyService;
     private readonly ILogger<CollectionsViewModel> _logger;
 
     // Cancels any in-flight LoadCollectionAsync when a newer one starts.
@@ -126,6 +127,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         IRecentCollectionsService recentCollectionsService,
         ICollectionImportService importService,
         ICollectionPreferencesService preferencesService,
+        IHistoryService historyService,
         IMessenger messenger,
         ILogger<CollectionsViewModel> logger)
         : base(messenger)
@@ -134,10 +136,12 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         ArgumentNullException.ThrowIfNull(recentCollectionsService);
         ArgumentNullException.ThrowIfNull(importService);
         ArgumentNullException.ThrowIfNull(preferencesService);
+        ArgumentNullException.ThrowIfNull(historyService);
         _collectionService = collectionService;
         _recentCollectionsService = recentCollectionsService;
         _importService = importService;
         _preferencesService = preferencesService;
+        _historyService = historyService;
         _logger = logger;
         IsActive = true;
 
@@ -723,6 +727,9 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         CollectionPath = path;
         HasCollection = true;
         IsBrunoCollection = BrunoDetector.IsBrunoCollection(path);
+
+        // Switch the history database to the one associated with this collection.
+        await _historyService.SetCollectionAsync(path, cts.Token);
 
         var rootNode = CollectionTreeItemViewModel.FromFolder(root, parent: null, isRoot: true);
 

@@ -44,6 +44,7 @@ public sealed class CollectionsViewModelDeleteTests
             recent,
             import,
             prefs,
+            Substitute.For<IHistoryService>(),
             messenger ?? new WeakReferenceMessenger(),
             NullLogger<CollectionsViewModel>.Instance);
     }
