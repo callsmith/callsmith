@@ -12,7 +12,6 @@ using Callsmith.Data;
 using Callsmith.Desktop.ViewModels;
 using Callsmith.Desktop.Views;
 using CommunityToolkit.Mvvm.Messaging;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -103,8 +102,6 @@ public partial class App : Application
 
         // History
         services.AddSingleton<IHistoryEncryptionService, AesHistoryEncryptionService>();
-        services.AddDbContextFactory<CallsmithDbContext>(options =>
-            options.UseSqlite($"Data Source={CallsmithDbContext.GetDbPath()}"));
         services.AddSingleton<IHistoryService, HistoryRepository>();
 
         // ViewModels

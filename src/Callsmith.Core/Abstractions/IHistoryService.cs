@@ -6,9 +6,20 @@ namespace Callsmith.Core.Abstractions;
 /// Stores, queries, and manages the permanent request history log.
 /// Every HTTP request sent by the application is recorded as a <see cref="HistoryEntry"/>.
 /// History is permanent by default; deletion is always user-initiated.
+/// Each collection maintains its own isolated history database.
 /// </summary>
 public interface IHistoryService
 {
+    // -------------------------------------------------------------------------
+    // Collection scope
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Switches the active collection. All subsequent read/write operations will target
+    /// the history database associated with the specified collection folder.
+    /// Pass <see langword="null"/> or an empty string to deactivate history (e.g. no collection open).
+    /// </summary>
+    Task SetCollectionAsync(string? collectionFolderPath, CancellationToken ct = default);
     // -------------------------------------------------------------------------
     // Write
     // -------------------------------------------------------------------------

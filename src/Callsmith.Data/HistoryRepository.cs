@@ -1,9 +1,11 @@
+using System.Collections.Concurrent;
 using System.Data;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -11,6 +13,8 @@ namespace Callsmith.Data;
 
 /// <summary>
 /// SQLite-backed implementation of <see cref="IHistoryService"/>.
+/// Each collection has its own isolated SQLite database; this repository switches
+/// target databases when <see cref="SetCollectionAsync"/> is called.
 /// </summary>
 public sealed class HistoryRepository : IHistoryService
 {
@@ -23,21 +27,53 @@ public sealed class HistoryRepository : IHistoryService
     private const string MaskedValue = "****";
     private const string HistoryTableName = "HistoryEntries";
 
-    private static readonly SemaphoreSlim SchemaLock = new(1, 1);
-    private static volatile bool _schemaChecked;
+    private readonly SemaphoreSlim _schemaLock = new(1, 1);
+    private readonly ConcurrentDictionary<string, byte> _checkedDbPaths = new(StringComparer.OrdinalIgnoreCase);
 
-    private readonly IDbContextFactory<CallsmithDbContext> _dbFactory;
     private readonly IHistoryEncryptionService _encryption;
     private readonly ILogger<HistoryRepository> _logger;
 
+    // Null when no collection is active; set by SetCollectionAsync.
+    private string? _currentDbPath;
+
     public HistoryRepository(
-        IDbContextFactory<CallsmithDbContext> dbFactory,
         IHistoryEncryptionService encryption,
         ILogger<HistoryRepository> logger)
     {
-        _dbFactory = dbFactory;
         _encryption = encryption;
         _logger = logger;
+    }
+
+    /// <inheritdoc/>
+    public Task SetCollectionAsync(string? collectionFolderPath, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(collectionFolderPath))
+        {
+            _currentDbPath = null;
+        }
+        else
+        {
+            var dbPath = CallsmithDbContext.GetDbPath(collectionFolderPath);
+            var dir = Path.GetDirectoryName(dbPath)!;
+            Directory.CreateDirectory(dir);
+            _currentDbPath = dbPath;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    // Creates a DbContext pointed at the current collection's database.
+    private CallsmithDbContext CreateDbContext()
+    {
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = _currentDbPath,
+        }.ToString();
+
+        var options = new DbContextOptionsBuilder<CallsmithDbContext>()
+            .UseSqlite(connectionString)
+            .Options;
+        return new CallsmithDbContext(options);
     }
 
     /// <inheritdoc/>
@@ -45,9 +81,11 @@ public sealed class HistoryRepository : IHistoryService
     {
         ArgumentNullException.ThrowIfNull(entry);
 
+        if (_currentDbPath is null) return;
+
         var entity = ToEntity(entry);
 
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        await using var db = CreateDbContext();
         await EnsureHistorySchemaAsync(db, ct);
 
         db.HistoryEntries.Add(entity);
@@ -61,7 +99,9 @@ public sealed class HistoryRepository : IHistoryService
     {
         ArgumentNullException.ThrowIfNull(filter);
 
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        if (_currentDbPath is null) return ([], 0);
+
+        await using var db = CreateDbContext();
         await EnsureHistorySchemaAsync(db, ct);
 
         var query = db.HistoryEntries.AsNoTracking().AsQueryable();
@@ -88,7 +128,9 @@ public sealed class HistoryRepository : IHistoryService
     /// <inheritdoc/>
     public async Task<HistoryEntry?> GetLatestForRequestAsync(Guid requestId, CancellationToken ct = default)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        if (_currentDbPath is null) return null;
+
+        await using var db = CreateDbContext();
         await EnsureHistorySchemaAsync(db, ct);
 
         var entity = await db.HistoryEntries
@@ -106,7 +148,9 @@ public sealed class HistoryRepository : IHistoryService
         Guid? environmentId,
         CancellationToken ct = default)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        if (_currentDbPath is null) return null;
+
+        await using var db = CreateDbContext();
         await EnsureHistorySchemaAsync(db, ct);
 
         var query = db.HistoryEntries
@@ -132,7 +176,9 @@ public sealed class HistoryRepository : IHistoryService
     /// <inheritdoc/>
     public async Task<HistoryEntry?> GetByIdAsync(long id, CancellationToken ct = default)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        if (_currentDbPath is null) return null;
+
+        await using var db = CreateDbContext();
         await EnsureHistorySchemaAsync(db, ct);
 
         var entity = await db.HistoryEntries
@@ -145,7 +191,9 @@ public sealed class HistoryRepository : IHistoryService
     /// <inheritdoc/>
     public async Task<long> GetCountAsync(CancellationToken ct = default)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        if (_currentDbPath is null) return 0;
+
+        await using var db = CreateDbContext();
         await EnsureHistorySchemaAsync(db, ct);
         return await db.HistoryEntries.LongCountAsync(ct);
     }
@@ -164,7 +212,9 @@ public sealed class HistoryRepository : IHistoryService
         Guid? requestId = null,
         CancellationToken ct = default)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        if (_currentDbPath is null) return [];
+
+        await using var db = CreateDbContext();
         await EnsureHistorySchemaAsync(db, ct);
 
         var query = db.HistoryEntries
@@ -243,7 +293,9 @@ public sealed class HistoryRepository : IHistoryService
     /// <inheritdoc/>
     public async Task DeleteByIdAsync(long id, CancellationToken ct = default)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        if (_currentDbPath is null) return;
+
+        await using var db = CreateDbContext();
         await EnsureHistorySchemaAsync(db, ct);
 
         await db.HistoryEntries
@@ -258,7 +310,9 @@ public sealed class HistoryRepository : IHistoryService
         Guid? requestId = null,
         CancellationToken ct = default)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        if (_currentDbPath is null) return;
+
+        await using var db = CreateDbContext();
         await EnsureHistorySchemaAsync(db, ct);
         var cutoffUnixMs = cutoff.ToUnixTimeMilliseconds();
         var query = db.HistoryEntries
@@ -280,7 +334,9 @@ public sealed class HistoryRepository : IHistoryService
         Guid? requestId = null,
         CancellationToken ct = default)
     {
-        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        if (_currentDbPath is null) return;
+
+        await using var db = CreateDbContext();
         await EnsureHistorySchemaAsync(db, ct);
         var query = db.HistoryEntries.AsQueryable();
 
@@ -507,12 +563,15 @@ public sealed class HistoryRepository : IHistoryService
 
     private async Task EnsureHistorySchemaAsync(CallsmithDbContext db, CancellationToken ct)
     {
-        if (_schemaChecked) return;
+        // _currentDbPath is guaranteed non-null by callers that already checked it.
+        var dbPath = _currentDbPath!;
 
-        await SchemaLock.WaitAsync(ct);
+        if (_checkedDbPaths.ContainsKey(dbPath)) return;
+
+        await _schemaLock.WaitAsync(ct);
         try
         {
-            if (_schemaChecked) return;
+            if (_checkedDbPaths.ContainsKey(dbPath)) return;
 
             await db.Database.EnsureCreatedAsync(ct);
 
@@ -562,11 +621,11 @@ public sealed class HistoryRepository : IHistoryService
                 $"CREATE INDEX IF NOT EXISTS IX_{HistoryTableName}_SentAtUnixMs ON {HistoryTableName} (SentAtUnixMs);";
             await index.ExecuteNonQueryAsync(ct);
 
-            _schemaChecked = true;
+            _checkedDbPaths.TryAdd(dbPath, 0);
         }
         finally
         {
-            SchemaLock.Release();
+            _schemaLock.Release();
         }
     }
 
