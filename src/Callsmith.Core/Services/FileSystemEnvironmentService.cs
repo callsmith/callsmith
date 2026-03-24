@@ -162,7 +162,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
             throw new InvalidOperationException(
                 $"An environment named '{name}' already exists in '{collectionFolderPath}'.");
 
-        var model = new EnvironmentModel { FilePath = filePath, Name = name };
+        var model = new EnvironmentModel { FilePath = filePath, Name = name, EnvironmentId = Guid.NewGuid() };
         await SaveEnvironmentAsync(model, ct).ConfigureAwait(false);
         return model;
     }
@@ -244,6 +244,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         {
             FilePath = newFilePath,
             Name = newName,
+            EnvironmentId = Guid.NewGuid(),
             Variables = source.Variables
                 .Select(v => v.IsSecret
                     ? new EnvironmentVariable { Name = v.Name, Value = string.Empty, VariableType = v.VariableType, IsSecret = true, Segments = v.Segments }
@@ -295,7 +296,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
 
         var filePath = GetGlobalFilePath(collectionFolderPath);
         if (!File.Exists(filePath))
-            return new EnvironmentModel { FilePath = filePath, Name = "Global", Variables = [] };
+            return new EnvironmentModel { FilePath = filePath, Name = "Global", Variables = [], EnvironmentId = Guid.NewGuid() };
 
         return await LoadEnvironmentAsync(filePath, ct).ConfigureAwait(false);
     }
@@ -394,6 +395,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
     private static EnvironmentModel DtoToModel(string filePath, EnvironmentDto dto) => new()
     {
         FilePath = filePath,
+        EnvironmentId = dto.EnvironmentId,
         Name = dto.Name ?? Path.GetFileNameWithoutExtension(filePath),
         Color = dto.Color,
         GlobalPreviewEnvironmentName = dto.GlobalPreviewEnvironmentName,
@@ -418,6 +420,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
 
     private static EnvironmentDto ModelToDto(EnvironmentModel model) => new()
     {
+        EnvironmentId = model.EnvironmentId,
         Name = model.Name,
         Color = model.Color,
         GlobalPreviewEnvironmentName = model.GlobalPreviewEnvironmentName,
@@ -446,6 +449,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
 
     private sealed class EnvironmentDto
     {
+        public Guid EnvironmentId { get; init; }
         public string? Name { get; init; }
         public string? Color { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

@@ -262,6 +262,7 @@ public sealed class CollectionImportService : ICollectionImportService
             Name = imported.Name,
             Variables = variables,
             Color = imported.Color,
+            EnvironmentId = Guid.NewGuid(),
         };
 
         await _environmentService.SaveEnvironmentAsync(model, ct).ConfigureAwait(false);

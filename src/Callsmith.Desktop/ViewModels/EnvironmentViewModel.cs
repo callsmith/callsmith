@@ -38,6 +38,7 @@ public sealed partial class EnvironmentViewModel : ObservableRecipient,
         FilePath = string.Empty,
         Name = "(no environment)",
         Variables = [],
+        EnvironmentId = Guid.NewGuid(),
     };
 
     [ObservableProperty]

@@ -9,6 +9,9 @@ public sealed record EnvironmentModel
     /// <summary>The file path where this environment is stored on disk.</summary>
     public required string FilePath { get; init; }
 
+    /// <summary>Stable unique identifier for this environment, persisted alongside the environment data.</summary>
+    public required Guid EnvironmentId { get; init; }
+
     /// <summary>Display name of the environment (e.g. "dev", "staging", "production").</summary>
     public required string Name { get; init; }
 

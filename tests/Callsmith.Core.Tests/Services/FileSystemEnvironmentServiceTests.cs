@@ -116,6 +116,7 @@ public sealed class FileSystemEnvironmentServiceTests : IDisposable
                 new EnvironmentVariable { Name = "BaseUrl", Value = "https://api.example.com" },
                 new EnvironmentVariable { Name = "Token", Value = "secret", IsSecret = true },
             ],
+            EnvironmentId = Guid.NewGuid(),
         };
         await _sut.SaveEnvironmentAsync(original);
 

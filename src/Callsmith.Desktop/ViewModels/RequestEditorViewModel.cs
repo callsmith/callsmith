@@ -32,7 +32,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private readonly ILogger<RequestEditorViewModel> _logger;
 
     private EnvironmentModel? _activeEnvironment;
-    private EnvironmentModel _globalEnvironment = new() { FilePath = string.Empty, Name = "Global", Variables = [] };
+    private EnvironmentModel _globalEnvironment = new() { FilePath = string.Empty, Name = "Global", Variables = [], EnvironmentId = Guid.NewGuid() };
     private string _collectionPath = string.Empty;
     private bool _restoringTabs;
 

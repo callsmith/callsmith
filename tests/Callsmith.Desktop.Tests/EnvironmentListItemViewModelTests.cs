@@ -96,6 +96,7 @@ public sealed class EnvironmentListItemViewModelTests
                     VariableType = EnvironmentVariable.VariableTypes.Static,
                 },
             ],
+            EnvironmentId = Guid.NewGuid(),
         };
 
         return new EnvironmentListItemViewModel(

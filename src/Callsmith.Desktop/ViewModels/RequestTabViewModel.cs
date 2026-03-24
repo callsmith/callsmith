@@ -33,7 +33,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private CollectionRequest? _sourceRequest;
 
     private EnvironmentModel? _activeEnvironment;
-    private EnvironmentModel _globalEnvironment = new() { FilePath = string.Empty, Name = "Global", Variables = [] };
+    private EnvironmentModel _globalEnvironment = new() { FilePath = string.Empty, Name = "Global", Variables = [], EnvironmentId = Guid.NewGuid() };
     private bool _loading;
     private bool _saving;
     private bool _syncingUrl;

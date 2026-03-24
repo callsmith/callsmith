@@ -64,8 +64,8 @@ public sealed class HistoryPanelViewModelTests
         {
             Environments =
             [
-                new EnvironmentModel { Name = "Prod", FilePath = "prod.bru", Variables = [] },
-                new EnvironmentModel { Name = "Dev", FilePath = "dev.bru", Variables = [] },
+                new EnvironmentModel { Name = "Prod", FilePath = "prod.bru", Variables = [], EnvironmentId = Guid.NewGuid() },
+                new EnvironmentModel { Name = "Dev", FilePath = "dev.bru", Variables = [], EnvironmentId = Guid.NewGuid() },
             ],
         };
 

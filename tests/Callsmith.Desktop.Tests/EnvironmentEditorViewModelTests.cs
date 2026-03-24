@@ -37,7 +37,7 @@ public sealed class EnvironmentEditorViewModelTests
             // Only seed the default global env on a freshly-created mock so tests that supply
             // their own service stub don't get their LoadGlobalEnvironmentAsync setup overwritten.
             service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-                   .Returns(new EnvironmentModel { FilePath = GlobalEnvPath, Name = "Global", Variables = [] });
+                   .Returns(new EnvironmentModel { FilePath = GlobalEnvPath, Name = "Global", Variables = [], EnvironmentId = Guid.NewGuid() });
         }
         messenger ??= new WeakReferenceMessenger();
         collectionService ??= Substitute.For<ICollectionService>();
@@ -64,12 +64,13 @@ public sealed class EnvironmentEditorViewModelTests
             Name = name,
             FilePath = path ?? $@"C:\collections\my-api\environment\{name}.env.callsmith",
             Variables = [],
+            EnvironmentId = Guid.NewGuid(),
         };
 
     // Helper: stub LoadGlobalEnvironmentAsync on an existing mock.
     private static void SetupGlobalEnv(IEnvironmentService service) =>
         service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-               .Returns(new EnvironmentModel { FilePath = GlobalEnvPath, Name = "Global", Variables = [] });
+               .Returns(new EnvironmentModel { FilePath = GlobalEnvPath, Name = "Global", Variables = [], EnvironmentId = Guid.NewGuid() });
 
     // ─── CollectionOpenedMessage ──────────────────────────────────────────────
 
@@ -325,6 +326,7 @@ public sealed class EnvironmentEditorViewModelTests
                 [
                     new EnvironmentVariable { Name = "base-url", Value = "https://api.example.com" },
                 ],
+                EnvironmentId = Guid.NewGuid(),
             });
         service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
             .Returns(
@@ -337,6 +339,7 @@ public sealed class EnvironmentEditorViewModelTests
                     [
                         new EnvironmentVariable { Name = "token", Value = "secret-token", IsSecret = true },
                     ],
+                    EnvironmentId = Guid.NewGuid(),
                 },
             ]);
 
@@ -371,6 +374,7 @@ public sealed class EnvironmentEditorViewModelTests
                     [
                         new EnvironmentVariable { Name = "token", Value = "abc" },
                     ],
+                    EnvironmentId = Guid.NewGuid(),
                 },
             ]);
 
@@ -645,6 +649,7 @@ public sealed class EnvironmentEditorViewModelTests
             FilePath = GlobalEnvPath,
             Name = "Global",
             Variables = globalVars,
+            EnvironmentId = Guid.NewGuid(),
         };
 
         var service = Substitute.For<IEnvironmentService>();
@@ -783,6 +788,7 @@ public sealed class EnvironmentEditorViewModelTests
                     ResponsePath = "$.token",
                 },
             ],
+            EnvironmentId = Guid.NewGuid(),
         };
 
         var devModel = new EnvironmentModel
@@ -798,6 +804,7 @@ public sealed class EnvironmentEditorViewModelTests
                     VariableType = EnvironmentVariable.VariableTypes.Static,
                 },
             ],
+            EnvironmentId = Guid.NewGuid(),
         };
 
         var service = Substitute.For<IEnvironmentService>();
@@ -899,6 +906,7 @@ public sealed class EnvironmentEditorViewModelTests
                     VariableType = EnvironmentVariable.VariableTypes.Static,
                 },
             ],
+            EnvironmentId = Guid.NewGuid(),
         };
 
         var devModel = new EnvironmentModel
@@ -914,6 +922,7 @@ public sealed class EnvironmentEditorViewModelTests
                     VariableType = EnvironmentVariable.VariableTypes.Static,
                 },
             ],
+            EnvironmentId = Guid.NewGuid(),
         };
 
         var service = Substitute.For<IEnvironmentService>();
@@ -957,6 +966,7 @@ public sealed class EnvironmentEditorViewModelTests
                     VariableType = EnvironmentVariable.VariableTypes.Static,
                 },
             ],
+            EnvironmentId = Guid.NewGuid(),
         };
 
         var devModel = new EnvironmentModel
@@ -972,6 +982,7 @@ public sealed class EnvironmentEditorViewModelTests
                     VariableType = EnvironmentVariable.VariableTypes.Static,
                 },
             ],
+            EnvironmentId = Guid.NewGuid(),
         };
 
         var service = Substitute.For<IEnvironmentService>();
@@ -1022,11 +1033,12 @@ public sealed class EnvironmentEditorViewModelTests
                     VariableType = EnvironmentVariable.VariableTypes.Static,
                 },
             ],
+            EnvironmentId = Guid.NewGuid(),
         };
 
         var service = Substitute.For<IEnvironmentService>();
         service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-               .Returns(new EnvironmentModel { FilePath = GlobalEnvPath, Name = "Global", Variables = [] });
+               .Returns(new EnvironmentModel { FilePath = GlobalEnvPath, Name = "Global", Variables = [], EnvironmentId = Guid.NewGuid() });
         service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
                .Returns([devModel]);
 
@@ -1068,6 +1080,7 @@ public sealed class EnvironmentEditorViewModelTests
             Name = "Global",
             Variables = [],
             GlobalPreviewEnvironmentName = "dev", // previously saved selection
+            EnvironmentId = Guid.NewGuid(),
         };
 
         var service = Substitute.For<IEnvironmentService>();

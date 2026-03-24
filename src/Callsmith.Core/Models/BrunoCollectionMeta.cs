@@ -21,6 +21,16 @@ public sealed class BrunoCollectionMeta
     public IReadOnlyDictionary<string, string> EnvironmentColors { get; init; }
         = new Dictionary<string, string>();
 
+    /// <summary>
+    /// Maps environment file names (e.g. <c>Dev.bru</c>) to their stable unique identifiers.
+    /// Missing entries mean the environment was created before this field was introduced.
+    /// </summary>
+    public IReadOnlyDictionary<string, Guid> EnvironmentIds { get; init; }
+        = new Dictionary<string, Guid>();
+
+    /// <summary>The stable unique identifier for the collection's global environment.</summary>
+    public Guid? GlobalEnvironmentId { get; init; }
+
     /// <summary>Non-secret variables in the collection's global environment.</summary>
     public IReadOnlyList<GlobalVarEntry> GlobalVariables { get; init; } = [];
 

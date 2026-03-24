@@ -61,8 +61,10 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
             ct.ThrowIfCancellationRequested();
             try
             {
-                var env = await LoadEnvironmentCoreAsync(filePath, ct).ConfigureAwait(false);
-                var color = meta.EnvironmentColors.TryGetValue(Path.GetFileName(filePath), out var c) ? c : null;
+                var fileName = Path.GetFileName(filePath);
+                var color = meta.EnvironmentColors.TryGetValue(fileName, out var c) ? c : null;
+                var id = meta.EnvironmentIds.TryGetValue(fileName, out var g) ? g : Guid.NewGuid();
+                var env = await LoadEnvironmentCoreAsync(filePath, id, ct).ConfigureAwait(false);
                 results.Add(env with { Color = color });
             }
             catch (Exception ex)
@@ -98,18 +100,20 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
     public async Task<EnvironmentModel> LoadEnvironmentAsync(string filePath, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(filePath);
-        var model = await LoadEnvironmentCoreAsync(filePath, ct).ConfigureAwait(false);
         var collectionPath = GetCollectionFolderPath(filePath);
         var meta = await _meta.LoadAsync(collectionPath, ct).ConfigureAwait(false);
-        var color = meta.EnvironmentColors.TryGetValue(Path.GetFileName(filePath), out var c) ? c : null;
+        var fileName = Path.GetFileName(filePath);
+        var id = meta.EnvironmentIds.TryGetValue(fileName, out var g) ? g : Guid.NewGuid();
+        var model = await LoadEnvironmentCoreAsync(filePath, id, ct).ConfigureAwait(false);
+        var color = meta.EnvironmentColors.TryGetValue(fileName, out var c) ? c : null;
         return model with { Color = color };
     }
 
     /// <summary>
     /// Loads an environment from its <c>.bru</c> file and injects secrets, but does not
-    /// consult the app-data meta for color. Used internally when meta is already loaded.
+    /// consult the app-data meta for color or id. Used internally when meta is already loaded.
     /// </summary>
-    private async Task<EnvironmentModel> LoadEnvironmentCoreAsync(string filePath, CancellationToken ct)
+    private async Task<EnvironmentModel> LoadEnvironmentCoreAsync(string filePath, Guid environmentId, CancellationToken ct)
     {
         if (!File.Exists(filePath))
             throw new FileNotFoundException($"Environment file not found: '{filePath}'", filePath);
@@ -135,7 +139,7 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
                 variables.Add(new EnvironmentVariable { Name = kv.Key, Value = kv.Value, IsSecret = true });
         }
 
-        var model = new EnvironmentModel { FilePath = filePath, Name = name, Variables = variables };
+        var model = new EnvironmentModel { FilePath = filePath, Name = name, Variables = variables, EnvironmentId = environmentId };
         return model with { Variables = await InjectSecretsAsync(model, ct).ConfigureAwait(false) };
     }
 
@@ -178,21 +182,25 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
         var content = BuildEnvContent(environment, existing);
         await File.WriteAllTextAsync(environment.FilePath, content, ct).ConfigureAwait(false);
 
-        // Persist env color to app-data meta (Bruno .bru files have no color field).
+        // Persist env color and id to app-data meta (Bruno .bru files have no color or id field).
         var collectionPath = GetCollectionFolderPath(environment.FilePath);
         var meta = await _meta.LoadAsync(collectionPath, ct).ConfigureAwait(false);
         var newColors = new Dictionary<string, string>(meta.EnvironmentColors);
+        var newIds = new Dictionary<string, Guid>(meta.EnvironmentIds);
         var envFileName = Path.GetFileName(environment.FilePath);
         if (environment.Color is not null)
             newColors[envFileName] = environment.Color;
         else
             newColors.Remove(envFileName);
+        newIds[envFileName] = environment.EnvironmentId;
         await _meta.SaveAsync(collectionPath, new BrunoCollectionMeta
         {
             EnvironmentOrder = meta.EnvironmentOrder,
             EnvironmentColors = newColors,
+            EnvironmentIds = newIds,
             GlobalVariables = meta.GlobalVariables,
             GlobalSecretVariableNames = meta.GlobalSecretVariableNames,
+            GlobalEnvironmentId = meta.GlobalEnvironmentId,
         }, ct).ConfigureAwait(false);
 
         _logger.LogDebug("Saved Bruno environment '{Name}' → {Path}", environment.Name, environment.FilePath);
@@ -211,7 +219,7 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
             throw new InvalidOperationException(
                 $"An environment named '{name}' already exists in '{collectionFolderPath}'.");
 
-        var model = new EnvironmentModel { FilePath = filePath, Name = name };
+        var model = new EnvironmentModel { FilePath = filePath, Name = name, EnvironmentId = Guid.NewGuid() };
         await SaveEnvironmentAsync(model, ct).ConfigureAwait(false);
         return model;
     }
@@ -290,6 +298,7 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
         {
             FilePath = newFilePath,
             Name = newName,
+            EnvironmentId = Guid.NewGuid(),
             Variables = source.Variables
                 .Select(v => v.IsSecret
                     ? new EnvironmentVariable { Name = v.Name, Value = string.Empty, VariableType = v.VariableType, IsSecret = true }
@@ -318,8 +327,10 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
         {
             EnvironmentOrder = orderedNames.ToList(),
             EnvironmentColors = meta.EnvironmentColors,
+            EnvironmentIds = meta.EnvironmentIds,
             GlobalVariables = meta.GlobalVariables,
             GlobalSecretVariableNames = meta.GlobalSecretVariableNames,
+            GlobalEnvironmentId = meta.GlobalEnvironmentId,
         }, ct).ConfigureAwait(false);
         _logger.LogDebug("Saved Bruno environment order for '{Path}'", collectionFolderPath);
     }
@@ -450,8 +461,9 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
             GlobalEnvironmentFileName + EnvironmentFileExtension);
 
         var meta = await _meta.LoadAsync(collectionFolderPath, ct).ConfigureAwait(false);
+        var globalId = meta.GlobalEnvironmentId ?? Guid.NewGuid();
         if (meta.GlobalVariables.Count == 0 && meta.GlobalSecretVariableNames.Count == 0)
-            return new EnvironmentModel { FilePath = filePath, Name = "Global", Variables = [] };
+            return new EnvironmentModel { FilePath = filePath, Name = "Global", Variables = [], EnvironmentId = globalId };
 
         var variables = meta.GlobalVariables
             .Select(v => new EnvironmentVariable { Name = v.Name, Value = v.Value })
@@ -459,7 +471,7 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
                 .Select(n => new EnvironmentVariable { Name = n, Value = string.Empty, IsSecret = true }))
             .ToList();
 
-        var model = new EnvironmentModel { FilePath = filePath, Name = "Global", Variables = variables };
+        var model = new EnvironmentModel { FilePath = filePath, Name = "Global", Variables = variables, EnvironmentId = globalId };
         return model with { Variables = await InjectSecretsAsync(model, ct).ConfigureAwait(false) };
     }
 
@@ -487,8 +499,10 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
         {
             EnvironmentOrder = meta.EnvironmentOrder,
             EnvironmentColors = meta.EnvironmentColors,
+            EnvironmentIds = meta.EnvironmentIds,
             GlobalVariables = nonSecretVars,
             GlobalSecretVariableNames = secretNames,
+            GlobalEnvironmentId = globalEnvironment.EnvironmentId,
         }, ct).ConfigureAwait(false);
         _logger.LogDebug("Saved Bruno global environment for '{Path}'", collectionPath);
     }

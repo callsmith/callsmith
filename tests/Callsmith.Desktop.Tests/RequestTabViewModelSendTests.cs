@@ -35,6 +35,7 @@ public sealed class RequestTabViewModelSendTests
                 new EnvironmentVariable { Name = "v", Value = "token" },
                 new EnvironmentVariable { Name = "h", Value = "X-Resolved" },
             ],
+            EnvironmentId = Guid.NewGuid(),
         });
 
         sut.LoadRequest(new CollectionRequest

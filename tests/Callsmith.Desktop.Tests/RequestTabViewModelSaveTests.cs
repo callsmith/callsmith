@@ -362,7 +362,7 @@ public sealed class RequestTabViewModelSaveTests
             null,
             historyService);
 
-        sut.SetEnvironment(new EnvironmentModel { FilePath = "dev.env.callsmith", Name = "dev", Variables = [] });
+        sut.SetEnvironment(new EnvironmentModel { FilePath = "dev.env.callsmith", Name = "dev", Variables = [], EnvironmentId = Guid.NewGuid() });
 
         sut.LoadRequest(new CollectionRequest
         {
@@ -431,7 +431,7 @@ public sealed class RequestTabViewModelSaveTests
             null,
             historyService);
 
-        sut.SetEnvironment(new EnvironmentModel { FilePath = "dev.env.callsmith", Name = "dev", Variables = [] });
+        sut.SetEnvironment(new EnvironmentModel { FilePath = "dev.env.callsmith", Name = "dev", Variables = [], EnvironmentId = Guid.NewGuid() });
         sut.LoadRequest(new CollectionRequest
         {
             FilePath = "c:/tmp/request.callsmith",
@@ -446,7 +446,7 @@ public sealed class RequestTabViewModelSaveTests
 
         await AssertEventuallyAsync(() => string.Equals(sut.Response?.Body, "dev-response", StringComparison.Ordinal));
 
-        sut.SetEnvironment(new EnvironmentModel { FilePath = "prod.env.callsmith", Name = "prod", Variables = [] });
+        sut.SetEnvironment(new EnvironmentModel { FilePath = "prod.env.callsmith", Name = "prod", Variables = [], EnvironmentId = Guid.NewGuid() });
 
         await AssertEventuallyAsync(() => prodLookupRequested);
         await AssertEventuallyAsync(() => sut.Response is null && !sut.IsResponseFromHistory);
