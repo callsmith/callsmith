@@ -437,11 +437,11 @@
               <Border Background="#252526"
                       CornerRadius="4"
                       Padding="10">
-                <TextBlock Text="{Binding DetailConfigured}"
-                           Foreground="#d4d4d4"
-                           FontFamily="Consolas,Cascadia Mono,monospace"
-                           FontSize="12"
-                           TextWrapping="Wrap"/>
+                <SelectableTextBlock Text="{Binding DetailConfigured}"
+                                    Foreground="#d4d4d4"
+                                    FontFamily="Consolas,Cascadia Mono,monospace"
+                                    FontSize="12"
+                                    TextWrapping="Wrap"/>
               </Border>
             </StackPanel>
 
@@ -455,11 +455,11 @@
               <Border Background="#252526"
                       CornerRadius="4"
                       Padding="10">
-                <TextBlock Text="{Binding DetailResolved}"
-                           Foreground="#d4d4d4"
-                           FontFamily="Consolas,Cascadia Mono,monospace"
-                           FontSize="12"
-                           TextWrapping="Wrap"/>
+                <SelectableTextBlock Text="{Binding DetailResolved}"
+                                    Foreground="#d4d4d4"
+                                    FontFamily="Consolas,Cascadia Mono,monospace"
+                                    FontSize="12"
+                                    TextWrapping="Wrap"/>
               </Border>
             </StackPanel>
 
@@ -474,11 +474,11 @@
               <Border Background="#252526"
                       CornerRadius="4"
                       Padding="10">
-                <TextBlock Text="{Binding DetailResponseHeaders}"
-                           Foreground="#9cdcfe"
-                           FontFamily="Consolas,Cascadia Mono,monospace"
-                           FontSize="12"
-                           TextWrapping="Wrap"/>
+                <SelectableTextBlock Text="{Binding DetailResponseHeaders}"
+                                    Foreground="#9cdcfe"
+                                    FontFamily="Consolas,Cascadia Mono,monospace"
+                                    FontSize="12"
+                                    TextWrapping="Wrap"/>
               </Border>
             </StackPanel>
 
