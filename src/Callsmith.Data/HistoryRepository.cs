@@ -434,7 +434,12 @@ public sealed class HistoryRepository : IHistoryService
             query = query.Where(e =>
                 e.RequestName != null && e.RequestName.Contains(filter.RequestName));
 
-        if (filter.EnvironmentId.HasValue)
+        if (filter.NoEnvironment)
+        {
+            query = query.Where(e => e.EnvironmentId == null &&
+                (e.EnvironmentName == null || e.EnvironmentName == string.Empty));
+        }
+        else if (filter.EnvironmentId.HasValue)
         {
             query = query.Where(e => e.EnvironmentId == filter.EnvironmentId.Value);
         }

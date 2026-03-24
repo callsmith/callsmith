@@ -460,6 +460,78 @@ public sealed class HistoryPanelViewModelTests
         capturedFilters.Last().EnvironmentName.Should().BeNull();
     }
 
+    [Fact]
+    public async Task OpenGlobal_IncludesNoEnvironmentOption_WhenEntriesWithoutEnvironmentExist()
+    {
+        List<HistoryEntry> entries =
+        [
+            CreateEntry(new AuthConfig()) with { Id = 1, EnvironmentName = "Dev" },
+            CreateEntry(new AuthConfig()) with { Id = 2, EnvironmentName = null },
+        ];
+
+        var historyService = Substitute.For<IHistoryService>();
+        historyService.QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>((entries, entries.Count)));
+
+        var sut = new HistoryPanelViewModel(historyService);
+        sut.OpenGlobal();
+
+        await AssertEventuallyAsync(() => sut.EnvironmentOptions.Count >= 3);
+
+        sut.EnvironmentOptions.Select(o => o.Name).Should().ContainInOrder(
+            "All environments",
+            "No environment",
+            "Dev");
+    }
+
+    [Fact]
+    public async Task OpenGlobal_DoesNotIncludeNoEnvironmentOption_WhenAllEntriesHaveEnvironment()
+    {
+        List<HistoryEntry> entries =
+        [
+            CreateEntry(new AuthConfig()) with { Id = 1, EnvironmentName = "Dev" },
+            CreateEntry(new AuthConfig()) with { Id = 2, EnvironmentName = "Prod" },
+        ];
+
+        var historyService = Substitute.For<IHistoryService>();
+        historyService.QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>((entries, entries.Count)));
+
+        var sut = new HistoryPanelViewModel(historyService);
+        sut.OpenGlobal();
+
+        await AssertEventuallyAsync(() => sut.EnvironmentOptions.Count >= 3);
+
+        sut.EnvironmentOptions.Select(o => o.Name).Should().NotContain("No environment");
+    }
+
+    [Fact]
+    public async Task Search_WhenNoEnvironmentOptionSelected_SetsNoEnvironmentFilter()
+    {
+        List<HistoryEntry> entries =
+        [
+            CreateEntry(new AuthConfig()) with { Id = 1, EnvironmentName = null },
+        ];
+
+        var capturedFilters = new List<HistoryFilter>();
+        var historyService = Substitute.For<IHistoryService>();
+        historyService.QueryAsync(Arg.Do<HistoryFilter>(f => capturedFilters.Add(f)), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>((entries, entries.Count)));
+
+        var sut = new HistoryPanelViewModel(historyService);
+        sut.OpenGlobal();
+
+        await AssertEventuallyAsync(() => sut.EnvironmentOptions.Any(o => o.Name == "No environment"));
+
+        sut.SelectedEnvironmentOption = sut.EnvironmentOptions.First(o => o.Name == "No environment");
+        await sut.SearchCommand.ExecuteAsync(null);
+
+        capturedFilters.Should().NotBeEmpty();
+        capturedFilters.Last().NoEnvironment.Should().BeTrue();
+        capturedFilters.Last().EnvironmentId.Should().BeNull();
+        capturedFilters.Last().EnvironmentName.Should().BeNull();
+    }
+
     private static HistoryEntry CreateEntry(AuthConfig auth)
     {
         return new HistoryEntry

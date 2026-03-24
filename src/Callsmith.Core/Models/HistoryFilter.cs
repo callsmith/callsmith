@@ -110,6 +110,13 @@ public sealed class HistoryFilter
     /// </summary>
     public Guid? EnvironmentId { get; init; }
 
+    /// <summary>
+    /// When <see langword="true"/>, restricts results to entries sent without any environment
+    /// selected (both <see cref="EnvironmentId"/> and environment name are absent).
+    /// Takes precedence over <see cref="EnvironmentName"/> and <see cref="EnvironmentId"/>.
+    /// </summary>
+    public bool NoEnvironment { get; init; }
+
     // -------------------------------------------------------------------------
     // Header search
     // -------------------------------------------------------------------------

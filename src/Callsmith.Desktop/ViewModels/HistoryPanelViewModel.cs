@@ -17,6 +17,7 @@ namespace Callsmith.Desktop.ViewModels;
 public sealed partial class HistoryPanelViewModel : ObservableObject
 {
     private const string AllEnvironmentsOption = "All environments";
+    private const string NoEnvironmentOption = "(no environment)";
     private readonly IHistoryService _historyService;
     private readonly EnvironmentViewModel? _environmentViewModel;
     private int _nextPage = 0;
@@ -615,18 +616,21 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     {
         var adv = AdvancedSearch;
         var isAllEnvironments = string.Equals(SelectedEnvironmentOption?.Name, AllEnvironmentsOption, StringComparison.Ordinal);
+        var isNoEnvironment = string.Equals(SelectedEnvironmentOption?.Name, NoEnvironmentOption, StringComparison.Ordinal)
+            && SelectedEnvironmentOption?.Id is null;
         return new HistoryFilter
         {
             Page = page,
             PageSize = pageSize,
             NewestFirst = true,
             GlobalSearch = string.IsNullOrWhiteSpace(GlobalSearchText) ? null : GlobalSearchText.Trim(),
-            EnvironmentName = isAllEnvironments
+            NoEnvironment = isNoEnvironment,
+            EnvironmentName = isAllEnvironments || isNoEnvironment
                 ? null
                 : SelectedEnvironmentOption?.Id is null
                     ? SelectedEnvironmentOption?.Name
                     : null,
-            EnvironmentId = isAllEnvironments
+            EnvironmentId = isAllEnvironments || isNoEnvironment
                 ? null
                 : SelectedEnvironmentOption?.Id,
             RequestContains = string.IsNullOrWhiteSpace(adv.RequestContains) ? null : adv.RequestContains.Trim(),
@@ -673,6 +677,9 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         var options = BuildEnvironmentOptionsFromShownEntries();
         var orderedOptions = OrderEnvironmentOptions(options);
 
+        var hasNoEnvironmentEntries = Entries.Any(row =>
+            string.IsNullOrWhiteSpace(row.Entry.EnvironmentName) && !row.Entry.EnvironmentId.HasValue);
+
         EnvironmentOptions.Clear();
         EnvironmentOptions.Add(new HistoryEnvironmentOptionViewModel
         {
@@ -680,6 +687,14 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             Id = null,
             Color = null,
         });
+
+        if (hasNoEnvironmentEntries)
+            EnvironmentOptions.Add(new HistoryEnvironmentOptionViewModel
+            {
+                Name = NoEnvironmentOption,
+                Id = null,
+                Color = null,
+            });
 
         foreach (var option in orderedOptions)
             EnvironmentOptions.Add(new HistoryEnvironmentOptionViewModel
