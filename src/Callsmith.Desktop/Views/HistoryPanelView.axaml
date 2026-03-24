@@ -60,25 +60,15 @@
           </Border>
         </StackPanel>
 
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-          <Button Content="Purge old entries..."
-            Command="{Binding OpenPurgeDialogCommand}"
-                  FontSize="11"
-                  Background="Transparent"
-                  Foreground="#f48771"
-                  BorderThickness="1"
-                  BorderBrush="#555"
-                  Padding="8,3"/>
-          <Button Content="← Back to Editor"
-                  Command="{Binding CloseCommand}"
-                  FontSize="11"
-                  Background="Transparent"
-                  Foreground="#4ec9b0"
-                  BorderThickness="0"
-                  Padding="8,3"
-                  ToolTip.Tip="Return to the request editor"/>
-        </StackPanel>
-
+        <Button Grid.Column="1"
+                Content="← Back to Editor"
+                Command="{Binding CloseCommand}"
+                FontSize="11"
+                Background="Transparent"
+                Foreground="#4ec9b0"
+                BorderThickness="0"
+                Padding="8,3"
+                ToolTip.Tip="Return to the request editor"/>
       </Grid>
     </Border>
 
@@ -90,107 +80,117 @@
             BorderBrush="#333"
             BorderThickness="0,0,0,1"
             Padding="12,8">
-      <StackPanel Orientation="Horizontal" Spacing="10">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Orientation="Horizontal" Spacing="10" Grid.Column="0">
 
-        <!-- Environment selector -->
-        <ComboBox ItemsSource="{Binding EnvironmentOptions}"
-            SelectedItem="{Binding SelectedEnvironmentOption}"
-            Width="170"
-            FontSize="12"
-            Background="#1e1e1e"
-            Foreground="#d4d4d4"
-            BorderBrush="#555">
-          <ComboBox.ItemTemplate>
-            <DataTemplate x:DataType="vm:HistoryEnvironmentOptionViewModel">
-              <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                <Border Width="10" Height="10"
-                        CornerRadius="2"
-                        Background="{Binding Color, Converter={x:Static conv:HexColorToBrushConverter.Instance}}"
-                        IsVisible="{Binding Color, Converter={x:Static StringConverters.IsNotNullOrEmpty}, FallbackValue=False}"
-                        VerticalAlignment="Center"/>
-                <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
-              </StackPanel>
-            </DataTemplate>
-          </ComboBox.ItemTemplate>
-        </ComboBox>
+          <!-- Environment selector -->
+          <ComboBox ItemsSource="{Binding EnvironmentOptions}"
+              SelectedItem="{Binding SelectedEnvironmentOption}"
+              Width="170"
+              FontSize="12"
+              Background="#1e1e1e"
+              Foreground="#d4d4d4"
+              BorderBrush="#555">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:HistoryEnvironmentOptionViewModel">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                  <Border Width="10" Height="10"
+                          CornerRadius="2"
+                          Background="{Binding Color, Converter={x:Static conv:HexColorToBrushConverter.Instance}}"
+                          IsVisible="{Binding Color, Converter={x:Static StringConverters.IsNotNullOrEmpty}, FallbackValue=False}"
+                          VerticalAlignment="Center"/>
+                  <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                </StackPanel>
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
 
-        <!-- Global search -->
-        <Grid Width="280">
-          <TextBox Text="{Binding GlobalSearchText}"
-                   Watermark="Search all — URL, name, headers, body…"
-                   FontSize="12"
-                   Background="#1e1e1e"
-                   Foreground="#d4d4d4"
-                   BorderBrush="#555"
-                   VerticalContentAlignment="Center"
-                   Padding="6,0,24,0"/>
-          <Button Content="×"
-                  Command="{Binding ClearGlobalSearchTextCommand}"
-                  IsVisible="{Binding GlobalSearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                  HorizontalAlignment="Right"
-                  VerticalAlignment="Center"
-                  Focusable="False"
-                  Width="18" Height="18" Margin="0,0,5,0"
-                  Background="Transparent" Foreground="#888"
-                  BorderThickness="0" Padding="0" FontSize="12"
-                  ToolTip.Tip="Clear"/>
-        </Grid>
-
-        <!-- Advanced search button -->
-        <Button Content="Advanced Search"
-                Command="{Binding OpenAdvancedSearchCommand}"
-                FontSize="12"
-                Background="Transparent"
-                Foreground="#9cdcfe"
-                BorderBrush="#555"
-                BorderThickness="1"
-                Padding="10,4"/>
-
-        <!-- Active advanced filters badge -->
-        <Border Background="#1a3a5a"
-                CornerRadius="4"
-                Padding="6,2,2,2"
-                IsVisible="{Binding HasActiveAdvancedFilters}"
-                VerticalAlignment="Center">
-          <StackPanel Orientation="Horizontal" Spacing="4">
-            <TextBlock Text="{Binding ActiveAdvancedFilterCount, StringFormat='{}{0} filter active', FallbackValue=''}"
-                       Foreground="#9cdcfe"
-                       FontSize="11"
-                       VerticalAlignment="Center"/>
-            <Button Content="×"
-                    Command="{Binding ClearAdvancedFiltersCommand}"
-                    Background="Transparent"
-                    Foreground="#9cdcfe"
-                    BorderThickness="0"
-                    Padding="2,0"
-                    Focusable="False"
+          <!-- Global search -->
+          <Grid Width="280">
+            <TextBox Text="{Binding GlobalSearchText}"
+                    Watermark="Search all — URL, name, headers, body…"
                     FontSize="12"
-                    ToolTip.Tip="Clear all advanced filters"/>
-          </StackPanel>
-        </Border>
+                    Background="#1e1e1e"
+                    Foreground="#d4d4d4"
+                    BorderBrush="#555"
+                    VerticalContentAlignment="Center"
+                    Padding="6,0,24,0"/>
+            <Button Content="×"
+                    Command="{Binding ClearGlobalSearchTextCommand}"
+                    IsVisible="{Binding GlobalSearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    Focusable="False"
+                    Width="18" Height="18" Margin="0,0,5,0"
+                    Background="Transparent" Foreground="#888"
+                    BorderThickness="0" Padding="0" FontSize="12"
+                    ToolTip.Tip="Clear"/>
+          </Grid>
 
-        <!-- Search button -->
-        <Button Content="Search"
-                Command="{Binding SearchCommand}"
-                FontSize="12"
-                Background="#0d7377"
-                Foreground="#ffffff"
-                BorderThickness="0"
-                Padding="12,4"/>
+          <!-- Advanced search button -->
+          <Button Content="Advanced Search"
+                  Command="{Binding OpenAdvancedSearchCommand}"
+                  FontSize="12"
+                  Background="Transparent"
+                  Foreground="#9cdcfe"
+                  BorderBrush="#555"
+                  BorderThickness="1"
+                  Padding="10,4"/>
 
-        <!-- Result count -->
-        <TextBlock Text="{Binding ResultCountLabel}"
-                   Foreground="#888"
-                   FontSize="11"
-                   VerticalAlignment="Center"
-                   IsVisible="{Binding !IsLoading}"/>
-        <TextBlock Text="Loading…"
-                   Foreground="#888"
-                   FontSize="11"
-                   VerticalAlignment="Center"
-                   IsVisible="{Binding IsLoading}"/>
+          <!-- Active advanced filters badge -->
+          <Border Background="#1a3a5a"
+                  CornerRadius="4"
+                  Padding="6,2,2,2"
+                  IsVisible="{Binding HasActiveAdvancedFilters}"
+                  VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <TextBlock Text="{Binding ActiveAdvancedFilterCount, StringFormat='{}{0} filter active', FallbackValue=''}"
+                        Foreground="#9cdcfe"
+                        FontSize="11"
+                        VerticalAlignment="Center"/>
+              <Button Content="×"
+                      Command="{Binding ClearAdvancedFiltersCommand}"
+                      Background="Transparent"
+                      Foreground="#9cdcfe"
+                      BorderThickness="0"
+                      Padding="2,0"
+                      Focusable="False"
+                      FontSize="12"
+                      ToolTip.Tip="Clear all advanced filters"/>
+            </StackPanel>
+          </Border>
 
-      </StackPanel>
+          <!-- Search button -->
+          <Button Content="Search"
+                  Command="{Binding SearchCommand}"
+                  FontSize="12"
+                  Background="#0d7377"
+                  Foreground="#ffffff"
+                  BorderThickness="0"
+                  Padding="12,4"/>
+
+          <!-- Result count -->
+          <TextBlock Text="{Binding ResultCountLabel}"
+                    Foreground="#888"
+                    FontSize="11"
+                    VerticalAlignment="Center"
+                    IsVisible="{Binding !IsLoading}"/>
+          <TextBlock Text="Loading…"
+                    Foreground="#888"
+                    FontSize="11"
+                    VerticalAlignment="Center"
+                    IsVisible="{Binding IsLoading}"/>
+        </StackPanel>
+        <Button Grid.Column="1"
+                Content="Purge old entries..."
+                Command="{Binding OpenPurgeDialogCommand}"
+                FontSize="11"
+                Background="Transparent"
+                Foreground="#f48771"
+                BorderThickness="1"
+                BorderBrush="#555"
+                Padding="8,3"/>
+      </Grid>
     </Border>
 
     <!-- ======================================================================
@@ -438,10 +438,11 @@
                       CornerRadius="4"
                       Padding="10">
                 <SelectableTextBlock Text="{Binding DetailConfigured}"
-                                    Foreground="#d4d4d4"
-                                    FontFamily="Consolas,Cascadia Mono,monospace"
-                                    FontSize="12"
-                                    TextWrapping="Wrap"/>
+                                     Background="Transparent" 
+                                     Foreground="#d4d4d4"
+                                     FontFamily="Consolas,Cascadia Mono,monospace"
+                                     FontSize="12"
+                                     TextWrapping="Wrap"/>
               </Border>
             </StackPanel>
 
@@ -456,10 +457,11 @@
                       CornerRadius="4"
                       Padding="10">
                 <SelectableTextBlock Text="{Binding DetailResolved}"
-                                    Foreground="#d4d4d4"
-                                    FontFamily="Consolas,Cascadia Mono,monospace"
-                                    FontSize="12"
-                                    TextWrapping="Wrap"/>
+                                     Background="Transparent" 
+                                     Foreground="#d4d4d4"
+                                     FontFamily="Consolas,Cascadia Mono,monospace"
+                                     FontSize="12"
+                                     TextWrapping="Wrap"/>
               </Border>
             </StackPanel>
 
@@ -475,10 +477,11 @@
                       CornerRadius="4"
                       Padding="10">
                 <SelectableTextBlock Text="{Binding DetailResponseHeaders}"
-                                    Foreground="#9cdcfe"
-                                    FontFamily="Consolas,Cascadia Mono,monospace"
-                                    FontSize="12"
-                                    TextWrapping="Wrap"/>
+                                     Background="Transparent" 
+                                     Foreground="#9cdcfe"
+                                     FontFamily="Consolas,Cascadia Mono,monospace"
+                                     FontSize="12"
+                                     TextWrapping="Wrap"/>
               </Border>
             </StackPanel>
 

@@ -802,11 +802,11 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         sb.AppendLine($"{cfg.Method} {cfg.Url}");
         if (!string.IsNullOrWhiteSpace(entry.EnvironmentName))
             sb.AppendLine($"Environment: {entry.EnvironmentName}");
-        if (cfg.Headers.Count > 0)
+        if (cfg.Headers.Any(h => h.IsEnabled))
         {
             sb.AppendLine();
             sb.AppendLine("Headers:");
-            foreach (var h in cfg.Headers)
+            foreach (var h in cfg.Headers.Where(h => h.IsEnabled))
                 sb.AppendLine($"  {h.Key}: {h.Value}");
         }
         if (cfg.AutoAppliedHeaders.Count > 0)
@@ -853,7 +853,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                 rb.Append(resolvedRequest.Body);
             }
             if (!resolved && HasMaskedSecrets(entry))
-                rb.AppendLine("\n[Secret values masked — click Reveal to show]");
+                rb.AppendLine("\n[Secret values masked — click Reveal Secrets to show]");
             DetailResolved = TrimTrailingBlankLines(rb.ToString());
         }
         catch
@@ -904,6 +904,9 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private static bool HasMaskedSecrets(HistoryEntry entry)
     {
         if (entry.VariableBindings.Any(b => b.IsSecret))
+            return true;
+
+        if (entry.ConfiguredSnapshot.Headers.FirstOrDefault(x => x.Key == "Authorization") != null)
             return true;
 
         var auth = entry.ConfiguredSnapshot.Auth;
