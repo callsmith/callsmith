@@ -77,6 +77,7 @@ public sealed class HistoryPanelViewModelTests
 
         sut.EnvironmentOptions.Select(option => option.Name).Should().ContainInOrder(
             "All environments",
+            "(no environment)",
             "Prod",
             "Dev",
             "Archived",
@@ -461,31 +462,7 @@ public sealed class HistoryPanelViewModelTests
     }
 
     [Fact]
-    public async Task OpenGlobal_IncludesNoEnvironmentOption_WhenEntriesWithoutEnvironmentExist()
-    {
-        List<HistoryEntry> entries =
-        [
-            CreateEntry(new AuthConfig()) with { Id = 1, EnvironmentName = "Dev" },
-            CreateEntry(new AuthConfig()) with { Id = 2, EnvironmentName = null },
-        ];
-
-        var historyService = Substitute.For<IHistoryService>();
-        historyService.QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>((entries, entries.Count)));
-
-        var sut = new HistoryPanelViewModel(historyService);
-        sut.OpenGlobal();
-
-        await AssertEventuallyAsync(() => sut.EnvironmentOptions.Count >= 3);
-
-        sut.EnvironmentOptions.Select(o => o.Name).Should().ContainInOrder(
-            "All environments",
-            "No environment",
-            "Dev");
-    }
-
-    [Fact]
-    public async Task OpenGlobal_DoesNotIncludeNoEnvironmentOption_WhenAllEntriesHaveEnvironment()
+    public async Task OpenGlobal_AlwaysIncludesNoEnvironmentOption()
     {
         List<HistoryEntry> entries =
         [
@@ -502,7 +479,47 @@ public sealed class HistoryPanelViewModelTests
 
         await AssertEventuallyAsync(() => sut.EnvironmentOptions.Count >= 3);
 
-        sut.EnvironmentOptions.Select(o => o.Name).Should().NotContain("No environment");
+        sut.EnvironmentOptions.Select(o => o.Name).Should().ContainInOrder(
+            "All environments",
+            "(no environment)");
+    }
+
+    [Fact]
+    public async Task OpenGlobal_CurrentEnvironmentsAlwaysShown_EvenWithoutMatchingHistory()
+    {
+        List<HistoryEntry> entries =
+        [
+            CreateEntry(new AuthConfig()) with { Id = 1, EnvironmentName = "Dev" },
+        ];
+
+        var historyService = Substitute.For<IHistoryService>();
+        historyService.QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>((entries, entries.Count)));
+
+        var environmentService = Substitute.For<IEnvironmentService>();
+        var preferencesService = Substitute.For<ICollectionPreferencesService>();
+        var messenger = Substitute.For<IMessenger>();
+        var logger = Substitute.For<ILogger<EnvironmentViewModel>>();
+
+        var environmentViewModel = new EnvironmentViewModel(environmentService, preferencesService, messenger, logger)
+        {
+            Environments =
+            [
+                new EnvironmentModel { Name = "Staging", FilePath = "staging.bru", Variables = [], EnvironmentId = Guid.NewGuid() },
+                new EnvironmentModel { Name = "Dev", FilePath = "dev.bru", Variables = [], EnvironmentId = Guid.NewGuid() },
+            ],
+        };
+
+        var sut = new HistoryPanelViewModel(historyService, environmentViewModel);
+        sut.OpenGlobal();
+
+        await AssertEventuallyAsync(() => sut.EnvironmentOptions.Count >= 4);
+
+        sut.EnvironmentOptions.Select(o => o.Name).Should().ContainInOrder(
+            "All environments",
+            "(no environment)",
+            "Staging",
+            "Dev");
     }
 
     [Fact]
@@ -521,9 +538,9 @@ public sealed class HistoryPanelViewModelTests
         var sut = new HistoryPanelViewModel(historyService);
         sut.OpenGlobal();
 
-        await AssertEventuallyAsync(() => sut.EnvironmentOptions.Any(o => o.Name == "No environment"));
+        await AssertEventuallyAsync(() => sut.EnvironmentOptions.Any(o => o.Name == "(no environment)"));
 
-        sut.SelectedEnvironmentOption = sut.EnvironmentOptions.First(o => o.Name == "No environment");
+        sut.SelectedEnvironmentOption = sut.EnvironmentOptions.First(o => o.Name == "(no environment)");
         await sut.SearchCommand.ExecuteAsync(null);
 
         capturedFilters.Should().NotBeEmpty();
