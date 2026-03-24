@@ -25,20 +25,6 @@
             VerticalAlignment="Center"
             ToolTip.Tip="Return to the request editor"/>
 
-    <!-- Manage Environments button — shown when no editor is open -->
-    <Button DockPanel.Dock="Right"
-            Content="Manage Environments"
-            Command="{Binding OpenEditorCommand}"
-            IsVisible="{Binding !IsAnyEditorOpen}"
-            FontSize="11"
-            Background="Transparent"
-            Foreground="#4ec9b0"
-            BorderThickness="0"
-            Padding="8,2"
-            Margin="8,0,0,0"
-            VerticalAlignment="Center"
-            ToolTip.Tip="Open the environment variable editor"/>
-
     <!-- Environment picker — hidden while any editor is open -->
     <ComboBox ItemsSource="{Binding EnvironmentsWithPlaceholder}"
               SelectedItem="{Binding SelectedDropdownItem, Mode=TwoWay}"
@@ -59,6 +45,20 @@
         </DataTemplate>
       </ComboBox.ItemTemplate>
     </ComboBox>
+
+    <!-- Manage Environments button — shown when no editor is open -->
+    <Button DockPanel.Dock="Left"
+            Content="Manage Environments"
+            Command="{Binding OpenEditorCommand}"
+            IsVisible="{Binding !IsAnyEditorOpen}"
+            FontSize="11"
+            Background="Transparent"
+            Foreground="#4ec9b0"
+            BorderThickness="0"
+            Padding="8,2"
+            Margin="8,0,0,0"
+            VerticalAlignment="Center"
+            ToolTip.Tip="Open the environment variable editor"/>
 
   </DockPanel>
 </UserControl>
