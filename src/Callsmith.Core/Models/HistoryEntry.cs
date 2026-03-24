@@ -76,6 +76,12 @@ public sealed record HistoryEntry
     public string? EnvironmentName { get; init; }
 
     /// <summary>
+    /// Stable identifier of the selected environment at send time.
+    /// Null when the request was sent without a concrete environment selected.
+    /// </summary>
+    public Guid? EnvironmentId { get; init; }
+
+    /// <summary>
     /// Optional display color of the selected environment at send time (hex string).
     /// Stored so history UI can keep showing the original swatch even if the environment
     /// is later renamed or deleted.

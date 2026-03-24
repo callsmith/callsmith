@@ -1623,6 +1623,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 RequestName = _sourceRequest is not null ? RequestName : null,
                 CollectionName = collectionName,
                 EnvironmentName = _activeEnvironment?.Name,
+                EnvironmentId = _activeEnvironment?.EnvironmentId,
                 EnvironmentColor = _activeEnvironment?.Color,
                 CollectionPath = string.IsNullOrEmpty(CollectionRootPath) ? null : CollectionRootPath,
                 ElapsedMs = (long)response.Elapsed.TotalMilliseconds,

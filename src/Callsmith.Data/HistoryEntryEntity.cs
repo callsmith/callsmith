@@ -51,6 +51,11 @@ internal sealed class HistoryEntryEntity
     [MaxLength(256)]
     public string? EnvironmentName { get; set; }
 
+    /// <summary>
+    /// Stable identifier of the selected environment at send time, if any.
+    /// </summary>
+    public Guid? EnvironmentId { get; set; }
+
     /// <summary>Display color of the selected environment at send time (hex), if any.</summary>
     [MaxLength(32)]
     public string? EnvironmentColor { get; set; }

@@ -176,24 +176,28 @@ public sealed class HistoryRepository : IHistoryService
 
         var rows = await query
             .OrderByDescending(e => e.SentAtUnixMs)
-            .Select(e => new { e.EnvironmentName, e.EnvironmentColor })
+            .Select(e => new { e.EnvironmentName, e.EnvironmentId, e.EnvironmentColor })
             .ToListAsync(ct);
 
-        var map = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        var map = new Dictionary<string, (Guid? Id, string? Color)>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in rows)
         {
             var name = row.EnvironmentName;
             if (string.IsNullOrWhiteSpace(name))
                 continue;
 
-            if (!map.TryGetValue(name, out var existingColor))
+            if (!map.TryGetValue(name, out var existing))
             {
-                map[name] = string.IsNullOrWhiteSpace(row.EnvironmentColor) ? null : row.EnvironmentColor;
+                map[name] = (row.EnvironmentId, string.IsNullOrWhiteSpace(row.EnvironmentColor) ? null : row.EnvironmentColor);
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(existingColor) && !string.IsNullOrWhiteSpace(row.EnvironmentColor))
-                map[name] = row.EnvironmentColor;
+            var id = existing.Id ?? row.EnvironmentId;
+            var color = existing.Color;
+            if (string.IsNullOrWhiteSpace(color) && !string.IsNullOrWhiteSpace(row.EnvironmentColor))
+                color = row.EnvironmentColor;
+
+            map[name] = (id, color);
         }
 
         return map
@@ -201,7 +205,8 @@ public sealed class HistoryRepository : IHistoryService
             .Select(static kv => new HistoryEnvironmentOption
             {
                 Name = kv.Key,
-                Color = kv.Value,
+                Id = kv.Value.Id,
+                Color = kv.Value.Color,
             })
             .ToList();
     }
@@ -313,6 +318,7 @@ public sealed class HistoryRepository : IHistoryService
             RequestName = entry.RequestName,
             CollectionName = entry.CollectionName,
             EnvironmentName = entry.EnvironmentName,
+            EnvironmentId = entry.EnvironmentId,
             EnvironmentColor = entry.EnvironmentColor,
             CollectionPath = entry.CollectionPath,
             ElapsedMs = entry.ElapsedMs,
@@ -374,6 +380,7 @@ public sealed class HistoryRepository : IHistoryService
             RequestName = entity.RequestName,
             CollectionName = entity.CollectionName,
             EnvironmentName = entity.EnvironmentName,
+            EnvironmentId = entity.EnvironmentId,
             EnvironmentColor = entity.EnvironmentColor,
             CollectionPath = entity.CollectionPath,
             ElapsedMs = entity.ElapsedMs,
@@ -536,6 +543,7 @@ public sealed class HistoryRepository : IHistoryService
 
             await EnsureSearchTextColumnsAsync(connection, ct);
             await EnsureEnvironmentNameColumnAsync(connection, ct);
+            await EnsureEnvironmentIdColumnAsync(connection, ct);
             await EnsureEnvironmentColorColumnAsync(connection, ct);
 
             await BackfillSearchTextAsync(db, ct);
@@ -635,6 +643,31 @@ public sealed class HistoryRepository : IHistoryService
             await using var alter = connection.CreateCommand();
             alter.CommandText =
                 $"ALTER TABLE {HistoryTableName} ADD COLUMN EnvironmentColor TEXT NULL;";
+            await alter.ExecuteNonQueryAsync(ct);
+        }
+    }
+
+    private static async Task EnsureEnvironmentIdColumnAsync(System.Data.Common.DbConnection connection, CancellationToken ct)
+    {
+        var hasEnvironmentId = false;
+
+        await using var pragma = connection.CreateCommand();
+        pragma.CommandText = $"PRAGMA table_info('{HistoryTableName}');";
+        await using var reader = await pragma.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            if (string.Equals(reader.GetString(1), nameof(HistoryEntryEntity.EnvironmentId), StringComparison.Ordinal))
+            {
+                hasEnvironmentId = true;
+                break;
+            }
+        }
+
+        if (!hasEnvironmentId)
+        {
+            await using var alter = connection.CreateCommand();
+            alter.CommandText =
+                $"ALTER TABLE {HistoryTableName} ADD COLUMN EnvironmentId TEXT NULL;";
             await alter.ExecuteNonQueryAsync(ct);
         }
     }

@@ -67,6 +67,75 @@ public sealed class RequestTabViewModelSendTests
         transport.LastRequest.Headers["X-Resolved"].Should().Be("token");
     }
 
+    [Fact]
+    public async Task Send_RecordsHistoryWithSelectedEnvironmentIdNameAndColor()
+    {
+        var transport = new CapturingTransport();
+        var registry = new TransportRegistry();
+        registry.Register(transport);
+
+        var environmentId = Guid.NewGuid();
+        var historyService = Substitute.For<IHistoryService>();
+
+        var sut = new RequestTabViewModel(
+            registry,
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { },
+            null,
+            historyService);
+
+        sut.SetEnvironment(new EnvironmentModel
+        {
+            FilePath = "dev.env.callsmith",
+            Name = "dev",
+            Color = "#00AAFF",
+            Variables = [],
+            EnvironmentId = environmentId,
+        });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/send.callsmith",
+            RequestId = Guid.NewGuid(),
+            Name = "send",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com/test",
+        });
+
+        await sut.SendCommand.ExecuteAsync(null);
+
+        await AssertEventuallyAsync(async () =>
+        {
+            await historyService.Received(1).RecordAsync(
+                Arg.Is<HistoryEntry>(entry =>
+                    entry.EnvironmentName == "dev" &&
+                    entry.EnvironmentColor == "#00AAFF" &&
+                    entry.EnvironmentId == environmentId),
+                Arg.Any<CancellationToken>());
+        });
+    }
+
+    private static async Task AssertEventuallyAsync(Func<Task> assertion, int retries = 50, int delayMs = 20)
+    {
+        Exception? last = null;
+        for (var i = 0; i < retries; i++)
+        {
+            try
+            {
+                await assertion();
+                return;
+            }
+            catch (Exception ex)
+            {
+                last = ex;
+                await Task.Delay(delayMs);
+            }
+        }
+
+        throw last ?? new InvalidOperationException("Assertion did not succeed in time.");
+    }
+
     private sealed class CapturingTransport : ITransport
     {
         public IReadOnlyList<string> SupportedSchemes => ["https"];
