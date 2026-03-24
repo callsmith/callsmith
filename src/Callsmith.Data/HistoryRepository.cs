@@ -103,7 +103,7 @@ public sealed class HistoryRepository : IHistoryService
     /// <inheritdoc/>
     public async Task<HistoryEntry?> GetLatestForRequestInEnvironmentAsync(
         Guid requestId,
-        string? environmentName,
+        Guid? environmentId,
         CancellationToken ct = default)
     {
         await using var db = await _dbFactory.CreateDbContextAsync(ct);
@@ -113,13 +113,13 @@ public sealed class HistoryRepository : IHistoryService
             .AsNoTracking()
             .Where(e => e.RequestId == requestId);
 
-        if (string.IsNullOrWhiteSpace(environmentName))
+        if (!environmentId.HasValue)
         {
-            query = query.Where(e => e.EnvironmentName == null || e.EnvironmentName == string.Empty);
+            query = query.Where(e => e.EnvironmentId == null);
         }
         else
         {
-            query = query.Where(e => e.EnvironmentName == environmentName);
+            query = query.Where(e => e.EnvironmentId == environmentId.Value);
         }
 
         var entity = await query
@@ -434,7 +434,11 @@ public sealed class HistoryRepository : IHistoryService
             query = query.Where(e =>
                 e.RequestName != null && e.RequestName.Contains(filter.RequestName));
 
-        if (!string.IsNullOrWhiteSpace(filter.EnvironmentName))
+        if (filter.EnvironmentId.HasValue)
+        {
+            query = query.Where(e => e.EnvironmentId == filter.EnvironmentId.Value);
+        }
+        else if (!string.IsNullOrWhiteSpace(filter.EnvironmentName))
         {
             var env = NormalizeSearchText(filter.EnvironmentName);
             query = query.Where(e =>

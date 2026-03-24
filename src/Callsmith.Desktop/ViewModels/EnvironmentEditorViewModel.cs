@@ -1067,11 +1067,16 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         ErrorMessage = string.Empty;
         try
         {
+            var oldFilePath = item.FilePath;
             var renamedModel = await _environmentService
                 .RenameEnvironmentAsync(item.FilePath, newName, ct)
                 .ConfigureAwait(true);
 
             item.ApplyRename(renamedModel);
+
+            // Notify EnvironmentViewModel first so it can update its active-environment
+            // reference (and re-persist prefs) before the order-reload fires below.
+            Messenger.Send(new EnvironmentRenamedMessage(oldFilePath, renamedModel));
 
             // Prefs order stores filenames; after a rename the old filename becomes stale.
             // Persist the current order (now with the new filename) and notify the dropdown.

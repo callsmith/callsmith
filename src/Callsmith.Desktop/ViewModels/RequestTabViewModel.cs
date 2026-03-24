@@ -1476,14 +1476,14 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
             _ = HydrateResponseFromHistoryAsync(
                 requestId,
-                _activeEnvironment?.Name,
+                _activeEnvironment?.EnvironmentId,
                 hydrationVersion);
         }, DispatcherPriority.Background);
     }
 
     private async Task HydrateResponseFromHistoryAsync(
         Guid requestId,
-        string? environmentName,
+        Guid? environmentId,
         long hydrationVersion)
     {
         try
@@ -1493,7 +1493,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             await Task.Delay(10).ConfigureAwait(false);
             
             var latest = await _historyService!
-                .GetLatestForRequestInEnvironmentAsync(requestId, environmentName, CancellationToken.None)
+                .GetLatestForRequestInEnvironmentAsync(requestId, environmentId, CancellationToken.None)
                 .ConfigureAwait(false);
 
             if (hydrationVersion != Interlocked.Read(ref _historyHydrationVersion))

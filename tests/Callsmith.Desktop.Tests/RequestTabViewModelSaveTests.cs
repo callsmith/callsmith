@@ -350,8 +350,9 @@ public sealed class RequestTabViewModelSaveTests
             },
         };
 
+        var devEnvId = Guid.NewGuid();
         historyService
-            .GetLatestForRequestInEnvironmentAsync(requestId, "dev", Arg.Any<CancellationToken>())
+            .GetLatestForRequestInEnvironmentAsync(requestId, devEnvId, Arg.Any<CancellationToken>())
             .Returns(expected);
 
         var sut = new RequestTabViewModel(
@@ -362,7 +363,7 @@ public sealed class RequestTabViewModelSaveTests
             null,
             historyService);
 
-        sut.SetEnvironment(new EnvironmentModel { FilePath = "dev.env.callsmith", Name = "dev", Variables = [], EnvironmentId = Guid.NewGuid() });
+        sut.SetEnvironment(new EnvironmentModel { FilePath = "dev.env.callsmith", Name = "dev", Variables = [], EnvironmentId = devEnvId });
 
         sut.LoadRequest(new CollectionRequest
         {
@@ -383,7 +384,7 @@ public sealed class RequestTabViewModelSaveTests
         sut.Response.Body.Should().Be("{\"env\":\"dev\"}");
 
         await historyService.Received(1)
-            .GetLatestForRequestInEnvironmentAsync(requestId, "dev", Arg.Any<CancellationToken>());
+            .GetLatestForRequestInEnvironmentAsync(requestId, devEnvId, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -391,9 +392,11 @@ public sealed class RequestTabViewModelSaveTests
     {
         var requestId = Guid.NewGuid();
         var historyService = Substitute.For<IHistoryService>();
+        var devEnvId = Guid.NewGuid();
+        var prodEnvId = Guid.NewGuid();
         var prodLookupRequested = false;
         historyService
-            .GetLatestForRequestInEnvironmentAsync(requestId, "dev", Arg.Any<CancellationToken>())
+            .GetLatestForRequestInEnvironmentAsync(requestId, devEnvId, Arg.Any<CancellationToken>())
             .Returns(new HistoryEntry
             {
                 RequestId = requestId,
@@ -416,7 +419,7 @@ public sealed class RequestTabViewModelSaveTests
                 },
             });
         historyService
-            .GetLatestForRequestInEnvironmentAsync(requestId, "prod", Arg.Any<CancellationToken>())
+            .GetLatestForRequestInEnvironmentAsync(requestId, prodEnvId, Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 prodLookupRequested = true;
@@ -431,7 +434,7 @@ public sealed class RequestTabViewModelSaveTests
             null,
             historyService);
 
-        sut.SetEnvironment(new EnvironmentModel { FilePath = "dev.env.callsmith", Name = "dev", Variables = [], EnvironmentId = Guid.NewGuid() });
+        sut.SetEnvironment(new EnvironmentModel { FilePath = "dev.env.callsmith", Name = "dev", Variables = [], EnvironmentId = devEnvId });
         sut.LoadRequest(new CollectionRequest
         {
             FilePath = "c:/tmp/request.callsmith",
@@ -446,13 +449,13 @@ public sealed class RequestTabViewModelSaveTests
 
         await AssertEventuallyAsync(() => string.Equals(sut.Response?.Body, "dev-response", StringComparison.Ordinal));
 
-        sut.SetEnvironment(new EnvironmentModel { FilePath = "prod.env.callsmith", Name = "prod", Variables = [], EnvironmentId = Guid.NewGuid() });
+        sut.SetEnvironment(new EnvironmentModel { FilePath = "prod.env.callsmith", Name = "prod", Variables = [], EnvironmentId = prodEnvId });
 
         await AssertEventuallyAsync(() => prodLookupRequested);
         await AssertEventuallyAsync(() => sut.Response is null && !sut.IsResponseFromHistory);
 
         await historyService.Received(1)
-            .GetLatestForRequestInEnvironmentAsync(requestId, "prod", Arg.Any<CancellationToken>());
+            .GetLatestForRequestInEnvironmentAsync(requestId, prodEnvId, Arg.Any<CancellationToken>());
     }
 
     private static async Task AssertEventuallyAsync(Func<bool> condition)

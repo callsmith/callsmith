@@ -45,12 +45,12 @@ public interface IHistoryService
     /// <summary>
     /// Returns the single most-recent history entry for the given saved request within the
     /// specified environment scope, or <see langword="null"/> if no matching history exists.
-    /// When <paramref name="environmentName"/> is <see langword="null"/>, this matches only
+    /// When <paramref name="environmentId"/> is <see langword="null"/>, this matches only
     /// entries recorded with no active environment.
     /// </summary>
     Task<HistoryEntry?> GetLatestForRequestInEnvironmentAsync(
         Guid requestId,
-        string? environmentName,
+        Guid? environmentId,
         CancellationToken ct = default);
 
     /// <summary>Returns the history entry with the given surrogate id, or <see langword="null"/>.</summary>

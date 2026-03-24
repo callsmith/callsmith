@@ -104,6 +104,12 @@ public sealed class HistoryFilter
     /// </summary>
     public string? EnvironmentName { get; init; }
 
+    /// <summary>
+    /// Filter by selected environment id used when the request was sent.
+    /// When set, this takes precedence over <see cref="EnvironmentName"/>.
+    /// </summary>
+    public Guid? EnvironmentId { get; init; }
+
     // -------------------------------------------------------------------------
     // Header search
     // -------------------------------------------------------------------------

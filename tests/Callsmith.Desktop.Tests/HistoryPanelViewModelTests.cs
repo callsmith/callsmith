@@ -43,17 +43,17 @@ public sealed class HistoryPanelViewModelTests
     [Fact]
     public async Task OpenGlobal_OrdersEnvironmentOptions_ByCurrentOrderThenAlphabeticalUnmatched()
     {
+        List<HistoryEntry> entries =
+        [
+            CreateEntry(new AuthConfig()) with { Id = 1, EnvironmentName = "Zulu", SentAt = new DateTimeOffset(2026, 3, 23, 12, 0, 0, TimeSpan.Zero) },
+            CreateEntry(new AuthConfig()) with { Id = 2, EnvironmentName = "Dev", SentAt = new DateTimeOffset(2026, 3, 23, 12, 1, 0, TimeSpan.Zero) },
+            CreateEntry(new AuthConfig()) with { Id = 3, EnvironmentName = "Prod", SentAt = new DateTimeOffset(2026, 3, 23, 12, 2, 0, TimeSpan.Zero) },
+            CreateEntry(new AuthConfig()) with { Id = 4, EnvironmentName = "Archived", SentAt = new DateTimeOffset(2026, 3, 23, 12, 3, 0, TimeSpan.Zero) },
+        ];
+
         var historyService = Substitute.For<IHistoryService>();
-        historyService.GetEnvironmentOptionsAsync(Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IReadOnlyList<HistoryEnvironmentOption>>(
-            [
-                new HistoryEnvironmentOption { Name = "Zulu" },
-                new HistoryEnvironmentOption { Name = "Dev" },
-                new HistoryEnvironmentOption { Name = "Prod" },
-                new HistoryEnvironmentOption { Name = "Archived" },
-            ]));
         historyService.QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>(([], 0)));
+            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>((entries, entries.Count)));
 
         var environmentService = Substitute.For<IEnvironmentService>();
         var preferencesService = Substitute.For<ICollectionPreferencesService>();
@@ -121,15 +121,15 @@ public sealed class HistoryPanelViewModelTests
     [Fact]
     public async Task ConfirmClearHistory_UsesSelectedEnvironmentAndDaysFromPurgeDialog()
     {
+        List<HistoryEntry> entries =
+        [
+            CreateEntry(new AuthConfig()) with { Id = 1, EnvironmentName = "Dev", EnvironmentColor = "#00AAFF" },
+            CreateEntry(new AuthConfig()) with { Id = 2, EnvironmentName = "Prod", EnvironmentColor = "#00DD88" },
+        ];
+
         var historyService = Substitute.For<IHistoryService>();
-        historyService.GetEnvironmentOptionsAsync(Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IReadOnlyList<HistoryEnvironmentOption>>(
-            [
-                new HistoryEnvironmentOption { Name = "Dev", Color = "#00AAFF" },
-                new HistoryEnvironmentOption { Name = "Prod", Color = "#00DD88" },
-            ]));
         historyService.QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>(([], 0)));
+            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>((entries, entries.Count)));
 
         var sut = new HistoryPanelViewModel(historyService);
         sut.OpenGlobal();
@@ -182,14 +182,14 @@ public sealed class HistoryPanelViewModelTests
     [Fact]
     public async Task ConfirmClearHistory_WhenAllTimeChecked_UsesPurgeAllForSelectedEnvironment()
     {
+        List<HistoryEntry> entries =
+        [
+            CreateEntry(new AuthConfig()) with { Id = 1, EnvironmentName = "Dev", EnvironmentColor = "#00AAFF" },
+        ];
+
         var historyService = Substitute.For<IHistoryService>();
-        historyService.GetEnvironmentOptionsAsync(Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IReadOnlyList<HistoryEnvironmentOption>>(
-            [
-                new HistoryEnvironmentOption { Name = "Dev", Color = "#00AAFF" },
-            ]));
         historyService.QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>(([], 0)));
+            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>((entries, entries.Count)));
 
         var sut = new HistoryPanelViewModel(historyService);
         sut.OpenGlobal();
@@ -347,6 +347,117 @@ public sealed class HistoryPanelViewModelTests
         await task1;
 
         await historyService.Received(2).QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task OpenGlobal_EnvironmentOptions_AggregateById_UseCurrentNameAndColor_AndRowsKeepHistoricalValues()
+    {
+        var envId = Guid.NewGuid();
+        List<HistoryEntry> entries =
+        [
+            CreateEntry(new AuthConfig()) with
+            {
+                Id = 1,
+                EnvironmentId = envId,
+                EnvironmentName = "env 1",
+                EnvironmentColor = "#FF0000",
+                SentAt = new DateTimeOffset(2026, 3, 23, 12, 0, 0, TimeSpan.Zero),
+            },
+            CreateEntry(new AuthConfig()) with
+            {
+                Id = 2,
+                EnvironmentId = envId,
+                EnvironmentName = "env one",
+                EnvironmentColor = "#0000FF",
+                SentAt = new DateTimeOffset(2026, 3, 23, 12, 5, 0, TimeSpan.Zero),
+            },
+        ];
+
+        var historyService = Substitute.For<IHistoryService>();
+        historyService.QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>((entries, entries.Count)));
+
+        var environmentService = Substitute.For<IEnvironmentService>();
+        var preferencesService = Substitute.For<ICollectionPreferencesService>();
+        var messenger = Substitute.For<IMessenger>();
+        var logger = Substitute.For<ILogger<EnvironmentViewModel>>();
+
+        var environmentViewModel = new EnvironmentViewModel(environmentService, preferencesService, messenger, logger)
+        {
+            Environments =
+            [
+                new EnvironmentModel
+                {
+                    Name = "env one",
+                    FilePath = "env-one.bru",
+                    Variables = [],
+                    Color = "#0000FF",
+                    EnvironmentId = envId,
+                },
+            ],
+        };
+
+        var sut = new HistoryPanelViewModel(historyService, environmentViewModel);
+        sut.OpenGlobal();
+
+        await AssertEventuallyAsync(() => sut.EnvironmentOptions.Any(o => o.Name == "env one"));
+
+        sut.EnvironmentOptions.Count(o => o.Name == "env one").Should().Be(1);
+        sut.EnvironmentOptions.First(o => o.Name == "env one").Color.Should().Be("#0000FF");
+
+        sut.Entries.Select(e => e.Entry.EnvironmentName).Should().Contain(["env 1", "env one"]);
+        sut.Entries.Select(e => e.Entry.EnvironmentColor).Should().Contain(["#FF0000", "#0000FF"]);
+    }
+
+    [Fact]
+    public async Task Search_WhenEnvironmentOptionHasId_FiltersByEnvironmentId()
+    {
+        var envId = Guid.NewGuid();
+        var capturedFilters = new List<HistoryFilter>();
+        List<HistoryEntry> entries =
+        [
+            CreateEntry(new AuthConfig()) with
+            {
+                Id = 1,
+                EnvironmentId = envId,
+                EnvironmentName = "env 1",
+                EnvironmentColor = "#FF0000",
+            },
+        ];
+
+        var historyService = Substitute.For<IHistoryService>();
+        historyService.QueryAsync(Arg.Do<HistoryFilter>(filter => capturedFilters.Add(filter)), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>((entries, entries.Count)));
+
+        var environmentService = Substitute.For<IEnvironmentService>();
+        var preferencesService = Substitute.For<ICollectionPreferencesService>();
+        var messenger = Substitute.For<IMessenger>();
+        var logger = Substitute.For<ILogger<EnvironmentViewModel>>();
+
+        var environmentViewModel = new EnvironmentViewModel(environmentService, preferencesService, messenger, logger)
+        {
+            Environments =
+            [
+                new EnvironmentModel
+                {
+                    Name = "env one",
+                    FilePath = "env-one.bru",
+                    Variables = [],
+                    EnvironmentId = envId,
+                },
+            ],
+        };
+
+        var sut = new HistoryPanelViewModel(historyService, environmentViewModel);
+        sut.OpenGlobal();
+        await AssertEventuallyAsync(() => sut.EnvironmentOptions.Any(o => o.Name == "env one"));
+
+        sut.SelectedEnvironmentOption = sut.EnvironmentOptions.First(o => o.Name == "env one");
+        await sut.SearchCommand.ExecuteAsync(null);
+
+        capturedFilters.Should().NotBeEmpty();
+        capturedFilters.Last().EnvironmentId.Should().Be(envId);
+        capturedFilters.Last().EnvironmentName.Should().BeNull();
     }
 
     private static HistoryEntry CreateEntry(AuthConfig auth)

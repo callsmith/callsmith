@@ -21,6 +21,7 @@ public sealed partial class EnvironmentViewModel : ObservableRecipient,
     IRecipient<CollectionOpenedMessage>,
     IRecipient<EnvironmentSavedMessage>,
     IRecipient<EnvironmentOrderChangedMessage>,
+    IRecipient<EnvironmentRenamedMessage>,
     IRecipient<CloseEnvironmentEditorMessage>
 {
     private readonly IEnvironmentService _environmentService;
@@ -151,6 +152,24 @@ public sealed partial class EnvironmentViewModel : ObservableRecipient,
     public void Receive(EnvironmentOrderChangedMessage message)
     {
         _ = LoadEnvironmentsAsync(_collectionFolderPath);
+    }
+
+    /// <summary>
+    /// When an environment is renamed, update the active environment reference and persist
+    /// the new file path so the selection survives the subsequent reload.
+    /// </summary>
+    public void Receive(EnvironmentRenamedMessage message)
+    {
+        if (ActiveEnvironment is not null &&
+            string.Equals(ActiveEnvironment.FilePath, message.OldFilePath,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            // Setting ActiveEnvironment fires OnActiveEnvironmentChanged which calls
+            // PersistActiveEnvironmentAsync with the new path, so by the time the
+            // EnvironmentOrderChangedMessage reload runs the prefs already reflect the
+            // new file name and the selection is preserved.
+            ActiveEnvironment = message.RenamedModel;
+        }
     }
 
     // ─── Property change side-effects ─────────────────────────────────────────

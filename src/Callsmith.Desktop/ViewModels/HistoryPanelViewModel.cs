@@ -77,7 +77,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
 
     [ObservableProperty]
     private HistoryEnvironmentOptionViewModel? _selectedEnvironmentOption =
-        new HistoryEnvironmentOptionViewModel { Name = AllEnvironmentsOption, Color = null };
+        new HistoryEnvironmentOptionViewModel { Name = AllEnvironmentsOption, Id = null, Color = null };
 
     // -------------------------------------------------------------------------
     // Detail state
@@ -373,7 +373,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         PurgeDialogErrorMessage = null;
         PurgeOlderThanDaysText = "90";
         IsPurgeAllTime = false;
-        SelectedPurgeEnvironmentOption = ResolveEnvironmentOption(SelectedEnvironmentOption?.Name)
+        SelectedPurgeEnvironmentOption = ResolveEnvironmentOption(SelectedEnvironmentOption?.Id, SelectedEnvironmentOption?.Name)
             ?? EnvironmentOptions.FirstOrDefault();
         IsPurgeDialogOpen = true;
     }
@@ -508,8 +508,6 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
 
         try
         {
-            await RefreshEnvironmentOptionsAsync();
-
             var pageSize = reset ? InitialChunkSize : IncrementalChunkSize;
             var filter = BuildFilter(_nextPage, pageSize);
 
@@ -525,6 +523,8 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
 
             if (reset)
                 SelectedEntry = Entries.FirstOrDefault();
+
+            RefreshEnvironmentOptionsFromShownEntries();
 
             ResultCountLabel = TotalCount > 0
                 ? $"Showing {Entries.Count} of {TotalCount} results"
@@ -593,8 +593,15 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         return days > 0;
     }
 
-    private HistoryEnvironmentOptionViewModel? ResolveEnvironmentOption(string? name)
+    private HistoryEnvironmentOptionViewModel? ResolveEnvironmentOption(Guid? id, string? name)
     {
+        if (id.HasValue)
+        {
+            var byId = EnvironmentOptions.FirstOrDefault(option => option.Id == id.Value);
+            if (byId is not null)
+                return byId;
+        }
+
         if (string.IsNullOrWhiteSpace(name))
             return EnvironmentOptions.FirstOrDefault();
 
@@ -607,15 +614,21 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private HistoryFilter BuildFilter(int page, int pageSize)
     {
         var adv = AdvancedSearch;
+        var isAllEnvironments = string.Equals(SelectedEnvironmentOption?.Name, AllEnvironmentsOption, StringComparison.Ordinal);
         return new HistoryFilter
         {
             Page = page,
             PageSize = pageSize,
             NewestFirst = true,
             GlobalSearch = string.IsNullOrWhiteSpace(GlobalSearchText) ? null : GlobalSearchText.Trim(),
-            EnvironmentName = string.Equals(SelectedEnvironmentOption?.Name, AllEnvironmentsOption, StringComparison.Ordinal)
+            EnvironmentName = isAllEnvironments
                 ? null
-                : SelectedEnvironmentOption?.Name,
+                : SelectedEnvironmentOption?.Id is null
+                    ? SelectedEnvironmentOption?.Name
+                    : null,
+            EnvironmentId = isAllEnvironments
+                ? null
+                : SelectedEnvironmentOption?.Id,
             RequestContains = string.IsNullOrWhiteSpace(adv.RequestContains) ? null : adv.RequestContains.Trim(),
             ResponseContains = string.IsNullOrWhiteSpace(adv.ResponseContains) ? null : adv.ResponseContains.Trim(),
             Method = string.IsNullOrWhiteSpace(adv.MethodSearch) ? null : adv.MethodSearch.Trim(),
@@ -653,16 +666,18 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             _ = ReloadEntriesAsync();
     }
 
-    private async Task RefreshEnvironmentOptionsAsync()
+    private void RefreshEnvironmentOptionsFromShownEntries()
     {
-        var options = await _historyService.GetEnvironmentOptionsAsync(_scopedRequestId, CancellationToken.None);
-        var previousSelection = SelectedEnvironmentOption?.Name ?? AllEnvironmentsOption;
+        var previousSelectionId = SelectedEnvironmentOption?.Id;
+        var previousSelectionName = SelectedEnvironmentOption?.Name ?? AllEnvironmentsOption;
+        var options = BuildEnvironmentOptionsFromShownEntries();
         var orderedOptions = OrderEnvironmentOptions(options);
 
         EnvironmentOptions.Clear();
         EnvironmentOptions.Add(new HistoryEnvironmentOptionViewModel
         {
             Name = AllEnvironmentsOption,
+            Id = null,
             Color = null,
         });
 
@@ -670,12 +685,62 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             EnvironmentOptions.Add(new HistoryEnvironmentOptionViewModel
             {
                 Name = option.Name,
-                Color = ResolveEnvironmentSwatchColor(option.Name, option.Color),
+                Id = option.Id,
+                Color = option.Color,
             });
 
-        SelectedEnvironmentOption = EnvironmentOptions
-            .FirstOrDefault(o => string.Equals(o.Name, previousSelection, StringComparison.Ordinal))
+        SelectedEnvironmentOption = ResolveEnvironmentOption(previousSelectionId, previousSelectionName)
             ?? EnvironmentOptions.FirstOrDefault();
+    }
+
+    private IReadOnlyList<HistoryEnvironmentOption> BuildEnvironmentOptionsFromShownEntries()
+    {
+        var byKey = new Dictionary<string, (Guid? Id, string Name, string? Color, DateTimeOffset SentAt)>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var row in Entries)
+        {
+            var entry = row.Entry;
+            if (string.IsNullOrWhiteSpace(entry.EnvironmentName))
+                continue;
+
+            var key = entry.EnvironmentId.HasValue
+                ? $"id:{entry.EnvironmentId.Value:D}"
+                : $"name:{entry.EnvironmentName.Trim()}";
+
+            if (!byKey.TryGetValue(key, out var existing) || entry.SentAt > existing.SentAt)
+            {
+                byKey[key] = (
+                    entry.EnvironmentId,
+                    entry.EnvironmentName,
+                    string.IsNullOrWhiteSpace(entry.EnvironmentColor) ? null : entry.EnvironmentColor,
+                    entry.SentAt);
+            }
+        }
+
+        var options = new List<HistoryEnvironmentOption>(byKey.Count);
+        foreach (var item in byKey.Values)
+        {
+            var currentMatch = item.Id.HasValue
+                ? _environmentViewModel?.Environments.FirstOrDefault(env => env.EnvironmentId == item.Id.Value)
+                : null;
+
+            var displayName = currentMatch?.Name ?? item.Name;
+            if (string.IsNullOrWhiteSpace(displayName))
+                continue;
+
+            var displayColor = string.IsNullOrWhiteSpace(currentMatch?.Color)
+                ? item.Color
+                : currentMatch!.Color;
+
+            options.Add(new HistoryEnvironmentOption
+            {
+                Id = item.Id,
+                Name = displayName,
+                Color = displayColor,
+            });
+        }
+
+        return options;
     }
 
     private IReadOnlyList<HistoryEnvironmentOption> OrderEnvironmentOptions(
@@ -684,38 +749,43 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         if (_environmentViewModel is null || options.Count == 0)
             return options;
 
+        var currentOrderById = new Dictionary<Guid, int>();
         var currentOrderByName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var index = 0;
         foreach (var env in _environmentViewModel.Environments)
         {
+            if (!currentOrderById.ContainsKey(env.EnvironmentId))
+                currentOrderById.Add(env.EnvironmentId, index);
+
             if (string.IsNullOrWhiteSpace(env.Name) || currentOrderByName.ContainsKey(env.Name))
+            {
+                index++;
                 continue;
+            }
 
             currentOrderByName.Add(env.Name, index);
             index++;
         }
 
         return options
-            .OrderBy(option => currentOrderByName.ContainsKey(option.Name) ? 0 : 1)
-            .ThenBy(option => currentOrderByName.TryGetValue(option.Name, out var currentIndex) ? currentIndex : int.MaxValue)
+            .OrderBy(option =>
+            {
+                if (option.Id.HasValue && currentOrderById.ContainsKey(option.Id.Value))
+                    return 0;
+                if (currentOrderByName.ContainsKey(option.Name))
+                    return 1;
+                return 2;
+            })
+            .ThenBy(option =>
+            {
+                if (option.Id.HasValue && currentOrderById.TryGetValue(option.Id.Value, out var currentIndexById))
+                    return currentIndexById;
+                if (currentOrderByName.TryGetValue(option.Name, out var currentIndexByName))
+                    return currentIndexByName;
+                return int.MaxValue;
+            })
             .ThenBy(option => option.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
-    }
-
-    private string? ResolveEnvironmentSwatchColor(string environmentName, string? historicalColor)
-    {
-        // 1) If this environment currently exists, always use its current configured color.
-        var currentMatch = _environmentViewModel?.Environments
-            .FirstOrDefault(env => string.Equals(env.Name, environmentName, StringComparison.Ordinal));
-        if (currentMatch is not null)
-            return string.IsNullOrWhiteSpace(currentMatch.Color) ? null : currentMatch.Color;
-
-        // 2) Otherwise fall back to the most recent historical color, if any.
-        if (!string.IsNullOrWhiteSpace(historicalColor))
-            return historicalColor;
-
-        // 3) Nothing found.
-        return null;
     }
 
     private async Task LoadDetailAsync(HistoryEntry entry)
