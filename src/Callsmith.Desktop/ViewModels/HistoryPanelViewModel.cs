@@ -802,11 +802,12 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         sb.AppendLine($"{cfg.Method} {cfg.Url}");
         if (!string.IsNullOrWhiteSpace(entry.EnvironmentName))
             sb.AppendLine($"Environment: {entry.EnvironmentName}");
-        if (cfg.Headers.Any(h => h.IsEnabled))
+        var enabledHeaders = cfg.Headers.Where(h => h.IsEnabled).ToList();
+        if (enabledHeaders.Count > 0)
         {
             sb.AppendLine();
             sb.AppendLine("Headers:");
-            foreach (var h in cfg.Headers.Where(h => h.IsEnabled))
+            foreach (var h in enabledHeaders)
                 sb.AppendLine($"  {h.Key}: {h.Value}");
         }
         if (cfg.AutoAppliedHeaders.Count > 0)

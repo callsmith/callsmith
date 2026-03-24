@@ -549,6 +549,39 @@ public sealed class HistoryPanelViewModelTests
         capturedFilters.Last().EnvironmentName.Should().BeNull();
     }
 
+    [Fact]
+    public void SelectingEntry_WithDisabledHeaders_ExcludesThemFromConfiguredView()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var sut = new HistoryPanelViewModel(historyService);
+
+        var entry = new HistoryEntry
+        {
+            Id = 1,
+            Method = "GET",
+            ResolvedUrl = "https://api.example.com/test",
+            SentAt = DateTimeOffset.UtcNow,
+            ElapsedMs = 10,
+            ConfiguredSnapshot = new ConfiguredRequestSnapshot
+            {
+                Method = "GET",
+                Url = "https://api.example.com/test",
+                Headers =
+                [
+                    new RequestKv("X-Enabled", "yes", IsEnabled: true),
+                    new RequestKv("X-Disabled", "no", IsEnabled: false),
+                ],
+                Auth = new AuthConfig(),
+            },
+            VariableBindings = [],
+        };
+
+        sut.SelectedEntry = new HistoryEntryRowViewModel(entry);
+
+        sut.DetailConfigured.Should().Contain("X-Enabled");
+        sut.DetailConfigured.Should().NotContain("X-Disabled");
+    }
+
     private static HistoryEntry CreateEntry(AuthConfig auth)
     {
         return new HistoryEntry
