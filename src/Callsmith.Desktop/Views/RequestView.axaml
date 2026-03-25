@@ -17,6 +17,12 @@
       <Setter Property="Padding" Value="13,6"/>
       <Setter Property="MinHeight" Value="34"/>
     </Style>
+    <Style Selector="TabControl.response-tabs TabItem">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Padding" Value="10,4"/>
+      <Setter Property="MinHeight" Value="28"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
   </UserControl.Styles>
 
   <UserControl.KeyBindings>
@@ -701,11 +707,28 @@
                    Foreground="#777" FontSize="13" HorizontalAlignment="Center"/>
       </StackPanel>
 
-      <controls:SyntaxEditor Grid.Row="1"
-                    IsVisible="{Binding Response, Converter={x:Static conv:NotNullConverter.Instance}}"
-                    Text="{Binding FormattedResponseBody, FallbackValue='', Mode=OneWay}"
-                    Language="{Binding ResponseLanguage}"
-                    IsReadOnly="True"/>
+      <!-- Response tab control: Preview | Headers -->
+      <TabControl Grid.Row="1"
+                  Classes="response-tabs"
+                  Background="Transparent"
+                  IsVisible="{Binding Response, Converter={x:Static conv:NotNullConverter.Instance}}">
+        <TabItem Header="Preview">
+          <controls:SyntaxEditor Text="{Binding FormattedResponseBody, FallbackValue='', Mode=OneWay}"
+                                 Language="{Binding ResponseLanguage}"
+                                 IsReadOnly="True"/>
+        </TabItem>
+        <TabItem Header="Headers">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+            <SelectableTextBlock Text="{Binding FormattedResponseHeaders}"
+                                 Background="Transparent"
+                                 Foreground="#9cdcfe"
+                                 FontFamily="Consolas,Cascadia Mono,monospace"
+                                 FontSize="12"
+                                 Margin="8"
+                                 TextWrapping="Wrap"/>
+          </ScrollViewer>
+        </TabItem>
+      </TabControl>
 
     </Grid>
 

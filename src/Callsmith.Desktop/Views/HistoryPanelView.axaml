@@ -237,15 +237,20 @@
 
                   <!-- Method badge -->
                   <Border Grid.Column="0"
-                          Background="#2d2d2d"
-                          CornerRadius="3"
-                          Padding="4,2"
+                          Width="42"
+                          HorizontalAlignment="Left"
                           VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Method}"
-                               Foreground="{Binding MethodColor}"
-                               FontSize="10"
-                               FontWeight="Bold"
-                               HorizontalAlignment="Center"/>
+                    <Border Background="{Binding Method, Converter={x:Static conv:HttpMethodToBrushConverter.Instance}}"
+                            CornerRadius="3"
+                            Padding="5,2"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center">
+                      <TextBlock Text="{Binding MethodPillLabel}"
+                                 Foreground="#1a1a1a"
+                                 FontSize="9"
+                                 FontWeight="Bold"
+                                 VerticalAlignment="Center"/>
+                    </Border>
                   </Border>
 
                   <!-- Request name -->
@@ -388,27 +393,12 @@
                        FontSize="13"
                        FontWeight="SemiBold"
                        VerticalAlignment="Center"/>
-            <StackPanel Orientation="Horizontal" IsVisible="{Binding HasHiddenSecrets}">
-              <Button Content="Reveal Secrets"
-                    Command="{Binding RevealSecretsCommand}"
-                    IsVisible="{Binding !IsSecretShown}"
-                    IsEnabled="{Binding !IsRevealingSecrets}"
-                    FontSize="11"
-                    Background="Transparent"
-                    Foreground="#dcdcaa"
-                    BorderThickness="1"
-                    BorderBrush="#555"
-                    Padding="8,3"/>
-              <Button Content="Hide Secrets"
-                    Command="{Binding HideSecretsCommand}"
-                    IsVisible="{Binding IsSecretShown}"
-                    FontSize="11"
-                    Background="Transparent"
-                    Foreground="#dcdcaa"
-                    BorderThickness="1"
-                    BorderBrush="#555"
-                    Padding="8,3"/>
-            </StackPanel>
+            <TextBlock Text="{Binding DetailSentAtDisplay}"
+                       Foreground="#888"
+                       FontSize="11"
+                       FontStyle="Italic"
+                       VerticalAlignment="Center"
+                       IsVisible="{Binding DetailSentAtDisplay, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
           </StackPanel>
         </Border>
 
@@ -448,11 +438,37 @@
 
             <!-- Resolved request -->
             <StackPanel Spacing="4">
-              <TextBlock Text="RESOLVED REQUEST"
-                         Foreground="#888"
-                         FontSize="10"
-                         FontWeight="Bold"
-                         LetterSpacing="1"/>
+              <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <TextBlock Text="RESOLVED REQUEST"
+                           Foreground="#888"
+                           FontSize="10"
+                           FontWeight="Bold"
+                           LetterSpacing="1"
+                           VerticalAlignment="Center"/>
+                <Panel IsVisible="{Binding HasHiddenSecrets}">
+                  <Button Content="Reveal Secrets"
+                        Command="{Binding RevealSecretsCommand}"
+                        IsVisible="{Binding !IsSecretShown}"
+                        IsEnabled="{Binding !IsRevealingSecrets}"
+                        FontSize="11"
+                        Background="Transparent"
+                        Foreground="#dcdcaa"
+                        BorderThickness="1"
+                        BorderBrush="#555"
+                        Padding="8,3"
+                        VerticalAlignment="Center"/>
+                  <Button Content="Hide Secrets"
+                        Command="{Binding HideSecretsCommand}"
+                        IsVisible="{Binding IsSecretShown}"
+                        FontSize="11"
+                        Background="Transparent"
+                        Foreground="#dcdcaa"
+                        BorderThickness="1"
+                        BorderBrush="#555"
+                        Padding="8,3"
+                        VerticalAlignment="Center"/>
+                </Panel>
+              </StackPanel>
               <Border Background="#252526"
                       CornerRadius="4"
                       Padding="10">
@@ -494,11 +510,18 @@
                          LetterSpacing="1"/>
               <Border Background="#252526"
                       CornerRadius="4"
-                      Padding="10">
+                      Padding="10"
+                      IsVisible="{Binding DetailHasResponseBody}">
                 <controls:SyntaxEditor Text="{Binding DetailResponse}"
                                        Language="{Binding DetailResponseLanguage}"
                                        IsReadOnly="True"/>
               </Border>
+              <TextBlock Text="No body returned for response"
+                         Foreground="#666"
+                         FontSize="12"
+                         FontStyle="Italic"
+                         Padding="4,0"
+                         IsVisible="{Binding !DetailHasResponseBody}"/>
             </StackPanel>
 
           </StackPanel>

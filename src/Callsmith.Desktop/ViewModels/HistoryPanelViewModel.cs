@@ -100,6 +100,12 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private string _detailResponseHeaders = string.Empty;
 
     [ObservableProperty]
+    private string _detailSentAtDisplay = string.Empty;
+
+    [ObservableProperty]
+    private bool _detailHasResponseBody;
+
+    [ObservableProperty]
     private bool _hasDetail;
 
     [ObservableProperty]
@@ -235,6 +241,8 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             DetailResponse = string.Empty;
             DetailResponseLanguage = string.Empty;
             DetailResponseHeaders = string.Empty;
+            DetailSentAtDisplay = string.Empty;
+            DetailHasResponseBody = false;
         }
     }
 
@@ -796,6 +804,9 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
 
     private void PopulateDetail(HistoryEntry entry, bool resolved)
     {
+        // Date/time of the entry
+        DetailSentAtDisplay = entry.SentAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
+
         // Configured tab — the raw template as the user wrote it
         var cfg = entry.ConfiguredSnapshot;
         var sb = new StringBuilder();
@@ -869,6 +880,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             var contentType = TryGetContentType(snap.Headers);
             DetailResponse = ResponseFormatter.FormatBody(snap.Body, contentType);
             DetailResponseLanguage = GetResponseLanguage(contentType);
+            DetailHasResponseBody = !string.IsNullOrWhiteSpace(snap.Body);
             var rh = new StringBuilder();
             foreach (var kv in snap.Headers)
                 rh.AppendLine($"{kv.Key}: {kv.Value}");
@@ -878,6 +890,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         {
             DetailResponse = "(no response recorded)";
             DetailResponseLanguage = string.Empty;
+            DetailHasResponseBody = false;
             DetailResponseHeaders = string.Empty;
         }
     }

@@ -191,6 +191,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(FormattedResponseBody))]
+    [NotifyPropertyChangedFor(nameof(FormattedResponseHeaders))]
     [NotifyPropertyChangedFor(nameof(ResponseLanguage))]
     [NotifyPropertyChangedFor(nameof(StatusDisplay))]
     [NotifyPropertyChangedFor(nameof(ElapsedDisplay))]
@@ -455,6 +456,22 @@ public sealed partial class RequestTabViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Response headers formatted as a readable string (one "Key: Value" per line).
+    /// Empty string when there is no response or no headers.
+    /// </summary>
+    public string FormattedResponseHeaders
+    {
+        get
+        {
+            if (Response is null || Response.Headers.Count == 0) return string.Empty;
+            var sb = new System.Text.StringBuilder();
+            foreach (var kv in Response.Headers)
+                sb.AppendLine($"{kv.Key}: {kv.Value}");
+            return sb.ToString().TrimEnd();
+        }
+    }
+
     public bool IsAuthBearer => AuthType == AuthConfig.AuthTypes.Bearer;
     public bool IsAuthBasic  => AuthType == AuthConfig.AuthTypes.Basic;
     public bool IsAuthApiKey => AuthType == AuthConfig.AuthTypes.ApiKey;
@@ -568,7 +585,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(HasUnresolvedPathParams) or nameof(PreviewUrlForeground) or
                 nameof(IsAuthBearer) or nameof(IsAuthBasic) or nameof(IsAuthApiKey) or
                 nameof(EnvVarNames) or
-                nameof(FormattedResponseBody) or nameof(IsBodyJson) or
+                nameof(FormattedResponseBody) or nameof(FormattedResponseHeaders) or nameof(IsBodyJson) or
                 nameof(BodyLanguage) or nameof(ResponseLanguage) or
                 nameof(ShowDynamicValueConfig) or nameof(ShowMockDataConfig) or
                 nameof(ShowCurlDialog))
