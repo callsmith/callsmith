@@ -23,7 +23,10 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
 
     /// <summary>Returns a real secrets service backed by a fresh temp sub-directory.</summary>
     private FileSystemSecretStorageService RealSecrets() =>
-        new(_temp.CreateSubDirectory("secrets-store"), NullLogger<FileSystemSecretStorageService>.Instance);
+        new(
+            _temp.CreateSubDirectory("secrets-store"),
+            new AesSecretEncryptionService(System.IO.Path.Combine(_temp.Path, "secrets.key")),
+            NullLogger<FileSystemSecretStorageService>.Instance);
 
     private FileSystemCollectionService Sut(ISecretStorageService? secrets = null) =>
         new(secrets ?? NoOpSecrets(), NullLogger<FileSystemCollectionService>.Instance);

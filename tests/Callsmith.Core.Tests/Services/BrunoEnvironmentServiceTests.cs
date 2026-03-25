@@ -106,7 +106,9 @@ public sealed class BrunoEnvironmentServiceTests : IDisposable
     {
         var secretsDir = Path.Combine(_root, "secrets");
         var secrets = new FileSystemSecretStorageService(
-            secretsDir, NullLogger<FileSystemSecretStorageService>.Instance);
+            secretsDir,
+            new AesSecretEncryptionService(Path.Combine(_root, "secrets.key")),
+            NullLogger<FileSystemSecretStorageService>.Instance);
         var sut = new BrunoEnvironmentService(
             secrets, RealMeta(), NullLogger<BrunoEnvironmentService>.Instance);
 

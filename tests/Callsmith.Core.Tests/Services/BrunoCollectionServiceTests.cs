@@ -31,6 +31,7 @@ public sealed class BrunoCollectionServiceTests : IDisposable
     private FileSystemSecretStorageService RealSecrets() =>
         new(
             Path.Combine(_root, "__secrets_store__"),
+            new AesSecretEncryptionService(Path.Combine(_root, "secrets.key")),
             NullLogger<FileSystemSecretStorageService>.Instance);
 
     private BrunoCollectionService Sut(ISecretStorageService? secrets = null) =>
