@@ -864,8 +864,6 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                 rb.AppendLine("Body:");
                 rb.Append(resolvedRequest.Body);
             }
-            if (!resolved && HasMaskedSecrets(entry))
-                rb.AppendLine("\n[Secret values masked — click Reveal Secrets to show]");
             DetailResolved = TrimTrailingBlankLines(rb.ToString());
         }
         catch
