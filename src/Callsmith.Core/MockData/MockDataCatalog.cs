@@ -34,23 +34,31 @@ public static class MockDataCatalog
         new("Internet", "Email",          "Random email address")              { GenerateFunc = f => f.Internet.Email() },
         new("Internet", "Example Email",  "Email at a safe example domain")    { GenerateFunc = f => f.Internet.ExampleEmail() },
         new("Internet", "Username",       "Random username handle")            { GenerateFunc = f => f.Internet.UserName() },
-        new("Internet", "URL",          "Random HTTP URL")                   { GenerateFunc = f => f.Internet.Url() },
-        new("Internet", "Password",     "Random password string")            { GenerateFunc = f => f.Internet.Password() },
-        new("Internet", "IP Address",   "IPv4 address e.g. 192.168.1.1")    { GenerateFunc = f => f.Internet.Ip() },
-        new("Internet", "MAC Address",  "e.g. 12:34:56:78:9A:BC")           { GenerateFunc = f => f.Internet.Mac() },
-        new("Internet", "Domain Name",  "e.g. example.com")                 { GenerateFunc = f => f.Internet.DomainName() },
+        new("Internet", "URL",            "Random HTTP URL")                   { GenerateFunc = f => f.Internet.Url() },
+        new("Internet", "Password",       "Random password string")            { GenerateFunc = f => f.Internet.Password() },
+        new("Internet", "IP Address",     "IPv4 address e.g. 192.168.1.1")    { GenerateFunc = f => f.Internet.Ip() },
+        new("Internet", "IPv6 Address",   "IPv6 address")                      { GenerateFunc = f => f.Internet.Ipv6() },
+        new("Internet", "MAC Address",    "e.g. 12:34:56:78:9A:BC")           { GenerateFunc = f => f.Internet.Mac() },
+        new("Internet", "Domain Name",    "e.g. example.com")                 { GenerateFunc = f => f.Internet.DomainName() },
+        new("Internet", "Color",          "Hex RGB color e.g. #a2b3bc")       { GenerateFunc = f => f.Internet.Color() },
+        new("Internet", "User Agent",     "Browser user-agent string")         { GenerateFunc = f => f.Internet.UserAgent() },
+        new("Internet", "Abbreviation",   "Tech abbreviation e.g. HTTP, SSL")  { GenerateFunc = f => f.Hacker.Abbreviation() },
+        new("Internet", "Avatar URL",     "Avatar image URL")                  { GenerateFunc = f => f.Internet.Avatar() },
+        new("Internet", "Image URL",      "Random image URL (picsum.photos)")  { GenerateFunc = f => f.Image.PicsumUrl() },
 
         // ── Phone ───────────────────────────────────────────────────────────
         new("Phone", "Phone Number", "Formatted phone number")               { GenerateFunc = f => f.Phone.PhoneNumber() },
 
         // ── Address ─────────────────────────────────────────────────────────
-        new("Address", "Full Address", "Complete street address")            { GenerateFunc = f => f.Address.FullAddress() },
-        new("Address", "City",         "City name")                          { GenerateFunc = f => f.Address.City() },
-        new("Address", "State",        "State or province")                  { GenerateFunc = f => f.Address.State() },
-        new("Address", "Country",      "Country name")                       { GenerateFunc = f => f.Address.Country() },
-        new("Address", "Zip Code",     "Postal / zip code")                  { GenerateFunc = f => f.Address.ZipCode() },
-        new("Address", "Latitude",     "GPS latitude e.g. 40.712776")        { GenerateFunc = f => f.Address.Latitude().ToString("F6") },
-        new("Address", "Longitude",    "GPS longitude e.g. -74.005974")      { GenerateFunc = f => f.Address.Longitude().ToString("F6") },
+        new("Address", "Full Address",        "Complete street address")       { GenerateFunc = f => f.Address.FullAddress() },
+        new("Address", "City",                "City name")                     { GenerateFunc = f => f.Address.City() },
+        new("Address", "State",               "State or province")             { GenerateFunc = f => f.Address.State() },
+        new("Address", "State Abbreviation",  "State abbrev e.g. CA, NY")      { GenerateFunc = f => f.Address.StateAbbr() },
+        new("Address", "Country",             "Country name")                  { GenerateFunc = f => f.Address.Country() },
+        new("Address", "Country Code",        "ISO 2-letter code e.g. US, GB") { GenerateFunc = f => f.Address.CountryCode() },
+        new("Address", "Zip Code",            "Postal / zip code")             { GenerateFunc = f => f.Address.ZipCode() },
+        new("Address", "Latitude",            "GPS latitude e.g. 40.712776")   { GenerateFunc = f => f.Address.Latitude().ToString("F6") },
+        new("Address", "Longitude",           "GPS longitude e.g. -74.005974") { GenerateFunc = f => f.Address.Longitude().ToString("F6") },
 
         // ── Lorem ───────────────────────────────────────────────────────────
         new("Lorem", "Word",       "Single random word")                     { GenerateFunc = f => f.Lorem.Word() },
@@ -59,23 +67,29 @@ public static class MockDataCatalog
         new("Lorem", "Slug",       "URL-safe hyphenated phrase")             { GenerateFunc = f => f.Lorem.Slug() },
 
         // ── Finance ─────────────────────────────────────────────────────────
-        new("Finance", "Amount",        "Decimal monetary amount")           { GenerateFunc = f => f.Finance.Amount().ToString("F2") },
-        new("Finance", "Currency Name", "Currency full name e.g. US Dollar") { GenerateFunc = f => f.Finance.Currency().Description },
-        new("Finance", "Currency Code", "ISO code e.g. USD, EUR, GBP")       { GenerateFunc = f => f.Finance.Currency().Code },
-        new("Finance", "IBAN",          "International bank account number") { GenerateFunc = f => f.Finance.Iban() },
-        new("Finance", "Bitcoin",       "Bitcoin wallet address")            { GenerateFunc = f => f.Finance.BitcoinAddress() },
-        new("Finance", "Credit Card",   "Credit card number")                { GenerateFunc = f => f.Finance.CreditCardNumber() },
+        new("Finance", "Amount",           "Decimal monetary amount")            { GenerateFunc = f => f.Finance.Amount().ToString("F2") },
+        new("Finance", "Currency Name",    "Currency full name e.g. US Dollar") { GenerateFunc = f => f.Finance.Currency().Description },
+        new("Finance", "Currency Code",    "ISO code e.g. USD, EUR, GBP")       { GenerateFunc = f => f.Finance.Currency().Code },
+        new("Finance", "IBAN",             "International bank account number")  { GenerateFunc = f => f.Finance.Iban() },
+        new("Finance", "Bitcoin",          "Bitcoin wallet address")             { GenerateFunc = f => f.Finance.BitcoinAddress() },
+        new("Finance", "Credit Card",      "Credit card number")                 { GenerateFunc = f => f.Finance.CreditCardNumber() },
+        new("Finance", "Transaction Type", "e.g. payment, deposit, transfer")   { GenerateFunc = f => f.Finance.TransactionType() },
 
         // ── Company ─────────────────────────────────────────────────────────
-        new("Company", "Company Name", "Business name")                      { GenerateFunc = f => f.Company.CompanyName() },
-        new("Company", "Catch Phrase", "Marketing catch phrase")             { GenerateFunc = f => f.Company.CatchPhrase() },
-        new("Company", "Buzzwords",    "Business buzzword phrase")           { GenerateFunc = f => f.Company.Bs() },
+        new("Company", "Company Name",             "Business name")                  { GenerateFunc = f => f.Company.CompanyName() },
+        new("Company", "Catch Phrase",             "Marketing catch phrase")         { GenerateFunc = f => f.Company.CatchPhrase() },
+        new("Company", "Catch Phrase Adjective",   "e.g. Innovative, Robust")       { GenerateFunc = f => f.Hacker.Adjective() },
+        new("Company", "Catch Phrase Descriptor",  "e.g. local, next-generation")   { GenerateFunc = f => f.Hacker.Phrase() },
+        new("Company", "Catch Phrase Noun",        "e.g. matrices, interfaces")     { GenerateFunc = f => f.Hacker.Noun() },
+        new("Company", "Buzzwords",                "Business buzzword phrase")       { GenerateFunc = f => f.Company.Bs() },
 
         // ── Date ────────────────────────────────────────────────────────────
-        new("Date", "Past Date",    "ISO 8601 date in the past")             { GenerateFunc = f => f.Date.Past().ToString("o") },
-        new("Date", "Future Date",  "ISO 8601 date in the future")           { GenerateFunc = f => f.Date.Future().ToString("o") },
-        new("Date", "Recent Date",  "ISO 8601 date within the last day")     { GenerateFunc = f => f.Date.Recent().ToString("o") },
-        new("Date", "Birth Date",   "Date of birth e.g. 1985-04-23")         { GenerateFunc = f => f.Date.Past(50).ToString("yyyy-MM-dd") },
+        new("Date", "Past Date",      "ISO 8601 date in the past")                  { GenerateFunc = f => f.Date.Past().ToString("o") },
+        new("Date", "Future Date",    "ISO 8601 date in the future")                { GenerateFunc = f => f.Date.Future().ToString("o") },
+        new("Date", "Recent Date",    "ISO 8601 date within the last day")          { GenerateFunc = f => f.Date.Recent().ToString("o") },
+        new("Date", "Birth Date",     "Date of birth e.g. 1985-04-23")              { GenerateFunc = f => f.Date.Past(50).ToString("yyyy-MM-dd") },
+        new("Date", "Timestamp",      "Unix timestamp (seconds since epoch)")       { GenerateFunc = _ => DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString() },
+        new("Date", "ISO Timestamp",  "Current UTC time as ISO 8601 string")        { GenerateFunc = _ => DateTimeOffset.UtcNow.ToString("o") },
 
         // ── Random ──────────────────────────────────────────────────────────
         new("Random", "UUID",          "Random UUID / GUID")                 { GenerateFunc = f => f.Random.Guid().ToString() },
@@ -83,7 +97,18 @@ public static class MockDataCatalog
         new("Random", "Alpha-Numeric", "Random 10-character alphanumeric")   { GenerateFunc = f => f.Random.AlphaNumeric(10) },
         new("Random", "Hash (MD5)",    "32-character hex hash")              { GenerateFunc = f => f.Random.Hash(32) },
         new("Random", "Boolean",       "true or false")                      { GenerateFunc = f => f.Random.Bool().ToString().ToLowerInvariant() },
-    ];
+        new("Random", "Object ID",     "24-character hex ID (MongoDB-style)"){ GenerateFunc = f => f.Random.Hash(24) },
+        new("Random", "Locale",        "Locale code e.g. en_US, de_DE")     { GenerateFunc = f => f.Random.ArrayElement(new[] { "en_US", "en_GB", "fr_FR", "de_DE", "es_ES", "pt_BR", "zh_CN", "ja_JP", "ko_KR", "ru_RU", "ar", "nl", "pl", "sv" }) },
+
+        // ── System ────────────────────────────────────────────────────────
+        new("System", "MIME Type",      "e.g. audio/mpeg, image/png")         { GenerateFunc = f => f.System.MimeType() },
+        new("System", "File Name",      "Random file name with extension")    { GenerateFunc = f => f.System.FileName() },
+        new("System", "File Type",      "File category e.g. audio, video")    { GenerateFunc = f => f.System.FileType() },
+        new("System", "File Extension", "e.g. mp3, png, txt")                 { GenerateFunc = f => f.System.FileExt() },
+        new("System", "Directory Path", "OS-like directory path")             { GenerateFunc = f => f.System.DirectoryPath() },
+        new("System", "File Path",      "Full file path with filename")       { GenerateFunc = f => f.System.FilePath() },
+        new("System", "Semver",         "Semantic version e.g. 7.0.5")        { GenerateFunc = f => f.System.Semver() },
+        ];
 
     /// <summary>All distinct category names in their natural display order.</summary>
     public static IReadOnlyList<string> Categories { get; } =

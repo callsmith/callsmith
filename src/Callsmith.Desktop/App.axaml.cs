@@ -6,6 +6,7 @@ using Avalonia.Markup.Xaml;
 using Callsmith.Core;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Insomnia;
+using Callsmith.Core.Postman;
 using Callsmith.Core.Services;
 using Callsmith.Core.Transports.Http;
 using Callsmith.Data;
@@ -94,6 +95,7 @@ public partial class App : Application
         // NOTE: always use the plain Callsmith services here — imports must produce Callsmith-format
         // files regardless of which collection type is currently open in the routing services.
         services.AddSingleton<ICollectionImporter, InsomniaCollectionImporter>();
+        services.AddSingleton<ICollectionImporter, PostmanCollectionImporter>();
         services.AddSingleton<ICollectionImportService>(sp => new CollectionImportService(
             sp.GetServices<ICollectionImporter>(),
             sp.GetRequiredService<FileSystemCollectionService>(),
