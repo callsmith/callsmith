@@ -131,8 +131,7 @@
                   BorderThickness="0"
                   Padding="4,0"
                   ToolTip.Tip="Import collection (Postman, Insomnia)"
-                  Command="{Binding ImportCollectionCommand}"
-                  CommandParameter="{Binding $parent[Window].StorageProvider}"/>
+                  Command="{Binding OpenImportDialogCommand}"/>
         </StackPanel>
 
         <!-- Bruno compatibility mode indicator -->
