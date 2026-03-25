@@ -51,8 +51,8 @@
           <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
             <GradientStop Color="#0078d4" Offset="0.0"/>
             <GradientStop Color="#0078d4" Offset="0.08"/>
-            <GradientStop Color="#2d2d2d" Offset="0.08"/>
-            <GradientStop Color="#2d2d2d" Offset="1.0"/>
+            <GradientStop Color="#252525" Offset="0.08"/>
+            <GradientStop Color="#252525" Offset="1.0"/>
           </LinearGradientBrush>
         </Setter.Value>
       </Setter>
