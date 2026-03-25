@@ -68,10 +68,10 @@ public partial class RequestEditorView : UserControl
         var tabIndex = vm.Tabs.IndexOf(tab);
         menu.Items.Add(MakeTabMenuItem("Close to the Right", () => vm.CloseTabsToTheRight(tab),
             isEnabled: tabIndex >= 0 && tabIndex < vm.Tabs.Count - 1));
-        menu.Items.Add(new Separator());
         menu.Items.Add(MakeTabMenuItem("Close Saved", () => vm.CloseSavedTabs()));
         menu.Items.Add(MakeTabMenuItem("Close All", () => vm.CloseAllTabs()));
 
+        _tabContextMenu?.Close();
         _tabContextMenu = menu;
         menu.Open(anchor);
     }
