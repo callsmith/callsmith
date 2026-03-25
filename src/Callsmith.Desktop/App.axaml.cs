@@ -88,6 +88,7 @@ public partial class App : Application
         services.AddSingleton<ICollectionPreferencesService, FileSystemCollectionPreferencesService>();
 
         // Core -- secret environment-variable storage (local, never checked in)
+        services.AddSingleton<ISecretEncryptionService, AesSecretEncryptionService>();
         services.AddSingleton<ISecretStorageService, FileSystemSecretStorageService>();
 
         // Core -- import (extensible: register new importers here as formats are added)

@@ -14,8 +14,11 @@ public sealed class FileSystemSecretStorageServiceTests : IDisposable
     private readonly string _storeDir =
         Path.Combine(Path.GetTempPath(), "callsmith-secret-tests-" + Guid.NewGuid().ToString("N"));
 
+    private AesSecretEncryptionService Encryption() =>
+        new(Path.Combine(_storeDir, "test.key"));
+
     private FileSystemSecretStorageService Sut() =>
-        new(_storeDir, NullLogger<FileSystemSecretStorageService>.Instance);
+        new(_storeDir, Encryption(), NullLogger<FileSystemSecretStorageService>.Instance);
 
     public void Dispose()
     {
@@ -199,5 +202,56 @@ public sealed class FileSystemSecretStorageServiceTests : IDisposable
         var result = await Sut().GetSecretAsync("/col", "Dev", "api-key");
 
         result.Should().Be("persisted-value");
+    }
+
+    // ─── Encryption ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task SavedFile_IsNotPlaintextJson()
+    {
+        await Sut().SetSecretAsync("/col", "Dev", "token", "my-secret");
+
+        // Locate the written file — there should be exactly one .json file.
+        var files = Directory.GetFiles(_storeDir, "*.json");
+        files.Should().HaveCount(1);
+
+        var raw = await File.ReadAllTextAsync(files[0]);
+
+        // The file must not expose the plaintext secret value.
+        raw.Should().NotContain("my-secret");
+        // The file must not be a raw JSON object (it is Base64-encoded ciphertext).
+        raw.Trim().Should().NotStartWith("{");
+    }
+
+    [Fact]
+    public async Task LegacyPlaintextFile_IsMigratedToEncryptedOnNextWrite()
+    {
+        // Write a legacy plaintext file directly.
+        Directory.CreateDirectory(_storeDir);
+        var colPath = "/col-legacy";
+        var normalised = Path.GetFullPath(colPath)
+            .ToLowerInvariant()
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(normalised));
+        var legacyFile = Path.Combine(_storeDir, Convert.ToHexString(hash) + ".json");
+
+        const string plainJson = """{"dev":{"token":"legacy-secret"}}""";
+        await File.WriteAllTextAsync(legacyFile, plainJson);
+
+        var sut = Sut();
+
+        // Reading the legacy file should return the value transparently.
+        var read = await sut.GetSecretAsync(colPath, "dev", "token");
+        read.Should().Be("legacy-secret");
+
+        // Writing triggers re-encryption; the file must no longer be plaintext.
+        await sut.SetSecretAsync(colPath, "dev", "token", "updated-secret");
+
+        var raw = await File.ReadAllTextAsync(legacyFile);
+        raw.Trim().Should().NotStartWith("{");
+
+        // The updated value must still be readable.
+        var updated = await Sut().GetSecretAsync(colPath, "dev", "token");
+        updated.Should().Be("updated-secret");
     }
 }

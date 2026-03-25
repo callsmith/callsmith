@@ -24,7 +24,10 @@ public sealed class FileSystemEnvironmentServiceTests : IDisposable
 
     /// <summary>Returns a real <see cref="FileSystemSecretStorageService"/> backed by a temp dir.</summary>
     private FileSystemSecretStorageService RealSecrets(string storeDir) =>
-        new(storeDir, NullLogger<FileSystemSecretStorageService>.Instance);
+        new(
+            storeDir,
+            new AesSecretEncryptionService(System.IO.Path.Combine(_temp.Path, "secrets.key")),
+            NullLogger<FileSystemSecretStorageService>.Instance);
 
     // Shared instance for existing tests that have no interest in secret storage.
     private readonly FileSystemEnvironmentService _sut;

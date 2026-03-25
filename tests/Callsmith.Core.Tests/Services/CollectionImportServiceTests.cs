@@ -351,7 +351,9 @@ public sealed class CollectionImportServiceTests : IDisposable
         // Use real secret storage so we can verify the round-trip.
         var secretStore = _temp.CreateSubDirectory("secrets");
         var secrets = new FileSystemSecretStorageService(
-            secretStore, NullLogger<FileSystemSecretStorageService>.Instance);
+            secretStore,
+            new AesSecretEncryptionService(System.IO.Path.Combine(_temp.Path, "secrets.key")),
+            NullLogger<FileSystemSecretStorageService>.Instance);
         var collectionService = new FileSystemCollectionService(
             secrets, NullLogger<FileSystemCollectionService>.Instance);
         var sut = new CollectionImportService(
