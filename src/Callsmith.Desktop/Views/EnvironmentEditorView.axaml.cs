@@ -40,7 +40,7 @@ public partial class EnvironmentEditorView : UserControl
         VariableRows.AddHandler(InputElement.PointerReleasedEvent, OnVariablePointerReleased, moveRelease, handledEventsToo: true);
         VariableRows.AddHandler(InputElement.PointerCaptureLostEvent, OnVariablePointerCaptureLost, RoutingStrategies.Direct);
 
-        EnvironmentList.AddHandler(InputElement.PointerPressedEvent, OnListRightPointerPressed, RoutingStrategies.Bubble);
+        EnvironmentList.AddHandler(InputElement.PointerPressedEvent, OnListRightPointerPressed, RoutingStrategies.Tunnel);
 
         if (EnvListContextMenu is { } menu)
             menu.Opening += OnEnvListContextMenuOpening;

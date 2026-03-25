@@ -387,42 +387,19 @@
                 BorderThickness="0,0,0,1"
                 Padding="12,8"
                 IsVisible="{Binding HasDetail}">
-          <Grid ColumnDefinitions="*,Auto">
-            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
-              <TextBlock Text="Entry Detail"
-                         Foreground="#d4d4d4"
-                         FontSize="13"
-                         FontWeight="SemiBold"
-                         VerticalAlignment="Center"/>
-              <TextBlock Text="{Binding DetailSentAtDisplay}"
-                         Foreground="#888"
-                         FontSize="11"
-                         FontStyle="Italic"
-                         VerticalAlignment="Center"
-                         IsVisible="{Binding DetailSentAtDisplay, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-            </StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" IsVisible="{Binding HasHiddenSecrets}">
-              <Button Content="Reveal Secrets"
-                    Command="{Binding RevealSecretsCommand}"
-                    IsVisible="{Binding !IsSecretShown}"
-                    IsEnabled="{Binding !IsRevealingSecrets}"
-                    FontSize="11"
-                    Background="Transparent"
-                    Foreground="#dcdcaa"
-                    BorderThickness="1"
-                    BorderBrush="#555"
-                    Padding="8,3"/>
-              <Button Content="Hide Secrets"
-                    Command="{Binding HideSecretsCommand}"
-                    IsVisible="{Binding IsSecretShown}"
-                    FontSize="11"
-                    Background="Transparent"
-                    Foreground="#dcdcaa"
-                    BorderThickness="1"
-                    BorderBrush="#555"
-                    Padding="8,3"/>
-            </StackPanel>
-          </Grid>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="Entry Detail"
+                       Foreground="#d4d4d4"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding DetailSentAtDisplay}"
+                       Foreground="#888"
+                       FontSize="11"
+                       FontStyle="Italic"
+                       VerticalAlignment="Center"
+                       IsVisible="{Binding DetailSentAtDisplay, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+          </StackPanel>
         </Border>
 
         <!-- Empty state -->
@@ -461,11 +438,36 @@
 
             <!-- Resolved request -->
             <StackPanel Spacing="4">
-              <TextBlock Text="RESOLVED REQUEST"
-                         Foreground="#888"
-                         FontSize="10"
-                         FontWeight="Bold"
-                         LetterSpacing="1"/>
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="RESOLVED REQUEST"
+                           Foreground="#888"
+                           FontSize="10"
+                           FontWeight="Bold"
+                           LetterSpacing="1"
+                           VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" IsVisible="{Binding HasHiddenSecrets}">
+                  <Button Content="Reveal Secrets"
+                        Command="{Binding RevealSecretsCommand}"
+                        IsVisible="{Binding !IsSecretShown}"
+                        IsEnabled="{Binding !IsRevealingSecrets}"
+                        FontSize="11"
+                        Background="Transparent"
+                        Foreground="#dcdcaa"
+                        BorderThickness="1"
+                        BorderBrush="#555"
+                        Padding="8,3"/>
+                  <Button Content="Hide Secrets"
+                        Command="{Binding HideSecretsCommand}"
+                        IsVisible="{Binding IsSecretShown}"
+                        FontSize="11"
+                        Background="Transparent"
+                        Foreground="#dcdcaa"
+                        BorderThickness="1"
+                        BorderBrush="#555"
+                        Padding="8,3"/>
+                </StackPanel>
+              </Grid>
               <Border Background="#252526"
                       CornerRadius="4"
                       Padding="10">

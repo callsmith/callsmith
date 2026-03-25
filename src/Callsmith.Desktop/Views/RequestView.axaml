@@ -21,6 +21,7 @@
       <Setter Property="FontSize" Value="12"/>
       <Setter Property="Padding" Value="10,4"/>
       <Setter Property="MinHeight" Value="28"/>
+      <Setter Property="Cursor" Value="Hand"/>
     </Style>
   </UserControl.Styles>
 
