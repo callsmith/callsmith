@@ -118,6 +118,13 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     [ObservableProperty]
     private string _revealFilePath = string.Empty;
 
+    /// <summary>
+    /// Non-null while the import-collection dialog is open.
+    /// The view observes this property and opens the dialog window.
+    /// </summary>
+    [ObservableProperty]
+    private ImportCollectionViewModel? _pendingImportDialog;
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
@@ -218,68 +225,29 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     }
 
     /// <summary>
-    /// Import flow:
-    /// 1. Open a file picker to select the source collection file.
-    /// 2. Open a folder picker to select the destination folder.
-    /// 3. Run the import and load the resulting collection.
+    /// Opens the import-collection modal dialog.
+    /// The view observes <see cref="PendingImportDialog"/> and shows the window.
+    /// Call <see cref="OnImportDialogClosed"/> when the dialog window closes.
     /// </summary>
     [RelayCommand]
-    public async Task ImportCollectionAsync(IStorageProvider storageProvider)
+    public void OpenImportDialog()
     {
-        ArgumentNullException.ThrowIfNull(storageProvider);
+        PendingImportDialog = new ImportCollectionViewModel(_importService);
+    }
 
-        // Build file type patterns from all registered importers.
-        var extensions = _importService.SupportedFileExtensions;
-        var patterns = extensions.Select(e => $"*{e}").ToList();
-        var fileTypeFilter = new FilePickerFileType("Collection Files")
+    /// <summary>
+    /// Called by the view after the import dialog window is closed.
+    /// If the user confirmed a successful import, loads the imported collection.
+    /// </summary>
+    public async Task OnImportDialogClosed()
+    {
+        var dialog = PendingImportDialog;
+        PendingImportDialog = null;
+
+        if (dialog is { IsConfirmed: true, ResultFolderPath: var folder }
+            && !string.IsNullOrEmpty(folder))
         {
-            Patterns = patterns,
-        };
-
-        var files = await storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "Select Collection File to Import",
-            AllowMultiple = false,
-            FileTypeFilter = [fileTypeFilter, FilePickerFileTypes.All],
-        });
-
-        if (files is not [var file])
-            return;
-
-        var filePath = file.TryGetLocalPath();
-        if (string.IsNullOrEmpty(filePath))
-            return;
-
-        // Verify the selected file is actually supported before asking for a destination.
-        var importer = await _importService.FindImporterAsync(filePath);
-        if (importer is null)
-        {
-            _logger.LogWarning("Selected file '{FilePath}' is not a recognised collection format.", filePath);
-            return;
-        }
-
-        // Ask where to import to.
-        var folders = await storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
-        {
-            Title = $"Select Destination Folder for {importer.FormatName} Import",
-            AllowMultiple = false,
-        });
-
-        if (folders is not [var destFolder])
-            return;
-
-        var targetPath = destFolder.TryGetLocalPath();
-        if (string.IsNullOrEmpty(targetPath))
-            return;
-
-        try
-        {
-            await _importService.ImportToFolderAsync(filePath, targetPath);
-            await LoadCollectionAsync(targetPath);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Import failed for '{FilePath}'", filePath);
+            await LoadCollectionAsync(folder);
         }
     }
 

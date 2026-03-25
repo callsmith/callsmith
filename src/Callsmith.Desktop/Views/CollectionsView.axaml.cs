@@ -47,7 +47,7 @@ public partial class CollectionsView : UserControl
 
         if (DataContext is CollectionsViewModel vm)
         {
-            vm.PropertyChanged += (_, args) =>
+            vm.PropertyChanged += async (_, args) =>
             {
                 if (args.PropertyName == nameof(CollectionsViewModel.RevealFilePath)
                     && !string.IsNullOrEmpty(vm.RevealFilePath))
@@ -55,6 +55,15 @@ public partial class CollectionsView : UserControl
                     var path = vm.RevealFilePath;
                     vm.RevealFilePath = string.Empty;
                     RevealRequest(path);
+                }
+                else if (args.PropertyName == nameof(CollectionsViewModel.PendingImportDialog)
+                    && vm.PendingImportDialog is not null)
+                {
+                    var owner = TopLevel.GetTopLevel(this) as Window;
+                    if (owner is null) return;
+                    var dialog = new ImportCollectionDialog { DataContext = vm.PendingImportDialog };
+                    await dialog.ShowDialog(owner);
+                    await vm.OnImportDialogClosed();
                 }
             };
         }
