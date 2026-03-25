@@ -26,7 +26,7 @@ public partial class RequestEditorView : UserControl
         TabStrip.AddHandler(InputElement.PointerReleasedEvent, OnTabStripPointerReleased, handledEventsToo: true);
         TabStrip.AddHandler(InputElement.PointerCaptureLostEvent, OnTabStripPointerCaptureLost, handledEventsToo: true);
 
-        TabStrip.AddHandler(InputElement.PointerPressedEvent, OnTabStripRightPointerPressed, RoutingStrategies.Bubble);
+        TabStrip.AddHandler(InputElement.PointerPressedEvent, OnTabStripRightPointerPressed, RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
     // ─── Tab right-click context menu ─────────────────────────────────────────
@@ -88,6 +88,9 @@ public partial class RequestEditorView : UserControl
     private void OnTabStripPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (DataContext is not RequestEditorViewModel vm) return;
+
+        // Ignore right-clicks — handled by OnTabStripRightPointerPressed.
+        if (e.GetCurrentPoint(this).Properties.IsRightButtonPressed) return;
 
         // Walk up from the pressed element to find the DataContext = RequestTabViewModel.
         var source = e.Source as Control;
