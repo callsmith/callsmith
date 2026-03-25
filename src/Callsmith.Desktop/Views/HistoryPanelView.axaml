@@ -237,15 +237,20 @@
 
                   <!-- Method badge -->
                   <Border Grid.Column="0"
-                          Background="#2d2d2d"
-                          CornerRadius="3"
-                          Padding="4,2"
+                          Width="42"
+                          HorizontalAlignment="Left"
                           VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Method}"
-                               Foreground="{Binding MethodColor}"
-                               FontSize="10"
-                               FontWeight="Bold"
-                               HorizontalAlignment="Center"/>
+                    <Border Background="{Binding Method, Converter={x:Static conv:HttpMethodToBrushConverter.Instance}}"
+                            CornerRadius="3"
+                            Padding="5,2"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center">
+                      <TextBlock Text="{Binding MethodPillLabel}"
+                                 Foreground="#1a1a1a"
+                                 FontSize="9"
+                                 FontWeight="Bold"
+                                 VerticalAlignment="Center"/>
+                    </Border>
                   </Border>
 
                   <!-- Request name -->
@@ -382,13 +387,21 @@
                 BorderThickness="0,0,0,1"
                 Padding="12,8"
                 IsVisible="{Binding HasDetail}">
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <TextBlock Text="Entry Detail"
-                       Foreground="#d4d4d4"
-                       FontSize="13"
-                       FontWeight="SemiBold"
-                       VerticalAlignment="Center"/>
-            <StackPanel Orientation="Horizontal" IsVisible="{Binding HasHiddenSecrets}">
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="Entry Detail"
+                         Foreground="#d4d4d4"
+                         FontSize="13"
+                         FontWeight="SemiBold"
+                         VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding DetailSentAtDisplay}"
+                         Foreground="#888"
+                         FontSize="11"
+                         FontStyle="Italic"
+                         VerticalAlignment="Center"
+                         IsVisible="{Binding DetailSentAtDisplay, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" IsVisible="{Binding HasHiddenSecrets}">
               <Button Content="Reveal Secrets"
                     Command="{Binding RevealSecretsCommand}"
                     IsVisible="{Binding !IsSecretShown}"
@@ -409,7 +422,7 @@
                     BorderBrush="#555"
                     Padding="8,3"/>
             </StackPanel>
-          </StackPanel>
+          </Grid>
         </Border>
 
         <!-- Empty state -->
@@ -494,11 +507,18 @@
                          LetterSpacing="1"/>
               <Border Background="#252526"
                       CornerRadius="4"
-                      Padding="10">
+                      Padding="10"
+                      IsVisible="{Binding DetailHasResponseBody}">
                 <controls:SyntaxEditor Text="{Binding DetailResponse}"
                                        Language="{Binding DetailResponseLanguage}"
                                        IsReadOnly="True"/>
               </Border>
+              <TextBlock Text="No body returned for response"
+                         Foreground="#666"
+                         FontSize="12"
+                         FontStyle="Italic"
+                         Padding="4,0"
+                         IsVisible="{Binding !DetailHasResponseBody}"/>
             </StackPanel>
 
           </StackPanel>

@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.VisualTree;
 using Callsmith.Desktop.ViewModels;
 
@@ -21,6 +22,7 @@ public partial class EnvironmentEditorView : UserControl
     private const double DragThreshold = 6.0;
 
     private EnvironmentEditorViewModel? _trackedVm;
+    private EnvironmentListItemViewModel? _contextMenuEnvItem;
 
     public EnvironmentEditorView()
     {
@@ -37,6 +39,11 @@ public partial class EnvironmentEditorView : UserControl
         VariableRows.AddHandler(InputElement.PointerMovedEvent, OnVariablePointerMoved, moveRelease, handledEventsToo: true);
         VariableRows.AddHandler(InputElement.PointerReleasedEvent, OnVariablePointerReleased, moveRelease, handledEventsToo: true);
         VariableRows.AddHandler(InputElement.PointerCaptureLostEvent, OnVariablePointerCaptureLost, RoutingStrategies.Direct);
+
+        EnvironmentList.AddHandler(InputElement.PointerPressedEvent, OnListRightPointerPressed, RoutingStrategies.Bubble);
+
+        if (EnvListContextMenu is { } menu)
+            menu.Opening += OnEnvListContextMenuOpening;
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -50,6 +57,50 @@ public partial class EnvironmentEditorView : UserControl
 
         if (_trackedVm is not null)
             _trackedVm.PropertyChanged += OnViewModelPropertyChanged;
+    }
+
+    // ─── Context menu ─────────────────────────────────────────────────────────
+
+    private void OnListRightPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsRightButtonPressed)
+            return;
+
+        var container = (e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true);
+        _contextMenuEnvItem = container?.DataContext as EnvironmentListItemViewModel;
+
+        if (_contextMenuEnvItem is not null)
+            EnvironmentList.SelectedItem = _contextMenuEnvItem;
+    }
+
+    private void OnEnvListContextMenuOpening(object? sender, CancelEventArgs e)
+    {
+        if (sender is not ContextMenu menu)
+            return;
+
+        menu.Items.Clear();
+
+        if (_contextMenuEnvItem is null || _contextMenuEnvItem.IsGlobal)
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        var item = _contextMenuEnvItem;
+        menu.Items.Add(MakeMenuItem("Rename", () => item.BeginRenameCommand.Execute(null)));
+        if (item.CloneCommand.CanExecute(null))
+            menu.Items.Add(MakeMenuItem("Clone", () => item.CloneCommand.Execute(null)));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(MakeMenuItem("Delete", () => item.DeleteCommand.Execute(null), isDestructive: true));
+    }
+
+    private static MenuItem MakeMenuItem(string header, Action onClick, bool isDestructive = false)
+    {
+        var item = new MenuItem { Header = header };
+        if (isDestructive)
+            item.Foreground = Brush.Parse("#f48771");
+        item.Click += (_, _) => onClick();
+        return item;
     }
 
     private async void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)

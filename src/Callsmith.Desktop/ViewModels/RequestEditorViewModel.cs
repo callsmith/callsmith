@@ -117,6 +117,41 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         tab.CloseCommand.Execute(null);
     }
 
+    /// <summary>Closes all tabs except the specified one.</summary>
+    public void CloseOtherTabs(RequestTabViewModel keep)
+    {
+        var toClose = Tabs.Where(t => t != keep).ToList();
+        foreach (var tab in toClose)
+            RemoveTab(tab);
+        ActiveTab = keep;
+    }
+
+    /// <summary>Closes all tabs to the right of the specified tab (higher indices).</summary>
+    public void CloseTabsToTheRight(RequestTabViewModel pivot)
+    {
+        var idx = Tabs.IndexOf(pivot);
+        if (idx < 0) return;
+        var toClose = Tabs.Skip(idx + 1).ToList();
+        foreach (var tab in toClose)
+            RemoveTab(tab);
+    }
+
+    /// <summary>Closes all tabs whose requests have been saved to disk (non-new, non-dirty).</summary>
+    public void CloseSavedTabs()
+    {
+        var toClose = Tabs.Where(t => !t.IsNew && !t.TabIsDirty).ToList();
+        foreach (var tab in toClose)
+            RemoveTab(tab);
+    }
+
+    /// <summary>Closes all open tabs.</summary>
+    public void CloseAllTabs()
+    {
+        var toClose = Tabs.ToList();
+        foreach (var tab in toClose)
+            RemoveTab(tab);
+    }
+
     /// <summary>Makes the specified tab active (called by clicking a tab chip).</summary>
     [RelayCommand]
     public void SelectTab(RequestTabViewModel tab)

@@ -26,6 +26,14 @@ public sealed partial class HistoryEntryRowViewModel : ObservableObject
 
     public string MethodColor => HttpMethodColors.Hex(Entry.Method);
 
+    public string MethodPillLabel => Entry.Method switch
+    {
+        "DELETE"  => "DEL",
+        "OPTIONS" => "OPT",
+        "PATCH"   => "PTCH",
+        var m     => m,
+    };
+
     public string StatusColor => Entry.StatusCode switch
     {
         >= 200 and < 300 => "#4ec9b0",

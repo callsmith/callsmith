@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using Callsmith.Desktop.ViewModels;
 
 namespace Callsmith.Desktop.Views;
@@ -12,6 +14,9 @@ public partial class RequestEditorView : UserControl
     private bool _isDragging;
     private const double DragThreshold = 6.0;
 
+    private RequestTabViewModel? _contextMenuTab;
+    private ContextMenu? _tabContextMenu;
+
     public RequestEditorView()
     {
         InitializeComponent();
@@ -20,7 +25,65 @@ public partial class RequestEditorView : UserControl
         TabStrip.AddHandler(InputElement.PointerMovedEvent, OnTabStripPointerMoved, handledEventsToo: true);
         TabStrip.AddHandler(InputElement.PointerReleasedEvent, OnTabStripPointerReleased, handledEventsToo: true);
         TabStrip.AddHandler(InputElement.PointerCaptureLostEvent, OnTabStripPointerCaptureLost, handledEventsToo: true);
+
+        TabStrip.AddHandler(InputElement.PointerPressedEvent, OnTabStripRightPointerPressed, RoutingStrategies.Bubble);
     }
+
+    // ─── Tab right-click context menu ─────────────────────────────────────────
+
+    private void OnTabStripRightPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(this).Properties.IsRightButtonPressed) return;
+        if (DataContext is not RequestEditorViewModel vm) return;
+
+        // Walk up from the pressed element to find the tab-chip Border.
+        var source = e.Source as Visual;
+        while (source is not null)
+        {
+            if (source is Border { Classes: { } cls } border && cls.Contains("tab-chip"))
+            {
+                _contextMenuTab = border.DataContext as RequestTabViewModel;
+                if (_contextMenuTab is not null)
+                {
+                    vm.SelectTab(_contextMenuTab);
+                    ShowTabContextMenu(border, vm);
+                    e.Handled = true;
+                }
+                return;
+            }
+            source = source.GetVisualParent();
+        }
+    }
+
+    private void ShowTabContextMenu(Control anchor, RequestEditorViewModel vm)
+    {
+        var tab = _contextMenuTab;
+        if (tab is null) return;
+
+        var menu = new ContextMenu();
+
+        menu.Items.Add(MakeTabMenuItem("Close", () => vm.CloseTab(tab)));
+        menu.Items.Add(MakeTabMenuItem("Close Others", () => vm.CloseOtherTabs(tab),
+            isEnabled: vm.Tabs.Count > 1));
+        var tabIndex = vm.Tabs.IndexOf(tab);
+        menu.Items.Add(MakeTabMenuItem("Close to the Right", () => vm.CloseTabsToTheRight(tab),
+            isEnabled: tabIndex >= 0 && tabIndex < vm.Tabs.Count - 1));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(MakeTabMenuItem("Close Saved", () => vm.CloseSavedTabs()));
+        menu.Items.Add(MakeTabMenuItem("Close All", () => vm.CloseAllTabs()));
+
+        _tabContextMenu = menu;
+        menu.Open(anchor);
+    }
+
+    private static MenuItem MakeTabMenuItem(string header, Action onClick, bool isEnabled = true)
+    {
+        var item = new MenuItem { Header = header, IsEnabled = isEnabled };
+        item.Click += (_, _) => onClick();
+        return item;
+    }
+
+    // ─── Left pointer / drag logic ────────────────────────────────────────────
 
     private void OnTabStripPointerPressed(object? sender, PointerPressedEventArgs e)
     {

@@ -45,6 +45,18 @@
     <Style Selector="Border.tab-chip:pointerover">
       <Setter Property="Background" Value="#2a2a2a"/>
     </Style>
+    <Style Selector="Border.tab-chip.active:pointerover">
+      <Setter Property="Background">
+        <Setter.Value>
+          <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#0078d4" Offset="0.0"/>
+            <GradientStop Color="#0078d4" Offset="0.08"/>
+            <GradientStop Color="#2d2d2d" Offset="0.08"/>
+            <GradientStop Color="#2d2d2d" Offset="1.0"/>
+          </LinearGradientBrush>
+        </Setter.Value>
+      </Setter>
+    </Style>
 
     <!-- Method chip inside each tab -->
     <Style Selector="Border.method-chip">
