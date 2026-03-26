@@ -246,6 +246,21 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [ObservableProperty] private bool _showMockDataConfig;
 
     // -------------------------------------------------------------------------
+    // Layout mode
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// True when the request config and response panels are displayed side-by-side (horizontal).
+    /// False (default) means the request config is above the response (vertical).
+    /// </summary>
+    [ObservableProperty]
+    private bool _isHorizontalLayout;
+
+    /// <summary>Toggles between horizontal (side-by-side) and vertical (stacked) layout.</summary>
+    [RelayCommand]
+    private void ToggleLayout() => IsHorizontalLayout = !IsHorizontalLayout;
+
+    // -------------------------------------------------------------------------
     // cURL dialog state
     // -------------------------------------------------------------------------
 
@@ -588,7 +603,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(FormattedResponseBody) or nameof(FormattedResponseHeaders) or nameof(IsBodyJson) or
                 nameof(BodyLanguage) or nameof(ResponseLanguage) or
                 nameof(ShowDynamicValueConfig) or nameof(ShowMockDataConfig) or
-                nameof(ShowCurlDialog))
+                nameof(ShowCurlDialog) or
+                nameof(IsHorizontalLayout))
                 return;
             HasUnsavedChanges = true;
         };
