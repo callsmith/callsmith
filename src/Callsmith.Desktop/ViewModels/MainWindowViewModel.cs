@@ -21,6 +21,24 @@ public partial class MainWindowViewModel : ViewModelBase
     public CommandPaletteViewModel CommandPalette { get; }
     public HistoryPanelViewModel HistoryPanel { get; }
 
+    /// <summary>
+    /// True when the right pane (request editor + response viewer) should be visible.
+    /// This is when a collection is open AND no editor panel is open.
+    /// </summary>
+    public bool IsRightPaneVisible => Collections.HasCollection && !Environment.IsAnyEditorOpen;
+
+    /// <summary>
+    /// True when the placeholder (no collection) message should be visible.
+    /// This is when no collection is open AND no editor panel is open.
+    /// </summary>
+    public bool IsPlaceholderVisible => !Collections.HasCollection && !Environment.IsAnyEditorOpen;
+
+    /// <summary>
+    /// True when the left sidebar should be visible in its normal narrow column.
+    /// This is when a collection is open AND no editor panel is open.
+    /// </summary>
+    public bool IsSidebarVisible => Collections.HasCollection && !Environment.IsAnyEditorOpen;
+
     public MainWindowViewModel(
         CollectionsViewModel collections,
         RequestEditorViewModel requestEditor,
@@ -44,6 +62,27 @@ public partial class MainWindowViewModel : ViewModelBase
         EnvironmentEditor = environmentEditor;
         CommandPalette = commandPalette;
         HistoryPanel = historyPanel;
+
+        // Subscribe to property changes that affect computed properties
+        Collections.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(Collections.HasCollection))
+            {
+                OnPropertyChanged(nameof(IsRightPaneVisible));
+                OnPropertyChanged(nameof(IsPlaceholderVisible));
+                OnPropertyChanged(nameof(IsSidebarVisible));
+            }
+        };
+
+        Environment.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(Environment.IsAnyEditorOpen))
+            {
+                OnPropertyChanged(nameof(IsRightPaneVisible));
+                OnPropertyChanged(nameof(IsPlaceholderVisible));
+                OnPropertyChanged(nameof(IsSidebarVisible));
+            }
+        };
 
         _messenger.Register<MainWindowViewModel, OpenHistoryMessage>(this, static (recipient, message) =>
         {

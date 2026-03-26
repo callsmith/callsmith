@@ -31,26 +31,26 @@
     <Grid ColumnDefinitions="280,6,*">
 
         <!-- ================================================================
-             Left sidebar — Collections
-             Hidden when any editor panel is open.
+             Left sidebar — Collections (only when a collection is open)
+             Hidden when any editor panel is open or when no collection is open.
              ================================================================ -->
-        <Panel Grid.Column="0" IsVisible="{Binding !Environment.IsAnyEditorOpen}">
+        <Panel Grid.Column="0" IsVisible="{Binding IsSidebarVisible}">
             <views:CollectionsView DataContext="{Binding Collections}"/>
         </Panel>
 
-        <!-- Splitter — hidden alongside the sidebar -->
+        <!-- Splitter — hidden alongside the sidebar and when no collection is open -->
         <GridSplitter Grid.Column="1"
                       ResizeDirection="Columns"
                       Background="#4a4a4a"
                       HorizontalAlignment="Stretch"
-                      IsVisible="{Binding !Environment.IsAnyEditorOpen}"/>
+                      IsVisible="{Binding IsRightPaneVisible}"/>
 
         <!-- ================================================================
              Right pane — env toolbar + request/response editor
-             Hidden when any editor panel is open.
+             Hidden when any editor panel is open, or when no collection is open.
              ================================================================ -->
         <Grid Grid.Column="2" RowDefinitions="Auto,*"
-              IsVisible="{Binding !Environment.IsAnyEditorOpen}">
+              IsVisible="{Binding IsRightPaneVisible}">
 
             <!-- Environment selector toolbar + History button -->
             <Border Grid.Row="0"
@@ -81,6 +81,78 @@
                                      DataContext="{Binding RequestEditor}"/>
 
         </Grid>
+
+        <!-- ================================================================
+             Full-width Collections panel — shown when no collection is open
+             Spans all columns so it takes the entire screen.
+             Header bar at top with Open/Import, centered helper text below.
+             ================================================================ -->
+        <Panel Grid.Column="0" Grid.ColumnSpan="3"
+               IsVisible="{Binding IsPlaceholderVisible}">
+            <DockPanel Background="#252526">
+                <!-- Header bar with Open and Import buttons -->
+                <Border DockPanel.Dock="Top"
+                        Background="#2d2d30"
+                        Padding="12,8">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <TextBlock Text="COLLECTIONS"
+                                      Foreground="#cccccc"
+                                      FontSize="11"
+                                      FontWeight="SemiBold"
+                                      LetterSpacing="1"
+                                      VerticalAlignment="Center"/>
+
+                            <!-- Open button -->
+                            <Button Content="Open"
+                                    FontSize="11"
+                                    Foreground="#4ec9b0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Padding="6,0"
+                                    ToolTip.Tip="Open collection folder (Callsmith, Bruno)"
+                                    Command="{Binding Collections.OpenFolderCommand}"
+                                    CommandParameter="{Binding $parent[Window].StorageProvider}"/>
+
+                            <!-- Import button -->
+                            <Button Content="Import"
+                                    FontSize="11"
+                                    Foreground="#4ec9b0"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Padding="4,0"
+                                    ToolTip.Tip="Import collection (Postman, Insomnia)"
+                                    Command="{Binding Collections.OpenImportDialogCommand}"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Centered placeholder content -->
+                <StackPanel VerticalAlignment="Center" 
+                           HorizontalAlignment="Center"
+                           Spacing="24">
+                    <TextBlock Text="No Collection Open"
+                              Foreground="#cccccc"
+                              FontSize="24"
+                              FontWeight="SemiBold"
+                              TextAlignment="Center"/>
+                    <StackPanel Spacing="8">
+                        <TextBlock TextAlignment="Center"
+                                  Foreground="#999999"
+                                  FontSize="13"
+                                  Text="Open an empty folder to create a new collection,"/>
+                        <TextBlock TextAlignment="Center"
+                                  Foreground="#999999"
+                                  FontSize="13"
+                                  Text="open an existing Callsmith or Bruno collection,"/>
+                        <TextBlock TextAlignment="Center"
+                                  Foreground="#999999"
+                                  FontSize="13"
+                                  Text="or import from Postman or Insomnia."/>
+                    </StackPanel>
+                </StackPanel>
+            </DockPanel>
+        </Panel>
 
         <!-- ================================================================
              Full-width collection environment editor panel
