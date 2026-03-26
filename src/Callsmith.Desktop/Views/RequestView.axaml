@@ -38,7 +38,7 @@
       <Grid RowDefinitions="Auto,Auto">
 
         <!-- Row 0: Method + URL + Send/Cancel + Save -->
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,8,*,8,Auto,8,Auto">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,8,*,8,Auto,Auto">
           <ComboBox Grid.Column="0"
                     ItemsSource="{Binding HttpMethods}"
                     SelectedItem="{Binding SelectedMethod}"
@@ -98,12 +98,13 @@
                     BorderThickness="0" VerticalAlignment="Stretch"/>
           </Grid>
           <!-- Save button — visible whenever the tab has unsaved changes -->
-          <Button Grid.Column="6"
+          <Button Grid.Column="5"
                   Content="{Binding SaveButtonLabel}"
                   Command="{Binding SaveCommand}"
                   IsVisible="{Binding TabIsDirty}"
                   Background="#1e7340" Foreground="White" FontWeight="SemiBold"
                   Padding="16,6" CornerRadius="4"
+                  Margin="8,0,0,0"
                   ToolTip.Tip="Save changes (Ctrl+S)"/>
 
         </Grid>
@@ -167,7 +168,7 @@
           <Grid RowDefinitions="*,Auto">
 
             <!-- Row 0: Params | Headers | Body | Auth -->
-            <TabControl Grid.Row="0" Classes="request-tabs" Margin="0,2,0,0" Background="Transparent">
+            <TabControl Grid.Row="0" Classes="request-tabs" Margin="0" Background="Transparent">
 
           <TabItem Header="Params">
             <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" Margin="0,4">
