@@ -15,7 +15,6 @@ public partial class RequestView : UserControl
     {
         InitializeComponent();
         CopyPreviewUrlButton.Click += OnCopyPreviewUrlClicked;
-        ApplyLayout(isHorizontal: false);
     }
 
     protected override void OnDataContextChanged(EventArgs e)

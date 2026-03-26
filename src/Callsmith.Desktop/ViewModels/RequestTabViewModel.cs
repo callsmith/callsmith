@@ -254,7 +254,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     /// False (default) means the request config is above the response (vertical).
     /// </summary>
     [ObservableProperty]
-    private bool _isHorizontalLayout;
+    private bool _isHorizontalLayout = false;
 
     /// <summary>Toggles between horizontal (side-by-side) and vertical (stacked) layout.</summary>
     [RelayCommand]
