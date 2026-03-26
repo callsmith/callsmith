@@ -1064,6 +1064,38 @@ public sealed class InsomniaCollectionImporterTests : IDisposable
             && v.MockDataField == "ISO Timestamp");
     }
 
+    [Fact]
+    public async Task ImportAsync_UsesPostmanStyleNameForExtractedRequestMockDataVars()
+    {
+        const string yaml = """
+            type: collection.insomnia.rest/5.0
+            schema_version: "5.1"
+            name: Test
+            collection:
+              - url: https://example.com/users
+                name: Create User
+                method: POST
+                meta:
+                  id: req_001
+                headers:
+                  - name: X-User
+                    value: "{% faker 'firstName' %}"
+            """;
+
+        var path = WriteYaml("request_mock_name.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        result.RootRequests.Should().HaveCount(1);
+        result.RootRequests[0].Headers.Should().ContainSingle(h => h.Key == "X-User")
+            .Which.Value.Should().Be("{{name-first-name}}");
+
+        result.GlobalDynamicVars.Should().ContainSingle();
+        var dynamicVar = result.GlobalDynamicVars[0];
+        dynamicVar.Name.Should().Be("name-first-name");
+        dynamicVar.MockDataCategory.Should().Be("Name");
+        dynamicVar.MockDataField.Should().Be("First Name");
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────

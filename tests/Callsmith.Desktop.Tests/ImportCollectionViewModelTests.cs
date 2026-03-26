@@ -41,11 +41,13 @@ public sealed class ImportCollectionViewModelTests
     }
 
     [Fact]
-    public void Constructor_OnlyInsomniaIsEnabled()
+    public void Constructor_InsomniaAndPostmanAreEnabled()
     {
         var sut = BuildSut();
-        sut.ImportTypeOptions.Where(o => o.IsEnabled).Should().HaveCount(1);
-        sut.ImportTypeOptions.Single(o => o.IsEnabled).Name.Should().Be("Insomnia");
+        sut.ImportTypeOptions.Where(o => o.IsEnabled)
+            .Select(o => o.Name)
+            .Should()
+            .BeEquivalentTo(["Insomnia", "Postman"]);
     }
 
     [Fact]
@@ -61,12 +63,23 @@ public sealed class ImportCollectionViewModelTests
     // ─── Import-type selection ────────────────────────────────────────────────
 
     [Fact]
-    public void SelectingDisabledImportType_RevertsToInsomnia()
+    public void SelectingPostman_KeepsPostman()
     {
         var sut = BuildSut();
         var postman = sut.ImportTypeOptions.First(o => o.Name == "Postman");
 
         sut.SelectedImportType = postman;
+
+        sut.SelectedImportType.Name.Should().Be("Postman");
+    }
+
+    [Fact]
+    public void SelectingDisabledImportType_RevertsToFirstEnabled()
+    {
+        var sut = BuildSut();
+        var hoppscotch = sut.ImportTypeOptions.First(o => o.Name == "Hoppscotch");
+
+        sut.SelectedImportType = hoppscotch;
 
         sut.SelectedImportType.Name.Should().Be("Insomnia");
     }

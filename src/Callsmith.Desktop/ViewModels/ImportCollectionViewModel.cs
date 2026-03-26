@@ -17,13 +17,13 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
     // ─── Import-type options ─────────────────────────────────────────────────
 
     /// <summary>
-    /// All import types shown in the dropdown. Postman and Hoppscotch are
-    /// disabled until their importers are implemented.
+    /// All import types shown in the dropdown.
+    /// Hoppscotch remains disabled until its importer is implemented.
     /// </summary>
     public IReadOnlyList<ImportTypeOption> ImportTypeOptions { get; } =
     [
+        new("Postman",  isEnabled: true),
         new("Insomnia", isEnabled: true),
-        new("Postman",  isEnabled: false),
         new("Hoppscotch", isEnabled: false),
     ];
 
@@ -34,7 +34,8 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
     partial void OnSelectedImportTypeChanged(ImportTypeOption value)
     {
-        // If the user selects a disabled entry (Postman, Hoppscotch) revert to Insomnia.
+        // If the user selects a disabled entry (currently Hoppscotch), revert to the
+        // first enabled option.
         if (!value.IsEnabled)
             SelectedImportType = ImportTypeOptions.First(o => o.IsEnabled);
     }

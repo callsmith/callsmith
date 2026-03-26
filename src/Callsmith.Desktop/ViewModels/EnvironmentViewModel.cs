@@ -255,6 +255,12 @@ public sealed partial class EnvironmentViewModel : ObservableRecipient,
                     string.Equals(e.FilePath, absoluteEnvPath,
                         StringComparison.OrdinalIgnoreCase));
             }
+
+            // ComboBox can transiently clear SelectedItem while ItemsSource is reloaded.
+            // Always normalize back to the explicit sentinel so the UI never appears blank.
+            _syncingSelection = true;
+            SelectedDropdownItem = ActiveEnvironment ?? NoEnvironmentItem;
+            _syncingSelection = false;
         }
         catch (Exception ex)
         {

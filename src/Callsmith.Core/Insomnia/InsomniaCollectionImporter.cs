@@ -644,8 +644,8 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
             // Mock-data tag (faker / uuid / timestamp)
             if (TryResolveMockDataTag(tag, out var mdCategory, out var mdField))
             {
-                // Derive a deterministic var name: "faker-category-field" lowercased, hyphens
-                var varName = $"faker-{mdCategory}-{mdField}"
+                // Derive a deterministic var name using Postman-style naming.
+                var varName = $"{mdCategory}-{mdField}"
                     .ToLowerInvariant()
                     .Replace(' ', '-');
 

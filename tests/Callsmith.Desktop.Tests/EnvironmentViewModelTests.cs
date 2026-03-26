@@ -141,4 +141,35 @@ public sealed class EnvironmentViewModelTests
         sut.ActiveEnvironment.Should().NotBeNull();
         sut.ActiveEnvironment!.FilePath.Should().Be(otherPath, "unrelated rename must not affect the active env");
     }
+
+    [Fact]
+    public async Task CollectionOpened_WithNoEnvironments_NormalizesDropdownToNoEnvironment()
+    {
+        var service = Substitute.For<IEnvironmentService>();
+        var prefsService = Substitute.For<ICollectionPreferencesService>();
+        var messenger = new WeakReferenceMessenger();
+
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<EnvironmentModel>>([]));
+
+        prefsService.LoadAsync(CollectionPath, Arg.Any<CancellationToken>())
+            .Returns(new CollectionPreferences());
+        prefsService.UpdateAsync(
+                CollectionPath,
+                Arg.Any<Func<CollectionPreferences, CollectionPreferences>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        var sut = BuildSut(service, prefsService, messenger);
+
+        // Simulate a transient UI state where ComboBox selection was cleared to null.
+        sut.SelectedDropdownItem = null!;
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        sut.ActiveEnvironment.Should().BeNull();
+        sut.SelectedDropdownItem.Should().NotBeNull();
+        sut.SelectedDropdownItem.Name.Should().Be("(no environment)");
+    }
 }
