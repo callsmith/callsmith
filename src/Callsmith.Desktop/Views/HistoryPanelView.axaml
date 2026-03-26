@@ -445,6 +445,16 @@
                            FontWeight="Bold"
                            LetterSpacing="1"
                            VerticalAlignment="Center"/>
+                <Button Content="Resend Request"
+                      Command="{Binding ResendRequestCommand}"
+                      IsVisible="{Binding HasDetail}"
+                      FontSize="11"
+                      Background="Transparent"
+                      Foreground="#9cdcfe"
+                      BorderThickness="1"
+                      BorderBrush="#555"
+                      Padding="8,3"
+                      VerticalAlignment="Center"/>
                 <Panel IsVisible="{Binding HasHiddenSecrets}">
                   <Button Content="Reveal Secrets"
                         Command="{Binding RevealSecretsCommand}"
@@ -468,16 +478,6 @@
                         Padding="8,3"
                         VerticalAlignment="Center"/>
                 </Panel>
-                <Button Content="Resend Request"
-                      Command="{Binding ResendRequestCommand}"
-                      IsVisible="{Binding HasDetail}"
-                      FontSize="11"
-                      Background="Transparent"
-                      Foreground="#9cdcfe"
-                      BorderThickness="1"
-                      BorderBrush="#555"
-                      Padding="8,3"
-                      VerticalAlignment="Center"/>
               </StackPanel>
               <Border Background="#252526"
                       CornerRadius="4"

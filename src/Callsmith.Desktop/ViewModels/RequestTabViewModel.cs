@@ -731,6 +731,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
             p => VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value);
         var baseUrl = QueryStringHelper.GetBaseUrl(snapshot.Url);
         var resolvedUrl = PathTemplateHelper.ApplyPathParams(baseUrl, resolvedPathParams);
+        // Substitute any remaining {{variable}} tokens in the URL (e.g. {{baseUrl}}/api/users).
+        resolvedUrl = VariableSubstitutionService.Substitute(resolvedUrl, vars) ?? resolvedUrl;
 
         // Resolve query params.
         var resolvedQueryParams = snapshot.QueryParams

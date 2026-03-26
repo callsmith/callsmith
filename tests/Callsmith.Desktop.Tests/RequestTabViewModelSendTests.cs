@@ -213,6 +213,56 @@ public sealed class RequestTabViewModelSendTests
             "the history binding must reflect what was actually transmitted, not a re-generated value");
     }
 
+    [Fact]
+    public void LoadFromHistorySnapshot_ResolvesVariableTokensInUrl()
+    {
+        var registry = new TransportRegistry();
+        var collectionService = Substitute.For<ICollectionService>();
+
+        var sut = new RequestTabViewModel(
+            registry,
+            collectionService,
+            new WeakReferenceMessenger(),
+            _ => { });
+
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "GET",
+            Url = "https://{{baseUrl}}/api/users/{id}",
+            PathParams = new Dictionary<string, string> { ["id"] = "{{userId}}" },
+            QueryParams = [new RequestKv("filter", "{{statusFilter}}")],
+            Auth = new AuthConfig(),
+        };
+
+        var bindings = new List<VariableBinding>
+        {
+            new("{{baseUrl}}", "api.example.com", IsSecret: false),
+            new("{{userId}}", "42", IsSecret: false),
+            new("{{statusFilter}}", "active", IsSecret: false),
+        };
+
+        var entry = new HistoryEntry
+        {
+            Id = 1,
+            Method = "GET",
+            ResolvedUrl = "https://api.example.com/api/users/42?filter=active",
+            SentAt = DateTimeOffset.UtcNow,
+            ElapsedMs = 10,
+            ConfiguredSnapshot = snapshot,
+            VariableBindings = bindings,
+        };
+
+        sut.LoadFromHistorySnapshot(snapshot, bindings);
+
+        // URL field should have no {{}} or {param} placeholders
+        sut.Url.Should().Contain("api.example.com");
+        sut.Url.Should().Contain("/api/users/42");
+        sut.Url.Should().NotContain("{{baseUrl}}");
+        sut.Url.Should().NotContain("{id}");
+        sut.SelectedMethod.Should().Be("GET");
+        sut.IsNew.Should().BeTrue();
+    }
+
     private static async Task AssertEventuallyAsync(Func<Task> assertion, int retries = 50, int delayMs = 20)
     {
         Exception? last = null;
