@@ -258,7 +258,7 @@ public sealed class CollectionsViewModelDeleteTests
         var sut = BuildSut(cs);
         sut.CollectionPath = FakeCollectionPath;
 
-        var (root, folder, request) = BuildTree();
+        var (root, _, request) = BuildTree();
 
         cs.MoveRequestAsync(request.Request!.FilePath, root.FolderPath!, Arg.Any<CancellationToken>())
           .Returns(new CollectionRequest
@@ -363,8 +363,6 @@ public sealed class CollectionsViewModelDeleteTests
     [Fact]
     public async Task ConfirmDelete_ClearsPendingDeleteNodeBeforeServiceCall()
     {
-        var callOrder = new List<string>();
-
         var cs = Substitute.For<ICollectionService>();
         cs.OpenFolderAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
           .Returns(new CollectionFolder { Name = "root", FolderPath = FakeCollectionPath, Requests = [], SubFolders = [] });

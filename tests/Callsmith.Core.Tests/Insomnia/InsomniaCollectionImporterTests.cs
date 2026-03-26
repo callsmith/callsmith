@@ -270,7 +270,7 @@ public sealed class InsomniaCollectionImporterTests : IDisposable
     [Fact]
     public async Task ImportAsync_SetsBodyTypeToNoneWhenBodyIsAbsent()
     {
-        var path = WriteYaml("nobody.yaml", SingleRequestYaml("GET", "https://example.com", null));
+        var path = WriteYaml("nobody.yaml", SingleRequestYaml("GET", "https://example.com"));
         var result = await _sut.ImportAsync(path);
         result.RootRequests[0].BodyType.Should().Be("none");
         result.RootRequests[0].Body.Should().BeNull();
@@ -734,7 +734,7 @@ public sealed class InsomniaCollectionImporterTests : IDisposable
     [Fact]
     public async Task ImportAsync_ReturnsEmptyQueryParamsWhenNonePresent()
     {
-        var path = WriteYaml("no_query.yaml", SingleRequestYaml("GET", "https://example.com", null));
+        var path = WriteYaml("no_query.yaml", SingleRequestYaml("GET", "https://example.com"));
         var result = await _sut.ImportAsync(path);
         result.RootRequests[0].QueryParams.Should().BeEmpty();
     }
@@ -923,14 +923,11 @@ public sealed class InsomniaCollectionImporterTests : IDisposable
     {
         // $.access_token in base64 = "JC5hY2Nlc3NfdG9rZW4="
         var b64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("$.access_token"));
-        var value = $"{{% response 'body', 'req_1', 'b64::{b64}::46b', 'always' %}}";
         var idMap = new Dictionary<string, string> { ["req_1"] = "Login" };
 
         // Note: The value is NOT an interpolated string above — the {} are part of Insomnia syntax
         // Use a raw string literal instead:
-        value = $"{{% response 'body', 'req_1', 'b64::{b64}::46b', 'always' %}}";
-        // Reset to proper Insomnia syntax (the test string above had escaping issues):
-        value = "{% response 'body', 'req_1', 'b64::" + b64 + "::46b', 'always' %}";
+        var value = "{% response 'body', 'req_1', 'b64::" + b64 + "::46b', 'always' %}";
 
         var segments = InsomniaCollectionImporter.ParseDynamicValue(value, idMap);
 
@@ -1114,7 +1111,7 @@ public sealed class InsomniaCollectionImporterTests : IDisposable
         collection: []
         """;
 
-    private static string SingleRequestYaml(string method, string url, string? bodyMime) =>
+    private static string SingleRequestYaml(string method, string url) =>
         $$"""
         type: collection.insomnia.rest/5.0
         schema_version: "5.1"

@@ -1,4 +1,3 @@
-using Callsmith.Core.Abstractions;
 using Callsmith.Core.Services;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;

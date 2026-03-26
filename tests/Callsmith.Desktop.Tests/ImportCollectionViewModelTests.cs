@@ -26,10 +26,10 @@ public sealed class ImportCollectionViewModelTests
     // ─── Constructor / defaults ───────────────────────────────────────────────
 
     [Fact]
-    public void Constructor_DefaultsSelectedImportTypeToInsomnia()
+    public void Constructor_DefaultsSelectedImportTypeToPostman()
     {
         var sut = BuildSut();
-        sut.SelectedImportType.Name.Should().Be("Insomnia");
+        sut.SelectedImportType.Name.Should().Be("Postman");
         sut.SelectedImportType.IsEnabled.Should().BeTrue();
     }
 
@@ -81,7 +81,7 @@ public sealed class ImportCollectionViewModelTests
 
         sut.SelectedImportType = hoppscotch;
 
-        sut.SelectedImportType.Name.Should().Be("Insomnia");
+        sut.SelectedImportType.Name.Should().Be("Postman");
     }
 
     [Fact]

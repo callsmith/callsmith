@@ -626,10 +626,8 @@ public sealed class EnvironmentEditorViewModelTests
         service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
                .Returns([MakeModel("dev"), MakeModel("staging")]);
 
-        var sut = BuildSut(service);
-        new WeakReferenceMessenger().Send(new CollectionOpenedMessage(CollectionPath));
         var messenger = new WeakReferenceMessenger();
-        sut = BuildSut(service, messenger);
+        var sut = BuildSut(service, messenger);
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(100);
 
@@ -830,7 +828,6 @@ public sealed class EnvironmentEditorViewModelTests
 
         var messenger = new WeakReferenceMessenger();
         var sut = BuildSut(service, messenger, dynamicEvaluator: evaluator);
-
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(300); // allow fire-and-forget load + preview refresh
 
@@ -934,8 +931,6 @@ public sealed class EnvironmentEditorViewModelTests
         var evaluator = Substitute.For<IDynamicVariableEvaluator>();
 
         var messenger = new WeakReferenceMessenger();
-        var sut = BuildSut(service, messenger, dynamicEvaluator: evaluator);
-
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(300);
 
