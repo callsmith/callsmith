@@ -580,6 +580,38 @@ public sealed class BrunoCollectionServiceTests : IDisposable
         Assert.Equal("hunter2", loaded.Auth.Password);
     }
 
+    [Fact]
+    public async Task RenameRequest_BasicAuth_SecretsStillAccessibleAfterRename()
+    {
+        var sut = Sut(RealSecrets());
+        await sut.OpenFolderAsync(_root);
+
+        var filePath = Path.Combine(_root, "original.bru");
+        var request = new CollectionRequest
+        {
+            RequestId = Guid.NewGuid(),
+            FilePath = filePath,
+            Name = "original",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com",
+            Auth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.Basic,
+                Username = "alice",
+                Password = "hunter2",
+            },
+        };
+
+        await sut.SaveRequestAsync(request);
+
+        // Rename the request file.
+        var renamed = await sut.RenameRequestAsync(filePath, "renamed");
+
+        // The secret must still be accessible under the new file path.
+        var loaded = await sut.LoadRequestAsync(renamed.FilePath);
+        Assert.Equal("hunter2", loaded.Auth.Password);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     //  Helpers
     // ─────────────────────────────────────────────────────────────────────────

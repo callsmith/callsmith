@@ -94,9 +94,11 @@ public sealed class BrunoCollectionService : ICollectionService
 
         if (request.Auth.AuthType == AuthConfig.AuthTypes.Basic && !string.IsNullOrEmpty(_currentRoot))
         {
+            // After the migration block above, RequestId is guaranteed to be non-null.
+            // Use it as the stable key for secret storage so secrets survive file renames.
             // Prefer the secret-stored value; fall back to whatever is in the file (migration path).
             var stored = await _secrets
-                .GetSecretAsync(_currentRoot, AuthSecretsNamespace, RequestKey(filePath), ct)
+                .GetSecretAsync(_currentRoot, AuthSecretsNamespace, request.RequestId!.Value.ToString(), ct)
                 .ConfigureAwait(false);
             if (stored is not null || request.Auth.Password is not null)
             {
@@ -135,6 +137,14 @@ public sealed class BrunoCollectionService : ICollectionService
             }
         }
 
+        // Determine the stable request ID to use as the secret storage key.
+        // If the request does not yet have an ID (legacy / first save), fall back to the existing
+        // file's ID or generate a new one. This must match what BuildBruContent writes to disk.
+        var requestId = request.RequestId
+            ?? (existing is not null && TryGetRequestId(existing, out var existingId)
+                ? existingId
+                : Guid.NewGuid());
+
         // Persist Basic auth password locally so it is never written into the collection file.
         if (request.Auth.AuthType == AuthConfig.AuthTypes.Basic && !string.IsNullOrEmpty(_currentRoot))
         {
@@ -142,13 +152,13 @@ public sealed class BrunoCollectionService : ICollectionService
                 .SetSecretAsync(
                     _currentRoot,
                     AuthSecretsNamespace,
-                    RequestKey(request.FilePath),
+                    requestId.ToString(),
                     request.Auth.Password ?? string.Empty,
                     ct)
                 .ConfigureAwait(false);
         }
 
-        var content = BuildBruContent(request, existing);
+        var content = BuildBruContent(request, existing, requestId);
         await File.WriteAllTextAsync(request.FilePath, content, ct).ConfigureAwait(false);
         _logger.LogDebug("Saved Bruno request to '{FilePath}'", request.FilePath);
     }
@@ -615,13 +625,9 @@ public sealed class BrunoCollectionService : ICollectionService
     //  Private — building .bru file content from CollectionRequest
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static string BuildBruContent(CollectionRequest request, BruDocument? existing)
+    private static string BuildBruContent(CollectionRequest request, BruDocument? existing, Guid requestId)
     {
         var blocks = new List<BruBlock>();
-        var requestId = request.RequestId
-            ?? (existing is not null && TryGetRequestId(existing, out var existingRequestId)
-                ? existingRequestId
-                : Guid.NewGuid());
 
         // meta
         var meta = new BruBlock("meta");
@@ -742,13 +748,6 @@ public sealed class BrunoCollectionService : ICollectionService
     private static bool IsEnvVarRef(string value) =>
         value.StartsWith("{{" , StringComparison.Ordinal) &&
         value.EndsWith("}}", StringComparison.Ordinal);
-
-    /// <summary>
-    /// Returns a stable, normalised key for a request file relative to the current collection root.
-    /// Used to key Basic auth passwords in local secret storage.
-    /// </summary>
-    private string RequestKey(string filePath) =>
-        Path.GetRelativePath(_currentRoot, Path.GetFullPath(filePath)).Replace('\\', '/');
 
     private static bool IsPreservedBlockName(string name) =>
         name is "script:pre-request" or "script:post-response" or "tests" or "params:path";

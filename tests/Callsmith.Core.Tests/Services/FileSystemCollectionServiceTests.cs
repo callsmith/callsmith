@@ -853,4 +853,69 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
         loaded.Headers.Should().Contain(h => h.Key == "Authorization" && h.IsEnabled);
         loaded.Headers.Should().Contain(h => h.Key == "X-Debug" && !h.IsEnabled);
     }
+
+    [Fact]
+    public async Task RenameRequest_BasicAuth_SecretsStillAccessibleAfterRename()
+    {
+        var sut = Sut(RealSecrets());
+        var folder = _temp.CreateSubDirectory("col-rename-basic");
+        await sut.OpenFolderAsync(folder);
+
+        var request = new CollectionRequest
+        {
+            RequestId = Guid.NewGuid(),
+            FilePath = Path.Combine(folder, "original.callsmith"),
+            Name = "original",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com",
+            Auth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.Basic,
+                Username = "user",
+                Password = "s3cret",
+            },
+        };
+
+        await sut.SaveRequestAsync(request);
+
+        // Rename the request file.
+        var renamed = await sut.RenameRequestAsync(request.FilePath, "renamed");
+
+        // The secret must still be accessible under the new file path.
+        var loaded = await sut.LoadRequestAsync(renamed.FilePath);
+        loaded.Auth.Password.Should().Be("s3cret");
+    }
+
+    [Fact]
+    public async Task RenameRequest_ApiKeyAuth_SecretsStillAccessibleAfterRename()
+    {
+        var sut = Sut(RealSecrets());
+        var folder = _temp.CreateSubDirectory("col-rename-apikey");
+        await sut.OpenFolderAsync(folder);
+
+        var request = new CollectionRequest
+        {
+            RequestId = Guid.NewGuid(),
+            FilePath = Path.Combine(folder, "original.callsmith"),
+            Name = "original",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com",
+            Auth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.ApiKey,
+                ApiKeyName = "X-Api-Key",
+                ApiKeyValue = "supersecret123",
+                ApiKeyIn = AuthConfig.ApiKeyLocations.Header,
+            },
+        };
+
+        await sut.SaveRequestAsync(request);
+
+        // Rename the request file.
+        var renamed = await sut.RenameRequestAsync(request.FilePath, "renamed");
+
+        // The secret must still be accessible under the new file path.
+        var loaded = await sut.LoadRequestAsync(renamed.FilePath);
+        loaded.Auth.ApiKeyValue.Should().Be("supersecret123");
+    }
 }
