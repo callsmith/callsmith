@@ -251,10 +251,21 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     /// <summary>
     /// True when the request config and response panels are displayed side-by-side (horizontal).
-    /// False (default) means the request config is above the response (vertical).
+    /// False means the request config is above the response (vertical).
+    /// Defaults to true (horizontal). Synced from collection preferences by
+    /// <see cref="RequestEditorViewModel"/> when a collection is opened.
     /// </summary>
     [ObservableProperty]
-    private bool _isHorizontalLayout = false;
+    private bool _isHorizontalLayout = true;
+
+    /// <summary>
+    /// Optional callback invoked when the user changes the layout via
+    /// <see cref="ToggleLayoutCommand"/>. Wired by <see cref="RequestEditorViewModel"/>
+    /// to persist the choice and sync all other open tabs.
+    /// </summary>
+    internal Action<bool>? LayoutChangedCallback { get; set; }
+
+    partial void OnIsHorizontalLayoutChanged(bool value) => LayoutChangedCallback?.Invoke(value);
 
     /// <summary>Toggles between horizontal (side-by-side) and vertical (stacked) layout.</summary>
     [RelayCommand]
