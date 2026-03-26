@@ -302,7 +302,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         PendingDynamicConfig = new DynamicValueConfigViewModel(
             _dynamicEvaluator,
             CollectionRootPath,
-            string.Empty,            // no single env file in this context
+            string.Empty,            // no env context in this scope
             AvailableRequestNames,
             [],                      // env variables not needed here
             staticVars,
@@ -918,18 +918,11 @@ public sealed partial class RequestTabViewModel : ObservableObject
             //    global requests can use active-env vars (e.g. baseUrl) when they need them.
             if (globalHasDynamic)
             {
-                // Ensure a stable, per-collection cache key for the global environment
-                // even if the model hasn't been fully loaded yet (FilePath could be empty
-                // on first use before the environment editor has been opened).
-                var globalFilePath = !string.IsNullOrEmpty(_globalEnvironment.FilePath)
-                    ? _globalEnvironment.FilePath
-                    : Path.Combine(CollectionRootPath, "environment", "_global.env.callsmith");
-
                 // Scope the global var cache per active environment — a global token request
                 // uses the active env's credentials/baseUrl, so each env gets its own token.
                 var globalCacheNamespace = _activeEnvironment is not null
-                    ? $"{globalFilePath}[env:{_activeEnvironment.FilePath}]"
-                    : globalFilePath;
+                    ? $"{_globalEnvironment.EnvironmentId:N}[env:{_activeEnvironment.EnvironmentId:N}]"
+                    : _globalEnvironment.EnvironmentId.ToString("N");
 
                 var globalResolved = await _dynamicEvaluator.ResolveAsync(
                     CollectionRootPath,
@@ -956,7 +949,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             {
                 var activeResolved = await _dynamicEvaluator.ResolveAsync(
                     CollectionRootPath,
-                    _activeEnvironment.FilePath,
+                    _activeEnvironment.EnvironmentId.ToString("N"),
                     _activeEnvironment.Variables,
                     merged,
                     ct).ConfigureAwait(false);
@@ -989,21 +982,25 @@ public sealed partial class RequestTabViewModel : ObservableObject
     {
         if (_dynamicEvaluator is null || _sourceRequest is null) return;
 
+        // A stable requestId is needed to write a cache key that ResolveAsync can find.
+        // If the source request has no ID (pre-dates the requestId migration), skip the update —
+        // dynamic vars will simply re-execute on the next resolution.
+        var requestId = _sourceRequest.RequestId;
+        if (requestId is null) return;
+
         var globalVars = _globalEnvironment.Variables;
-        var globalFilePath = !string.IsNullOrEmpty(_globalEnvironment.FilePath)
-            ? _globalEnvironment.FilePath
-            : Path.Combine(CollectionRootPath, "environment", "_global.env.callsmith");
 
         // Global env: use the same env-scoped cache namespace as BuildMergedVarsAsync.
         var globalCacheNamespace = _activeEnvironment is not null
-            ? $"{globalFilePath}[env:{_activeEnvironment.FilePath}]"
-            : globalFilePath;
+            ? $"{_globalEnvironment.EnvironmentId:N}[env:{_activeEnvironment.EnvironmentId:N}]"
+            : _globalEnvironment.EnvironmentId.ToString("N");
 
         try
         {
             await _dynamicEvaluator.UpdateCacheFromResponseAsync(
                 CollectionRootPath,
                 globalCacheNamespace,
+                requestId.Value,
                 _sourceRequest.Name,
                 responseBody,
                 globalVars,
@@ -1019,7 +1016,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
             {
                 await _dynamicEvaluator.UpdateCacheFromResponseAsync(
                     CollectionRootPath,
-                    _activeEnvironment.FilePath,
+                    _activeEnvironment.EnvironmentId.ToString("N"),
+                    requestId.Value,
                     _sourceRequest.Name,
                     responseBody,
                     _activeEnvironment.Variables,

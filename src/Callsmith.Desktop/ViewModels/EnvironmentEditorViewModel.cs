@@ -530,44 +530,42 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 staticVars[v.Name.Trim()] = v.Value;
         }
 
-        // Compute the environment file path / cache namespace for the config VM.
+        // Compute the cache namespace for the config VM.
         // For global env vars, use the same env-scoped namespace as the passive preview and
-        // send-time evaluation (globalFilePath[env:previewEnvFilePath]) so that token cache
-        // entries written by "Send" are found by the "Test" button and vice versa.
+        // send-time evaluation (globalId[env:previewId]) so that token cache entries written
+        // by "Send" are found by the "Test" button and vice versa.
         // Switching the preview env therefore correctly invalidates any stale token.
-        string configEnvFilePath;
-        if (isGlobal && SelectedGlobalPreviewEnvironment is { } previewChoice
-            && !string.IsNullOrEmpty(envItem?.FilePath))
-            configEnvFilePath = $"{envItem.FilePath}[env:{previewChoice.FilePath}]";
+        string configCacheNamespace;
+        if (isGlobal && SelectedGlobalPreviewEnvironment is { } previewChoice && envItem is not null)
+            configCacheNamespace = $"{envItem.EnvironmentId:N}[env:{previewChoice.EnvironmentId:N}]";
         else
-            configEnvFilePath = envItem?.FilePath ?? string.Empty;
+            configCacheNamespace = envItem?.EnvironmentId.ToString("N") ?? string.Empty;
 
         // For non-global envs, supply the global env's variables so that PreviewAsync
         // can pre-resolve global dynamic vars (e.g. `token`) before applying the
         // active env's own dynamic vars — same two-phase logic as send time.
         IReadOnlyList<EnvironmentVariable>? globalVars = null;
-        string? globalEnvFilePath = null;
+        string? globalEnvCacheNamespace = null;
         if (!isGlobal)
         {
             var globalItem = Environments.FirstOrDefault(e => e.IsGlobal);
             if (globalItem is not null)
             {
-                var globalModel = globalItem.BuildModel();
-                globalVars = globalModel.Variables;
-                globalEnvFilePath = globalModel.FilePath;
+                globalVars = globalItem.BuildModel().Variables;
+                globalEnvCacheNamespace = globalItem.EnvironmentId.ToString("N");
             }
         }
 
         PendingResponseBodyConfig = new DynamicValueConfigViewModel(
             _dynamicEvaluator,
             _collectionFolderPath ?? string.Empty,
-            configEnvFilePath,
+            configCacheNamespace,
             _availableRequestNames,
             model?.Variables ?? [],
             staticVars,
             existingSegment,
             globalVariables: globalVars,
-            globalEnvironmentFilePath: globalEnvFilePath);
+            globalEnvironmentCacheNamespace: globalEnvCacheNamespace);
 
         _pendingResponseBodyTcs = new TaskCompletionSource<EnvironmentVariable?>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -754,9 +752,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             string cacheNamespace;
             if (contextEnv is not null)
             {
-                cacheNamespace = !string.IsNullOrEmpty(env.FilePath)
-                    ? $"{env.FilePath}[env:{contextEnv.FilePath}]"
-                    : contextEnv.FilePath;
+                cacheNamespace = $"{env.EnvironmentId:N}[env:{contextEnv.EnvironmentId:N}]";
                 foreach (var v in contextEnv.BuildModel().Variables
                     .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.Static
                              && !string.IsNullOrWhiteSpace(v.Name)))
@@ -764,7 +760,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             }
             else
             {
-                cacheNamespace = env.FilePath;
+                cacheNamespace = env.EnvironmentId.ToString("N");
             }
 
             try
@@ -845,9 +841,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                         foreach (var kv in activeStaticVars)
                             phase1Context[kv.Key] = kv.Value;
 
-                        var globalCacheNamespace = !string.IsNullOrEmpty(globalModel.FilePath)
-                            ? $"{globalModel.FilePath}[env:{candidate.FilePath}]"
-                            : candidate.FilePath;
+                        var globalCacheNamespace = $"{globalModel.EnvironmentId:N}[env:{candidate.EnvironmentId:N}]";
 
                         var globalResolved = await _dynamicEvaluator
                             .ResolveAsync(_collectionFolderPath, globalCacheNamespace, globalModel.Variables, phase1Context, ct)
@@ -915,7 +909,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         try
         {
             var resolved = await _dynamicEvaluator
-                .ResolveAsync(_collectionFolderPath, env.FilePath, model.Variables, staticVars, ct)
+                .ResolveAsync(_collectionFolderPath, env.EnvironmentId.ToString("N"), model.Variables, staticVars, ct)
                 .ConfigureAwait(true);
 
             ct.ThrowIfCancellationRequested();

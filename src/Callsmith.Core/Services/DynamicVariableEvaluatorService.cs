@@ -64,13 +64,13 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
     /// <inheritdoc/>
     public async Task<ResolvedEnvironment> ResolveAsync(
         string collectionFolderPath,
-        string environmentFilePath,
+        string environmentCacheNamespace,
         IReadOnlyList<EnvironmentVariable> variables,
         IReadOnlyDictionary<string, string> staticVariables,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(collectionFolderPath);
-        ArgumentNullException.ThrowIfNull(environmentFilePath);
+        ArgumentNullException.ThrowIfNull(environmentCacheNamespace);
         ArgumentNullException.ThrowIfNull(variables);
         ArgumentNullException.ThrowIfNull(staticVariables);
 
@@ -129,7 +129,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
                 try
                 {
                     var value = await EvaluateResponseBodyVarAsync(
-                        variable, environmentFilePath, folder, resolvedVars, cache, ct)
+                        variable, environmentCacheNamespace, folder, resolvedVars, cache, ct)
                         .ConfigureAwait(false);
 
                     if (value != null)
@@ -194,14 +194,15 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
     /// <inheritdoc/>
     public async Task UpdateCacheFromResponseAsync(
         string collectionFolderPath,
-        string environmentFilePath,
+        string environmentCacheNamespace,
+        Guid requestId,
         string requestName,
         string responseBody,
         IReadOnlyList<EnvironmentVariable> variables,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(collectionFolderPath);
-        ArgumentNullException.ThrowIfNull(environmentFilePath);
+        ArgumentNullException.ThrowIfNull(environmentCacheNamespace);
         ArgumentNullException.ThrowIfNull(requestName);
         ArgumentNullException.ThrowIfNull(responseBody);
         ArgumentNullException.ThrowIfNull(variables);
@@ -234,7 +235,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
                 continue;
             }
 
-            var cacheKey = MakeCacheKey(environmentFilePath, variable.ResponseRequestName!, variable.ResponsePath!);
+            var cacheKey = MakeCacheKey(environmentCacheNamespace, requestId, variable.ResponsePath!);
             cache[cacheKey] = new CacheEntry(extracted, DateTime.UtcNow);
             cacheModified = true;
             _logger.LogDebug(
@@ -264,7 +265,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
 
     private async Task<string?> EvaluateResponseBodyVarAsync(
         EnvironmentVariable variable,
-        string environmentFilePath,
+        string environmentCacheNamespace,
         CollectionFolder? folder,
         IReadOnlyDictionary<string, string> vars,
         DynCache cache,
@@ -278,7 +279,23 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
             ExpiresAfterSeconds = variable.ResponseExpiresAfterSeconds,
         };
 
-        var cacheKey = MakeCacheKey(environmentFilePath, segment.RequestName, segment.Path);
+        // Resolve the request's stable ID for use as the per-request cache key segment.
+        // Fall back to a deterministic GUID derived from the request name when the ID
+        // is not yet assigned (e.g. the file pre-dates the requestId migration).
+        var stub = folder is not null ? FindRequestByName(folder, segment.RequestName) : null;
+        Guid requestCacheId;
+        if (stub?.RequestId is { } existingId)
+        {
+            requestCacheId = existingId;
+        }
+        else
+        {
+            requestCacheId = DeterministicRequestGuid(segment.RequestName);
+            _logger.LogDebug(
+                "Dynamic variable: no RequestId found for '{RequestName}'; using deterministic GUID {Id} as cache key",
+                segment.RequestName, requestCacheId);
+        }
+        var cacheKey = MakeCacheKey(environmentCacheNamespace, requestCacheId, segment.Path);
 
         var shouldExecute = segment.Frequency switch
         {
@@ -604,8 +621,19 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         return (DateTime.UtcNow - entry.CachedAt).TotalSeconds >= lifetimeSeconds;
     }
 
-    private static string MakeCacheKey(string envFilePath, string requestName, string path) =>
-        $"{envFilePath}|{requestName}|{path}";
+    private static string MakeCacheKey(string environmentCacheNamespace, Guid requestId, string path) =>
+        $"{environmentCacheNamespace}|{requestId:N}|{path}";
+
+    /// <summary>
+    /// Produces a deterministic <see cref="Guid"/> from a request name for use as the
+    /// cache key when a request has not yet been assigned a stable <see cref="CollectionRequest.RequestId"/>.
+    /// Uses the exact casing of the name so that case-distinct names produce distinct GUIDs.
+    /// </summary>
+    private static Guid DeterministicRequestGuid(string requestName)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(requestName));
+        return new Guid(hash[..16]);
+    }
 
     private async Task<DynCache> LoadCacheAsync(string collectionFolderPath, CancellationToken ct)
     {

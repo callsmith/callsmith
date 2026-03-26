@@ -95,6 +95,9 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     /// <summary>Absolute path of the backing file on disk.</summary>
     public string FilePath => _model.FilePath;
 
+    /// <summary>Stable unique identifier for this environment.</summary>
+    public Guid EnvironmentId => _model.EnvironmentId;
+
     // ─── Constructor ─────────────────────────────────────────────────────────
 
     public EnvironmentListItemViewModel(

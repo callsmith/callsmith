@@ -15,11 +15,11 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
 {
     private readonly IDynamicVariableEvaluator _evaluator;
     private readonly string _collectionFolderPath;
-    private readonly string _environmentFilePath;
+    private readonly string _environmentCacheNamespace;
     private readonly IReadOnlyList<EnvironmentVariable> _allVariables;
     private readonly IReadOnlyDictionary<string, string> _staticVariables;
     private readonly IReadOnlyList<EnvironmentVariable> _globalVariables;
-    private readonly string _globalEnvironmentFilePath;
+    private readonly string _globalEnvironmentCacheNamespace;
 
     // ─── Available options ────────────────────────────────────────────────────
 
@@ -83,13 +83,13 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
     public DynamicValueConfigViewModel(
         IDynamicVariableEvaluator evaluator,
         string collectionFolderPath,
-        string environmentFilePath,
+        string environmentCacheNamespace,
         IReadOnlyList<string> availableRequests,
         IReadOnlyList<EnvironmentVariable> allVariables,
         IReadOnlyDictionary<string, string> staticVariables,
         DynamicValueSegment? existing = null,
         IReadOnlyList<EnvironmentVariable>? globalVariables = null,
-        string? globalEnvironmentFilePath = null)
+        string? globalEnvironmentCacheNamespace = null)
     {
         ArgumentNullException.ThrowIfNull(evaluator);
         ArgumentNullException.ThrowIfNull(collectionFolderPath);
@@ -99,11 +99,11 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
 
         _evaluator = evaluator;
         _collectionFolderPath = collectionFolderPath;
-        _environmentFilePath = environmentFilePath;
+        _environmentCacheNamespace = environmentCacheNamespace;
         _allVariables = allVariables;
         _staticVariables = staticVariables;
         _globalVariables = globalVariables ?? [];
-        _globalEnvironmentFilePath = globalEnvironmentFilePath ?? string.Empty;
+        _globalEnvironmentCacheNamespace = globalEnvironmentCacheNamespace ?? string.Empty;
 
         foreach (var r in availableRequests)
             AvailableRequests.Add(r);
@@ -152,9 +152,9 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
                 v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
                 || v.VariableType == EnvironmentVariable.VariableTypes.Dynamic))
             {
-                var globalCacheNamespace = !string.IsNullOrEmpty(_globalEnvironmentFilePath)
-                    ? $"{_globalEnvironmentFilePath}[env:{_environmentFilePath}]"
-                    : _environmentFilePath;
+                var globalCacheNamespace = !string.IsNullOrEmpty(_globalEnvironmentCacheNamespace)
+                    ? $"{_globalEnvironmentCacheNamespace}[env:{_environmentCacheNamespace}]"
+                    : _environmentCacheNamespace;
                 var globalResolved = await _evaluator
                     .ResolveAsync(_collectionFolderPath, globalCacheNamespace, _globalVariables, baseStaticVars, ct)
                     .ConfigureAwait(true);
@@ -170,7 +170,7 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
                 || v.VariableType == EnvironmentVariable.VariableTypes.Dynamic))
             {
                 var resolved = await _evaluator
-                    .ResolveAsync(_collectionFolderPath, _environmentFilePath, _allVariables, resolvedVars, ct)
+                    .ResolveAsync(_collectionFolderPath, _environmentCacheNamespace, _allVariables, resolvedVars, ct)
                     .ConfigureAwait(true);
                 resolvedVars = resolved.Variables;
             }
