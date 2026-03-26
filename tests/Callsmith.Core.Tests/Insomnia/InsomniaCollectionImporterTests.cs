@@ -994,6 +994,76 @@ public sealed class InsomniaCollectionImporterTests : IDisposable
         dv.ResponseExpiresAfterSeconds.Should().Be(900);
     }
 
+      [Fact]
+      public void ParseDynamicValue_ParsesUuidTag_AsRandomUuidMockData()
+      {
+        var segments = InsomniaCollectionImporter.ParseDynamicValue("{% uuid 'v4' %}",
+          new Dictionary<string, string>());
+
+        segments.Should().HaveCount(1);
+        var mock = segments[0].Should().BeOfType<MockDataSegment>().Subject;
+        mock.Category.Should().Be("Random");
+        mock.Field.Should().Be("UUID");
+      }
+
+      [Fact]
+      public void ParseDynamicValue_ParsesIsoTimestampTag_AsIsoTimestampMockData()
+      {
+        var segments = InsomniaCollectionImporter.ParseDynamicValue("{% now 'iso-8601' %}",
+          new Dictionary<string, string>());
+
+        segments.Should().HaveCount(1);
+        var mock = segments[0].Should().BeOfType<MockDataSegment>().Subject;
+        mock.Category.Should().Be("Date");
+        mock.Field.Should().Be("ISO Timestamp");
+      }
+
+      [Fact]
+      public void NormalizeAndConvertTags_ConvertsUuidAndTimestampTags_ToMockDataKeys()
+      {
+        var input = "id={% uuid 'v4' %};ts={% timestamp %};iso={% now 'iso-8601' %}";
+        var output = InsomniaCollectionImporter.NormalizeAndConvertTags(
+          input,
+          new Dictionary<string, string>());
+
+        output.Should().Contain("{% faker 'Random.UUID' %}");
+        output.Should().Contain("{% faker 'Date.Timestamp' %}");
+        output.Should().Contain("{% faker 'Date.ISO Timestamp' %}");
+      }
+
+      [Fact]
+    public async Task ImportAsync_ImportsUuidAndTimestampEnvironmentVars_AsDynamicMockData()
+    {
+        const string yaml = """
+            type: collection.insomnia.rest/5.0
+            schema_version: "5.1"
+            name: Test
+            collection: []
+            environments:
+              name: Base
+              meta:
+                id: env_001
+              data:
+                uid: "{% uuid 'v4' %}"
+                unix-ts: "{% timestamp %}"
+                iso-ts: "{% now 'iso-8601' %}"
+            """;
+
+        var path = WriteYaml("env_uuid_timestamp.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        var env = result.Environments.Single();
+        env.DynamicVariables.Should().Contain(v => v.Name == "uid"
+            && v.MockDataCategory == "Random"
+            && v.MockDataField == "UUID");
+        env.DynamicVariables.Should().Contain(v => v.Name == "unix-ts"
+            && v.MockDataCategory == "Date"
+            && v.MockDataField == "Timestamp");
+        env.DynamicVariables.Should().Contain(v => v.Name == "iso-ts"
+            && v.MockDataCategory == "Date"
+            && v.MockDataField == "ISO Timestamp");
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────

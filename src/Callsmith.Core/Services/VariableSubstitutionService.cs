@@ -122,10 +122,7 @@ public static partial class VariableSubstitutionService
                 if (!string.IsNullOrEmpty(generated)) return generated;
             }
 
-            var entry = MockDataCatalog.FindByBogusName(key);
-            return entry is not null
-                ? MockDataCatalog.Generate(entry.Category, entry.Field)
-                : match.Value;
+            return match.Value;
         });
 
     /// <summary>
