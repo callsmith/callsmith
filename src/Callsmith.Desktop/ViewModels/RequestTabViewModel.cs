@@ -39,6 +39,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private bool _syncingUrl;
     private bool _syncingPathParams;
     private long _historyHydrationVersion;
+    private bool _closeAfterSaveAs;
 
     // -------------------------------------------------------------------------
     // Tab identity
@@ -120,6 +121,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [ObservableProperty] private bool _showAuthPassword = false;
     [ObservableProperty] private string _authApiKeyName = string.Empty;
     [ObservableProperty] private string _authApiKeyValue = string.Empty;
+    [ObservableProperty] private bool _showAuthApiKeyValue = false;
     [ObservableProperty] private string _authApiKeyIn = AuthConfig.ApiKeyLocations.Header;
 
     /// <summary>Segmented field for the bearer token (supports pill rendering of dynamic tokens).</summary>
@@ -610,6 +612,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(PreviewUrl) or
                 nameof(HasUnresolvedPathParams) or nameof(PreviewUrlForeground) or
                 nameof(IsAuthBearer) or nameof(IsAuthBasic) or nameof(IsAuthApiKey) or
+                nameof(ShowAuthPassword) or nameof(ShowAuthApiKeyValue) or
                 nameof(EnvVarNames) or
                 nameof(FormattedResponseBody) or nameof(FormattedResponseHeaders) or nameof(IsBodyJson) or
                 nameof(BodyLanguage) or nameof(ResponseLanguage) or
@@ -1283,7 +1286,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     /// Always enabled so Ctrl+S works on both tab types.
     /// </summary>
     [RelayCommand]
-    private Task SaveAsync(CancellationToken ct)
+    private async Task SaveAsync(CancellationToken ct)
     {
         if (IsNew)
         {
@@ -1297,10 +1300,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
             SaveAsError = null;
             ShowSaveAsPanel = true;
-            return Task.CompletedTask;
+            return;
         }
 
-        return PerformSaveAsync(ct);
+        await PerformSaveAsync(ct);
     }
 
     [RelayCommand]
@@ -1357,7 +1360,17 @@ public sealed partial class RequestTabViewModel : ObservableObject
         ShowSaveAsPanel = false;
         IsNew = false;
 
-        await PerformSaveAsync(ct);
+        var saved = await PerformSaveAsync(ct);
+
+        if (!saved)
+            return;
+
+        if (_closeAfterSaveAs)
+        {
+            _closeAfterSaveAs = false;
+            PendingClose = false;
+            _requestClose(this);
+        }
 
         // Tell the sidebar to refresh so the new file appears in the tree.
         _messenger.Send(new CollectionRefreshRequestedMessage());
@@ -1366,6 +1379,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [RelayCommand]
     private void CancelSaveAs()
     {
+        _closeAfterSaveAs = false;
         ShowSaveAsPanel = false;
         SaveAsError = null;
     }
@@ -1375,13 +1389,13 @@ public sealed partial class RequestTabViewModel : ObservableObject
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Requests closing this tab. If the tab has unsaved changes to an existing
-    /// request, shows the inline close guard. New tabs (never saved) close immediately.
+    /// Requests closing this tab. Tabs that still need a save action show the inline
+    /// close guard before closing.
     /// </summary>
     [RelayCommand]
     private void Close()
     {
-        if (HasUnsavedChanges && !IsNew)
+        if (TabIsDirty)
         {
             PendingClose = true;
             return;
@@ -1392,8 +1406,16 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [RelayCommand]
     private async Task SaveAndCloseAsync(CancellationToken ct)
     {
-        await PerformSaveAsync(ct);
-        if (HasUnsavedChanges) return;  // save failed — keep the modal open
+        if (IsNew)
+        {
+            _closeAfterSaveAs = true;
+            PendingClose = false;
+            await SaveAsync(ct);
+            return;
+        }
+
+        var saved = await PerformSaveAsync(ct);
+        if (!saved) return;  // save failed — keep the modal open
         PendingClose = false;
         _requestClose(this);
     }
@@ -1415,9 +1437,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
     // Shared save logic
     // -------------------------------------------------------------------------
 
-    internal async Task PerformSaveAsync(CancellationToken ct = default)
+    internal async Task<bool> PerformSaveAsync(CancellationToken ct = default)
     {
-        if (_sourceRequest is null) return;
+        if (_sourceRequest is null) return false;
 
         var baseUrl = Url.Contains('?') ? Url[..Url.IndexOf('?')] : Url;
 
@@ -1456,14 +1478,17 @@ public sealed partial class RequestTabViewModel : ObservableObject
             ErrorMessage = null;
             OnPropertyChanged(nameof(CanOpenRequestHistory));
             _messenger.Send(new RequestSavedMessage(updated));
+            return true;
         }
         catch (OperationCanceledException)
         {
             // Save was cancelled — leave HasUnsavedChanges as-is so the user can retry.
+            return false;
         }
         catch (Exception ex)
         {
             ErrorMessage = $"Save failed: {ex.Message}";
+            return false;
         }
         finally
         {
