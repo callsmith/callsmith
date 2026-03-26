@@ -148,9 +148,7 @@ public static partial class SegmentSerializer
             }
         }
 
-        // Fall back: try matching by Bogus method name (camelCase → catalog entry)
-        var entry = MockDataCatalog.FindByBogusName(key);
-        return entry is not null ? (entry.Category, entry.Field) : ("Random", "UUID");
+        return ("Random", "UUID");
     }
 
     private static DynamicFrequency ParseFrequency(string raw) =>

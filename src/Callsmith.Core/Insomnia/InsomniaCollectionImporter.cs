@@ -264,16 +264,14 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
                 continue;
             }
 
-            // Try pure faker tag
-            var fakerMatch = InsomniaFakerTag.Match(kv.Value.Trim());
-            if (fakerMatch.Success && fakerMatch.Value.Trim() == kv.Value.Trim())
+            // Try pure mock-data tag (faker/uuid/timestamp)
+            if (TryResolveMockDataTag(kv.Value.Trim(), out var mdCategory, out var mdField))
             {
-                var (cat, fld) = ResolveFakerEntry(fakerMatch.Groups[1].Value);
                 dynamicVars.Add(new ImportedDynamicVariable
                 {
                     Name = kv.Key,
-                    MockDataCategory = cat,
-                    MockDataField = fld,
+                    MockDataCategory = mdCategory,
+                    MockDataField = mdField,
                 });
                 continue;
             }
@@ -484,9 +482,56 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
     private static readonly Regex InsomniaFakerTag =
         new(@"\{%\s*faker\s+'([^']+)'\s*%\}", RegexOptions.Compiled);
 
+    // Matches {% uuid %} / {% uuid 'v4' %} style tags.
+    private static readonly Regex InsomniaUuidTag =
+        new(@"\{%\s*uuid(?:\s+'[^']*')?\s*%\}", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    // Matches timestamp-like tags (e.g. {% timestamp %}, {% now 'iso-8601' %}).
+    private static readonly Regex InsomniaTimestampTag =
+        new(@"\{%\s*(?:timestamp|now)(?:\s+[^%]+)?\s*%\}", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     // Used to split a value into (before, tag, after) parts.
     private static readonly Regex InsomniaResponseTagSplit =
         new(@"(\{%.*?%\})", RegexOptions.Compiled | RegexOptions.Singleline);
+
+    private static bool TryResolveMockDataTag(string tag, out string category, out string field)
+    {
+        category = string.Empty;
+        field = string.Empty;
+
+        var fakerMatch = InsomniaFakerTag.Match(tag);
+        if (fakerMatch.Success)
+        {
+            (category, field) = ResolveFakerEntry(fakerMatch.Groups[1].Value);
+            return true;
+        }
+
+        if (InsomniaUuidTag.IsMatch(tag))
+        {
+            category = "Random";
+            field = "UUID";
+            return true;
+        }
+
+        if (InsomniaTimestampTag.IsMatch(tag))
+        {
+            // Prefer ISO when explicitly requested; otherwise map to Unix timestamp.
+            if (tag.Contains("iso", StringComparison.OrdinalIgnoreCase))
+            {
+                category = "Date";
+                field = "ISO Timestamp";
+            }
+            else
+            {
+                category = "Date";
+                field = "Timestamp";
+            }
+
+            return true;
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// Converts Insomnia-specific Nunjucks variable syntax to Callsmith <c>{{name}}</c>.
@@ -540,26 +585,25 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
         result = InsomniaFakerTag.Replace(result, match =>
         {
             var bogusName = match.Groups[1].Value;
-            var entry = MockDataCatalog.FindByBogusName(bogusName);
-            if (entry is not null)
-                return $"{{% faker '{SegmentSerializer.MockDataKey(entry.Category, entry.Field)}' %}}";
-
-            // Try dot-notation 'Category.Field' lookup directly
-            var dotIdx = bogusName.IndexOf('.', StringComparison.Ordinal);
-            if (dotIdx > 0)
-            {
-                var cat = bogusName[..dotIdx];
-                var fld = bogusName[(dotIdx + 1)..];
-                var direct = MockDataCatalog.All.FirstOrDefault(e =>
-                    string.Equals(e.Category, cat, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(e.Field, fld, StringComparison.OrdinalIgnoreCase));
-                if (direct is not null)
-                    return $"{{% faker '{SegmentSerializer.MockDataKey(direct.Category, direct.Field)}' %}}";
-            }
+            // ResolveFakerEntry handles alias map + dot-notation + randomXyz heuristic
+            var (cat, fld) = ResolveFakerEntry(bogusName);
+            // If the resolved entry exists in the catalog, emit the canonical key
+            if (MockDataCatalog.All.Any(e => e.Category == cat && e.Field == fld))
+                return $"{{% faker '{SegmentSerializer.MockDataKey(cat, fld)}' %}}";
 
             // Unknown faker — keep as-is
             return match.Value;
         });
+
+        // Convert UUID tag to equivalent mock-data key.
+        result = InsomniaUuidTag.Replace(result,
+            $"{{% faker '{SegmentSerializer.MockDataKey("Random", "UUID")}' %}}");
+
+        // Convert timestamp-like tags to Date.Timestamp / Date.ISO Timestamp.
+        result = InsomniaTimestampTag.Replace(result, m =>
+            m.Value.Contains("iso", StringComparison.OrdinalIgnoreCase)
+                ? $"{{% faker '{SegmentSerializer.MockDataKey("Date", "ISO Timestamp")}' %}}"
+                : $"{{% faker '{SegmentSerializer.MockDataKey("Date", "Timestamp")}' %}}");
 
         return result;
     }
@@ -597,13 +641,11 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
         {
             var tag = match.Groups[1].Value;
 
-            // {% faker %} tag
-            var fakerMatch = InsomniaFakerTag.Match(tag);
-            if (fakerMatch.Success)
+            // Mock-data tag (faker / uuid / timestamp)
+            if (TryResolveMockDataTag(tag, out var mdCategory, out var mdField))
             {
-                var (cat, fld) = ResolveFakerEntry(fakerMatch.Groups[1].Value);
                 // Derive a deterministic var name: "faker-category-field" lowercased, hyphens
-                var varName = $"faker-{cat}-{fld}"
+                var varName = $"faker-{mdCategory}-{mdField}"
                     .ToLowerInvariant()
                     .Replace(' ', '-');
 
@@ -612,8 +654,8 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
                     globalVars[varName] = new ImportedDynamicVariable
                     {
                         Name = varName,
-                        MockDataCategory = cat,
-                        MockDataField = fld,
+                        MockDataCategory = mdCategory,
+                        MockDataField = mdField,
                     };
                 }
                 return $"{{{{{varName}}}}}";
@@ -670,22 +712,265 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
     /// <summary>Resolves a faker bogus-name or dot-notation key to a (category, field) pair.</summary>
     private static (string category, string field) ResolveFakerEntry(string bogusName)
     {
-        var entry = MockDataCatalog.FindByBogusName(bogusName);
+        var entry = FindByInsomniaBogusName(bogusName);
         if (entry is not null) return (entry.Category, entry.Field);
 
+        // Dot-notation pass-through for unknown keys (e.g. a raw "Category.Field" not in the alias map)
         var dotIdx = bogusName.IndexOf('.', StringComparison.Ordinal);
         if (dotIdx > 0)
-        {
-            var cat = bogusName[..dotIdx];
-            var fld = bogusName[(dotIdx + 1)..];
-            var direct = MockDataCatalog.All.FirstOrDefault(e =>
-                string.Equals(e.Category, cat, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(e.Field, fld, StringComparison.OrdinalIgnoreCase));
-            if (direct is not null) return (direct.Category, direct.Field);
-            return (cat, fld);
-        }
+            return (bogusName[..dotIdx], bogusName[(dotIdx + 1)..]);
 
         return ("Random", "UUID");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Insomnia faker-name → MockDataCatalog resolution
+    // Insomnia uses Faker.js naming conventions (randomFirstName, guid, etc.).
+    // This mapping is Insomnia-specific and does not belong in MockDataCatalog.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static MockDataEntry? FindByInsomniaBogusName(string bogusName)
+    {
+        if (string.IsNullOrEmpty(bogusName)) return null;
+
+        var key = bogusName.ToLowerInvariant();
+
+        if (InsomniaBogusNameMap.TryGetValue(key, out var entry))
+            return entry;
+
+        // Dot-notation: e.g. "internet.ipv6" → category-scoped fuzzy field match
+        var dotIdx = key.IndexOf('.', StringComparison.Ordinal);
+        if (dotIdx > 0)
+        {
+            var categoryPart  = key[..dotIdx];
+            var normalizedFld = NormalizeInsomniaBogusKey(key[(dotIdx + 1)..]);
+            return FindBestInsomniaCatalogMatch(
+                MockDataCatalog.All.Where(e => string.Equals(e.Category, categoryPart, StringComparison.OrdinalIgnoreCase)),
+                normalizedFld);
+        }
+
+        // randomXyz heuristic: strip "random" prefix, fuzzy-match against all field names
+        if (key.StartsWith("random", StringComparison.Ordinal) && key.Length > "random".Length)
+        {
+            var tail = NormalizeInsomniaBogusKey(key["random".Length..]);
+            return FindBestInsomniaCatalogMatch(MockDataCatalog.All, tail);
+        }
+
+        return null;
+    }
+
+    private static MockDataEntry? FindBestInsomniaCatalogMatch(IEnumerable<MockDataEntry> entries, string normalizedCandidate)
+    {
+        return entries
+            .Select(e => (Entry: e, Score: InsomniaCatalogFieldScore(normalizedCandidate, e.Field)))
+            .Where(x => x.Score > 0)
+            .OrderByDescending(x => x.Score)
+            .ThenByDescending(x => NormalizeInsomniaBogusKey(x.Entry.Field).Length)
+            .Select(x => x.Entry)
+            .FirstOrDefault();
+    }
+
+    private static int InsomniaCatalogFieldScore(string normalizedCandidate, string field)
+    {
+        var nf = NormalizeInsomniaBogusKey(field);
+        if (nf == normalizedCandidate)                                    return 300;
+        if (nf.StartsWith(normalizedCandidate, StringComparison.Ordinal)) return 200;
+        if (normalizedCandidate.StartsWith(nf, StringComparison.Ordinal)) return 100;
+        return 0;
+    }
+
+    private static string NormalizeInsomniaBogusKey(string value)
+    {
+        var chars = value.Where(char.IsLetterOrDigit).ToArray();
+        return new string(chars).ToLowerInvariant();
+    }
+
+    // Alias table: Insomnia / Faker.js method name (lowercased) → MockDataCatalog entry.
+    // Source: https://github.com/Kong/insomnia/blob/main/packages/insomnia/src/templating/faker-functions.ts
+    private static readonly Dictionary<string, MockDataEntry> InsomniaBogusNameMap = BuildInsomniaBogusNameMap();
+
+    private static Dictionary<string, MockDataEntry> BuildInsomniaBogusNameMap()
+    {
+        var firstName    = MockDataCatalog.All.First(e => e.Category == "Name"     && e.Field == "First Name");
+        var lastName     = MockDataCatalog.All.First(e => e.Category == "Name"     && e.Field == "Last Name");
+        var fullName     = MockDataCatalog.All.First(e => e.Category == "Name"     && e.Field == "Full Name");
+        var prefix       = MockDataCatalog.All.First(e => e.Category == "Name"     && e.Field == "Prefix");
+        var suffix       = MockDataCatalog.All.First(e => e.Category == "Name"     && e.Field == "Suffix");
+        var jobTitle     = MockDataCatalog.All.First(e => e.Category == "Name"     && e.Field == "Job Title");
+        var email        = MockDataCatalog.All.First(e => e.Category == "Internet" && e.Field == "Email");
+        var exampleEmail = MockDataCatalog.All.First(e => e.Category == "Internet" && e.Field == "Example Email");
+        var username     = MockDataCatalog.All.First(e => e.Category == "Internet" && e.Field == "Username");
+        var url          = MockDataCatalog.All.First(e => e.Category == "Internet" && e.Field == "URL");
+        var password     = MockDataCatalog.All.First(e => e.Category == "Internet" && e.Field == "Password");
+        var ipAddress    = MockDataCatalog.All.First(e => e.Category == "Internet" && e.Field == "IP Address");
+        var color        = MockDataCatalog.All.First(e => e.Category == "Internet" && e.Field == "Color");
+        var avatarUrl    = MockDataCatalog.All.First(e => e.Category == "Internet" && e.Field == "Avatar URL");
+        var imageUrl     = MockDataCatalog.All.First(e => e.Category == "Internet" && e.Field == "Image URL");
+        var domainName   = MockDataCatalog.All.First(e => e.Category == "Internet" && e.Field == "Domain Name");
+        var phone        = MockDataCatalog.All.First(e => e.Category == "Phone"    && e.Field == "Phone Number");
+        var city         = MockDataCatalog.All.First(e => e.Category == "Address"  && e.Field == "City");
+        var state        = MockDataCatalog.All.First(e => e.Category == "Address"  && e.Field == "State");
+        var country      = MockDataCatalog.All.First(e => e.Category == "Address"  && e.Field == "Country");
+        var zipCode      = MockDataCatalog.All.First(e => e.Category == "Address"  && e.Field == "Zip Code");
+        var word         = MockDataCatalog.All.First(e => e.Category == "Lorem"    && e.Field == "Word");
+        var words        = MockDataCatalog.All.First(e => e.Category == "Lorem"    && e.Field == "Words");
+        var sentence     = MockDataCatalog.All.First(e => e.Category == "Lorem"    && e.Field == "Sentence");
+        var sentences    = MockDataCatalog.All.First(e => e.Category == "Lorem"    && e.Field == "Sentences");
+        var paragraph    = MockDataCatalog.All.First(e => e.Category == "Lorem"    && e.Field == "Paragraph");
+        var paragraphs   = MockDataCatalog.All.First(e => e.Category == "Lorem"    && e.Field == "Paragraphs");
+        var loremText    = MockDataCatalog.All.First(e => e.Category == "Lorem"    && e.Field == "Text");
+        var loremLines   = MockDataCatalog.All.First(e => e.Category == "Lorem"    && e.Field == "Lines");
+        var loremSlug    = MockDataCatalog.All.First(e => e.Category == "Lorem"    && e.Field == "Slug");
+        var uuid         = MockDataCatalog.All.First(e => e.Category == "Random"   && e.Field == "UUID");
+        var number       = MockDataCatalog.All.First(e => e.Category == "Random"   && e.Field == "Number");
+        var boolean      = MockDataCatalog.All.First(e => e.Category == "Random"   && e.Field == "Boolean");
+        var pastDate     = MockDataCatalog.All.First(e => e.Category == "Date"     && e.Field == "Past Date");
+        var futureDate   = MockDataCatalog.All.First(e => e.Category == "Date"     && e.Field == "Future Date");
+        var recentDate   = MockDataCatalog.All.First(e => e.Category == "Date"     && e.Field == "Recent Date");
+        var compName     = MockDataCatalog.All.First(e => e.Category == "Company"  && e.Field == "Company Name");
+        var buzzwords    = MockDataCatalog.All.First(e => e.Category == "Company"  && e.Field == "Buzzwords");
+        var hackerAdj    = MockDataCatalog.All.First(e => e.Category == "Hacker"   && e.Field == "Adjective");
+        var hackerNoun   = MockDataCatalog.All.First(e => e.Category == "Hacker"   && e.Field == "Noun");
+        var hackerVerb   = MockDataCatalog.All.First(e => e.Category == "Hacker"   && e.Field == "Verb");
+        var creditCard   = MockDataCatalog.All.First(e => e.Category == "Finance"  && e.Field == "Credit Card");
+        var iban         = MockDataCatalog.All.First(e => e.Category == "Finance"  && e.Field == "IBAN");
+        var bic          = MockDataCatalog.All.First(e => e.Category == "Finance"  && e.Field == "BIC");
+        var accountNum   = MockDataCatalog.All.First(e => e.Category == "Finance"  && e.Field == "Account Number");
+        var dbColumn     = MockDataCatalog.All.First(e => e.Category == "Database" && e.Field == "Column");
+        var dbType       = MockDataCatalog.All.First(e => e.Category == "Database" && e.Field == "Type");
+        var dbCollation  = MockDataCatalog.All.First(e => e.Category == "Database" && e.Field == "Collation");
+        var dbEngine     = MockDataCatalog.All.First(e => e.Category == "Database" && e.Field == "Engine");
+
+        return new Dictionary<string, MockDataEntry>(StringComparer.OrdinalIgnoreCase)
+        {
+            // Name
+            ["randomfirstname"]        = firstName,
+            ["name.firstname"]         = firstName,
+            ["firstname"]              = firstName,
+            ["randomlastname"]         = lastName,
+            ["name.lastname"]          = lastName,
+            ["lastname"]               = lastName,
+            ["fullname"]               = fullName,
+            ["name.fullname"]          = fullName,
+            ["randomfullname"]         = fullName,
+            ["randomnameprefix"]       = prefix,
+            ["randomnamesuffix"]       = suffix,
+            ["jobtitle"]               = jobTitle,
+            ["name.jobtitle"]          = jobTitle,
+            // Internet
+            ["internet.email"]         = email,
+            ["randomemail"]            = email,
+            ["email"]                  = email,
+            ["internet.exampleemail"]  = exampleEmail,
+            ["randomexampleemail"]     = exampleEmail,
+            ["exampleemail"]           = exampleEmail,
+            ["internet.username"]      = username,
+            ["randomusername"]         = username,
+            ["username"]               = username,
+            ["internet.url"]           = url,
+            ["randomurl"]              = url,
+            ["url"]                    = url,
+            ["internet.password"]      = password,
+            ["randompassword"]         = password,
+            ["internet.ip"]            = ipAddress,
+            ["randomip"]               = ipAddress,
+            ["ipaddress"]              = ipAddress,
+            ["internet.domainname"]    = domainName,
+            ["randomdomainname"]       = domainName,
+            ["randomhexcolor"]         = color,
+            ["randomavatarimage"]      = avatarUrl,
+            // Flickr-category image variants all map to the generic image URL entry
+            ["randomabstractimage"]    = imageUrl,
+            ["randomanimalsimage"]     = imageUrl,
+            ["randombusinessimage"]    = imageUrl,
+            ["randomcatsimage"]        = imageUrl,
+            ["randomcityimage"]        = imageUrl,
+            ["randomfoodimage"]        = imageUrl,
+            ["randomnightlifeimage"]   = imageUrl,
+            ["randomfashionimage"]     = imageUrl,
+            ["randompeopleimage"]      = imageUrl,
+            ["randomnatureimage"]      = imageUrl,
+            ["randomsportsimage"]      = imageUrl,
+            ["randomtransportimage"]   = imageUrl,
+            ["randomimagedatauri"]     = imageUrl,
+            // Phone
+            ["phone.phonenumber"]      = phone,
+            ["randomphonenumber"]      = phone,
+            ["phonenumber"]            = phone,
+            // Address
+            ["address.city"]           = city,
+            ["randomcity"]             = city,
+            ["city"]                   = city,
+            ["address.state"]          = state,
+            ["randomstate"]            = state,
+            ["state"]                  = state,
+            ["address.country"]        = country,
+            ["randomcountry"]          = country,
+            ["country"]                = country,
+            ["address.zipcode"]        = zipCode,
+            ["randomzipcode"]          = zipCode,
+            ["zipcode"]                = zipCode,
+            // Lorem
+            ["lorem.word"]             = word,
+            ["randomword"]             = word,
+            ["randomloremword"]        = word,
+            ["lorem.words"]            = words,
+            ["randomloremwords"]       = words,
+            ["lorem.sentence"]         = sentence,
+            ["randomsentence"]         = sentence,
+            ["randomloremsentence"]    = sentence,
+            ["lorem.sentences"]        = sentences,
+            ["randomloremsentences"]   = sentences,
+            ["lorem.paragraph"]        = paragraph,
+            ["randomparagraph"]        = paragraph,
+            ["randomloremparagraph"]   = paragraph,
+            ["lorem.paragraphs"]       = paragraphs,
+            ["randomloremparagraphs"]  = paragraphs,
+            ["lorem.text"]             = loremText,
+            ["randomloremtext"]        = loremText,
+            ["lorem.lines"]            = loremLines,
+            ["randomloremlines"]       = loremLines,
+            ["lorem.slug"]             = loremSlug,
+            ["randomloremslug"]        = loremSlug,
+            // Random
+            ["random.uuid"]            = uuid,
+            ["randomuuid"]             = uuid,
+            ["guid"]                   = uuid,
+            ["uuid"]                   = uuid,
+            ["random.number"]          = number,
+            ["randomnumber"]           = number,
+            ["randomint"]              = number,
+            ["random.boolean"]         = boolean,
+            ["randomboolean"]          = boolean,
+            // Date
+            ["date.recent"]            = recentDate,
+            ["randomdaterecent"]       = recentDate,
+            ["randomdatepast"]         = pastDate,
+            ["date.future"]            = futureDate,
+            ["randomdatefuture"]       = futureDate,
+            // Company
+            ["company.companyname"]    = compName,
+            ["randomcompanyname"]      = compName,
+            ["companyname"]            = compName,
+            ["randomcompanysuffix"]    = compName,
+            ["randombs"]               = buzzwords,
+            ["randombsadjective"]      = hackerAdj,
+            ["randombsbuzz"]           = hackerVerb,
+            ["randombsnoun"]           = hackerNoun,
+            // Finance
+            ["finance.creditcardnumber"] = creditCard,
+            ["creditcardnumber"]       = creditCard,
+            ["finance.iban"]           = iban,
+            ["randombankaccountiban"]  = iban,
+            ["finance.bic"]            = bic,
+            ["randombankaccountbic"]   = bic,
+            ["randombankaccount"]      = accountNum,
+            // Database
+            ["randomdatabasecolumn"]   = dbColumn,
+            ["randomdatabasetype"]     = dbType,
+            ["randomdatabasecollation"]= dbCollation,
+            ["randomdatabaseengine"]   = dbEngine,
+        };
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -709,31 +994,10 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
         {
             if (string.IsNullOrEmpty(part)) continue;
 
-            // {% faker %} tag
-            var fakerMatch = InsomniaFakerTag.Match(part);
-            if (fakerMatch.Success)
+            // Mock-data tag (faker / uuid / timestamp)
+            if (TryResolveMockDataTag(part, out var mdCategory, out var mdField))
             {
-                var bogusName = fakerMatch.Groups[1].Value;
-                var entry = MockDataCatalog.FindByBogusName(bogusName);
-                string cat, fld;
-                if (entry is not null)
-                {
-                    cat = entry.Category; fld = entry.Field;
-                }
-                else
-                {
-                    var dotIdx = bogusName.IndexOf('.', StringComparison.Ordinal);
-                    if (dotIdx > 0)
-                    {
-                        cat = bogusName[..dotIdx]; fld = bogusName[(dotIdx + 1)..];
-                        var direct = MockDataCatalog.All.FirstOrDefault(e =>
-                            string.Equals(e.Category, cat, StringComparison.OrdinalIgnoreCase) &&
-                            string.Equals(e.Field, fld, StringComparison.OrdinalIgnoreCase));
-                        if (direct is not null) { cat = direct.Category; fld = direct.Field; }
-                    }
-                    else { cat = "Random"; fld = "UUID"; }
-                }
-                segments.Add(new MockDataSegment { Category = cat, Field = fld });
+                segments.Add(new MockDataSegment { Category = mdCategory, Field = mdField });
                 continue;
             }
 
