@@ -16,6 +16,7 @@
       <Setter Property="FontSize" Value="14"/>
       <Setter Property="Padding" Value="13,6"/>
       <Setter Property="MinHeight" Value="34"/>
+      <Setter Property="Cursor" Value="Hand"/>
     </Style>
     <Style Selector="TabControl.response-tabs TabItem">
       <Setter Property="FontSize" Value="12"/>
