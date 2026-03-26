@@ -26,6 +26,33 @@ public sealed class BrunoCollectionService : ICollectionService
     /// <summary>Environment sub-folder name used by Bruno (plural, unlike Callsmith's singular).</summary>
     public const string EnvironmentFolderName = "environments";
 
+    /// <summary>Folder names to exclude from collection scanning (case-insensitive).</summary>
+    private static readonly HashSet<string> ExcludedFolderNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Version control
+        ".git", ".svn", ".hg", ".bzr",
+        // Package managers
+        "node_modules", "packages", ".nuget",
+        // IDEs and editors
+        ".vscode", ".idea", ".sublime-workspace", ".vs",
+        // Build outputs
+        "bin", "obj", "dist", "build", "out", "target", ".gradle",
+        // Language/framework caches
+        "__pycache__", ".pytest_cache", ".tox", ".mypy_cache",
+        // Python virtual environments
+        "venv", ".venv", "env", ".env.dir", "virtualenv",
+        // Ruby, Node
+        ".bundle", "vendor", ".npm",
+        // macOS
+        ".DS_Store", ".AppleDouble", ".LSOverride",
+        // Windows
+        "Thumbs.db", "Desktop.ini",
+        // OS temporary files
+        ".tmp", "temp", "tmp",
+        // Dependencies and lock files (should not scan into)
+        ".caches",
+    };
+
     private static readonly string[] _httpVerbs =
         ["get", "post", "put", "delete", "patch", "head", "options"];
 
@@ -390,8 +417,7 @@ public sealed class BrunoCollectionService : ICollectionService
 
         var subFolders = Directory
             .EnumerateDirectories(folderPath)
-            .Where(d => !string.Equals(
-                Path.GetFileName(d), EnvironmentFolderName, StringComparison.OrdinalIgnoreCase))
+            .Where(d => !ShouldExcludeFolder(Path.GetFileName(d)))
             .OrderBy(d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)
             .Select(d => ReadFolder(d))
             .ToList();
@@ -440,6 +466,16 @@ public sealed class BrunoCollectionService : ICollectionService
         }
         catch { /* fall through */ }
         return Path.GetFileName(folderPath) ?? folderPath;
+    }
+
+    /// <summary>
+    /// Determines if a folder should be excluded from collection scanning.
+    /// Excludes the environment folder and common development/system directories.
+    /// </summary>
+    private static bool ShouldExcludeFolder(string folderName)
+    {
+        return string.Equals(folderName, EnvironmentFolderName, StringComparison.OrdinalIgnoreCase)
+            || ExcludedFolderNames.Contains(folderName);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

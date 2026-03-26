@@ -30,6 +30,33 @@ public sealed class FileSystemCollectionService : ICollectionService
     /// <summary>File name of the optional display-order manifest written in each folder.</summary>
     public const string OrderFileName = "_order.json";
 
+    /// <summary>Folder names to exclude from collection scanning (case-insensitive).</summary>
+    private static readonly HashSet<string> ExcludedFolderNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Version control
+        ".git", ".svn", ".hg", ".bzr",
+        // Package managers
+        "node_modules", "packages", ".nuget",
+        // IDEs and editors
+        ".vscode", ".idea", ".sublime-workspace", ".vs",
+        // Build outputs
+        "bin", "obj", "dist", "build", "out", "target", ".gradle",
+        // Language/framework caches
+        "__pycache__", ".pytest_cache", ".tox", ".mypy_cache",
+        // Python virtual environments
+        "venv", ".venv", "env", ".env.dir", "virtualenv",
+        // Ruby, Node
+        ".bundle", "vendor", ".npm",
+        // macOS
+        ".DS_Store", ".AppleDouble", ".LSOverride",
+        // Windows
+        "Thumbs.db", "Desktop.ini",
+        // OS temporary files
+        ".tmp", "temp", "tmp",
+        // Dependencies and lock files (should not scan into)
+        ".caches",
+    };
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -390,9 +417,7 @@ public sealed class FileSystemCollectionService : ICollectionService
 
         var subFolders = Directory
             .EnumerateDirectories(folderPath)
-            .Where(d => !string.Equals(
-                Path.GetFileName(d), EnvironmentFolderName,
-                StringComparison.OrdinalIgnoreCase))
+            .Where(d => !ShouldExcludeFolder(Path.GetFileName(d)))
             .OrderBy(d => d, StringComparer.OrdinalIgnoreCase)
             .Select(ReadFolder)
             .ToList();
@@ -405,6 +430,16 @@ public sealed class FileSystemCollectionService : ICollectionService
             SubFolders = subFolders,
             ItemOrder = itemOrder,
         };
+    }
+
+    /// <summary>
+    /// Determines if a folder should be excluded from collection scanning.
+    /// Excludes the environment folder and common development/system directories.
+    /// </summary>
+    private static bool ShouldExcludeFolder(string folderName)
+    {
+        return string.Equals(folderName, EnvironmentFolderName, StringComparison.OrdinalIgnoreCase)
+            || ExcludedFolderNames.Contains(folderName);
     }
 
     private static IReadOnlyList<string> ReadOrderFile(string orderFilePath)
