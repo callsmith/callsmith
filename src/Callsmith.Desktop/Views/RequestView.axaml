@@ -129,7 +129,7 @@
                       x:Name="CopyPreviewUrlButton"
                       Content="&#x2398;" ToolTip.Tip="Copy URL to clipboard"
                       Background="Transparent" Foreground="#888" BorderThickness="0"
-                      Padding="6,2" FontSize="14" Margin="6,0,0,0"/>
+                      Padding="6,2" FontSize="14" Margin="6,0,6,0"/>
             </Grid>
           </Border>
           <!-- Layout toggle — outside the dark preview box, on the lighter outer background -->
@@ -137,17 +137,17 @@
                   x:Name="ToggleLayoutButton"
                   Command="{Binding ToggleLayoutCommand}"
                   Background="Transparent" Foreground="#888" BorderThickness="0"
-                  Padding="6,4" VerticalAlignment="Center"
+                  Padding="6,4" Margin="6,0,0,0" VerticalAlignment="Center"
                   ToolTip.Tip="Toggle layout (horizontal / vertical)">
             <Grid>
               <!-- Stacked-panes icon: shown in vertical mode → click to switch to horizontal -->
               <PathIcon Width="14" Height="14" Foreground="#888"
                         IsVisible="{Binding IsHorizontalLayout, Converter={x:Static BoolConverters.Not}}"
-                        Data="M2,3 L22,3 L22,10 L2,10 Z M2,14 L22,14 L22,21 L2,21 Z"/>
+                        Data="M2,3 L10,3 L10,21 L2,21 Z M14,3 L22,3 L22,21 L14,21 Z"/>
               <!-- Side-by-side icon: shown in horizontal mode → click to switch to vertical -->
               <PathIcon Width="14" Height="14" Foreground="#888"
                         IsVisible="{Binding IsHorizontalLayout}"
-                        Data="M2,3 L10,3 L10,21 L2,21 Z M14,3 L22,3 L22,21 L14,21 Z"/>
+                        Data="M2,3 L22,3 L22,10 L2,10 Z M2,14 L22,14 L22,21 L2,21 Z"/>
             </Grid>
           </Button>
         </Grid>
