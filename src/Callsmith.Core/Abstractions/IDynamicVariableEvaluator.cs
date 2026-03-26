@@ -18,8 +18,11 @@ public interface IDynamicVariableEvaluator
     /// </list>
     /// </summary>
     /// <param name="collectionFolderPath">Root folder of the collection (used to locate requests).</param>
-    /// <param name="environmentFilePath">
-    /// Absolute path of the active environment file (used as the cache key namespace).
+    /// <param name="environmentCacheNamespace">
+    /// Stable string that namespaces cache entries for this environment context.
+    /// Pass <c>environmentId.ToString("N")</c> for a concrete environment; for the global
+    /// environment scoped to a specific active environment, pass a compound string such as
+    /// <c>$"{globalEnvId:N}[env:{activeEnvId:N}]"</c>.
     /// </param>
     /// <param name="variables">All variables in the active environment.</param>
     /// <param name="staticVariables">
@@ -28,7 +31,7 @@ public interface IDynamicVariableEvaluator
     /// <param name="ct">Cancellation token.</param>
     Task<ResolvedEnvironment> ResolveAsync(
         string collectionFolderPath,
-        string environmentFilePath,
+        string environmentCacheNamespace,
         IReadOnlyList<EnvironmentVariable> variables,
         IReadOnlyDictionary<string, string> staticVariables,
         CancellationToken ct = default);
@@ -52,14 +55,22 @@ public interface IDynamicVariableEvaluator
     /// variable resolutions use the fresh value without re-executing the request.
     /// </summary>
     /// <param name="collectionFolderPath">Root folder of the collection.</param>
-    /// <param name="environmentFilePath">Cache namespace (environment file path or scoped key).</param>
-    /// <param name="requestName">Name of the request that was just executed.</param>
+    /// <param name="environmentCacheNamespace">
+    /// Cache namespace for the environment context; must match the namespace used by
+    /// <see cref="ResolveAsync"/> for the same environment.
+    /// </param>
+    /// <param name="requestId">
+    /// Stable identifier of the request that was just executed.
+    /// Used as the per-request segment of the cache key.
+    /// </param>
+    /// <param name="requestName">Name of the request that was just executed (used to match variables).</param>
     /// <param name="responseBody">The raw response body from the completed request.</param>
     /// <param name="variables">Environment variables to inspect for references to the request.</param>
     /// <param name="ct">Cancellation token.</param>
     Task UpdateCacheFromResponseAsync(
         string collectionFolderPath,
-        string environmentFilePath,
+        string environmentCacheNamespace,
+        Guid requestId,
         string requestName,
         string responseBody,
         IReadOnlyList<EnvironmentVariable> variables,

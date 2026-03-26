@@ -1040,7 +1040,7 @@ public sealed class EnvironmentEditorViewModelTests
         var evaluator = Substitute.For<IDynamicVariableEvaluator>();
         // Step 2: concrete env's own resolution returns the api-key.
         evaluator.ResolveAsync(
-                CollectionPath, devModel.FilePath,
+                CollectionPath, devModel.EnvironmentId.ToString("N"),
                 Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
                 Arg.Any<CancellationToken>())

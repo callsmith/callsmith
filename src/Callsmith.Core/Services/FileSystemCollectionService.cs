@@ -102,13 +102,17 @@ public sealed class FileSystemCollectionService : ICollectionService
 
         _logger.LogDebug("Loaded request from '{FilePath}'", filePath);
 
+        // After the migration block above, RequestId is guaranteed to be non-null.
+        // Use it as the stable key for secret storage so secrets survive file renames.
+        var requestKey = dto.RequestId!.Value.ToString();
+
         string? basicAuthPassword = null;
         if ((dto.AuthType ?? AuthConfig.AuthTypes.None) == AuthConfig.AuthTypes.Basic
             && !string.IsNullOrEmpty(_currentRoot))
         {
             // Prefer the secret-stored value; fall back to whatever is in the file (migration path).
             var stored = await _secrets
-                .GetSecretAsync(_currentRoot, AuthSecretsNamespace, RequestKey(filePath), ct)
+                .GetSecretAsync(_currentRoot, AuthSecretsNamespace, requestKey, ct)
                 .ConfigureAwait(false);
             basicAuthPassword = stored ?? dto.AuthPassword;
         }
@@ -119,7 +123,7 @@ public sealed class FileSystemCollectionService : ICollectionService
         {
             // Prefer the secret-stored value; fall back to whatever is in the file (migration path).
             var stored = await _secrets
-                .GetSecretAsync(_currentRoot, AuthSecretsNamespace, RequestKey(filePath), ct)
+                .GetSecretAsync(_currentRoot, AuthSecretsNamespace, requestKey, ct)
                 .ConfigureAwait(false);
             apiKeyValue = stored ?? dto.AuthApiKeyValue;
         }
@@ -137,6 +141,12 @@ public sealed class FileSystemCollectionService : ICollectionService
 
         Directory.CreateDirectory(directory);
 
+        // Determine the stable request ID to use as the secret storage key.
+        // If the request does not yet have an ID (legacy / first save), generate one now so
+        // both the on-disk file and the secret entry share the same identifier.
+        var requestId = request.RequestId ?? Guid.NewGuid();
+        var requestKey = requestId.ToString();
+
         // Persist Basic auth password locally so it is never written into the collection file.
         if (request.Auth.AuthType == AuthConfig.AuthTypes.Basic && !string.IsNullOrEmpty(_currentRoot))
         {
@@ -144,7 +154,7 @@ public sealed class FileSystemCollectionService : ICollectionService
                 .SetSecretAsync(
                     _currentRoot,
                     AuthSecretsNamespace,
-                    RequestKey(request.FilePath),
+                    requestKey,
                     request.Auth.Password ?? string.Empty,
                     ct)
                 .ConfigureAwait(false);
@@ -157,13 +167,13 @@ public sealed class FileSystemCollectionService : ICollectionService
                 .SetSecretAsync(
                     _currentRoot,
                     AuthSecretsNamespace,
-                    RequestKey(request.FilePath),
+                    requestKey,
                     request.Auth.ApiKeyValue ?? string.Empty,
                     ct)
                 .ConfigureAwait(false);
         }
 
-        var dto = RequestToDto(request);
+        var dto = RequestToDto(request, requestId);
         var json = JsonSerializer.Serialize(dto, JsonOptions);
 
         await File.WriteAllTextAsync(request.FilePath, json, ct);
@@ -564,17 +574,10 @@ public sealed class FileSystemCollectionService : ICollectionService
         };
     }
 
-    /// <summary>
-    /// Returns a stable, normalised key for a request file relative to the current collection root.
-    /// Used to key Basic auth passwords and API key values in local secret storage.
-    /// </summary>
-    private string RequestKey(string filePath) =>
-        Path.GetRelativePath(_currentRoot, Path.GetFullPath(filePath)).Replace('\\', '/');
-
-    private static RequestFileDto RequestToDto(CollectionRequest request) =>
+    private static RequestFileDto RequestToDto(CollectionRequest request, Guid requestId) =>
         new()
         {
-            RequestId = request.RequestId ?? Guid.NewGuid(),
+            RequestId = requestId,
             Method = request.Method.Method,
             Url = request.Url,
             Description = request.Description,
