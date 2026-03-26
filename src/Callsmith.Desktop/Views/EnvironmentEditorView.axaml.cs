@@ -42,6 +42,8 @@ public partial class EnvironmentEditorView : UserControl
 
         EnvironmentList.AddHandler(InputElement.PointerPressedEvent, OnListRightPointerPressed, RoutingStrategies.Tunnel);
 
+        AddHandler(InputElement.PointerPressedEvent, OnMouseBackButtonPressed, RoutingStrategies.Tunnel);
+
         if (EnvListContextMenu is { } menu)
             menu.Opening += OnEnvListContextMenuOpening;
     }
@@ -60,6 +62,14 @@ public partial class EnvironmentEditorView : UserControl
     }
 
     // ─── Context menu ─────────────────────────────────────────────────────────
+
+    private void OnMouseBackButtonPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(null).Properties.PointerUpdateKind != PointerUpdateKind.XButton1Pressed) return;
+        if (DataContext is not EnvironmentEditorViewModel vm) return;
+        vm.CloseEditorCommand.Execute(null);
+        e.Handled = true;
+    }
 
     private void OnListRightPointerPressed(object? sender, PointerPressedEventArgs e)
     {

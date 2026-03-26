@@ -18,6 +18,8 @@ public partial class HistoryPanelView : UserControl
         InitializeComponent();
         HistoryEntriesList.AddHandler(InputElement.PointerPressedEvent, OnHistoryEntriesPointerPressed, RoutingStrategies.Tunnel);
 
+        AddHandler(InputElement.PointerPressedEvent, OnMouseBackButtonPressed, RoutingStrategies.Tunnel);
+
         if (HistoryEntryContextMenu is { } menu)
             menu.Opening += OnHistoryEntryContextMenuOpening;
     }
@@ -60,6 +62,14 @@ public partial class HistoryPanelView : UserControl
         {
             _ = vm.EnsureMoreEntriesAsync();
         }
+    }
+
+    private void OnMouseBackButtonPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(null).Properties.PointerUpdateKind != PointerUpdateKind.XButton1Pressed) return;
+        if (DataContext is not HistoryPanelViewModel vm) return;
+        vm.CloseCommand.Execute(null);
+        e.Handled = true;
     }
 
     private void OnHistoryEntriesPointerPressed(object? sender, PointerPressedEventArgs e)
