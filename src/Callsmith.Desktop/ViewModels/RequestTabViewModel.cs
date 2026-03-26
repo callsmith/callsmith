@@ -712,6 +712,128 @@ public sealed partial class RequestTabViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Populates this tab with the fully-resolved field values from a history entry.
+    /// Used when the user clicks "Resend Request" in the history panel.
+    /// All variable bindings should already be revealed (secrets decrypted) before calling this.
+    /// </summary>
+    public void LoadFromHistorySnapshot(
+        ConfiguredRequestSnapshot snapshot,
+        IReadOnlyList<VariableBinding> bindings)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(bindings);
+
+        var vars = HistorySentViewBuilder.BuildVariableMap(bindings);
+
+        // Resolve path params and apply to base URL so the URL field shows the literal value.
+        var resolvedPathParams = snapshot.PathParams.ToDictionary(
+            p => p.Key,
+            p => VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value);
+        var baseUrl = QueryStringHelper.GetBaseUrl(snapshot.Url);
+        var resolvedUrl = PathTemplateHelper.ApplyPathParams(baseUrl, resolvedPathParams);
+        // Substitute any remaining {{variable}} tokens in the URL (e.g. {{baseUrl}}/api/users).
+        resolvedUrl = VariableSubstitutionService.Substitute(resolvedUrl, vars) ?? resolvedUrl;
+
+        // Resolve query params.
+        var resolvedQueryParams = snapshot.QueryParams
+            .Select(p => new RequestKv(
+                VariableSubstitutionService.Substitute(p.Key, vars) ?? p.Key,
+                VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value,
+                p.IsEnabled))
+            .ToList<RequestKv>();
+
+        // Resolve headers (user-authored only; auto-applied headers are not part of the editor).
+        var resolvedHeaders = snapshot.Headers
+            .Select(h => new RequestKv(
+                VariableSubstitutionService.Substitute(h.Key, vars) ?? h.Key,
+                VariableSubstitutionService.Substitute(h.Value, vars) ?? h.Value,
+                h.IsEnabled))
+            .ToList<RequestKv>();
+
+        // Resolve auth fields.
+        var resolvedAuth = new AuthConfig
+        {
+            AuthType = snapshot.Auth.AuthType,
+            Token = VariableSubstitutionService.Substitute(snapshot.Auth.Token, vars),
+            Username = VariableSubstitutionService.Substitute(snapshot.Auth.Username, vars),
+            Password = VariableSubstitutionService.Substitute(snapshot.Auth.Password, vars),
+            ApiKeyName = VariableSubstitutionService.Substitute(snapshot.Auth.ApiKeyName, vars),
+            ApiKeyValue = VariableSubstitutionService.Substitute(snapshot.Auth.ApiKeyValue, vars),
+            ApiKeyIn = snapshot.Auth.ApiKeyIn,
+        };
+
+        // Resolve form params.
+        var resolvedFormParams = snapshot.FormParams
+            .Select(p => new KeyValuePair<string, string>(
+                VariableSubstitutionService.Substitute(p.Key, vars) ?? p.Key,
+                VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value))
+            .ToList();
+
+        // Resolve body.
+        var resolvedBody = VariableSubstitutionService.Substitute(snapshot.Body, vars);
+
+        // No source file — this is a brand-new unsaved tab.
+        _sourceRequest = null;
+
+        _loading = true;
+        try
+        {
+            RequestName = string.Empty;
+            OnPropertyChanged(nameof(CanOpenRequestHistory));
+            SelectedMethod = snapshot.Method;
+
+            _syncingUrl = true;
+            try
+            {
+                var enabledParams = resolvedQueryParams
+                    .Where(p => p.IsEnabled)
+                    .Select(p => new KeyValuePair<string, string>(p.Key, p.Value))
+                    .ToList();
+                Url = enabledParams.Count > 0
+                    ? QueryStringHelper.ApplyQueryParams(resolvedUrl, enabledParams)
+                    : resolvedUrl;
+                QueryParams.LoadFrom(resolvedQueryParams);
+                // Path params are already resolved into the URL; no {param} tokens remain.
+                SyncPathParamsWithUrl(resolvedUrl, new Dictionary<string, string>());
+            }
+            finally
+            {
+                _syncingUrl = false;
+            }
+
+            Headers.LoadFrom(resolvedHeaders);
+            SelectedBodyType = snapshot.BodyType;
+            Body = resolvedBody ?? string.Empty;
+            FormParams.LoadFrom(resolvedFormParams);
+            AuthType = resolvedAuth.AuthType;
+            AuthToken = resolvedAuth.Token ?? string.Empty;
+            AuthTokenField.LoadFromText(AuthToken);
+            AuthUsername = resolvedAuth.Username ?? string.Empty;
+            AuthUsernameField.LoadFromText(AuthUsername);
+            AuthPassword = resolvedAuth.Password ?? string.Empty;
+            AuthPasswordField.LoadFromText(AuthPassword);
+            AuthApiKeyName = resolvedAuth.ApiKeyName ?? string.Empty;
+            AuthApiKeyNameField.LoadFromText(AuthApiKeyName);
+            AuthApiKeyValue = resolvedAuth.ApiKeyValue ?? string.Empty;
+            AuthApiKeyValueField.LoadFromText(AuthApiKeyValue);
+            AuthApiKeyIn = resolvedAuth.ApiKeyIn;
+            Response = null;
+            IsResponseFromHistory = false;
+            HistoryResponseDate = null;
+            ErrorMessage = null;
+        }
+        finally
+        {
+            _loading = false;
+            // HasUnsavedChanges = false mirrors the new-tab baseline: the user has not
+            // made any edits yet.  IsNew = true ensures TabIsDirty is true (so "Save As…"
+            // is shown) and the tab is excluded from session persistence.
+            HasUnsavedChanges = false;
+            IsNew = true;
+        }
+    }
+
+    /// <summary>
     /// Updates the source request metadata after a rename.
     /// This ensures the tab title, session persistence, and dynamic cache all
     /// reflect the new request name and file path.

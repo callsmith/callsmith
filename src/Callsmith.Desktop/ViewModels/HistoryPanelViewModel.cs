@@ -5,8 +5,10 @@ using Callsmith.Core.Abstractions;
 using Callsmith.Core.Helpers;
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
+using Callsmith.Desktop.Messages;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 
 namespace Callsmith.Desktop.ViewModels;
 
@@ -20,6 +22,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private const string NoEnvironmentOption = "(no environment)";
     private readonly IHistoryService _historyService;
     private readonly EnvironmentViewModel? _environmentViewModel;
+    private readonly IMessenger? _messenger;
     private int _nextPage = 0;
     private long _queryTotalCount = 0;
     private const int InitialChunkSize = 100;
@@ -252,11 +255,13 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
 
     public HistoryPanelViewModel(
         IHistoryService historyService,
-        EnvironmentViewModel? environmentViewModel = null)
+        EnvironmentViewModel? environmentViewModel = null,
+        IMessenger? messenger = null)
     {
         ArgumentNullException.ThrowIfNull(historyService);
         _historyService = historyService;
         _environmentViewModel = environmentViewModel;
+        _messenger = messenger;
 
         AdvancedSearch = new AdvancedHistorySearchViewModel();
         AdvancedSearch.Applied += (_, _) =>
@@ -374,6 +379,19 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         if (SelectedEntry is null) return;
         IsSecretShown = false;
         await LoadDetailAsync(SelectedEntry.Entry);
+    }
+
+    [RelayCommand]
+    private async Task ResendRequestAsync()
+    {
+        if (SelectedEntry is null || _messenger is null) return;
+
+        // Always reveal secrets so resolved values include decrypted fields.
+        var entry = await _historyService.RevealSensitiveFieldsAsync(
+            SelectedEntry.Entry, CancellationToken.None);
+
+        _messenger.Send(new ResendFromHistoryMessage(entry));
+        IsOpen = false;
     }
 
     [RelayCommand]

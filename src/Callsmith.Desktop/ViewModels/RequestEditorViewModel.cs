@@ -22,7 +22,8 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     IRecipient<CollectionItemDeletedMessage>,
     IRecipient<CollectionOpenedMessage>,
     IRecipient<RequestRenamedMessage>,
-    IRecipient<RequestSavedMessage>
+    IRecipient<RequestSavedMessage>,
+    IRecipient<ResendFromHistoryMessage>
 {
     private readonly ITransportRegistry _transportRegistry;
     private readonly ICollectionService _collectionService;
@@ -266,6 +267,19 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     public void Receive(RequestSavedMessage message)
     {
         _ = PersistTabsAsync();
+    }
+
+    /// <summary>
+    /// Opens a new unsaved tab pre-populated with the fully-resolved values from a history entry.
+    /// </summary>
+    public void Receive(ResendFromHistoryMessage message)
+    {
+        var tab = BuildTab(request: null);
+        tab.LoadFromHistorySnapshot(
+            message.Entry.ConfiguredSnapshot,
+            message.Entry.VariableBindings);
+        Tabs.Add(tab);
+        ActiveTab = tab;
     }
 
     // -------------------------------------------------------------------------
