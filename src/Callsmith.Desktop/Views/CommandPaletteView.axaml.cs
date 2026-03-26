@@ -25,6 +25,27 @@ public partial class CommandPaletteView : UserControl
                     Avalonia.Threading.Dispatcher.UIThread.Post(
                         () => SearchBox.Focus(),
                         Avalonia.Threading.DispatcherPriority.Input);
+
+                    // DataTemplate items are materialised in the next layout pass, so post
+                    // EnsureSelectedVisible at a priority that runs after layout/render so
+                    // the first-result highlight is applied as soon as the palette appears.
+                    Avalonia.Threading.Dispatcher.UIThread.Post(
+                        EnsureSelectedVisible,
+                        Avalonia.Threading.DispatcherPriority.Loaded);
+                }
+
+                if (args.PropertyName == nameof(ViewModels.CommandPaletteViewModel.SelectedResult))
+                    EnsureSelectedVisible();
+
+                // When the search text changes the Results list is rebuilt synchronously
+                // but the ItemsControl doesn't materialise the new containers until the next
+                // layout pass.  Post a deferred sync so the first-result highlight is applied
+                // after the new row visuals exist.
+                if (args.PropertyName == nameof(ViewModels.CommandPaletteViewModel.SearchText))
+                {
+                    Avalonia.Threading.Dispatcher.UIThread.Post(
+                        EnsureSelectedVisible,
+                        Avalonia.Threading.DispatcherPriority.Loaded);
                 }
             };
         }
@@ -50,13 +71,11 @@ public partial class CommandPaletteView : UserControl
 
             case Key.Up:
                 vm.SelectPrevious();
-                EnsureSelectedVisible();
                 e.Handled = true;
                 break;
 
             case Key.Down:
                 vm.SelectNext();
-                EnsureSelectedVisible();
                 e.Handled = true;
                 break;
 
@@ -81,7 +100,10 @@ public partial class CommandPaletteView : UserControl
     {
         if (DataContext is not ViewModels.CommandPaletteViewModel vm) return;
         if (sender is Border { DataContext: ViewModels.CommandPaletteResult result })
+        {
             vm.SelectedResult = result;
+            EnsureSelectedVisible();
+        }
     }
 
     /// <summary>
@@ -92,6 +114,8 @@ public partial class CommandPaletteView : UserControl
     {
         if (DataContext is not ViewModels.CommandPaletteViewModel vm) return;
 
+        Border? selectedBorder = null;
+
         // Walk every Border child inside the ItemsControl to apply/remove the selection class.
         foreach (var border in ResultsList.GetVisualDescendants().OfType<Border>()
                      .Where(b => b.Name == "ResultRow"))
@@ -99,9 +123,17 @@ public partial class CommandPaletteView : UserControl
             var isSelected = border.DataContext is ViewModels.CommandPaletteResult r
                              && r.Equals(vm.SelectedResult);
             if (isSelected)
+            {
                 border.Classes.Add("palette-selected");
+                selectedBorder = border;
+            }
             else
+            {
                 border.Classes.Remove("palette-selected");
+            }
         }
+
+        // Ask the ScrollViewer to bring the selected row into view.
+        selectedBorder?.BringIntoView();
     }
 }

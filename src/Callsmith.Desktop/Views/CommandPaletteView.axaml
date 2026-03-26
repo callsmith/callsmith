@@ -96,7 +96,6 @@
 
                 <!-- Single result row -->
                 <Border x:Name="ResultRow"
-                        Background="Transparent"
                         Padding="12,7"
                         Cursor="Hand"
                         PointerPressed="OnResultPressed"
@@ -104,6 +103,12 @@
 
                   <Border.Styles>
                     <Style Selector="Border.palette-selected">
+                      <Setter Property="Background" Value="#094771"/>
+                    </Style>
+                    <Style Selector="Border:pointerover">
+                      <Setter Property="Background" Value="#2a2d2e"/>
+                    </Style>
+                    <Style Selector="Border.palette-selected:pointerover">
                       <Setter Property="Background" Value="#094771"/>
                     </Style>
                   </Border.Styles>
