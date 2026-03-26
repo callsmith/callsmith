@@ -36,6 +36,17 @@ public partial class CommandPaletteView : UserControl
 
                 if (args.PropertyName == nameof(ViewModels.CommandPaletteViewModel.SelectedResult))
                     EnsureSelectedVisible();
+
+                // When the search text changes the Results list is rebuilt synchronously
+                // but the ItemsControl doesn't materialise the new containers until the next
+                // layout pass.  Post a deferred sync so the first-result highlight is applied
+                // after the new row visuals exist.
+                if (args.PropertyName == nameof(ViewModels.CommandPaletteViewModel.SearchText))
+                {
+                    Avalonia.Threading.Dispatcher.UIThread.Post(
+                        EnsureSelectedVisible,
+                        Avalonia.Threading.DispatcherPriority.Loaded);
+                }
             };
         }
     }
@@ -60,13 +71,11 @@ public partial class CommandPaletteView : UserControl
 
             case Key.Up:
                 vm.SelectPrevious();
-                EnsureSelectedVisible();
                 e.Handled = true;
                 break;
 
             case Key.Down:
                 vm.SelectNext();
-                EnsureSelectedVisible();
                 e.Handled = true;
                 break;
 
