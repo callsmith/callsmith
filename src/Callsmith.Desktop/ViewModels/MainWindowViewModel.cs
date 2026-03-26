@@ -107,13 +107,14 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Ctrl+P handler: opens the command palette when the request editor is active
-    /// (i.e. the environment editor panel is not open).
+    /// Ctrl+P handler: opens the command palette only when the main request editor is active
+    /// (i.e. neither the environment editor panel nor the history panel is open).
     /// </summary>
     [RelayCommand]
     private void OpenCommandPalette()
     {
         if (Environment.IsAnyEditorOpen) return;
+        if (HistoryPanel.IsOpen) return;
         CommandPalette.Open(Collections.TreeRoots);
     }
 
