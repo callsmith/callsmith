@@ -35,6 +35,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private EnvironmentModel _globalEnvironment = new() { FilePath = string.Empty, Name = "Global", Variables = [], EnvironmentId = Guid.NewGuid() };
     private string _collectionPath = string.Empty;
     private bool _restoringTabs;
+    private bool _isHorizontalLayout = true;
 
     // -------------------------------------------------------------------------
     // Observable state
@@ -304,6 +305,16 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         tab.SaveAsFolderPath = string.Empty;
         tab.SetEnvironment(_activeEnvironment);
         tab.SetGlobalEnvironment(_globalEnvironment);
+        tab.IsHorizontalLayout = _isHorizontalLayout;
+
+        tab.LayoutChangedCallback = isHorizontal =>
+        {
+            _isHorizontalLayout = isHorizontal;
+            // Sync all other tabs to the new layout instantly.
+            foreach (var other in Tabs.Where(t => t != tab))
+                other.IsHorizontalLayout = isHorizontal;
+            _ = PersistLayoutAsync();
+        };
 
         if (request is not null)
             tab.LoadRequest(request);
@@ -311,6 +322,26 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             tab.IsNew = true;
 
         return tab;
+    }
+
+    private async Task PersistLayoutAsync()
+    {
+        if (string.IsNullOrEmpty(_collectionPath)) return;
+        try
+        {
+            await _preferencesService.UpdateAsync(_collectionPath, current => new()
+            {
+                LastActiveEnvironmentFile = current.LastActiveEnvironmentFile,
+                OpenTabPaths = current.OpenTabPaths,
+                ActiveTabPath = current.ActiveTabPath,
+                ExpandedFolderPaths = current.ExpandedFolderPaths,
+                IsHorizontalLayout = _isHorizontalLayout,
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist layout preference for '{Path}'", _collectionPath);
+        }
     }
 
     private async Task UpdateAvailableFoldersAsync(string collectionPath)
@@ -396,6 +427,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             _restoringTabs = true;
             try
             {
+                _isHorizontalLayout = prefs.IsHorizontalLayout;
                 RequestTabViewModel? tabToActivate = null;
 
                 foreach (var (relPath, request) in requests)
@@ -445,6 +477,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
                 OpenTabPaths = tabPaths.Count > 0 ? tabPaths.AsReadOnly() : null,
                 ActiveTabPath = activePath,
                 ExpandedFolderPaths = current.ExpandedFolderPaths,
+                IsHorizontalLayout = _isHorizontalLayout,
             }).ConfigureAwait(false);
         }
         catch (Exception ex)

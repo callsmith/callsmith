@@ -246,6 +246,32 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [ObservableProperty] private bool _showMockDataConfig;
 
     // -------------------------------------------------------------------------
+    // Layout mode
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// True when the request config and response panels are displayed side-by-side (horizontal).
+    /// False means the request config is above the response (vertical).
+    /// Defaults to true (horizontal). Synced from collection preferences by
+    /// <see cref="RequestEditorViewModel"/> when a collection is opened.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isHorizontalLayout = true;
+
+    /// <summary>
+    /// Optional callback invoked when the user changes the layout via
+    /// <see cref="ToggleLayoutCommand"/>. Wired by <see cref="RequestEditorViewModel"/>
+    /// to persist the choice and sync all other open tabs.
+    /// </summary>
+    internal Action<bool>? LayoutChangedCallback { get; set; }
+
+    partial void OnIsHorizontalLayoutChanged(bool value) => LayoutChangedCallback?.Invoke(value);
+
+    /// <summary>Toggles between horizontal (side-by-side) and vertical (stacked) layout.</summary>
+    [RelayCommand]
+    private void ToggleLayout() => IsHorizontalLayout = !IsHorizontalLayout;
+
+    // -------------------------------------------------------------------------
     // cURL dialog state
     // -------------------------------------------------------------------------
 
@@ -588,7 +614,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(FormattedResponseBody) or nameof(FormattedResponseHeaders) or nameof(IsBodyJson) or
                 nameof(BodyLanguage) or nameof(ResponseLanguage) or
                 nameof(ShowDynamicValueConfig) or nameof(ShowMockDataConfig) or
-                nameof(ShowCurlDialog))
+                nameof(ShowCurlDialog) or
+                nameof(IsHorizontalLayout))
                 return;
             HasUnsavedChanges = true;
         };

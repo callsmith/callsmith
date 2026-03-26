@@ -29,15 +29,16 @@
     <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}"/>
   </UserControl.KeyBindings>
 
-  <Grid RowDefinitions="0.45*,6,0.55*">
+  <DockPanel>
 
-    <!-- REQUEST EDITOR -->
-    <Panel Grid.Row="0">
-    <Border Background="#252526" Padding="12,10">
-      <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <!-- ================================================================
+         FIXED TOP: URL bar + Preview bar (always full-width)
+         ================================================================ -->
+    <Border DockPanel.Dock="Top" Background="#252526" Padding="12,10">
+      <Grid RowDefinitions="Auto,Auto">
 
         <!-- Row 0: Method + URL + Send/Cancel + Save -->
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,8,*,8,Auto,8,Auto,8,Auto">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,8,*,8,Auto,Auto">
           <ComboBox Grid.Column="0"
                     ItemsSource="{Binding HttpMethods}"
                     SelectedItem="{Binding SelectedMethod}"
@@ -97,41 +98,77 @@
                     BorderThickness="0" VerticalAlignment="Stretch"/>
           </Grid>
           <!-- Save button — visible whenever the tab has unsaved changes -->
-          <Button Grid.Column="6"
+          <Button Grid.Column="5"
                   Content="{Binding SaveButtonLabel}"
                   Command="{Binding SaveCommand}"
                   IsVisible="{Binding TabIsDirty}"
                   Background="#1e7340" Foreground="White" FontWeight="SemiBold"
                   Padding="16,6" CornerRadius="4"
+                  Margin="8,0,0,0"
                   ToolTip.Tip="Save changes (Ctrl+S)"/>
-
 
         </Grid>
 
-        <!-- Row 1: Preview URL bar -->
-        <Border Grid.Row="1"
-                Background="#1e1e1e" BorderBrush="#3a3a3a" BorderThickness="0,1,0,0"
-                Padding="0,5,0,5" Margin="0,4,0,0">
-          <Grid ColumnDefinitions="Auto,*,Auto">
-            <TextBlock Grid.Column="0"
-                       Text="PREVIEW" Foreground="#5a5a5a" FontSize="10" FontWeight="SemiBold"
-                       VerticalAlignment="Center" Margin="8,0,8,0"/>
-            <TextBlock Grid.Column="1"
-                       x:Name="PreviewUrlText"
-                       Text="{Binding PreviewUrl}"
-                       Foreground="{Binding PreviewUrlForeground, Converter={x:Static conv:HexColorToBrushConverter.Instance}}"
-                       FontFamily="Consolas,Menlo,monospace" FontSize="12"
-                       VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
-            <Button Grid.Column="2"
-                    x:Name="CopyPreviewUrlButton"
-                    Content="&#x2398;" ToolTip.Tip="Copy URL to clipboard"
-                    Background="Transparent" Foreground="#888" BorderThickness="0"
-                  Padding="6,2" FontSize="14" Margin="6,0,0,0"/>
-          </Grid>
-        </Border>
+        <!-- Row 1: Preview URL bar + layout toggle (toggle is outside the dark border) -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+          <!-- Dark preview area -->
+          <Border Grid.Column="0"
+                  Background="#1e1e1e" BorderBrush="#3a3a3a" BorderThickness="0,1,0,0"
+                  Padding="0,5,0,5">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <TextBlock Grid.Column="0"
+                         Text="PREVIEW" Foreground="#5a5a5a" FontSize="10" FontWeight="SemiBold"
+                         VerticalAlignment="Center" Margin="8,0,8,0"/>
+              <TextBlock Grid.Column="1"
+                         x:Name="PreviewUrlText"
+                         Text="{Binding PreviewUrl}"
+                         Foreground="{Binding PreviewUrlForeground, Converter={x:Static conv:HexColorToBrushConverter.Instance}}"
+                         FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                         VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+              <Button Grid.Column="2"
+                      x:Name="CopyPreviewUrlButton"
+                      Content="&#x2398;" ToolTip.Tip="Copy URL to clipboard"
+                      Background="Transparent" Foreground="#888" BorderThickness="0"
+                      Padding="6,2" FontSize="14" Margin="6,0,6,0"/>
+            </Grid>
+          </Border>
+          <!-- Layout toggle — outside the dark preview box, on the lighter outer background -->
+          <Button Grid.Column="1"
+                  x:Name="ToggleLayoutButton"
+                  Command="{Binding ToggleLayoutCommand}"
+                  Background="Transparent" Foreground="#888" BorderThickness="0"
+                  Padding="6,4" Margin="6,0,0,0" VerticalAlignment="Center"
+                  ToolTip.Tip="Toggle layout (horizontal / vertical)">
+            <Grid>
+              <!-- Stacked-panes icon: shown in vertical mode → click to switch to horizontal -->
+              <PathIcon Width="14" Height="14" Foreground="#888"
+                        IsVisible="{Binding IsHorizontalLayout, Converter={x:Static BoolConverters.Not}}"
+                        Data="M2,3 L10,3 L10,21 L2,21 Z M14,3 L22,3 L22,21 L14,21 Z"/>
+              <!-- Side-by-side icon: shown in horizontal mode → click to switch to vertical -->
+              <PathIcon Width="14" Height="14" Foreground="#888"
+                        IsVisible="{Binding IsHorizontalLayout}"
+                        Data="M2,3 L22,3 L22,10 L2,10 Z M2,14 L22,14 L22,21 L2,21 Z"/>
+            </Grid>
+          </Button>
+        </Grid>
 
-        <!-- Row 2: Params | Headers | Body | Auth -->
-        <TabControl Grid.Row="2" Classes="request-tabs" Margin="0,8,0,0" Background="Transparent">
+      </Grid>
+    </Border>
+
+    <!-- ================================================================
+         MAIN CONTENT AREA: request config + splitter + response
+         Rearranged by code-behind based on IsHorizontalLayout.
+         Default (horizontal): ColumnDefinitions="0.45*,6,0.55*"
+         ================================================================ -->
+    <Grid x:Name="ContentGrid" ColumnDefinitions="0.45*,6,0.55*">
+
+      <!-- Request config section (Panel allows close-guard overlay) -->
+      <Panel x:Name="RequestConfigPanel" Grid.Column="0">
+        <Border Background="#252526" Padding="12,6,12,12">
+          <Grid RowDefinitions="*,Auto">
+
+            <!-- Row 0: Params | Headers | Body | Auth -->
+            <TabControl Grid.Row="0" Classes="request-tabs" Margin="0" Background="Transparent">
 
           <TabItem Header="Params">
             <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" Margin="0,4">
@@ -609,12 +646,12 @@
 
         </TabControl>
 
-        <!-- Row 3: Send error -->
-        <Border Grid.Row="3"
+        <!-- Row 1: Send error -->
+            <Border Grid.Row="1"
                 IsVisible="{Binding ErrorMessage, Converter={x:Static conv:StringNotEmptyConverter.Instance}}"
                 Background="#3a1414" CornerRadius="3" Padding="10,6" Margin="0,4,0,0">
-          <TextBlock Text="{Binding ErrorMessage}" Foreground="#f48771" FontSize="12" TextWrapping="Wrap"/>
-        </Border>
+              <TextBlock Text="{Binding ErrorMessage}" Foreground="#f48771" FontSize="12" TextWrapping="Wrap"/>
+            </Border>
 
       </Grid>
     </Border>
@@ -655,11 +692,11 @@
     </Border>
     </Panel>
 
-    <GridSplitter Grid.Row="1" ResizeDirection="Rows"
-                  Background="#4a4a4a" HorizontalAlignment="Stretch"/>
+      <GridSplitter x:Name="ContentSplitter" Grid.Column="1" ResizeDirection="Columns"
+                    Background="#4a4a4a" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
 
-    <!-- RESPONSE VIEWER -->
-    <Grid Grid.Row="2" RowDefinitions="Auto,*">
+      <!-- RESPONSE VIEWER -->
+      <Grid x:Name="ResponsePanel" Grid.Column="2" RowDefinitions="Auto,*">
 
       <Border Grid.Row="0" Background="#2d2d30" Padding="16,8"
               IsVisible="{Binding Response, Converter={x:Static conv:NotNullConverter.Instance}}">
@@ -733,5 +770,7 @@
     </Grid>
 
   </Grid>
+
+</DockPanel>
 
 </UserControl>
