@@ -26,6 +26,9 @@ public partial class CommandPaletteView : UserControl
                         () => SearchBox.Focus(),
                         Avalonia.Threading.DispatcherPriority.Input);
                 }
+
+                if (args.PropertyName == nameof(ViewModels.CommandPaletteViewModel.SelectedResult))
+                    EnsureSelectedVisible();
             };
         }
     }
@@ -81,7 +84,10 @@ public partial class CommandPaletteView : UserControl
     {
         if (DataContext is not ViewModels.CommandPaletteViewModel vm) return;
         if (sender is Border { DataContext: ViewModels.CommandPaletteResult result })
+        {
             vm.SelectedResult = result;
+            EnsureSelectedVisible();
+        }
     }
 
     /// <summary>
