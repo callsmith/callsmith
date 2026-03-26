@@ -1,5 +1,6 @@
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
+using Callsmith.Desktop.Messages;
 using Callsmith.Desktop.ViewModels;
 using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
@@ -580,6 +581,65 @@ public sealed class HistoryPanelViewModelTests
 
         sut.DetailConfigured.Should().Contain("X-Enabled");
         sut.DetailConfigured.Should().NotContain("X-Disabled");
+    }
+
+    [Fact]
+    public async Task ResendRequest_SendsMessageWithRevealedEntry_AndClosesPanel()
+    {
+        var originalEntry = CreateEntry(new AuthConfig
+        {
+            AuthType = AuthConfig.AuthTypes.Bearer,
+            Token = "{{secret}}",
+        }) with
+        {
+            VariableBindings =
+            [
+                new VariableBinding("{{secret}}", null!, IsSecret: true, CiphertextValue: "cipher"),
+            ],
+        };
+
+        var revealedEntry = originalEntry with
+        {
+            VariableBindings =
+            [
+                new VariableBinding("{{secret}}", "actual-token", IsSecret: true),
+            ],
+        };
+
+        var historyService = Substitute.For<IHistoryService>();
+        historyService.RevealSensitiveFieldsAsync(originalEntry, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(revealedEntry));
+
+        ResendFromHistoryMessage? receivedMessage = null;
+        var messenger = new WeakReferenceMessenger();
+        messenger.Register<ResendFromHistoryMessage>(messenger, (_, msg) => receivedMessage = msg);
+
+        var sut = new HistoryPanelViewModel(historyService, messenger: messenger);
+        sut.OpenGlobal();
+        sut.SelectedEntry = new HistoryEntryRowViewModel(originalEntry);
+
+        await sut.ResendRequestCommand.ExecuteAsync(null);
+
+        receivedMessage.Should().NotBeNull();
+        receivedMessage!.Entry.Should().Be(revealedEntry);
+        sut.IsOpen.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ResendRequest_DoesNothing_WhenNoEntrySelected()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var messenger = new WeakReferenceMessenger();
+
+        ResendFromHistoryMessage? receivedMessage = null;
+        messenger.Register<ResendFromHistoryMessage>(messenger, (_, msg) => receivedMessage = msg);
+
+        var sut = new HistoryPanelViewModel(historyService, messenger: messenger);
+
+        await sut.ResendRequestCommand.ExecuteAsync(null);
+
+        receivedMessage.Should().BeNull();
+        await historyService.DidNotReceive().RevealSensitiveFieldsAsync(Arg.Any<HistoryEntry>(), Arg.Any<CancellationToken>());
     }
 
     private static HistoryEntry CreateEntry(AuthConfig auth)

@@ -135,7 +135,7 @@ public static class HistorySentViewBuilder
     /// suitable for use with <see cref="VariableSubstitutionService.Substitute"/>.
     /// Strips the <c>{{ }}</c> braces from token names if present.
     /// </summary>
-    internal static IReadOnlyDictionary<string, string> BuildVariableMap(
+    public static IReadOnlyDictionary<string, string> BuildVariableMap(
         IReadOnlyList<VariableBinding> bindings)
     {
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
