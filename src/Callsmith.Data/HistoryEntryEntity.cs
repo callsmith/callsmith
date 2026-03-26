@@ -43,10 +43,6 @@ internal sealed class HistoryEntryEntity
     [MaxLength(512)]
     public string? RequestName { get; set; }
 
-    /// <summary>Display name of the collection the request belongs to, if any.</summary>
-    [MaxLength(512)]
-    public string? CollectionName { get; set; }
-
     /// <summary>Display name of the selected environment at send time, if any.</summary>
     [MaxLength(256)]
     public string? EnvironmentName { get; set; }
@@ -59,11 +55,6 @@ internal sealed class HistoryEntryEntity
     /// <summary>Display color of the selected environment at send time (hex), if any.</summary>
     [MaxLength(32)]
     public string? EnvironmentColor { get; set; }
-
-    /// <summary>
-    /// Relative path of the request within the collection folder hierarchy, if any.
-    /// </summary>
-    public string? CollectionPath { get; set; }
 
     /// <summary>Total round-trip time in milliseconds.</summary>
     public long ElapsedMs { get; set; }

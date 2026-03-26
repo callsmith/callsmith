@@ -28,7 +28,6 @@ public sealed class CallsmithDbContext : DbContext
         entry.HasIndex(e => e.RequestId);
         entry.HasIndex(e => e.Method);
         entry.HasIndex(e => e.StatusCode);
-        entry.HasIndex(e => e.CollectionName);
     }
 
     /// <summary>

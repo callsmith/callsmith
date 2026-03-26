@@ -372,11 +372,9 @@ public sealed class HistoryRepository : IHistoryService
             StatusCode = entry.StatusCode,
             ResolvedUrl = entry.ResolvedUrl,
             RequestName = entry.RequestName,
-            CollectionName = entry.CollectionName,
             EnvironmentName = entry.EnvironmentName,
             EnvironmentId = entry.EnvironmentId,
             EnvironmentColor = entry.EnvironmentColor,
-            CollectionPath = entry.CollectionPath,
             ElapsedMs = entry.ElapsedMs,
             RequestSearchText = BuildRequestSearchText(entry),
             ResponseSearchText = BuildResponseSearchText(entry.ResponseSnapshot),
@@ -434,11 +432,9 @@ public sealed class HistoryRepository : IHistoryService
             StatusCode = entity.StatusCode,
             ResolvedUrl = entity.ResolvedUrl,
             RequestName = entity.RequestName,
-            CollectionName = entity.CollectionName,
             EnvironmentName = entity.EnvironmentName,
             EnvironmentId = entity.EnvironmentId,
             EnvironmentColor = entity.EnvironmentColor,
-            CollectionPath = entity.CollectionPath,
             ElapsedMs = entity.ElapsedMs,
             ConfiguredSnapshot = snapshot ?? new ConfiguredRequestSnapshot
             {
@@ -483,9 +479,6 @@ public sealed class HistoryRepository : IHistoryService
         if (filter.RequestId.HasValue)
             query = query.Where(e => e.RequestId == filter.RequestId.Value);
 
-        if (!string.IsNullOrWhiteSpace(filter.CollectionName))
-            query = query.Where(e => e.CollectionName == filter.CollectionName);
-
         if (!string.IsNullOrWhiteSpace(filter.RequestName))
             query = query.Where(e =>
                 e.RequestName != null && e.RequestName.Contains(filter.RequestName));
@@ -512,8 +505,7 @@ public sealed class HistoryRepository : IHistoryService
             var text = NormalizeSearchText(filter.TextSearch);
             query = query.Where(e =>
                 e.ResolvedUrl.Contains(text) ||
-                (e.RequestName != null && e.RequestName.Contains(text)) ||
-                (e.CollectionName != null && e.CollectionName.Contains(text)));
+                (e.RequestName != null && e.RequestName.Contains(text)));
         }
 
         if (!string.IsNullOrWhiteSpace(filter.RequestContains))
@@ -776,7 +768,6 @@ public sealed class HistoryRepository : IHistoryService
                     Method = row.Method,
                     ResolvedUrl = row.ResolvedUrl,
                     RequestName = row.RequestName,
-                    CollectionName = row.CollectionName,
                     EnvironmentName = row.EnvironmentName,
                     ConfiguredSnapshot = snapshot ?? new ConfiguredRequestSnapshot
                     {
@@ -799,7 +790,6 @@ public sealed class HistoryRepository : IHistoryService
         var builder = new StringBuilder();
 
         Append(builder, entry.RequestName);
-        Append(builder, entry.CollectionName);
         Append(builder, entry.EnvironmentName);
         Append(builder, entry.Method);
         Append(builder, entry.ResolvedUrl);

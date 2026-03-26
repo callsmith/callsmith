@@ -1657,11 +1657,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 },
             };
 
-            var collectionName = !string.IsNullOrEmpty(CollectionRootPath)
-                ? Path.GetFileName(CollectionRootPath.TrimEnd(Path.DirectorySeparatorChar,
-                    Path.AltDirectorySeparatorChar))
-                : null;
-
             var entry = new HistoryEntry
             {
                 RequestId = _sourceRequest?.RequestId,
@@ -1670,11 +1665,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 StatusCode = response.StatusCode,
                 ResolvedUrl = resolvedUrl,
                 RequestName = _sourceRequest is not null ? RequestName : null,
-                CollectionName = collectionName,
                 EnvironmentName = _activeEnvironment?.Name,
                 EnvironmentId = _activeEnvironment?.EnvironmentId,
                 EnvironmentColor = _activeEnvironment?.Color,
-                CollectionPath = string.IsNullOrEmpty(CollectionRootPath) ? null : CollectionRootPath,
                 ElapsedMs = (long)response.Elapsed.TotalMilliseconds,
                 ConfiguredSnapshot = snapshot,
                 VariableBindings = dedupedBindings,
