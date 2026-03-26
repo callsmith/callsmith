@@ -35,26 +35,6 @@ public sealed class FileSystemCollectionService : ICollectionService
     {
         // Version control
         ".git", ".svn", ".hg", ".bzr",
-        // Package managers
-        "node_modules", "packages", ".nuget",
-        // IDEs and editors
-        ".vscode", ".idea", ".sublime-workspace", ".vs",
-        // Build outputs
-        "bin", "obj", "dist", "build", "out", "target", ".gradle",
-        // Language/framework caches
-        "__pycache__", ".pytest_cache", ".tox", ".mypy_cache",
-        // Python virtual environments
-        "venv", ".venv", "env", ".env.dir", "virtualenv",
-        // Ruby, Node
-        ".bundle", "vendor", ".npm",
-        // macOS
-        ".DS_Store", ".AppleDouble", ".LSOverride",
-        // Windows
-        "Thumbs.db", "Desktop.ini",
-        // OS temporary files
-        ".tmp", "temp", "tmp",
-        // Dependencies and lock files (should not scan into)
-        ".caches",
     };
 
     private static readonly JsonSerializerOptions JsonOptions = new()
