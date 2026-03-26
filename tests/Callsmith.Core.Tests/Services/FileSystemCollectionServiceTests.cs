@@ -688,7 +688,10 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
     [Fact]
     public async Task SaveAndLoad_ApiKeyAuthInQuery_RoundTrips()
     {
-        var folder = _temp.CreateSubDirectory("col");
+        var sut = Sut(RealSecrets());
+        var folder = _temp.CreateSubDirectory("col-apikey-query");
+        await sut.OpenFolderAsync(folder);
+
         var request = new CollectionRequest
         {
             FilePath = Path.Combine(folder, "req.callsmith"),
@@ -704,13 +707,42 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
             },
         };
 
-        await _sut.SaveRequestAsync(request);
-        var loaded = await _sut.LoadRequestAsync(request.FilePath);
+        await sut.SaveRequestAsync(request);
+        var loaded = await sut.LoadRequestAsync(request.FilePath);
 
         loaded.Auth.AuthType.Should().Be(AuthConfig.AuthTypes.ApiKey);
         loaded.Auth.ApiKeyName.Should().Be("api_key");
         loaded.Auth.ApiKeyValue.Should().Be("secret");
         loaded.Auth.ApiKeyIn.Should().Be(AuthConfig.ApiKeyLocations.Query);
+    }
+
+    [Fact]
+    public async Task SaveAndLoad_ApiKeyAuth_ValueIsStoredInSecretsNotInFile()
+    {
+        var sut = Sut(RealSecrets());
+        var folder = _temp.CreateSubDirectory("col-apikey-redact");
+        await sut.OpenFolderAsync(folder);
+
+        var request = new CollectionRequest
+        {
+            FilePath = Path.Combine(folder, "req.callsmith"),
+            Name = "req",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com",
+            Auth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.ApiKey,
+                ApiKeyName = "X-Api-Key",
+                ApiKeyValue = "supersecret123",
+                ApiKeyIn = AuthConfig.ApiKeyLocations.Header,
+            },
+        };
+
+        await sut.SaveRequestAsync(request);
+
+        // The on-disk file must not contain the plain-text API key value.
+        var json = await File.ReadAllTextAsync(request.FilePath);
+        json.Should().NotContain("supersecret123");
     }
 
     [Fact]

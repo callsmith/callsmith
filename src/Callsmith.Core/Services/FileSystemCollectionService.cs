@@ -113,7 +113,18 @@ public sealed class FileSystemCollectionService : ICollectionService
             basicAuthPassword = stored ?? dto.AuthPassword;
         }
 
-        return DtoToRequest(dto, filePath, basicAuthPassword);
+        string? apiKeyValue = null;
+        if ((dto.AuthType ?? AuthConfig.AuthTypes.None) == AuthConfig.AuthTypes.ApiKey
+            && !string.IsNullOrEmpty(_currentRoot))
+        {
+            // Prefer the secret-stored value; fall back to whatever is in the file (migration path).
+            var stored = await _secrets
+                .GetSecretAsync(_currentRoot, AuthSecretsNamespace, RequestKey(filePath), ct)
+                .ConfigureAwait(false);
+            apiKeyValue = stored ?? dto.AuthApiKeyValue;
+        }
+
+        return DtoToRequest(dto, filePath, basicAuthPassword, apiKeyValue);
     }
 
     /// <inheritdoc/>
@@ -135,6 +146,19 @@ public sealed class FileSystemCollectionService : ICollectionService
                     AuthSecretsNamespace,
                     RequestKey(request.FilePath),
                     request.Auth.Password ?? string.Empty,
+                    ct)
+                .ConfigureAwait(false);
+        }
+
+        // Persist API key value locally so it is never written into the collection file.
+        if (request.Auth.AuthType == AuthConfig.AuthTypes.ApiKey && !string.IsNullOrEmpty(_currentRoot))
+        {
+            await _secrets
+                .SetSecretAsync(
+                    _currentRoot,
+                    AuthSecretsNamespace,
+                    RequestKey(request.FilePath),
+                    request.Auth.ApiKeyValue ?? string.Empty,
                     ct)
                 .ConfigureAwait(false);
         }
@@ -465,7 +489,7 @@ public sealed class FileSystemCollectionService : ICollectionService
     // Private — mapping between domain model and on-disk DTO
     // -------------------------------------------------------------------------
 
-    private static CollectionRequest DtoToRequest(RequestFileDto dto, string filePath, string? basicAuthPassword = null)
+    private static CollectionRequest DtoToRequest(RequestFileDto dto, string filePath, string? basicAuthPassword = null, string? apiKeyValue = null)
     {
         // Separate base URL from query params.
         // New files store them separately; old files have the full URL in the url field.
@@ -534,7 +558,7 @@ public sealed class FileSystemCollectionService : ICollectionService
                 Username = dto.AuthUsername,
                 Password = basicAuthPassword ?? dto.AuthPassword,
                 ApiKeyName = dto.AuthApiKeyName,
-                ApiKeyValue = dto.AuthApiKeyValue,
+                ApiKeyValue = apiKeyValue ?? dto.AuthApiKeyValue,
                 ApiKeyIn = dto.AuthApiKeyIn ?? AuthConfig.ApiKeyLocations.Header,
             },
         };
@@ -542,7 +566,7 @@ public sealed class FileSystemCollectionService : ICollectionService
 
     /// <summary>
     /// Returns a stable, normalised key for a request file relative to the current collection root.
-    /// Used to key Basic auth passwords in local secret storage.
+    /// Used to key Basic auth passwords and API key values in local secret storage.
     /// </summary>
     private string RequestKey(string filePath) =>
         Path.GetRelativePath(_currentRoot, Path.GetFullPath(filePath)).Replace('\\', '/');
@@ -586,7 +610,10 @@ public sealed class FileSystemCollectionService : ICollectionService
                 ? null
                 : request.Auth.Password,
             AuthApiKeyName = request.Auth.ApiKeyName,
-            AuthApiKeyValue = request.Auth.ApiKeyValue,
+            // API key values are stored in local secret storage, never in the file.
+            AuthApiKeyValue = request.Auth.AuthType == AuthConfig.AuthTypes.ApiKey
+                ? null
+                : request.Auth.ApiKeyValue,
             AuthApiKeyIn = request.Auth.ApiKeyIn == AuthConfig.ApiKeyLocations.Header
                 ? null
                 : request.Auth.ApiKeyIn,
