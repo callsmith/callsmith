@@ -54,7 +54,7 @@ public sealed class BrunoCollectionServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task OpenFolderAsync_WithBruFiles_LoadsRequestsOrderedAlphabetically()
+    public async Task OpenFolderAsync_WithBruFiles_LoadsRequestsOrderedBySeq()
     {
         WriteFile("b.bru", BruFile("b", "get", "https://b.com", seq: 2));
         WriteFile("a.bru", BruFile("a", "get", "https://a.com", seq: 1));
@@ -864,10 +864,9 @@ public sealed class BrunoCollectionServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task OpenFolderAsync_MixedFolderAndRequest_OrderedAlphabetically()
+    public async Task OpenFolderAsync_FoldersAlwaysBeforeRequests_InItemOrder()
     {
-        // seq values are present in files but intentionally ignored for ordering;
-        // items are sorted alphabetically instead.
+        // Folders always come before requests in ItemOrder, even when a request has a lower seq.
         Directory.CreateDirectory(Path.Combine(_root, "Beta"));
         WriteFile("Beta/folder.bru", FolderBru("Beta", seq: 2));
         WriteFile("Beta/b-req.bru", BruFile("b-req", "get", "https://b.com", seq: 1));
@@ -879,18 +878,18 @@ public sealed class BrunoCollectionServiceTests : IDisposable
 
         var folder = await _sut.OpenFolderAsync(_root);
 
-        // ItemOrder should be purely alphabetical: alpha.bru < Beta < Gamma
+        // Folders first (by seq): Beta(2), Gamma(3); then requests: alpha.bru(1)
         Assert.Equal(3, folder.ItemOrder.Count);
-        Assert.Equal("alpha.bru", folder.ItemOrder[0]);
-        Assert.Equal("Beta", folder.ItemOrder[1]);
-        Assert.Equal("Gamma", folder.ItemOrder[2]);
+        Assert.Equal("Beta", folder.ItemOrder[0]);
+        Assert.Equal("Gamma", folder.ItemOrder[1]);
+        Assert.Equal("alpha.bru", folder.ItemOrder[2]);
     }
 
     [Fact]
-    public async Task OpenFolderAsync_FolderWithoutSeq_SortsAlphabetically()
+    public async Task OpenFolderAsync_NoSeqItemsBeforeSeqItems_WithinSameGroup()
     {
-        // seq values are present in some files and absent in others, but ordering is always
-        // alphabetical regardless because Bruno does not reliably maintain seq across tools.
+        // Within each group (folders or requests), items with no seq come before items
+        // that have a seq value (sorted alphabetically among no-seq items).
         Directory.CreateDirectory(Path.Combine(_root, "Alpha"));
         WriteFile("Alpha/folder.bru", FolderBru("Alpha")); // no seq
 
@@ -901,10 +900,54 @@ public sealed class BrunoCollectionServiceTests : IDisposable
 
         var folder = await _sut.OpenFolderAsync(_root);
 
-        // Alphabetical: Alpha < mid.bru < Zebra
+        // Folders: Alpha (no seq, alphabetical first), then Zebra (seq:1)
+        // Requests after all folders: mid.bru (seq:2)
         Assert.Equal("Alpha", folder.ItemOrder[0]);
-        Assert.Equal("mid.bru", folder.ItemOrder[1]);
-        Assert.Equal("Zebra", folder.ItemOrder[2]);
+        Assert.Equal("Zebra", folder.ItemOrder[1]);
+        Assert.Equal("mid.bru", folder.ItemOrder[2]);
+    }
+
+    [Fact]
+    public async Task OpenFolderAsync_SeqGaps_OrderBySeqValueNotByDensity()
+    {
+        // seq values can have gaps — seq:2 and seq:4 means 2 before 4.
+        WriteFile("second.bru", BruFile("second", "get", "https://second.com", seq: 2));
+        WriteFile("fourth.bru", BruFile("fourth", "get", "https://fourth.com", seq: 4));
+
+        var folder = await _sut.OpenFolderAsync(_root);
+
+        Assert.Equal(2, folder.Requests.Count);
+        Assert.Equal("second", folder.Requests[0].Name);
+        Assert.Equal("fourth", folder.Requests[1].Name);
+    }
+
+    [Fact]
+    public async Task OpenFolderAsync_MixedNoSeqAndSeqRequests_NoSeqFirst()
+    {
+        // No-seq requests come before seq-ed requests (alphabetical within no-seq group).
+        WriteFile("bravo.bru", BruFile("bravo", "get", "https://bravo.com", seq: 1));
+
+        // Write a file without a seq manually
+        var noSeqContent = """
+            meta {
+              name: alpha
+              type: http
+            }
+
+            get {
+              url: https://alpha.com
+              body: none
+              auth: none
+            }
+            """;
+        WriteFile("alpha.bru", noSeqContent);
+
+        var folder = await _sut.OpenFolderAsync(_root);
+
+        // alpha (no seq) before bravo (seq:1)
+        Assert.Equal(2, folder.Requests.Count);
+        Assert.Equal("alpha", folder.Requests[0].Name);
+        Assert.Equal("bravo", folder.Requests[1].Name);
     }
 
     [Fact]

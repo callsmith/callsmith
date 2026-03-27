@@ -385,7 +385,7 @@ public sealed class BrunoCollectionService : ICollectionService
                     && !string.Equals(fname, "collection.bru", StringComparison.OrdinalIgnoreCase);
             });
 
-        var parsedRequests = new List<CollectionRequest>();
+        var parsedRequests = new List<(CollectionRequest Request, int Seq)>();
         foreach (var filePath in requestFiles)
         {
             try
@@ -395,11 +395,9 @@ public sealed class BrunoCollectionService : ICollectionService
                 var req = DocToRequest(doc, filePath);
                 if (req is null) continue;
 
-                // seq is read but intentionally not used for ordering: Bruno does not reliably
-                // maintain seq values across users and tools, so we fall back to alphabetical
-                // order which is stable and predictable.  The seq write path is preserved so
-                // that SaveFolderOrderAsync can still round-trip explicit user ordering.
-                parsedRequests.Add(req);
+                var seqStr = doc.GetValue("meta", "seq");
+                var seqVal = int.TryParse(seqStr, out var s) ? s : NoSeq;
+                parsedRequests.Add((req, seqVal));
             }
             catch (Exception ex)
             {
@@ -407,28 +405,57 @@ public sealed class BrunoCollectionService : ICollectionService
             }
         }
 
-        var parsedFolders = new List<CollectionFolder>();
+        // Read sub-folders including their seq from folder.bru meta.seq.
+        var parsedFolders = new List<(CollectionFolder Folder, int Seq)>();
         foreach (var dirPath in Directory
                      .EnumerateDirectories(folderPath)
                      .Where(d => !ShouldExcludeFolder(Path.GetFileName(d))))
         {
-            parsedFolders.Add(ReadFolder(dirPath));
+            var folderSeq = GetFolderSeq(dirPath);
+            parsedFolders.Add((ReadFolder(dirPath), folderSeq));
         }
 
-        // Sort alphabetically — seq is no longer used for ordering (see comment above).
-        var sortedRequests = parsedRequests
-            .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+        // Ordering rules:
+        //  • Folders always come before requests.
+        //  • Within each group (folders / requests):
+        //      1. Items with no seq, sorted alphabetically.
+        //      2. Items with a seq, sorted by seq value (gaps are allowed and preserved).
+        var foldersNoSeq = parsedFolders
+            .Where(f => f.Seq == NoSeq)
+            .OrderBy(f => f.Folder.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var subFolders = parsedFolders
-            .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
+        var foldersWithSeq = parsedFolders
+            .Where(f => f.Seq != NoSeq)
+            .OrderBy(f => f.Seq)
             .ToList();
 
-        // ItemOrder preserves alphabetical mixed order of folders and request files.
-        var itemOrder = parsedFolders
-            .Select(f => f.Name)
-            .Concat(parsedRequests.Select(r => Path.GetFileName(r.FilePath)))
-            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+        var requestsNoSeq = parsedRequests
+            .Where(r => r.Seq == NoSeq)
+            .OrderBy(r => r.Request.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var requestsWithSeq = parsedRequests
+            .Where(r => r.Seq != NoSeq)
+            .OrderBy(r => r.Seq)
+            .ToList();
+
+        var sortedRequests = requestsNoSeq
+            .Concat(requestsWithSeq)
+            .Select(r => r.Request)
+            .ToList();
+
+        var subFolders = foldersNoSeq
+            .Concat(foldersWithSeq)
+            .Select(f => f.Folder)
+            .ToList();
+
+        // ItemOrder is the flat mixed list — folders first, then requests, each group with
+        // no-seq items (alphabetical) before seq items (ordered by seq value).
+        var itemOrder = foldersNoSeq.Select(f => f.Folder.Name)
+            .Concat(foldersWithSeq.Select(f => f.Folder.Name))
+            .Concat(requestsNoSeq.Select(r => Path.GetFileName(r.Request.FilePath)))
+            .Concat(requestsWithSeq.Select(r => Path.GetFileName(r.Request.FilePath)))
             .ToList();
 
         return new CollectionFolder
@@ -439,6 +466,23 @@ public sealed class BrunoCollectionService : ICollectionService
             SubFolders = subFolders,
             ItemOrder = itemOrder,
         };
+    }
+
+    /// <summary>Sentinel value meaning "no seq assigned".</summary>
+    private const int NoSeq = int.MinValue;
+
+    private static int GetFolderSeq(string folderPath)
+    {
+        var folderBruPath = Path.Combine(folderPath, "folder.bru");
+        if (!File.Exists(folderBruPath)) return NoSeq;
+        try
+        {
+            var text = File.ReadAllText(folderBruPath);
+            var doc = BruParser.Parse(text);
+            var seqStr = doc.GetValue("meta", "seq");
+            return int.TryParse(seqStr, out var s) ? s : NoSeq;
+        }
+        catch { return NoSeq; }
     }
 
     private static string GetRootDisplayName(string folderPath)
