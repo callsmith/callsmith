@@ -81,18 +81,6 @@ public sealed class CollectionRequest
     public IReadOnlyList<KeyValuePair<string, string>> FormParams { get; init; } = [];
 
     /// <summary>
-    /// Response captures declared in a Bruno <c>vars:post-response</c> block.
-    /// Each entry maps a variable name to a Bruno extraction expression (e.g. <c>res.body.token</c>).
-    /// <para>
-    /// Only populated when loading a request from a Bruno <c>.bru</c> file.  After a request
-    /// completes, <c>BrunoPostResponseCaptureHelper.Apply</c> evaluates each expression against
-    /// the response body and writes the extracted values into the currently active environment
-    /// as plain static variable values.
-    /// </para>
-    /// </summary>
-    public IReadOnlyList<KeyValuePair<string, string>> BrunoPostResponseCaptures { get; init; } = [];
-
-    /// <summary>
     /// The full URL including all <em>enabled</em> query parameters from <see cref="QueryParams"/>.
     /// Use this when building a <c>RequestModel</c> to send.
     /// </summary>

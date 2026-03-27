@@ -589,10 +589,6 @@ public sealed class BrunoCollectionService : ICollectionService
             .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal)
             ?? new Dictionary<string, string>();
 
-        // vars:post-response — extract as typed captures that callers can translate into
-        // global dynamic response variables.
-        var postResponseCaptures = BuildPostResponseCaptures(doc);
-
         // For Bruno requests, compute a stable request identity based on the display path
         // (folder path + meta.name). This identity is stable within the collection but is lost
         // on rename or move, meeting Issue 40 requirements.
@@ -622,18 +618,7 @@ public sealed class BrunoCollectionService : ICollectionService
             AllBodyContents = allBodyContents,
             FormParams = formParams,
             Auth = auth,
-            BrunoPostResponseCaptures = postResponseCaptures,
         };
-    }
-
-    private static IReadOnlyList<KeyValuePair<string, string>> BuildPostResponseCaptures(BruDocument doc)
-    {
-        var block = doc.Find("vars:post-response");
-        if (block is null) return [];
-        return block.Items
-            .Where(kv => kv.IsEnabled)
-            .Select(kv => new KeyValuePair<string, string>(kv.Key, kv.Value))
-            .ToList();
     }
 
     private static string? BuildBody(BruDocument doc, string bodyType) => bodyType switch
