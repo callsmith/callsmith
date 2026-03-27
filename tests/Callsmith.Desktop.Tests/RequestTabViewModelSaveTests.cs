@@ -249,8 +249,181 @@ public sealed class RequestTabViewModelSaveTests
     }
 
     // -------------------------------------------------------------------------
-    // Second edit after save is tracked correctly
+    // Body type switching: immediate content restore (no tab reload required)
     // -------------------------------------------------------------------------
+
+    [Fact]
+    public void SwitchingBodyType_RestoresPreservedContentImmediately()
+    {
+        // Simulates a request loaded from a .bru file that has both body:json and body:text blocks.
+        var req = new CollectionRequest
+        {
+            FilePath = @"c:\tmp\sample.bru",
+            Name = "sample",
+            Method = HttpMethod.Post,
+            Url = "https://api.example.com",
+            BodyType = CollectionRequest.BodyTypes.Json,
+            Body = "{\"active\":true}",
+            AllBodyContents = new Dictionary<string, string>
+            {
+                [CollectionRequest.BodyTypes.Json] = "{\"active\":true}",
+                [CollectionRequest.BodyTypes.Text] = "some preserved text",
+            },
+        };
+
+        var sut = BuildSut();
+        sut.LoadRequest(req);
+
+        // Active type is json; body shows json content.
+        sut.SelectedBodyType.Should().Be(CollectionRequest.BodyTypes.Json);
+        sut.Body.Should().Be("{\"active\":true}");
+
+        // Switch to text: should immediately show the preserved text content.
+        sut.SelectedBodyType = CollectionRequest.BodyTypes.Text;
+        sut.Body.Should().Be("some preserved text");
+
+        // Switch back to json: original json content restored without tab reload.
+        sut.SelectedBodyType = CollectionRequest.BodyTypes.Json;
+        sut.Body.Should().Be("{\"active\":true}");
+    }
+
+    [Fact]
+    public void SwitchingBodyType_NoPreservedContent_ShowsEmpty()
+    {
+        // Request has only json body; switching to text shows empty (no preserved text).
+        var req = new CollectionRequest
+        {
+            FilePath = @"c:\tmp\sample.bru",
+            Name = "sample",
+            Method = HttpMethod.Post,
+            Url = "https://api.example.com",
+            BodyType = CollectionRequest.BodyTypes.Json,
+            Body = "{\"a\":1}",
+            AllBodyContents = new Dictionary<string, string>
+            {
+                [CollectionRequest.BodyTypes.Json] = "{\"a\":1}",
+            },
+        };
+
+        var sut = BuildSut();
+        sut.LoadRequest(req);
+
+        sut.SelectedBodyType = CollectionRequest.BodyTypes.Text;
+        sut.Body.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void EditingBody_AfterSwitch_StashesContentForEachType()
+    {
+        // When the user edits body content after switching types, each type's content
+        // should be independently tracked.
+        var req = new CollectionRequest
+        {
+            FilePath = @"c:\tmp\sample.bru",
+            Name = "sample",
+            Method = HttpMethod.Post,
+            Url = "https://api.example.com",
+            BodyType = CollectionRequest.BodyTypes.Json,
+            Body = "{\"original\":true}",
+            AllBodyContents = new Dictionary<string, string>
+            {
+                [CollectionRequest.BodyTypes.Json] = "{\"original\":true}",
+            },
+        };
+
+        var sut = BuildSut();
+        sut.LoadRequest(req);
+
+        // User edits the json body.
+        sut.Body = "{\"edited\":true}";
+
+        // Switch to text, type new text.
+        sut.SelectedBodyType = CollectionRequest.BodyTypes.Text;
+        sut.Body = "typed text";
+
+        // Switch back to json: should show the edited json, not the original.
+        sut.SelectedBodyType = CollectionRequest.BodyTypes.Json;
+        sut.Body.Should().Be("{\"edited\":true}");
+
+        // Switch back to text: should show the typed text.
+        sut.SelectedBodyType = CollectionRequest.BodyTypes.Text;
+        sut.Body.Should().Be("typed text");
+    }
+
+    [Fact]
+    public async Task Save_AfterBodyTypeSwitch_PersistsAllBodyContents()
+    {
+        // When saving with the active body type as "text", AllBodyContents should include
+        // the previously-edited json body so it can be round-tripped to disk.
+        CollectionRequest? saved = null;
+        var collectionService = Substitute.For<ICollectionService>();
+        collectionService
+            .SaveRequestAsync(Arg.Do<CollectionRequest>(r => saved = r), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        var req = new CollectionRequest
+        {
+            FilePath = @"c:\tmp\sample.bru",
+            Name = "sample",
+            Method = HttpMethod.Post,
+            Url = "https://api.example.com",
+            BodyType = CollectionRequest.BodyTypes.Json,
+            Body = "{\"a\":1}",
+            AllBodyContents = new Dictionary<string, string>
+            {
+                [CollectionRequest.BodyTypes.Json] = "{\"a\":1}",
+            },
+        };
+
+        var sut = BuildSut(collectionService);
+        sut.LoadRequest(req);
+
+        // Edit json body, then switch to text and type something.
+        sut.Body = "{\"b\":2}";
+        sut.SelectedBodyType = CollectionRequest.BodyTypes.Text;
+        sut.Body = "hello";
+
+        await sut.PerformSaveAsync();
+
+        saved.Should().NotBeNull();
+        saved!.BodyType.Should().Be(CollectionRequest.BodyTypes.Text);
+        saved.Body.Should().Be("hello");
+        saved.AllBodyContents.Should().ContainKey(CollectionRequest.BodyTypes.Json)
+            .WhoseValue.Should().Be("{\"b\":2}");
+        saved.AllBodyContents.Should().ContainKey(CollectionRequest.BodyTypes.Text)
+            .WhoseValue.Should().Be("hello");
+    }
+
+    [Fact]
+    public void SwitchingToNone_ClearsBody_AndPreservesContentsForReturn()
+    {
+        var req = new CollectionRequest
+        {
+            FilePath = @"c:\tmp\sample.bru",
+            Name = "sample",
+            Method = HttpMethod.Post,
+            Url = "https://api.example.com",
+            BodyType = CollectionRequest.BodyTypes.Json,
+            Body = "{\"x\":1}",
+            AllBodyContents = new Dictionary<string, string>
+            {
+                [CollectionRequest.BodyTypes.Json] = "{\"x\":1}",
+            },
+        };
+
+        var sut = BuildSut();
+        sut.LoadRequest(req);
+
+        // Switch to "none" — body editor disappears.
+        sut.SelectedBodyType = CollectionRequest.BodyTypes.None;
+        sut.Body.Should().BeEmpty();
+
+        // Switch back to json — original content restored.
+        sut.SelectedBodyType = CollectionRequest.BodyTypes.Json;
+        sut.Body.Should().Be("{\"x\":1}");
+    }
+
+
 
     [Fact]
     public async Task AfterSave_FurtherEdits_MarkDirtyAgain()

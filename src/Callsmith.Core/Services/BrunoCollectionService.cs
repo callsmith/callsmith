@@ -577,6 +577,7 @@ public sealed class BrunoCollectionService : ICollectionService
 
         var bodyType = MapBrunoBodyType(bruBodyType);
         var body = BuildBody(doc, bodyType);
+        var allBodyContents = BuildAllBodyContents(doc);
         var formParams = BuildFormParams(doc, bodyType);
         var authType = MapBrunoAuthType(bruAuthType);
         var auth = BuildAuth(doc, authType, basicPasswordOverride);
@@ -618,6 +619,7 @@ public sealed class BrunoCollectionService : ICollectionService
             QueryParams = queryParams,
             BodyType = bodyType,
             Body = body,
+            AllBodyContents = allBodyContents,
             FormParams = formParams,
             Auth = auth,
             BrunoPostResponseCaptures = postResponseCaptures,
@@ -642,6 +644,22 @@ public sealed class BrunoCollectionService : ICollectionService
         // Form and multipart params are stored in FormParams, not Body
         _ => null,
     };
+
+    /// <summary>
+    /// Reads ALL text body blocks present in the document — regardless of which body type is
+    /// currently active — so the UI can restore editor content when the user switches types.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string> BuildAllBodyContents(BruDocument doc)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (doc.Find("body:json")?.RawContent is { } json)
+            result[CollectionRequest.BodyTypes.Json] = json;
+        if (doc.Find("body:text")?.RawContent is { } text)
+            result[CollectionRequest.BodyTypes.Text] = text;
+        if (doc.Find("body:xml")?.RawContent is { } xml)
+            result[CollectionRequest.BodyTypes.Xml] = xml;
+        return result;
+    }
 
     private static IReadOnlyList<KeyValuePair<string, string>> BuildFormParams(
         BruDocument doc, string bodyType)
@@ -877,11 +895,14 @@ public sealed class BrunoCollectionService : ICollectionService
         blocks.FindIndex(b => string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// Updates the active body block for <paramref name="request"/> in <paramref name="blocks"/>.
+    /// Updates body blocks for <paramref name="request"/> in <paramref name="blocks"/>.
     /// <para>
-    /// Non-active body blocks (e.g. <c>body:json</c> when body type is text) are intentionally
-    /// left unchanged so that content is not lost when the user switches body types in Bruno or
-    /// Callsmith.
+    /// The active body block is updated with <see cref="CollectionRequest.Body"/>.
+    /// Non-active text body blocks that have content tracked in
+    /// <see cref="CollectionRequest.AllBodyContents"/> are also updated so that edits made
+    /// in the UI while a different body type was active are persisted.
+    /// Body blocks with no tracked content are left unchanged (preserving any content
+    /// written by external tools such as Bruno).
     /// </para>
     /// </summary>
     private static void UpdateBodyBlockInPlace(List<BruBlock> blocks, CollectionRequest request, string bruMethod)
@@ -921,6 +942,28 @@ public sealed class BrunoCollectionService : ICollectionService
 
         if (newBodyBlock is not null)
             SetOrInsertAfter(blocks, activeBodyBlockName, newBodyBlock, bruMethod);
+
+        // Also update non-active text body blocks that have tracked content.
+        // These come from AllBodyContents, which the ViewModel keeps in sync as the user
+        // switches between body types, so edits to a body type that wasn't active at save
+        // time are not silently discarded.
+        var inactiveTextTypes = new[]
+        {
+            (CollectionRequest.BodyTypes.Json, "body:json"),
+            (CollectionRequest.BodyTypes.Text, "body:text"),
+            (CollectionRequest.BodyTypes.Xml,  "body:xml"),
+        };
+        foreach (var (type, blockName) in inactiveTextTypes)
+        {
+            if (type == request.BodyType) continue; // already handled as active block above
+            if (!request.AllBodyContents.TryGetValue(type, out var inactiveContent)) continue;
+
+            var inactiveBlock = new BruBlock(blockName);
+            inactiveBlock.RawContent = inactiveContent.StartsWith(' ') || inactiveContent.StartsWith('\t')
+                ? inactiveContent
+                : IndentRawContent(inactiveContent);
+            SetOrInsertAfter(blocks, blockName, inactiveBlock, bruMethod);
+        }
     }
 
     /// <summary>

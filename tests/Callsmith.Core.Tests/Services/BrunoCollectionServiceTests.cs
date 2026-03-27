@@ -1375,8 +1375,110 @@ public sealed class BrunoCollectionServiceTests : IDisposable
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    //  AllBodyContents: per-type body content loaded from all body blocks
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task LoadRequestAsync_PopulatesAllBodyContents_ForAllPresentBlocks()
+    {
+        // A Bruno file may have multiple body blocks (e.g. body:json and body:text).
+        // AllBodyContents should capture all of them so the ViewModel can restore
+        // the correct content when the user switches body types.
+        var content = """
+            meta {
+              name: multi-body
+              type: http
+              seq: 1
+            }
+
+            post {
+              url: https://api.example.com/items
+              body: json
+              auth: none
+            }
+
+            body:json {
+              {"active": true}
+            }
+
+            body:text {
+              some plain text
+            }
+            """;
+        WriteFile("multi.bru", content);
+
+        var request = await _sut.LoadRequestAsync(Path.Combine(_root, "multi.bru"));
+
+        // Active body is JSON.
+        Assert.Equal(CollectionRequest.BodyTypes.Json, request.BodyType);
+        Assert.Contains("\"active\": true", request.Body ?? "");
+
+        // AllBodyContents has BOTH blocks.
+        Assert.True(request.AllBodyContents.ContainsKey(CollectionRequest.BodyTypes.Json));
+        Assert.True(request.AllBodyContents.ContainsKey(CollectionRequest.BodyTypes.Text));
+        Assert.Contains("\"active\": true", request.AllBodyContents[CollectionRequest.BodyTypes.Json]);
+        Assert.Contains("some plain text", request.AllBodyContents[CollectionRequest.BodyTypes.Text]);
+    }
+
+    [Fact]
+    public async Task SaveRequestAsync_WithAllBodyContents_WritesBothBodyBlocks()
+    {
+        // When AllBodyContents carries content for non-active body types, those
+        // blocks must be written to disk so they survive a save-and-reload cycle.
+        var original = """
+            meta {
+              name: item
+              type: http
+              seq: 1
+            }
+
+            post {
+              url: https://api.example.com/items
+              body: json
+              auth: none
+            }
+
+            body:json {
+              {"name": "original"}
+            }
+            """;
+        WriteFile("item.bru", original);
+        var filePath = Path.Combine(_root, "item.bru");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+
+        // Simulate the ViewModel switching to text and editing it.
+        var modified = new CollectionRequest
+        {
+            FilePath = loaded.FilePath,
+            Name = loaded.Name,
+            Method = loaded.Method,
+            Url = loaded.Url,
+            PathParams = loaded.PathParams,
+            Headers = loaded.Headers,
+            QueryParams = loaded.QueryParams,
+            Auth = loaded.Auth,
+            BodyType = CollectionRequest.BodyTypes.Text,
+            Body = "typed text",
+            AllBodyContents = new Dictionary<string, string>
+            {
+                [CollectionRequest.BodyTypes.Json] = "{\"name\": \"original\"}",
+                [CollectionRequest.BodyTypes.Text] = "typed text",
+            },
+        };
+        await _sut.SaveRequestAsync(modified);
+
+        var written = await File.ReadAllTextAsync(filePath);
+        Assert.Contains("body:text {", written);
+        Assert.Contains("typed text", written);
+        Assert.Contains("body:json {", written);
+        Assert.Contains("\"name\": \"original\"", written);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     //  Bruno compatibility: vars:post-response captures
     // ─────────────────────────────────────────────────────────────────────────
+
 
     [Fact]
     public async Task LoadRequestAsync_WithPostResponseBlock_PopulatesCaptures()
