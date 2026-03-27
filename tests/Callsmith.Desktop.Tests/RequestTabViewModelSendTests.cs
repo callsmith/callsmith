@@ -303,6 +303,102 @@ public sealed class RequestTabViewModelSendTests
         sut.IsNew.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task Send_ConcreteEnvVar_OverridesGlobalVar_ByDefault()
+    {
+        var transport = new CapturingTransport();
+        var registry = new TransportRegistry();
+        registry.Register(transport);
+
+        var collectionService = Substitute.For<ICollectionService>();
+        var sut = new RequestTabViewModel(
+            registry,
+            collectionService,
+            new WeakReferenceMessenger(),
+            _ => { });
+
+        sut.SetGlobalEnvironment(new EnvironmentModel
+        {
+            FilePath = "global.env.callsmith",
+            Name = "Global",
+            Variables = [new EnvironmentVariable { Name = "base-url", Value = "https://global.example.com" }],
+            EnvironmentId = Guid.NewGuid(),
+        });
+        sut.SetEnvironment(new EnvironmentModel
+        {
+            FilePath = "dev.env.callsmith",
+            Name = "dev",
+            Variables = [new EnvironmentVariable { Name = "base-url", Value = "https://dev.example.com" }],
+            EnvironmentId = Guid.NewGuid(),
+        });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/req.callsmith",
+            Name = "req",
+            Method = HttpMethod.Get,
+            Url = "{{base-url}}/api/resource",
+        });
+
+        await sut.SendCommand.ExecuteAsync(null);
+
+        // Concrete env var should win by default.
+        transport.LastRequest!.Url.Should().Contain("dev.example.com");
+        transport.LastRequest.Url.Should().NotContain("global.example.com");
+    }
+
+    [Fact]
+    public async Task Send_GlobalVarWithForceOverride_WinsOverConcreteEnvVar()
+    {
+        var transport = new CapturingTransport();
+        var registry = new TransportRegistry();
+        registry.Register(transport);
+
+        var collectionService = Substitute.For<ICollectionService>();
+        var sut = new RequestTabViewModel(
+            registry,
+            collectionService,
+            new WeakReferenceMessenger(),
+            _ => { });
+
+        sut.SetGlobalEnvironment(new EnvironmentModel
+        {
+            FilePath = "global.env.callsmith",
+            Name = "Global",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "base-url",
+                    Value = "https://global.example.com",
+                    IsForceGlobalOverride = true,
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        });
+        sut.SetEnvironment(new EnvironmentModel
+        {
+            FilePath = "dev.env.callsmith",
+            Name = "dev",
+            Variables = [new EnvironmentVariable { Name = "base-url", Value = "https://dev.example.com" }],
+            EnvironmentId = Guid.NewGuid(),
+        });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/req.callsmith",
+            Name = "req",
+            Method = HttpMethod.Get,
+            Url = "{{base-url}}/api/resource",
+        });
+
+        await sut.SendCommand.ExecuteAsync(null);
+
+        // Force-override global var should win over the concrete env var.
+        transport.LastRequest!.Url.Should().Contain("global.example.com");
+        transport.LastRequest.Url.Should().NotContain("dev.example.com");
+    }
+
     private static async Task AssertEventuallyAsync(Func<Task> assertion, int retries = 50, int delayMs = 20)
     {
         Exception? last = null;

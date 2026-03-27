@@ -917,6 +917,11 @@ public sealed partial class RequestTabViewModel : ObservableObject
         if (_activeEnvironment is not null)
             foreach (var v in _activeEnvironment.Variables)
                 merged[v.Name] = v.Value;
+
+        // Force-override global vars take final priority — re-apply them after the active env.
+        foreach (var v in _globalEnvironment.Variables.Where(v => v.IsForceGlobalOverride && !string.IsNullOrWhiteSpace(v.Name)))
+            merged[v.Name] = v.Value;
+
         return merged;
     }
 
@@ -948,6 +953,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
             return new ResolvedEnvironment { Variables = merged };
 
         var allMockGenerators = new Dictionary<string, MockDataEntry>();
+        // Capture resolved values for force-override global dynamic vars so they can be
+        // re-applied at the end after the active env's dynamic resolution overwrites them.
+        var forceOverrideDynamicValues = new Dictionary<string, string>(StringComparer.Ordinal);
+        var forceOverrideMockGenerators = new Dictionary<string, MockDataEntry>();
         try
         {
             // 1. Resolve global dynamic vars first, passing the full merged static dict so that
@@ -972,6 +981,16 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 foreach (var kv in globalResolved.MockGenerators)
                     allMockGenerators[kv.Key] = kv.Value;
 
+                // Save the resolved values of any force-override dynamic global vars so they
+                // can be re-applied at the end after the active env potentially overwrites them.
+                foreach (var v in globalVars.Where(v => v.IsForceGlobalOverride && !string.IsNullOrWhiteSpace(v.Name)))
+                {
+                    if (globalResolved.Variables.TryGetValue(v.Name, out var resolvedVal))
+                        forceOverrideDynamicValues[v.Name] = resolvedVal;
+                    if (globalResolved.MockGenerators.TryGetValue(v.Name, out var mockGen))
+                        forceOverrideMockGenerators[v.Name] = mockGen;
+                }
+
                 // Active-env static vars must still win over global resolved values.
                 if (_activeEnvironment is not null)
                     foreach (var v in _activeEnvironment.Variables
@@ -995,6 +1014,19 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 foreach (var kv in activeResolved.MockGenerators)
                     allMockGenerators[kv.Key] = kv.Value;
             }
+
+            // 3. Re-apply force-override global vars so they win over active-env vars.
+            //    Static force-override globals are re-applied directly; dynamic ones use
+            //    the resolved values captured in step 1.
+            foreach (var v in globalVars.Where(v => v.IsForceGlobalOverride && !string.IsNullOrWhiteSpace(v.Name)))
+            {
+                if (v.VariableType == EnvironmentVariable.VariableTypes.Static)
+                    merged[v.Name] = v.Value;
+            }
+            foreach (var kv in forceOverrideDynamicValues)
+                merged[kv.Key] = kv.Value;
+            foreach (var kv in forceOverrideMockGenerators)
+                allMockGenerators[kv.Key] = kv.Value;
 
             return new ResolvedEnvironment { Variables = merged, MockGenerators = allMockGenerators };
         }

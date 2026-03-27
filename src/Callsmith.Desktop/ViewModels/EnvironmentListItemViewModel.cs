@@ -309,6 +309,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
             Name = migrated.Name,
             Value = migrated.Value,
             IsSecret = migrated.IsSecret,
+            IsForceGlobalOverride = migrated.IsForceGlobalOverride,
             SuggestionNames = _suggestions,
             VariableType = migrated.VariableType,
             MockDataCategory = migrated.MockDataCategory,
@@ -318,6 +319,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
             ResponseFrequency = migrated.ResponseFrequency,
             ResponseExpiresAfterSeconds = migrated.ResponseExpiresAfterSeconds,
             IsBrunoConcreteEnvironment = isBrunoConcreteEnv,
+            IsGlobal = IsGlobal,
         };
         return item;
     }
