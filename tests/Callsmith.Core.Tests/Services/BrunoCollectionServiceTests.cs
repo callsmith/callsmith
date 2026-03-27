@@ -313,6 +313,55 @@ public sealed class BrunoCollectionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveRequestAsync_PreservesAssertBlock()
+    {
+        var original = """
+            meta {
+              name: with assert
+              type: http
+              seq: 1
+            }
+
+            get {
+              url: https://api.example.com/items/:id
+              body: none
+              auth: none
+            }
+
+            assert {
+              res.body.value: isString
+              res.body.id: matches ^[\w\d\-]*$
+              res.status: eq 200
+            }
+            """;
+        WriteFile("asserted.bru", original);
+        var filePath = Path.Combine(_root, "asserted.bru");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+        var modified = new CollectionRequest
+        {
+            FilePath = loaded.FilePath,
+            Name = loaded.Name,
+            Method = loaded.Method,
+            Url = "https://api.example.com/items/:id?noop=true",
+            Headers = loaded.Headers,
+            PathParams = loaded.PathParams,
+            QueryParams = loaded.QueryParams,
+            BodyType = loaded.BodyType,
+            Body = loaded.Body,
+            Auth = loaded.Auth,
+        };
+
+        await _sut.SaveRequestAsync(modified);
+
+        var written = await File.ReadAllTextAsync(filePath);
+        Assert.Contains("assert {", written);
+        Assert.Contains("res.body.value: isString", written);
+        Assert.Contains("res.body.id: matches ^[\\w\\d\\-]*$", written);
+        Assert.Contains("res.status: eq 200", written);
+    }
+
+    [Fact]
     public async Task SaveRequestAsync_PreservesDisabledHeaders()
     {
         var original = """
@@ -750,6 +799,38 @@ public sealed class BrunoCollectionServiceTests : IDisposable
         Assert.Contains("setGlobalEnvVar", written);
         Assert.Contains("setEnvVar", written);
         Assert.Contains("expect(res.status)", written);
+    }
+
+    [Fact]
+    public async Task SaveRequestAsync_TestsBlock_PreservesTrailingBlankLineBeforeClosingBrace()
+    {
+        var original = """
+            meta {
+              name: test spacing
+              type: http
+              seq: 1
+            }
+
+            get {
+              url: https://api.example.com/items
+              body: none
+              auth: none
+            }
+
+            tests {
+              const moment = require('moment');
+              const _response = res.getBody();
+              
+            }
+            """;
+        WriteFile("spacing.bru", original);
+        var filePath = Path.Combine(_root, "spacing.bru");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+        await _sut.SaveRequestAsync(loaded);
+
+        var written = (await File.ReadAllTextAsync(filePath)).Replace("\r\n", "\n");
+        Assert.Contains("tests {\n  const moment = require('moment');\n  const _response = res.getBody();\n  \n}", written);
     }
 
     [Fact]

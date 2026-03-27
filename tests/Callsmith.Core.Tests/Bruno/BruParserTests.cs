@@ -125,6 +125,24 @@ public sealed class BruParserTests
         scriptBlock.RawContent.Should().Contain("corrId");
     }
 
+      [Fact]
+      public void Parse_RawTestsBlock_PreservesTrailingBlankLineBeforeClose()
+      {
+        const string bru = """
+          tests {
+            const x = 1;
+              
+          }
+          """;
+
+        var doc = BruParser.Parse(bru);
+        var testsBlock = doc.Find("tests");
+
+        testsBlock.Should().NotBeNull();
+        testsBlock!.RawContent.Should().Contain("const x = 1;");
+        testsBlock.RawContent.Should().MatchRegex("(?s).*const x = 1;\\n\\s+$");
+      }
+
     [Fact]
     public void Parse_AuthBasic_ExtractsCredentials()
     {

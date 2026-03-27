@@ -13,9 +13,9 @@ namespace Callsmith.Core.Services;
 /// request files, maintaining full round-trip fidelity so that both Callsmith and Bruno
 /// users can work on the same collection simultaneously.
 /// <para>
-/// On every save the existing file (if present) is re-read to extract script blocks
-/// (<c>script:pre-request</c>, <c>script:post-response</c>, <c>tests</c>) and all
-/// disabled KV items (<c>~</c>-prefixed) so they survive Callsmith edits unchanged.
+/// On every save the existing file (if present) is re-read and only blocks owned by
+/// Callsmith's request model are rewritten. All other blocks are preserved unchanged so
+/// Bruno-specific metadata/tests/asserts are not polluted by Callsmith saves.
 /// </para>
 /// </summary>
 public sealed class BrunoCollectionService : ICollectionService
@@ -734,12 +734,12 @@ public sealed class BrunoCollectionService : ICollectionService
             blocks.Add(pathBlock);
         }
 
-        // Preserved blocks: scripts and tests are written back unchanged.
+        // Preserve every existing block that Callsmith does not explicitly own/rewrite.
         if (existing is not null)
         {
             foreach (var block in existing.Blocks)
             {
-                if (IsPreservedBlockName(block.Name))
+                if (!IsOwnedBlockName(block.Name))
                     blocks.Add(block);
             }
         }
@@ -813,8 +813,21 @@ public sealed class BrunoCollectionService : ICollectionService
         value.StartsWith("{{" , StringComparison.Ordinal) &&
         value.EndsWith("}}", StringComparison.Ordinal);
 
-    private static bool IsPreservedBlockName(string name) =>
-        name is "script:pre-request" or "script:post-response" or "tests";
+    private static bool IsOwnedBlockName(string name) => name switch
+    {
+        "meta" => true,
+        "params:query" => true,
+        "headers" => true,
+        "params:path" => true,
+        "auth:bearer" => true,
+        "auth:basic" => true,
+        "body:json" => true,
+        "body:text" => true,
+        "body:xml" => true,
+        "body:form-urlencoded" => true,
+        "body:multipart" => true,
+        _ => _httpVerbs.Contains(name, StringComparer.OrdinalIgnoreCase),
+    };
 
     private static string IndentRawContent(string content)
     {

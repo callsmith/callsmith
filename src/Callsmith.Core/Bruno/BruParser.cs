@@ -131,7 +131,7 @@ internal static class BruParser
         }
 
         if (rawLines is not null)
-            block.RawContent = string.Join('\n', rawLines).TrimEnd();
+            block.RawContent = string.Join('\n', rawLines);
     }
 
     private static void ParseKvLine(string line, BruBlock block)

@@ -62,11 +62,15 @@ internal static class BruWriter
     {
         sb.Append(block.Name).AppendLine(" [");
 
-        foreach (var kv in block.Items)
+        for (var i = 0; i < block.Items.Count; i++)
         {
+            var kv = block.Items[i];
             sb.Append("  ");
             if (!kv.IsEnabled) sb.Append('~');
-            sb.AppendLine(kv.Key);
+            sb.Append(kv.Key);
+            if (i < block.Items.Count - 1)
+                sb.Append(',');
+            sb.AppendLine();
         }
 
         sb.AppendLine("]");

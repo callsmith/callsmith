@@ -173,7 +173,7 @@ public sealed class BrunoEnvironmentServiceTests : IDisposable
 
         var written = (await File.ReadAllTextAsync(filePath)).Replace("\r\n", "\n");
         Assert.Contains("vars:secret [\n", written);
-        Assert.Contains("  baseUrl\n", written);
+        Assert.Contains("  baseUrl,\n", written);
         Assert.Contains("  token\n", written);
         Assert.DoesNotContain("baseUrl:", written);
         Assert.DoesNotContain("token:", written);
