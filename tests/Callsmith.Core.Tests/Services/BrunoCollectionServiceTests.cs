@@ -240,18 +240,18 @@ public sealed class BrunoCollectionServiceTests : IDisposable
     }
 
       [Fact]
-      public async Task LoadRequestAsync_WhenBruFileHasNoRequestId_BackfillsAndPersistsMetaRequestId()
+      public async Task LoadRequestAsync_WhenBruFileHasNoRequestId_DoesNotBackfillOrModifyFile()
       {
-        WriteFile("legacy.bru", BruFile("legacy", "get", "https://example.com", seq: 1));
+        var original = BruFile("legacy", "get", "https://example.com", seq: 1);
+        WriteFile("legacy.bru", original);
         var filePath = Path.Combine(_root, "legacy.bru");
 
-        var loaded = await _sut.LoadRequestAsync(filePath);
+        await _sut.LoadRequestAsync(filePath);
 
-        Assert.NotNull(loaded.RequestId);
-
+        // File must not have been modified (no requestId backfill).
         var content = await File.ReadAllTextAsync(filePath);
-        Assert.Contains("requestId:", content);
-        Assert.Contains(loaded.RequestId!.Value.ToString("D"), content);
+        Assert.DoesNotContain("requestId:", content);
+        Assert.Equal(original, content);
       }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -370,6 +370,25 @@ public sealed class BrunoCollectionServiceTests : IDisposable
         Assert.Contains("\"name\"", written);
     }
 
+    [Fact]
+    public async Task SaveRequestAsync_DoesNotWriteRequestId()
+    {
+        var request = new CollectionRequest
+        {
+            RequestId = Guid.NewGuid(),
+            FilePath = Path.Combine(_root, "api.bru"),
+            Name = "api",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com",
+            Auth = new AuthConfig { AuthType = AuthConfig.AuthTypes.None },
+        };
+
+        await _sut.SaveRequestAsync(request);
+
+        var content = await File.ReadAllTextAsync(request.FilePath);
+        Assert.DoesNotContain("requestId:", content);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     //  Rename / Delete / Create
     // ─────────────────────────────────────────────────────────────────────────
@@ -434,11 +453,10 @@ public sealed class BrunoCollectionServiceTests : IDisposable
 
         Assert.True(File.Exists(created.FilePath));
         Assert.Equal("Brand New", created.Name);
-      Assert.NotNull(created.RequestId);
 
         var content = await File.ReadAllTextAsync(created.FilePath);
         Assert.Contains("name: Brand New", content);
-      Assert.Contains("requestId:", content);
+        Assert.DoesNotContain("requestId:", content);
         Assert.Contains("get {", content);
     }
 
@@ -638,4 +656,440 @@ public sealed class BrunoCollectionServiceTests : IDisposable
           auth: none
         }
         """;
+
+    private static string FolderBru(string name, int? seq = null) =>
+        seq.HasValue
+            ? $"meta {{\n  name: {name}\n  seq: {seq}\n}}\n"
+            : $"meta {{\n  name: {name}\n}}\n";
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Phase 5: Round-trip fidelity
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task SaveRequestAsync_WithJsonBody_BodyBlockSurvivesRoundTrip()
+    {
+        var original = """
+            meta {
+              name: create item
+              type: http
+              seq: 1
+            }
+
+            post {
+              url: https://api.example.com/items
+              body: json
+              auth: none
+            }
+
+            body:json {
+              {
+                "name": "test",
+                "value": 42
+              }
+            }
+            """;
+        WriteFile("create.bru", original);
+        var filePath = Path.Combine(_root, "create.bru");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+        await _sut.SaveRequestAsync(loaded);
+
+        var written = await File.ReadAllTextAsync(filePath);
+        Assert.Contains("body:json {", written);
+        Assert.Contains("\"name\": \"test\"", written);
+        Assert.Contains("\"value\": 42", written);
+        Assert.Contains("post {", written);
+    }
+
+    [Fact]
+    public async Task SaveRequestAsync_ScriptAndTestBlocksPreservedWithBody()
+    {
+        var original = """
+            meta {
+              name: scripted post
+              type: http
+              seq: 1
+            }
+
+            post {
+              url: https://api.example.com/items
+              body: json
+              auth: none
+            }
+
+            body:json {
+              {"key": "value"}
+            }
+
+            script:pre-request {
+              bru.setGlobalEnvVar('ts', Date.now());
+            }
+
+            script:post-response {
+              bru.setEnvVar('token', res.body.token);
+            }
+
+            tests {
+              test("status is 200", function() {
+                expect(res.status).to.equal(200);
+              });
+            }
+            """;
+        WriteFile("scripted.bru", original);
+        var filePath = Path.Combine(_root, "scripted.bru");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+        await _sut.SaveRequestAsync(loaded);
+
+        var written = await File.ReadAllTextAsync(filePath);
+        Assert.Contains("body:json {", written);
+        Assert.Contains("script:pre-request {", written);
+        Assert.Contains("script:post-response {", written);
+        Assert.Contains("tests {", written);
+        Assert.Contains("setGlobalEnvVar", written);
+        Assert.Contains("setEnvVar", written);
+        Assert.Contains("expect(res.status)", written);
+    }
+
+    [Fact]
+    public async Task SaveRequestAsync_ExistingFileWithRequestId_RemovesItOnSave()
+    {
+        // Simulate a file originally written by old Callsmith (has requestId in meta).
+        var original = """
+            meta {
+              name: legacy
+              type: http
+              seq: 1
+              requestId: 550e8400-e29b-41d4-a716-446655440000
+            }
+
+            get {
+              url: https://api.example.com
+              body: none
+              auth: none
+            }
+            """;
+        WriteFile("legacy.bru", original);
+        var filePath = Path.Combine(_root, "legacy.bru");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+        await _sut.SaveRequestAsync(loaded);
+
+        var written = await File.ReadAllTextAsync(filePath);
+        // On first save, the legacy requestId should be removed from meta.
+        Assert.DoesNotContain("requestId:", written);
+        Assert.Contains("name: legacy", written);
+    }
+
+    [Fact]
+    public async Task OpenFolderAsync_MixedFolderAndRequest_OrderedBySeq()
+    {
+        // Folder with seq=2, request with seq=1, folder with seq=3 → request first
+        Directory.CreateDirectory(Path.Combine(_root, "Beta"));
+        WriteFile("Beta/folder.bru", FolderBru("Beta", seq: 2));
+        WriteFile("Beta/b-req.bru", BruFile("b-req", "get", "https://b.com", seq: 1));
+
+        Directory.CreateDirectory(Path.Combine(_root, "Gamma"));
+        WriteFile("Gamma/folder.bru", FolderBru("Gamma", seq: 3));
+
+        WriteFile("alpha.bru", BruFile("alpha", "get", "https://a.com", seq: 1));
+
+        var folder = await _sut.OpenFolderAsync(_root);
+
+        // ItemOrder should be: alpha (seq=1), Beta (seq=2), Gamma (seq=3)
+        Assert.Equal(3, folder.ItemOrder.Count);
+        Assert.Equal("alpha.bru", folder.ItemOrder[0]);
+        Assert.Equal("Beta", folder.ItemOrder[1]);
+        Assert.Equal("Gamma", folder.ItemOrder[2]);
+    }
+
+    [Fact]
+    public async Task OpenFolderAsync_FolderWithoutSeq_SortsAlphabeticallyAfterSequenced()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "Alpha"));
+        WriteFile("Alpha/folder.bru", FolderBru("Alpha")); // no seq
+
+        Directory.CreateDirectory(Path.Combine(_root, "Zebra"));
+        WriteFile("Zebra/folder.bru", FolderBru("Zebra", seq: 1));
+
+        WriteFile("mid.bru", BruFile("mid", "get", "https://mid.com", seq: 2));
+
+        var folder = await _sut.OpenFolderAsync(_root);
+
+        // Zebra (seq=1), mid (seq=2), Alpha (no seq → last)
+        Assert.Equal("Zebra", folder.ItemOrder[0]);
+        Assert.Equal("mid.bru", folder.ItemOrder[1]);
+        Assert.Equal("Alpha", folder.ItemOrder[2]);
+    }
+
+    [Fact]
+    public async Task SaveFolderOrderAsync_UpdatesFolderBruSeqForSubFolders()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "First"));
+        WriteFile("First/folder.bru", FolderBru("First", seq: 1));
+
+        Directory.CreateDirectory(Path.Combine(_root, "Second"));
+        WriteFile("Second/folder.bru", FolderBru("Second", seq: 2));
+
+        // Reverse the folder order
+        await _sut.SaveFolderOrderAsync(_root, ["Second", "First"]);
+
+        var firstContent = await File.ReadAllTextAsync(Path.Combine(_root, "First", "folder.bru"));
+        var secondContent = await File.ReadAllTextAsync(Path.Combine(_root, "Second", "folder.bru"));
+
+        Assert.Contains("seq: 2", firstContent);
+        Assert.Contains("seq: 1", secondContent);
+    }
+
+    [Fact]
+    public async Task SaveFolderOrderAsync_MixedFoldersAndRequests_AssignsSeqToAll()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "MyFolder"));
+        WriteFile("MyFolder/folder.bru", FolderBru("MyFolder", seq: 1));
+        WriteFile("req.bru", BruFile("req", "get", "https://example.com", seq: 2));
+
+        // Put the request first, folder second
+        await _sut.SaveFolderOrderAsync(_root, ["req.bru", "MyFolder"]);
+
+        var reqContent = await File.ReadAllTextAsync(Path.Combine(_root, "req.bru"));
+        var folderContent = await File.ReadAllTextAsync(Path.Combine(_root, "MyFolder", "folder.bru"));
+
+        Assert.Contains("seq: 1", reqContent);
+        Assert.Contains("seq: 2", folderContent);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Phase 4: params:path round-trip
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task LoadRequestAsync_WithParamsPathBlock_LoadsIntoPathParams()
+    {
+        var content = """
+            meta {
+              name: get user
+              type: http
+              seq: 1
+            }
+
+            get {
+              url: https://api.example.com/users/:userId
+              body: none
+              auth: none
+            }
+
+            params:path {
+              userId: 42
+            }
+            """;
+        WriteFile("user.bru", content);
+
+        var req = await _sut.LoadRequestAsync(Path.Combine(_root, "user.bru"));
+
+        Assert.Single(req.PathParams);
+        Assert.Equal("42", req.PathParams["userId"]);
+    }
+
+    [Fact]
+    public async Task SaveRequestAsync_WithPathParams_WritesParamsPathBlock()
+    {
+        var request = new CollectionRequest
+        {
+            FilePath = Path.Combine(_root, "user.bru"),
+            Name = "get user",
+            Method = System.Net.Http.HttpMethod.Get,
+            Url = "https://api.example.com/users/:userId",
+            PathParams = new Dictionary<string, string> { ["userId"] = "99" },
+            Auth = new AuthConfig { AuthType = AuthConfig.AuthTypes.None },
+        };
+
+        await _sut.SaveRequestAsync(request);
+
+        var content = await File.ReadAllTextAsync(request.FilePath);
+        Assert.Contains("params:path {", content);
+        Assert.Contains("  userId: 99", content);
+    }
+
+    [Fact]
+    public async Task SaveRequestAsync_PathParams_RoundTrip()
+    {
+        var original = """
+            meta {
+              name: get order
+              type: http
+              seq: 1
+            }
+
+            get {
+              url: https://api.example.com/users/:userId/orders/:orderId
+              body: none
+              auth: none
+            }
+
+            params:path {
+              userId: 1
+              orderId: 2
+            }
+            """;
+        WriteFile("order.bru", original);
+        var filePath = Path.Combine(_root, "order.bru");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+        loaded = new CollectionRequest
+        {
+            FilePath = loaded.FilePath,
+            Name = loaded.Name,
+            Method = loaded.Method,
+            Url = loaded.Url,
+            PathParams = new Dictionary<string, string>(loaded.PathParams) { ["orderId"] = "99" },
+            Headers = loaded.Headers,
+            QueryParams = loaded.QueryParams,
+            BodyType = loaded.BodyType,
+            Body = loaded.Body,
+            Auth = loaded.Auth,
+        };
+        await _sut.SaveRequestAsync(loaded);
+
+        var reloaded = await _sut.LoadRequestAsync(filePath);
+        Assert.Equal("1", reloaded.PathParams["userId"]);
+        Assert.Equal("99", reloaded.PathParams["orderId"]);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Phase 1: Computed Request Identity (Issue 40 stabilization)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ComputeBrunoRequestIdentity_SameDisplayPath_ReturnsDeterministicGuid()
+    {
+        // The identity should be deterministic: same path → same Guid
+        var collectionRoot = _root;
+        var filePath1 = Path.Combine(_root, "requests", "api.bru");
+        var filePath2 = Path.Combine(_root, "requests", "api.bru");
+        var requestName = "get items";
+
+        var identity1 = BrunoCollectionService.ComputeBrunoRequestIdentity(collectionRoot, filePath1, requestName);
+        var identity2 = BrunoCollectionService.ComputeBrunoRequestIdentity(collectionRoot, filePath2, requestName);
+
+        Assert.Equal(identity1, identity2);
+        Assert.NotEqual(Guid.Empty, identity1);
+    }
+
+    [Fact]
+    public void ComputeBrunoRequestIdentity_DifferentDisplayPath_ReturnsDifferentGuids()
+    {
+        // Different paths should produce different identities
+        var collectionRoot = _root;
+        var filePath1 = Path.Combine(_root, "requests", "api.bru");
+        var filePath2 = Path.Combine(_root, "requests", "users.bru");
+
+        var identity1 = BrunoCollectionService.ComputeBrunoRequestIdentity(collectionRoot, filePath1, "api");
+        var identity2 = BrunoCollectionService.ComputeBrunoRequestIdentity(collectionRoot, filePath2, "users");
+
+        Assert.NotEqual(identity1, identity2);
+    }
+
+    [Fact]
+    public void ComputeBrunoRequestIdentity_SameName_DifferentFolders_ReturnsDifferentGuids()
+    {
+        // Same request name but different folders should produce different identities
+        var collectionRoot = _root;
+        var filePath1 = Path.Combine(_root, "requests", "api.bru");
+        var filePath2 = Path.Combine(_root, "other", "api.bru");
+
+        var identity1 = BrunoCollectionService.ComputeBrunoRequestIdentity(collectionRoot, filePath1, "api");
+        var identity2 = BrunoCollectionService.ComputeBrunoRequestIdentity(collectionRoot, filePath2, "api");
+
+        Assert.NotEqual(identity1, identity2);
+    }
+
+    [Fact]
+    public async Task LoadRequestAsync_WhenCollectionOpen_ComputesRequestIdentityFromDisplayPath()
+    {
+        // Open the collection so _currentRoot is set
+        await _sut.OpenFolderAsync(_root);
+
+        Directory.CreateDirectory(Path.Combine(_root, "requests"));
+        var filePath = Path.Combine(_root, "requests", "api.bru");
+        WriteFile("requests/api.bru", BruFile("get items", "get", "https://api.example.com", seq: 1));
+
+        // Load the request
+        var request = await _sut.LoadRequestAsync(filePath);
+
+        // RequestId should be computed from the display path
+        Assert.NotNull(request.RequestId);
+        Assert.NotEqual(Guid.Empty, request.RequestId.Value);
+
+        // The identity should match what ComputeBrunoRequestIdentity produces
+        var expectedIdentity = BrunoCollectionService.ComputeBrunoRequestIdentity(_root, filePath, "get items");
+        Assert.Equal(expectedIdentity, request.RequestId);
+    }
+
+    [Fact]
+    public async Task RenameRequestAsync_ChangesComputedIdentity()
+    {
+        // Open the collection so identities are computed
+        await _sut.OpenFolderAsync(_root);
+        WriteFile("api.bru", BruFile("get items", "get", "https://api.example.com", seq: 1));
+
+        var originalPath = Path.Combine(_root, "api.bru");
+        var loaded1 = await _sut.LoadRequestAsync(originalPath);
+        var identity1 = loaded1.RequestId;
+
+        // Rename the request
+        var renamed = await _sut.RenameRequestAsync(originalPath, "get all items");
+
+        var loaded2 = await _sut.LoadRequestAsync(renamed.FilePath);
+        var identity2 = loaded2.RequestId;
+
+        // The identity is based on meta.name, so it should change on rename (as required by Issue 40)
+        Assert.NotEqual(identity1, identity2);
+    }
+
+    [Fact]
+    public async Task MoveRequestAsync_ChangesComputedIdentity()
+    {
+        // Open the collection so identities are computed
+        await _sut.OpenFolderAsync(_root);
+        WriteFile("api.bru", BruFile("get items", "get", "https://api.example.com", seq: 1));
+
+        var originalPath = Path.Combine(_root, "api.bru");
+        var loaded1 = await _sut.LoadRequestAsync(originalPath);
+        var identity1 = loaded1.RequestId;
+
+        // Move to a subfolder
+        Directory.CreateDirectory(Path.Combine(_root, "subfolder"));
+        var moved = await _sut.MoveRequestAsync(originalPath, Path.Combine(_root, "subfolder"));
+
+        var loaded2 = await _sut.LoadRequestAsync(moved.FilePath);
+        var identity2 = loaded2.RequestId;
+
+        // The identity is based on folder path, so it should change on move (as required by Issue 40)
+        Assert.NotEqual(identity1, identity2);
+    }
+
+    [Fact]
+    public async Task SaveRequestAsync_DoesNotWriteComputedRequestId()
+    {
+        // Open collection
+        await _sut.OpenFolderAsync(_root);
+
+        var filePath = Path.Combine(_root, "api.bru");
+        var request = new CollectionRequest
+        {
+            RequestId = Guid.NewGuid(),  // This is computed, not persisted
+            FilePath = filePath,
+            Name = "api",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com",
+            Auth = new AuthConfig { AuthType = AuthConfig.AuthTypes.None },
+        };
+
+        await _sut.SaveRequestAsync(request);
+
+        var content = await File.ReadAllTextAsync(filePath);
+        // Computed requestId should never be written to the file
+        Assert.DoesNotContain("requestId:", content);
+    }
 }

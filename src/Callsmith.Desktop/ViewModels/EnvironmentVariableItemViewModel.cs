@@ -21,6 +21,12 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     private readonly Func<EnvironmentVariable?, Task<EnvironmentVariable?>> _editMockData;
     private readonly Func<EnvironmentVariable?, Task<EnvironmentVariable?>> _editResponseBody;
 
+    /// <summary>
+    /// True if this variable belongs to a concrete (non-global) Bruno environment.
+    /// Bruno only supports static variables in concrete environments.
+    /// </summary>
+    public bool IsBrunoConcreteEnvironment { get; set; }
+
     // ── Observable state ─────────────────────────────────────────────────────
 
     [ObservableProperty]
@@ -109,6 +115,28 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     public static readonly string[] VariableTypeOptions =
         ["Static", "Mock Data", "Response Body Value"];
 
+    /// <summary>
+    /// Instance property that returns available type options for this variable.
+    /// For concrete Bruno environments, only Static is available.
+    /// </summary>
+    public string[] AvailableVariableTypeOptions =>
+        IsBrunoConcreteEnvironment
+            ? ["Static"]
+            : VariableTypeOptions;
+
+    /// <summary>
+    /// True if the type dropdown should be disabled (concrete Bruno environment).
+    /// </summary>
+    public bool IsTypeDropdownDisabled => IsBrunoConcreteEnvironment;
+
+    /// <summary>
+    /// Tooltip shown when type dropdown is disabled.
+    /// </summary>
+    public string TypeDropdownDisabledReason =>
+        IsBrunoConcreteEnvironment
+            ? "Bruno environments only support static environment variables"
+            : string.Empty;
+
     public bool IsStatic => VariableType == EnvironmentVariable.VariableTypes.Static;
     public bool IsMockData => VariableType == EnvironmentVariable.VariableTypes.MockData;
     public bool IsResponseBody => VariableType == EnvironmentVariable.VariableTypes.ResponseBody;
@@ -129,6 +157,14 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
             // Avalonia's ComboBox writes null to SelectedItem during layout initialisation
             // before it resolves the actual selection. Ignore it to prevent spurious dirty marking.
             if (value is null) return;
+
+            // For concrete Bruno environments, force Static type
+            if (IsBrunoConcreteEnvironment)
+            {
+                VariableType = EnvironmentVariable.VariableTypes.Static;
+                return;
+            }
+
             VariableType = value switch
             {
                 "Mock Data"           => EnvironmentVariable.VariableTypes.MockData,

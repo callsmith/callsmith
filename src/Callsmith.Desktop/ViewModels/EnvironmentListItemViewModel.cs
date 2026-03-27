@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Callsmith.Core.Bruno;
 using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
 using Callsmith.Desktop.Controls;
@@ -21,6 +22,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     private readonly Func<EnvironmentListItemViewModel, CancellationToken, Task> _onDeleteRequest;
     private readonly Func<EnvironmentListItemViewModel, CancellationToken, Task>? _onCloneRequest;
     private readonly Action? _onCancelRename;
+    private readonly string _collectionFolderPath;
 
     // Pre-evaluated dynamic variable values for the PREVIEW box.
     // Populated asynchronously by EnvironmentEditorViewModel after selection.
@@ -106,7 +108,8 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         Func<EnvironmentListItemViewModel, CancellationToken, Task> onDeleteRequest,
         Func<EnvironmentListItemViewModel, CancellationToken, Task>? onCloneRequest = null,
         Action? onCancelRename = null,
-        bool isGlobal = false)
+        bool isGlobal = false,
+        string collectionFolderPath = "")
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(onRenameCommit);
@@ -120,6 +123,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         _onCloneRequest = onCloneRequest;
         _onCancelRename = onCancelRename;
         IsGlobal = isGlobal;
+        _collectionFolderPath = collectionFolderPath;
 
         LoadVariables(model.Variables);
     }
@@ -289,6 +293,10 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         // Migrate legacy dynamic (segment-based) var to the new typed model on load.
         var migrated = MigrateLegacyVariable(variable);
 
+        // Determine if this is a concrete Bruno environment (static-only).
+        var isBrunoConcreteEnv = !IsGlobal && !string.IsNullOrEmpty(_collectionFolderPath) && 
+                                 BrunoDetector.IsBrunoCollection(_collectionFolderPath);
+
         var item = new EnvironmentVariableItemViewModel(
             onDelete: v => { Variables.Remove(v); OnAnyVariableChanged(); },
             onChanged: OnAnyVariableChanged,
@@ -309,6 +317,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
             ResponsePath = migrated.ResponsePath,
             ResponseFrequency = migrated.ResponseFrequency,
             ResponseExpiresAfterSeconds = migrated.ResponseExpiresAfterSeconds,
+            IsBrunoConcreteEnvironment = isBrunoConcreteEnv,
         };
         return item;
     }

@@ -42,4 +42,62 @@ public sealed class RequestViewModelPathParamsTests
         sut.Url.Should().Be("https://api.example.com/users/{userId}?include=orders");
         sut.PathParams.Items[0].Value.Should().Be("42");
     }
+
+    [Fact]
+    public void BrunoColonSyntax_LoadRequest_DetectsPathParams()
+    {
+        // Create a temp Bruno collection root with bruno.json so IsBrunoCollection returns true.
+        var brunoRoot = Path.Combine(Path.GetTempPath(), "BrunoPathParamTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(brunoRoot);
+        File.WriteAllText(Path.Combine(brunoRoot, "bruno.json"), """{"name":"test","version":"1"}""");
+
+        try
+        {
+            var sut = new RequestTabViewModel(
+                new TransportRegistry(),
+                Substitute.For<ICollectionService>(),
+                WeakReferenceMessenger.Default,
+                _ => { });
+            sut.CollectionRootPath = brunoRoot;
+
+            var request = new CollectionRequest
+            {
+                FilePath = Path.Combine(brunoRoot, "req.bru"),
+                Name = "get user",
+                Method = HttpMethod.Get,
+                Url = "https://api.example.com/users/:userId/orders/:orderId",
+                PathParams = new Dictionary<string, string>
+                {
+                    ["userId"] = "1",
+                    ["orderId"] = "2",
+                },
+            };
+
+            sut.LoadRequest(request);
+
+            sut.IsBrunoCollection.Should().BeTrue();
+            sut.PathParamHintText.Should().Contain(":variable");
+            sut.PathParams.Items.Should().HaveCount(2);
+            sut.PathParams.Items.Should().Contain(item => item.Key == "userId" && item.Value == "1");
+            sut.PathParams.Items.Should().Contain(item => item.Key == "orderId" && item.Value == "2");
+        }
+        finally
+        {
+            Directory.Delete(brunoRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void NonBrunoCollection_PathParamHintText_UsesBraceSyntax()
+    {
+        var sut = new RequestTabViewModel(
+            new TransportRegistry(),
+            Substitute.For<ICollectionService>(),
+            WeakReferenceMessenger.Default,
+            _ => { });
+
+        // No CollectionRootPath set / not a Bruno collection
+        sut.IsBrunoCollection.Should().BeFalse();
+        sut.PathParamHintText.Should().Contain("{variable}");
+    }
 }

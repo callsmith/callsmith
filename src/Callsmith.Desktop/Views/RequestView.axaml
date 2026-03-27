@@ -176,7 +176,7 @@
               <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Margin="0,0,0,4">
                 <TextBlock Text="Path Params" Foreground="#9a9a9a"
                            FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                <TextBlock Text="use {variable} syntax in the URL to add path params"
+                <TextBlock Text="{Binding PathParamHintText}"
                            Foreground="#555" FontSize="11" FontStyle="Italic" VerticalAlignment="Center"/>
               </StackPanel>
               <Border Grid.Row="1"

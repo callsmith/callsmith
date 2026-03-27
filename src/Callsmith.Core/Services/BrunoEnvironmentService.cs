@@ -12,7 +12,7 @@ namespace Callsmith.Core.Services;
 /// Each environment is a <c>&lt;Name&gt;.bru</c> file containing one or more of:
 /// <list type="bullet">
 ///   <item><c>vars { key: value }</c> — regular (non-secret) variables</item>
-///   <item><c>vars:secret { key: value }</c> — secret variables (not written to source-control by Bruno)</item>
+///   <item><c>vars:secret [ name ]</c> — secret variable names only; actual values stay in local storage</item>
 /// </list>
 /// </para>
 /// </summary>
@@ -199,8 +199,9 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
             EnvironmentColors = newColors,
             EnvironmentIds = newIds,
             GlobalVariables = meta.GlobalVariables,
-            GlobalSecretVariableNames = meta.GlobalSecretVariableNames,
+            GlobalSecretVariables = meta.GlobalSecretVariables,
             GlobalEnvironmentId = meta.GlobalEnvironmentId,
+            GlobalPreviewEnvironmentName = meta.GlobalPreviewEnvironmentName,
         }, ct).ConfigureAwait(false);
 
         _logger.LogDebug("Saved Bruno environment '{Name}' → {Path}", environment.Name, environment.FilePath);
@@ -329,8 +330,9 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
             EnvironmentColors = meta.EnvironmentColors,
             EnvironmentIds = meta.EnvironmentIds,
             GlobalVariables = meta.GlobalVariables,
-            GlobalSecretVariableNames = meta.GlobalSecretVariableNames,
+            GlobalSecretVariables = meta.GlobalSecretVariables,
             GlobalEnvironmentId = meta.GlobalEnvironmentId,
+            GlobalPreviewEnvironmentName = meta.GlobalPreviewEnvironmentName,
         }, ct).ConfigureAwait(false);
         _logger.LogDebug("Saved Bruno environment order for '{Path}'", collectionFolderPath);
     }
@@ -358,8 +360,8 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
             blocks.Add(varsBlock);
         }
 
-        // vars:secret block — secret variable names are recorded in the file, but their
-        // actual values live in local app-data, so we write an empty string here.
+        // vars:secret block — Bruno stores only secret variable names in the file; actual
+        // values live in local app-data. Preserve disabled secret names without values too.
         var disabledSecretVars = GetDisabledItems(existing, "vars:secret");
         if (secretVars.Count > 0 || disabledSecretVars.Count > 0)
         {
@@ -367,7 +369,7 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
             foreach (var v in secretVars)
                 secretBlock.Items.Add(new BruKv(v.Name, string.Empty));
             foreach (var kv in disabledSecretVars)
-                secretBlock.Items.Add(kv);
+                secretBlock.Items.Add(new BruKv(kv.Key, string.Empty, kv.IsEnabled));
             blocks.Add(secretBlock);
         }
 
@@ -425,6 +427,12 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
                 Name = v.Name,
                 Value = stored ?? string.Empty,
                 VariableType = v.VariableType,
+                MockDataCategory = v.MockDataCategory,
+                MockDataField = v.MockDataField,
+                ResponseRequestName = v.ResponseRequestName,
+                ResponsePath = v.ResponsePath,
+                ResponseFrequency = v.ResponseFrequency,
+                ResponseExpiresAfterSeconds = v.ResponseExpiresAfterSeconds,
                 IsSecret = true,
             });
         }
@@ -462,16 +470,54 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
 
         var meta = await _meta.LoadAsync(collectionFolderPath, ct).ConfigureAwait(false);
         var globalId = meta.GlobalEnvironmentId ?? Guid.NewGuid();
-        if (meta.GlobalVariables.Count == 0 && meta.GlobalSecretVariableNames.Count == 0)
-            return new EnvironmentModel { FilePath = filePath, Name = "Global", Variables = [], EnvironmentId = globalId };
+
+        if (meta.GlobalVariables.Count == 0 && meta.GlobalSecretVariables.Count == 0)
+            return new EnvironmentModel
+            {
+                FilePath = filePath,
+                Name = "Global",
+                Variables = [],
+                EnvironmentId = globalId,
+                GlobalPreviewEnvironmentName = meta.GlobalPreviewEnvironmentName,
+            };
 
         var variables = meta.GlobalVariables
-            .Select(v => new EnvironmentVariable { Name = v.Name, Value = v.Value })
-            .Concat(meta.GlobalSecretVariableNames
-                .Select(n => new EnvironmentVariable { Name = n, Value = string.Empty, IsSecret = true }))
+            .Select(v => new EnvironmentVariable
+            {
+                Name = v.Name,
+                Value = v.Value,
+                VariableType = v.VariableType ?? EnvironmentVariable.VariableTypes.Static,
+                MockDataCategory = v.MockDataCategory,
+                MockDataField = v.MockDataField,
+                ResponseRequestName = v.ResponseRequestName,
+                ResponsePath = v.ResponsePath,
+                ResponseFrequency = v.ResponseFrequency ?? DynamicFrequency.Always,
+                ResponseExpiresAfterSeconds = v.ResponseExpiresAfterSeconds,
+            })
+            .Concat(meta.GlobalSecretVariables
+                .Select(s => new EnvironmentVariable
+                {
+                    Name = s.Name,
+                    Value = string.Empty,
+                    VariableType = s.VariableType ?? EnvironmentVariable.VariableTypes.Static,
+                    MockDataCategory = s.MockDataCategory,
+                    MockDataField = s.MockDataField,
+                    ResponseRequestName = s.ResponseRequestName,
+                    ResponsePath = s.ResponsePath,
+                    ResponseFrequency = s.ResponseFrequency ?? DynamicFrequency.Always,
+                    ResponseExpiresAfterSeconds = s.ResponseExpiresAfterSeconds,
+                    IsSecret = true,
+                }))
             .ToList();
 
-        var model = new EnvironmentModel { FilePath = filePath, Name = "Global", Variables = variables, EnvironmentId = globalId };
+        var model = new EnvironmentModel
+        {
+            FilePath = filePath,
+            Name = "Global",
+            Variables = variables,
+            EnvironmentId = globalId,
+            GlobalPreviewEnvironmentName = meta.GlobalPreviewEnvironmentName,
+        };
         return model with { Variables = await InjectSecretsAsync(model, ct).ConfigureAwait(false) };
     }
 
@@ -488,11 +534,33 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
 
         var nonSecretVars = globalEnvironment.Variables
             .Where(v => !v.IsSecret)
-            .Select(v => new BrunoCollectionMeta.GlobalVarEntry { Name = v.Name, Value = v.Value })
+            .Select(v => new BrunoCollectionMeta.GlobalVarEntry
+            {
+                Name = v.Name,
+                Value = v.Value,
+                VariableType = v.VariableType == EnvironmentVariable.VariableTypes.Static ? null : v.VariableType,
+                MockDataCategory = v.MockDataCategory,
+                MockDataField = v.MockDataField,
+                ResponseRequestName = v.ResponseRequestName,
+                ResponsePath = v.ResponsePath,
+                ResponseFrequency = v.ResponseFrequency == DynamicFrequency.Always ? null : v.ResponseFrequency,
+                ResponseExpiresAfterSeconds = v.ResponseExpiresAfterSeconds,
+            })
             .ToList();
-        var secretNames = globalEnvironment.Variables
+
+        var secretVars = globalEnvironment.Variables
             .Where(v => v.IsSecret)
-            .Select(v => v.Name)
+            .Select(v => new BrunoCollectionMeta.GlobalSecretVarEntry
+            {
+                Name = v.Name,
+                VariableType = v.VariableType == EnvironmentVariable.VariableTypes.Static ? null : v.VariableType,
+                MockDataCategory = v.MockDataCategory,
+                MockDataField = v.MockDataField,
+                ResponseRequestName = v.ResponseRequestName,
+                ResponsePath = v.ResponsePath,
+                ResponseFrequency = v.ResponseFrequency == DynamicFrequency.Always ? null : v.ResponseFrequency,
+                ResponseExpiresAfterSeconds = v.ResponseExpiresAfterSeconds,
+            })
             .ToList();
 
         await _meta.SaveAsync(collectionPath, new BrunoCollectionMeta
@@ -501,8 +569,9 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
             EnvironmentColors = meta.EnvironmentColors,
             EnvironmentIds = meta.EnvironmentIds,
             GlobalVariables = nonSecretVars,
-            GlobalSecretVariableNames = secretNames,
+            GlobalSecretVariables = secretVars,
             GlobalEnvironmentId = globalEnvironment.EnvironmentId,
+            GlobalPreviewEnvironmentName = globalEnvironment.GlobalPreviewEnvironmentName,
         }, ct).ConfigureAwait(false);
         _logger.LogDebug("Saved Bruno global environment for '{Path}'", collectionPath);
     }

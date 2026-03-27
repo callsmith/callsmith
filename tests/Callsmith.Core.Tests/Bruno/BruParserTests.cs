@@ -243,4 +243,95 @@ public sealed class BruParserTests
         varsBlock.GetValue("core-url").Should().Be("https://core-dev.example.com/");
         varsBlock.Items.Single(kv => !kv.IsEnabled).Key.Should().Be("disabled-url");
     }
+
+    [Fact]
+    public void Parse_VarsSecretListSyntax_CreatesKeysWithEmptyValues()
+    {
+        const string bru = """
+            vars:secret [
+              username,
+              password,
+              api-key
+            ]
+            """;
+
+        var doc = BruParser.Parse(bru);
+        var secretBlock = doc.Find("vars:secret");
+
+        secretBlock.Should().NotBeNull();
+        secretBlock!.Items.Should().HaveCount(3);
+        
+        secretBlock.Items[0].Key.Should().Be("username");
+        secretBlock.Items[0].Value.Should().Be(string.Empty);
+        secretBlock.Items[0].IsEnabled.Should().BeTrue();
+        
+        secretBlock.Items[1].Key.Should().Be("password");
+        secretBlock.Items[1].Value.Should().Be(string.Empty);
+        
+        secretBlock.Items[2].Key.Should().Be("api-key");
+        secretBlock.Items[2].Value.Should().Be(string.Empty);
+    }
+
+    [Fact]
+    public void Parse_VarsSecretListSyntax_WithInlineItems_ParsesCorrectly()
+    {
+        const string bru = """
+            vars:secret [username, password]
+            """;
+
+        var doc = BruParser.Parse(bru);
+        var secretBlock = doc.Find("vars:secret");
+
+        secretBlock.Should().NotBeNull();
+        secretBlock!.Items.Should().HaveCount(2);
+        secretBlock.Items[0].Key.Should().Be("username");
+        secretBlock.Items[1].Key.Should().Be("password");
+    }
+
+    [Fact]
+    public void Parse_VarsSecretListSyntax_WithDisabledItems_PreservesState()
+    {
+        const string bru = """
+            vars:secret [
+              username,
+              ~disabled-password,
+              api-key
+            ]
+            """;
+
+        var doc = BruParser.Parse(bru);
+        var secretBlock = doc.Find("vars:secret");
+
+        secretBlock.Should().NotBeNull();
+        secretBlock!.Items.Should().HaveCount(3);
+        secretBlock.Items[0].IsEnabled.Should().BeTrue();
+        secretBlock.Items[1].IsEnabled.Should().BeFalse();
+        secretBlock.Items[1].Key.Should().Be("disabled-password");
+        secretBlock.Items[2].IsEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Parse_MixedVarsAndVarsSecretBlocks_ParsesBoth()
+    {
+        const string bru = """
+            vars {
+              url: https://api.example.com
+            }
+
+            vars:secret [
+              username,
+              password
+            ]
+            """;
+
+        var doc = BruParser.Parse(bru);
+        
+        var varsBlock = doc.Find("vars");
+        varsBlock.Should().NotBeNull();
+        varsBlock!.Items.Should().HaveCount(1);
+        
+        var secretBlock = doc.Find("vars:secret");
+        secretBlock.Should().NotBeNull();
+        secretBlock!.Items.Should().HaveCount(2);
+    }
 }

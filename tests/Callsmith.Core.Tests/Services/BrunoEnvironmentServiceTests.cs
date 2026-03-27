@@ -151,6 +151,57 @@ public sealed class BrunoEnvironmentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveEnvironmentAsync_WritesSecretVarsAsNameOnlyListWithoutColon()
+    {
+        var envDir = Path.Combine(_root, "environments");
+        Directory.CreateDirectory(envDir);
+        var filePath = Path.Combine(envDir, "Local.bru");
+
+        var environment = new EnvironmentModel
+        {
+            FilePath = filePath,
+            Name = "Local",
+            EnvironmentId = Guid.NewGuid(),
+            Variables =
+            [
+                new EnvironmentVariable { Name = "baseUrl", Value = "https://example.com", IsSecret = true },
+                new EnvironmentVariable { Name = "token", Value = "abc123", IsSecret = true },
+            ],
+        };
+
+        await _sut.SaveEnvironmentAsync(environment);
+
+        var written = (await File.ReadAllTextAsync(filePath)).Replace("\r\n", "\n");
+        Assert.Contains("vars:secret [\n", written);
+        Assert.Contains("  baseUrl\n", written);
+        Assert.Contains("  token\n", written);
+        Assert.DoesNotContain("baseUrl:", written);
+        Assert.DoesNotContain("token:", written);
+        Assert.DoesNotContain("vars:secret {", written);
+    }
+
+    [Fact]
+    public async Task SaveEnvironmentAsync_PreservesDisabledSecretNamesWithoutColon()
+    {
+        var envDir = Path.Combine(_root, "environments");
+        Directory.CreateDirectory(envDir);
+        var filePath = Path.Combine(envDir, "Local.bru");
+        File.WriteAllText(filePath, """
+            vars:secret [
+              ~baseUrl
+            ]
+            """);
+
+        var loaded = await _sut.LoadEnvironmentAsync(filePath);
+        await _sut.SaveEnvironmentAsync(loaded);
+
+        var written = (await File.ReadAllTextAsync(filePath)).Replace("\r\n", "\n");
+        Assert.Contains("vars:secret [\n", written);
+        Assert.Contains("  ~baseUrl\n", written);
+        Assert.DoesNotContain("~baseUrl:", written);
+    }
+
+    [Fact]
     public async Task CreateEnvironmentAsync_CreatesFileInEnvironmentsFolder()
     {
         var env = await _sut.CreateEnvironmentAsync(_root, "QA");
@@ -189,6 +240,189 @@ public sealed class BrunoEnvironmentServiceTests : IDisposable
         Assert.Equal("Clone", cloned.Name);
         Assert.Single(cloned.Variables);
         Assert.Equal("url", cloned.Variables[0].Name);
+    }
+
+    [Fact]
+    public async Task GlobalEnvironment_SecretVariableType_IsPersistedAndRestoredOnRoundTrip()
+    {
+        // Arrange: Create a global environment with secret variables of different types
+        var secretMockVar = new EnvironmentVariable
+        {
+            Name = "secret-email",
+            Value = string.Empty,
+            VariableType = EnvironmentVariable.VariableTypes.MockData,
+            MockDataCategory = "Internet",
+            MockDataField = "Email",
+            IsSecret = true,
+        };
+        var secretStaticVar = new EnvironmentVariable
+        {
+            Name = "api-key",
+            Value = "secret-value",
+            VariableType = EnvironmentVariable.VariableTypes.Static,
+            IsSecret = true,
+        };
+        var globalModel = new EnvironmentModel
+        {
+            FilePath = Path.Combine(_root, "environments", "_global.bru"),
+            Name = "Global",
+            EnvironmentId = Guid.NewGuid(),
+            Variables = [secretStaticVar, secretMockVar],
+        };
+
+        // Act: Save and reload
+        await _sut.SaveGlobalEnvironmentAsync(globalModel);
+        var loaded = await _sut.LoadGlobalEnvironmentAsync(_root);
+
+        // Assert: Secret variable types are preserved
+        var loadedSecretMock = loaded.Variables.Single(v => v.Name == "secret-email");
+        Assert.True(loadedSecretMock.IsSecret);
+        Assert.Equal(EnvironmentVariable.VariableTypes.MockData, loadedSecretMock.VariableType);
+        Assert.Equal("Internet", loadedSecretMock.MockDataCategory);
+        Assert.Equal("Email", loadedSecretMock.MockDataField);
+
+        var loadedSecretStatic = loaded.Variables.Single(v => v.Name == "api-key");
+        Assert.True(loadedSecretStatic.IsSecret);
+        Assert.Equal(EnvironmentVariable.VariableTypes.Static, loadedSecretStatic.VariableType);
+    }
+
+    [Fact]
+    public async Task GlobalEnvironment_PreviewEnvironmentName_IsPersistedAndRestored()
+    {
+        var globalModel = new EnvironmentModel
+        {
+            FilePath = Path.Combine(_root, "environments", "_global.bru"),
+            Name = "Global",
+            EnvironmentId = Guid.NewGuid(),
+            GlobalPreviewEnvironmentName = "Dev",
+            Variables =
+            [
+                new EnvironmentVariable { Name = "base-url", Value = "https://api.example.com" },
+            ],
+        };
+
+        await _sut.SaveGlobalEnvironmentAsync(globalModel);
+        var loaded = await _sut.LoadGlobalEnvironmentAsync(_root);
+
+        Assert.Equal("Dev", loaded.GlobalPreviewEnvironmentName);
+    }
+
+    [Fact]
+    public async Task SaveConcreteEnvironment_DoesNotClearGlobalSecretVariablesInMeta()
+    {
+        var globalModel = new EnvironmentModel
+        {
+            FilePath = Path.Combine(_root, "environments", "_global.bru"),
+            Name = "Global",
+            EnvironmentId = Guid.NewGuid(),
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "secret-token",
+                    Value = "top-secret",
+                    IsSecret = true,
+                    VariableType = EnvironmentVariable.VariableTypes.MockData,
+                    MockDataCategory = "Internet",
+                    MockDataField = "Email",
+                },
+            ],
+        };
+        await _sut.SaveGlobalEnvironmentAsync(globalModel);
+
+        var concretePath = Path.Combine(_root, "environments", "Dev.bru");
+        var concreteModel = new EnvironmentModel
+        {
+            FilePath = concretePath,
+            Name = "Dev",
+            EnvironmentId = Guid.NewGuid(),
+            Variables =
+            [
+                new EnvironmentVariable { Name = "base-url", Value = "https://dev.example.com" },
+            ],
+        };
+
+        await _sut.SaveEnvironmentAsync(concreteModel);
+
+        var loadedGlobal = await _sut.LoadGlobalEnvironmentAsync(_root);
+        var loadedSecret = loadedGlobal.Variables.Single(v => v.IsSecret && v.Name == "secret-token");
+        Assert.Equal(EnvironmentVariable.VariableTypes.MockData, loadedSecret.VariableType);
+        Assert.Equal("Internet", loadedSecret.MockDataCategory);
+        Assert.Equal("Email", loadedSecret.MockDataField);
+    }
+
+    [Fact]
+    public async Task ConcreteEnvironment_VarsSecretListSyntax_CreatesEmptyStaticSecretVariables()
+    {
+        // Arrange: Create a .bru file with vars:secret in list syntax
+        var envDir = Path.Combine(_root, "environments");
+        Directory.CreateDirectory(envDir);
+        var envFile = Path.Combine(envDir, "Dev.bru");
+        
+        // Write a file with list-based vars:secret syntax
+        var bruContent = @"vars {
+  base-url: https://dev.api.example.com
+}
+
+vars:secret [
+  username,
+  password,
+  api-token
+]
+";
+        File.WriteAllText(envFile, bruContent);
+
+        // Act: Load the environment
+        var env = await _sut.LoadEnvironmentAsync(envFile);
+
+        // Assert: Secret variables are created from the list
+        Assert.Equal(4, env.Variables.Count); // 1 regular var + 3 secret vars
+        
+        var regularVar = env.Variables.Single(v => v.Name == "base-url");
+        Assert.Equal("https://dev.api.example.com", regularVar.Value);
+        Assert.False(regularVar.IsSecret);
+
+        var secretVars = env.Variables.Where(v => v.IsSecret).OrderBy(v => v.Name).ToList();
+        Assert.Equal(3, secretVars.Count);
+        Assert.Equal("api-token", secretVars[0].Name);
+        Assert.Equal("password", secretVars[1].Name);
+        Assert.Equal("username", secretVars[2].Name);
+        
+        // All secret vars from list should be empty static vars
+        foreach (var secretVar in secretVars)
+        {
+            Assert.Equal(string.Empty, secretVar.Value); // Empty because not in secrets storage
+            Assert.Equal(EnvironmentVariable.VariableTypes.Static, secretVar.VariableType);
+        }
+    }
+
+    [Fact]
+    public async Task ConcreteEnvironment_MixedVarsSecretFormats_WorksWithBothKeyValueAndList()
+    {
+        // Arrange: Create a .bru file with both key-value and list syntax vars:secret
+        var envDir = Path.Combine(_root, "environments");
+        Directory.CreateDirectory(envDir);
+        var envFile = Path.Combine(envDir, "Test.bru");
+        
+        var bruContent = @"vars {
+  url: https://example.com
+}
+
+vars:secret {
+  api-key: 
+  token: 
+}
+";
+        File.WriteAllText(envFile, bruContent);
+
+        // Act: Load the environment
+        var env = await _sut.LoadEnvironmentAsync(envFile);
+
+        // Assert: Both formats are parsed correctly
+        var secretVars = env.Variables.Where(v => v.IsSecret).ToList();
+        Assert.Equal(2, secretVars.Count);
+        Assert.Contains(secretVars, v => v.Name == "api-key");
+        Assert.Contains(secretVars, v => v.Name == "token");
     }
 
     private static string VarsFile(string kvLines) => $"vars {{\n  {kvLines}\n}}\n";

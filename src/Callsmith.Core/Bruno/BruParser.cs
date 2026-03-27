@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Callsmith.Core.Bruno;
@@ -11,6 +12,10 @@ namespace Callsmith.Core.Bruno;
 /// <c>key: value</c> lines (indented with two spaces) or verbatim raw text for script and
 /// body blocks.
 /// </para>
+/// <para>
+/// The <c>vars:secret</c> block additionally supports list syntax: <c>vars:secret [name1, name2]</c>
+/// for inline comma-separated variable names.
+/// </para>
 /// </summary>
 internal static class BruParser
 {
@@ -18,6 +23,10 @@ internal static class BruParser
     // Examples: "get {", "body:json {", "script:pre-request {", "params:query {"
     private static readonly Regex _blockHeaderRegex =
         new(@"^([\w][\w:.-]*)\s*\{$", RegexOptions.Compiled);
+
+    // Matches list-based vars:secret block: "vars:secret [" with optional content
+    private static readonly Regex _listBlockHeaderRegex =
+        new(@"^(vars:secret)\s*\[", RegexOptions.Compiled);
 
     /// <summary>Parses <paramref name="text"/> and returns the resulting document.</summary>
     public static BruDocument Parse(string text)
@@ -28,15 +37,80 @@ internal static class BruParser
         string? line;
         while ((line = reader.ReadLine()) is not null)
         {
+            // Check for list-based vars:secret block first
+            var listMatch = _listBlockHeaderRegex.Match(line);
+            if (listMatch.Success)
+            {
+                var block = new BruBlock(listMatch.Groups[1].Value);
+                // Extract content after the opening bracket
+                var afterBracket = line[(line.IndexOf('[') + 1)..];
+                ReadListBlockContent(reader, block, afterBracket);
+                doc.Blocks.Add(block);
+                continue;
+            }
+
+            // Check for regular key-value block
             var m = _blockHeaderRegex.Match(line);
             if (!m.Success) continue;
 
-            var block = new BruBlock(m.Groups[1].Value);
-            ReadBlockContent(reader, block);
-            doc.Blocks.Add(block);
+            var kvBlock = new BruBlock(m.Groups[1].Value);
+            ReadBlockContent(reader, kvBlock);
+            doc.Blocks.Add(kvBlock);
         }
 
         return doc;
+    }
+
+    /// <summary>Reads content from a list-based block (e.g., vars:secret [ item1, item2 ]).</summary>
+    private static void ReadListBlockContent(StringReader reader, BruBlock block, string initialContent)
+    {
+        var itemsText = new StringBuilder();
+        
+        // Check if initialContent contains the closing bracket
+        var closingBracketIndex = initialContent.IndexOf(']');
+        if (closingBracketIndex >= 0)
+        {
+            // Content is inline, ends here
+            itemsText.Append(initialContent[..closingBracketIndex]);
+        }
+        else
+        {
+            // Content continues on next lines
+            itemsText.Append(initialContent);
+            string? line;
+            while ((line = reader.ReadLine()) is not null)
+            {
+                var trimmedLine = line.Trim();
+                if (trimmedLine == "]" || trimmedLine.EndsWith(']'))
+                {
+                    // If there's content before the ], add it
+                    if (trimmedLine.Length > 1 && trimmedLine != "]")
+                        itemsText.Append(' ').Append(trimmedLine[..^1]); // Everything before the ]
+                    break;
+                }
+
+                if (!string.IsNullOrEmpty(trimmedLine))
+                    itemsText.Append(' ').Append(trimmedLine);
+            }
+        }
+
+        // Parse the collected text as comma-separated names
+        var text = itemsText.ToString().Trim();
+        if (string.IsNullOrEmpty(text))
+            return;
+
+        // Split by commas and create BruKv items with empty values
+        var items = text.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var item in items)
+        {
+            var trimmed = item.Trim();
+            if (!string.IsNullOrEmpty(trimmed))
+            {
+                var isEnabled = !trimmed.StartsWith('~');
+                var itemName = isEnabled ? trimmed : trimmed[1..].Trim();
+                block.Items.Add(new BruKv(itemName, string.Empty, isEnabled));
+            }
+        }
     }
 
     private static void ReadBlockContent(StringReader reader, BruBlock block)

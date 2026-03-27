@@ -28,6 +28,12 @@ internal static class BruWriter
 
     private static void WriteBlock(StringBuilder sb, BruBlock block)
     {
+        if (ShouldWriteListBlock(block))
+        {
+            WriteListBlock(sb, block);
+            return;
+        }
+
         sb.Append(block.Name).AppendLine(" {");
 
         if (block.IsRaw)
@@ -46,5 +52,23 @@ internal static class BruWriter
         }
 
         sb.AppendLine("}");
+    }
+
+    private static bool ShouldWriteListBlock(BruBlock block) =>
+        string.Equals(block.Name, "vars:secret", StringComparison.Ordinal) &&
+        block.Items.All(kv => string.IsNullOrEmpty(kv.Value));
+
+    private static void WriteListBlock(StringBuilder sb, BruBlock block)
+    {
+        sb.Append(block.Name).AppendLine(" [");
+
+        foreach (var kv in block.Items)
+        {
+            sb.Append("  ");
+            if (!kv.IsEnabled) sb.Append('~');
+            sb.AppendLine(kv.Key);
+        }
+
+        sb.AppendLine("]");
     }
 }

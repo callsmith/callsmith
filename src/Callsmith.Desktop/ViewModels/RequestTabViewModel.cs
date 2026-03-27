@@ -2,6 +2,7 @@ using System.Net.Http;
 using System.Text;
 using Avalonia.Threading;
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.Bruno;
 using Callsmith.Core.Helpers;
 using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
@@ -172,6 +173,17 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     /// <summary>Absolute path of the open collection root. Used to resolve relative SaveAsFolderPath values.</summary>
     public string CollectionRootPath { get; internal set; } = string.Empty;
+
+    /// <summary>True when the open collection is a Bruno collection (uses colon path-param syntax).</summary>
+    public bool IsBrunoCollection => BrunoDetector.IsBrunoCollection(CollectionRootPath);
+
+    /// <summary>
+    /// Hint text for the path params editor, adapting to the collection format.
+    /// Bruno collections use <c>:variable</c> syntax; Callsmith uses <c>{variable}</c>.
+    /// </summary>
+    public string PathParamHintText => IsBrunoCollection
+        ? "use :variable syntax in the URL to add path params"
+        : "use {variable} syntax in the URL to add path params";
 
     /// <summary>
     /// Names of all requests in the open collection.
@@ -1658,7 +1670,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _syncingPathParams = true;
         try
         {
-            var names = PathTemplateHelper.ExtractPathParamNames(url);
+            var names = IsBrunoCollection
+                ? PathTemplateHelper.ExtractPathParamNamesColon(url)
+                : PathTemplateHelper.ExtractPathParamNames(url);
             var merged = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var name in names)
                 merged[name] = existingValues.TryGetValue(name, out var value) ? value : string.Empty;

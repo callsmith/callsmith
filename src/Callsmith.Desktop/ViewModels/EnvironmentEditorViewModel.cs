@@ -1045,7 +1045,8 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             onRenameCommit: RenameAsync,
             onDeleteRequest: (i, ct) => { BeginDelete(i); return Task.CompletedTask; },
             onCloneRequest: (i, ct) => CloneImmediateAsync(i, ct),
-            isGlobal: isGlobal);
+            isGlobal: isGlobal,
+            collectionFolderPath: _collectionFolderPath ?? "");
 
         item.VariablesChanged += OnEnvironmentVariablesChanged;
 

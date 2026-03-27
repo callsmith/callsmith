@@ -80,25 +80,16 @@ public sealed class BrunoCollectionService : ICollectionService
 
         var text = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
         var doc = BruParser.Parse(text);
-        if (!TryGetRequestId(doc, out _))
-        {
-            SetMetaRequestId(doc, Guid.NewGuid());
-            var updatedText = BruWriter.Write(doc.Blocks);
-            await File.WriteAllTextAsync(filePath, updatedText, ct).ConfigureAwait(false);
-            text = updatedText;
-            doc = BruParser.Parse(text);
-        }
 
         var request = DocToRequest(doc, filePath)
                ?? throw new InvalidOperationException($"Not a valid HTTP request file: '{filePath}'");
 
         if (request.Auth.AuthType == AuthConfig.AuthTypes.Basic && !string.IsNullOrEmpty(_currentRoot))
         {
-            // After the migration block above, RequestId is guaranteed to be non-null.
-            // Use it as the stable key for secret storage so secrets survive file renames.
-            // Prefer the secret-stored value; fall back to whatever is in the file (migration path).
+            // Secret is keyed by file path relative to the collection root so renames and moves
+            // can migrate keys without touching the .bru file.
             var stored = await _secrets
-                .GetSecretAsync(_currentRoot, AuthSecretsNamespace, request.RequestId!.Value.ToString(), ct)
+                .GetSecretAsync(_currentRoot, AuthSecretsNamespace, GetAuthSecretKey(filePath), ct)
                 .ConfigureAwait(false);
             if (stored is not null || request.Auth.Password is not null)
             {
@@ -137,28 +128,21 @@ public sealed class BrunoCollectionService : ICollectionService
             }
         }
 
-        // Determine the stable request ID to use as the secret storage key.
-        // If the request does not yet have an ID (legacy / first save), fall back to the existing
-        // file's ID or generate a new one. This must match what BuildBruContent writes to disk.
-        var requestId = request.RequestId
-            ?? (existing is not null && TryGetRequestId(existing, out var existingId)
-                ? existingId
-                : Guid.NewGuid());
-
         // Persist Basic auth password locally so it is never written into the collection file.
+        // The secret is keyed by file path relative to the collection root.
         if (request.Auth.AuthType == AuthConfig.AuthTypes.Basic && !string.IsNullOrEmpty(_currentRoot))
         {
             await _secrets
                 .SetSecretAsync(
                     _currentRoot,
                     AuthSecretsNamespace,
-                    requestId.ToString(),
+                    GetAuthSecretKey(request.FilePath),
                     request.Auth.Password ?? string.Empty,
                     ct)
                 .ConfigureAwait(false);
         }
 
-        var content = BuildBruContent(request, existing, requestId);
+        var content = BuildBruContent(request, existing);
         await File.WriteAllTextAsync(request.FilePath, content, ct).ConfigureAwait(false);
         _logger.LogDebug("Saved Bruno request to '{FilePath}'", request.FilePath);
     }
@@ -199,7 +183,10 @@ public sealed class BrunoCollectionService : ICollectionService
         await File.WriteAllTextAsync(newFilePath, newContent, ct).ConfigureAwait(false);
 
         if (!string.Equals(filePath, newFilePath, StringComparison.OrdinalIgnoreCase))
+        {
             File.Delete(filePath);
+            await MigrateAuthSecretAsync(filePath, newFilePath, ct).ConfigureAwait(false);
+        }
 
         _logger.LogDebug("Renamed Bruno request '{OldPath}' → '{NewPath}'", filePath, newFilePath);
 
@@ -231,6 +218,7 @@ public sealed class BrunoCollectionService : ICollectionService
 
         ct.ThrowIfCancellationRequested();
         File.Move(filePath, destinationFilePath);
+        await MigrateAuthSecretAsync(filePath, destinationFilePath, ct).ConfigureAwait(false);
 
         var moved = await LoadRequestAsync(destinationFilePath, ct).ConfigureAwait(false);
 
@@ -340,13 +328,14 @@ public sealed class BrunoCollectionService : ICollectionService
         ArgumentNullException.ThrowIfNull(folderPath);
         ArgumentNullException.ThrowIfNull(orderedNames);
 
-        // Assign seq values to .bru request files based on their position.
-        // Folder entries (no extension) count toward position so inter-mixed ordering is preserved.
+        // Assign seq values based on position. Both request files and folders receive seq numbers
+        // so that mixed ordering is preserved when the collection is reloaded.
         var seq = 1;
         foreach (var name in orderedNames)
         {
             if (name.EndsWith(RequestFileExtension, StringComparison.OrdinalIgnoreCase))
             {
+                // Request file — update seq in the .bru file itself.
                 var filePath = Path.Combine(folderPath, name);
                 if (File.Exists(filePath))
                 {
@@ -357,6 +346,23 @@ public sealed class BrunoCollectionService : ICollectionService
                     catch (Exception ex)
                     {
                         _logger.LogWarning(ex, "Failed to update seq for '{File}'", filePath);
+                    }
+                }
+            }
+            else
+            {
+                // Folder — update seq in folder.bru inside the sub-folder.
+                var subFolderPath = Path.Combine(folderPath, name);
+                var folderBruPath = Path.Combine(subFolderPath, "folder.bru");
+                if (File.Exists(folderBruPath))
+                {
+                    try
+                    {
+                        await UpdateSeqInFileAsync(folderBruPath, seq, ct).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to update seq for folder '{Folder}'", subFolderPath);
                     }
                 }
             }
@@ -399,24 +405,37 @@ public sealed class BrunoCollectionService : ICollectionService
             }
         }
 
+        // Read sub-folders including their seq from folder.bru meta.seq so that mixed
+        // folder + request ordering (as set by the user in Bruno or Callsmith) is respected.
+        var parsedFolders = new List<(CollectionFolder Folder, int Seq)>();
+        foreach (var dirPath in Directory
+                     .EnumerateDirectories(folderPath)
+                     .Where(d => !ShouldExcludeFolder(Path.GetFileName(d))))
+        {
+            var folderSeq = GetFolderSeq(dirPath);
+            parsedFolders.Add((ReadFolder(dirPath), folderSeq));
+        }
+
         var sortedRequests = parsedRequests
             .OrderBy(r => r.Seq)
             .ThenBy(r => r.Request.Name, StringComparer.OrdinalIgnoreCase)
             .Select(r => r.Request)
             .ToList();
 
-        var subFolders = Directory
-            .EnumerateDirectories(folderPath)
-            .Where(d => !ShouldExcludeFolder(Path.GetFileName(d)))
-            .OrderBy(d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)
-            .Select(d => ReadFolder(d))
+        var subFolders = parsedFolders
+            .OrderBy(f => f.Seq)
+            .ThenBy(f => f.Folder.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(f => f.Folder)
             .ToList();
 
-        // ItemOrder: sub-folders first (alphabetical, matching Bruno's default), then requests by seq.
-        // This lets CollectionTreeItemViewModel.FromFolder honour the full mixed ordering.
-        var itemOrder = subFolders
-            .Select(f => f.Name)
-            .Concat(sortedRequests.Select(r => Path.GetFileName(r.FilePath)))
+        // Build ItemOrder as a truly mixed list ordered by seq across both folders and requests.
+        // Items with no seq (int.MaxValue) sort alphabetically at the end.
+        var itemOrder = parsedFolders
+            .Select(f => (Name: f.Folder.Name, Seq: f.Seq))
+            .Concat(parsedRequests.Select(r => (Name: Path.GetFileName(r.Request.FilePath), Seq: r.Seq)))
+            .OrderBy(item => item.Seq)
+            .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(item => item.Name)
             .ToList();
 
         return new CollectionFolder
@@ -427,6 +446,20 @@ public sealed class BrunoCollectionService : ICollectionService
             SubFolders = subFolders,
             ItemOrder = itemOrder,
         };
+    }
+
+    private static int GetFolderSeq(string folderPath)
+    {
+        var folderBruPath = Path.Combine(folderPath, "folder.bru");
+        if (!File.Exists(folderBruPath)) return int.MaxValue;
+        try
+        {
+            var text = File.ReadAllText(folderBruPath);
+            var doc = BruParser.Parse(text);
+            var seqStr = doc.GetValue("meta", "seq");
+            return int.TryParse(seqStr, out var s) ? s : int.MaxValue;
+        }
+        catch { return int.MaxValue; }
     }
 
     private static string GetRootDisplayName(string folderPath)
@@ -472,7 +505,7 @@ public sealed class BrunoCollectionService : ICollectionService
     //  Private — BruDocument ↔ CollectionRequest mapping
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static CollectionRequest? DocToRequest(BruDocument doc, string filePath, string? basicPasswordOverride = null)
+    private CollectionRequest? DocToRequest(BruDocument doc, string filePath, string? basicPasswordOverride = null)
     {
         var meta = doc.Find("meta");
         if (meta is null) return null;
@@ -525,15 +558,36 @@ public sealed class BrunoCollectionService : ICollectionService
         var authType = MapBrunoAuthType(bruAuthType);
         var auth = BuildAuth(doc, authType, basicPasswordOverride);
 
+        // params:path block — load enabled values into PathParams so the UI can edit them.
+        var pathParamsBlock = doc.Find("params:path");
+        var pathParams = pathParamsBlock?.Items
+            .Where(kv => kv.IsEnabled)
+            .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal)
+            ?? new Dictionary<string, string>();
+
+        // For Bruno requests, compute a stable request identity based on the display path
+        // (folder path + meta.name). This identity is stable within the collection but is lost
+        // on rename or move, meeting Issue 40 requirements.
+        Guid? requestId;
+        if (!string.IsNullOrEmpty(_currentRoot))
+        {
+            requestId = ComputeBrunoRequestIdentity(_currentRoot, filePath, name);
+        }
+        else
+        {
+            // Fall back to persisted requestId if present (for backwards compatibility during migration).
+            requestId = TryGetRequestId(doc, out var persistedId) ? (Guid?)persistedId : null;
+        }
+
         return new CollectionRequest
         {
-            RequestId = TryGetRequestId(doc, out var requestId) ? requestId : null,
+            RequestId = requestId,
             FilePath = filePath,
             Name = name,
             Method = new HttpMethod(httpMethod),
             Url = baseUrl,
             Headers = headers,
-            PathParams = new Dictionary<string, string>(),
+            PathParams = pathParams,
             QueryParams = queryParams,
             BodyType = bodyType,
             Body = body,
@@ -625,7 +679,7 @@ public sealed class BrunoCollectionService : ICollectionService
     //  Private — building .bru file content from CollectionRequest
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static string BuildBruContent(CollectionRequest request, BruDocument? existing, Guid requestId)
+    private static string BuildBruContent(CollectionRequest request, BruDocument? existing)
     {
         var blocks = new List<BruBlock>();
 
@@ -634,7 +688,7 @@ public sealed class BrunoCollectionService : ICollectionService
         meta.Items.Add(new BruKv("name", request.Name));
         meta.Items.Add(new BruKv("type", "http"));
         meta.Items.Add(new BruKv("seq", existing?.GetValue("meta", "seq") ?? "1"));
-        meta.Items.Add(new BruKv("requestId", requestId.ToString("D")));
+        // requestId is intentionally omitted — Bruno does not use this field.
         blocks.Add(meta);
 
         // HTTP method block
@@ -670,7 +724,17 @@ public sealed class BrunoCollectionService : ICollectionService
         // auth
         AddAuthBlock(blocks, request, existing);
 
-        // Preserved blocks: scripts, tests, and path params are written back unchanged.
+        // params:path — written from the model rather than preserved from the file, so that
+        // user edits in Callsmith are persisted and the UI always reflects the current values.
+        if (request.PathParams is { Count: > 0 })
+        {
+            var pathBlock = new BruBlock("params:path");
+            foreach (var (k, v) in request.PathParams)
+                pathBlock.Items.Add(new BruKv(k, v));
+            blocks.Add(pathBlock);
+        }
+
+        // Preserved blocks: scripts and tests are written back unchanged.
         if (existing is not null)
         {
             foreach (var block in existing.Blocks)
@@ -750,7 +814,7 @@ public sealed class BrunoCollectionService : ICollectionService
         value.EndsWith("}}", StringComparison.Ordinal);
 
     private static bool IsPreservedBlockName(string name) =>
-        name is "script:pre-request" or "script:post-response" or "tests" or "params:path";
+        name is "script:pre-request" or "script:post-response" or "tests";
 
     private static string IndentRawContent(string content)
     {
@@ -766,7 +830,7 @@ public sealed class BrunoCollectionService : ICollectionService
         meta.Items.Add(new BruKv("name", name));
         meta.Items.Add(new BruKv("type", "http"));
         meta.Items.Add(new BruKv("seq", seq.ToString()));
-        meta.Items.Add(new BruKv("requestId", Guid.NewGuid().ToString("D")));
+        // requestId is intentionally omitted — Bruno does not use this field.
         blocks.Add(meta);
 
         var get = new BruBlock("get");
@@ -832,25 +896,78 @@ public sealed class BrunoCollectionService : ICollectionService
             meta.Items.Insert(0, nameKv);
     }
 
+    /// <summary>
+    /// Computes a stable request identity for Bruno requests based on their display path
+    /// (folder path + meta.name). This identity is stable within the collection but is lost
+    /// on rename or move operations, as per Issue 40 requirements for Bruno compatibility.
+    /// The identity is a deterministic GUID derived from the display path using SHA256 hashing.
+    /// </summary>
+    internal static Guid ComputeBrunoRequestIdentity(string collectionRootPath, string filePath, string requestName)
+    {
+        // Compute display path: relative folder path + request name
+        var relativePath = Path.GetRelativePath(collectionRootPath, filePath);
+        var folderPath = Path.GetDirectoryName(relativePath) ?? string.Empty;
+        
+        // Normalize to forward slashes for consistency across platforms
+        var displayPath = folderPath.Replace('\\', '/');
+        if (!string.IsNullOrEmpty(displayPath) && !displayPath.EndsWith('/'))
+            displayPath += '/';
+        displayPath += requestName;
+
+        // Create a deterministic GUID from the display path using SHA256
+        return GuidFromString(displayPath);
+    }
+
+    /// <summary>
+    /// Creates a deterministic GUID from a string using SHA256 hashing.
+    /// Used to compute stable Bruno request identities.
+    /// </summary>
+    private static Guid GuidFromString(string value)
+    {
+        using (var sha256 = System.Security.Cryptography.SHA256.Create())
+        {
+            var hash = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(value));
+            // Take the first 16 bytes and convert to Guid
+            return new Guid(hash.Take(16).ToArray());
+        }
+    }
+
     private static bool TryGetRequestId(BruDocument doc, out Guid requestId)
     {
         var raw = doc.GetValue("meta", "requestId");
         return Guid.TryParse(raw, out requestId);
     }
 
-    private static void SetMetaRequestId(BruDocument doc, Guid requestId)
+    /// <summary>
+    /// Returns the key used to store Basic auth secrets in <see cref="ISecretStorageService"/>.
+    /// The key is the file path relative to the collection root (forward-slash separated) so
+    /// that it is stable within a collection but changes when the file is renamed or moved —
+    /// which is intentional: history and secrets are expected to be lost on rename/move for
+    /// Bruno collections, and this avoids writing a foreign <c>requestId</c> field into the
+    /// <c>.bru</c> file.
+    /// </summary>
+    private string GetAuthSecretKey(string filePath)
     {
-        var meta = doc.Find("meta");
-        if (meta is null) return;
+        if (string.IsNullOrEmpty(_currentRoot))
+            return Path.GetFileName(filePath);
+        return Path.GetRelativePath(_currentRoot, filePath).Replace('\\', '/');
+    }
 
-        var idx = meta.Items.FindIndex(
-            kv => string.Equals(kv.Key, "requestId", StringComparison.OrdinalIgnoreCase));
-        var requestIdKv = new BruKv("requestId", requestId.ToString("D"));
-
-        if (idx >= 0)
-            meta.Items[idx] = requestIdKv;
-        else
-            meta.Items.Add(requestIdKv);
+    /// <summary>
+    /// Moves the Basic auth secret stored under <paramref name="oldFilePath"/>'s key to the
+    /// key for <paramref name="newFilePath"/>. No-op when the two keys are equal or no secret
+    /// exists.
+    /// </summary>
+    private async Task MigrateAuthSecretAsync(string oldFilePath, string newFilePath, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(_currentRoot)) return;
+        var oldKey = GetAuthSecretKey(oldFilePath);
+        var newKey = GetAuthSecretKey(newFilePath);
+        if (string.Equals(oldKey, newKey, StringComparison.Ordinal)) return;
+        var secret = await _secrets.GetSecretAsync(_currentRoot, AuthSecretsNamespace, oldKey, ct).ConfigureAwait(false);
+        if (secret is null) return;
+        await _secrets.SetSecretAsync(_currentRoot, AuthSecretsNamespace, newKey, secret, ct).ConfigureAwait(false);
+        await _secrets.DeleteSecretAsync(_currentRoot, AuthSecretsNamespace, oldKey, ct).ConfigureAwait(false);
     }
 
     private static string SanitizeFileName(string name)

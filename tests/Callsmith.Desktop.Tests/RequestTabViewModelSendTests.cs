@@ -69,6 +69,46 @@ public sealed class RequestTabViewModelSendTests
     }
 
     [Fact]
+    public async Task Send_BrunoColonPathParams_AreSubstitutedIntoRequestUrl()
+    {
+        var brunoRoot = Path.Combine(Path.GetTempPath(), "BrunoSendPathParam_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(brunoRoot);
+        File.WriteAllText(Path.Combine(brunoRoot, "bruno.json"), """{"name":"test","version":"1"}""");
+
+        try
+        {
+            var transport = new CapturingTransport();
+            var registry = new TransportRegistry();
+            registry.Register(transport);
+
+            var sut = new RequestTabViewModel(
+                registry,
+                Substitute.For<ICollectionService>(),
+                new WeakReferenceMessenger(),
+                _ => { });
+            sut.CollectionRootPath = brunoRoot;
+
+            sut.LoadRequest(new CollectionRequest
+            {
+                FilePath = Path.Combine(brunoRoot, "jokes.bru"),
+                Name = "joke",
+                Method = HttpMethod.Get,
+                Url = "https://api.chucknorris.io/jokes/:kind",
+                PathParams = new Dictionary<string, string> { ["kind"] = "random" },
+            });
+
+            await sut.SendCommand.ExecuteAsync(null);
+
+            transport.LastRequest.Should().NotBeNull();
+            transport.LastRequest!.Url.Should().Be("https://api.chucknorris.io/jokes/random");
+        }
+        finally
+        {
+            Directory.Delete(brunoRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Send_RecordsHistoryWithSelectedEnvironmentIdNameAndColor()
     {
         var transport = new CapturingTransport();
