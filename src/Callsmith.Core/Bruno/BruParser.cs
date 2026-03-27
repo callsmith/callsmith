@@ -35,27 +35,41 @@ internal static class BruParser
         using var reader = new StringReader(text);
 
         string? line;
+        var precedingBlankLine = false;
         while ((line = reader.ReadLine()) is not null)
         {
+            // Track whether a blank line precedes the next block header.
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                precedingBlankLine = true;
+                continue;
+            }
+
             // Check for list-based vars:secret block first
             var listMatch = _listBlockHeaderRegex.Match(line);
             if (listMatch.Success)
             {
-                var block = new BruBlock(listMatch.Groups[1].Value);
+                var block = new BruBlock(listMatch.Groups[1].Value) { HasPrecedingBlankLine = precedingBlankLine };
                 // Extract content after the opening bracket
                 var afterBracket = line[(line.IndexOf('[') + 1)..];
                 ReadListBlockContent(reader, block, afterBracket);
                 doc.Blocks.Add(block);
+                precedingBlankLine = false;
                 continue;
             }
 
             // Check for regular key-value block
             var m = _blockHeaderRegex.Match(line);
-            if (!m.Success) continue;
+            if (!m.Success)
+            {
+                precedingBlankLine = false;
+                continue;
+            }
 
-            var kvBlock = new BruBlock(m.Groups[1].Value);
+            var kvBlock = new BruBlock(m.Groups[1].Value) { HasPrecedingBlankLine = precedingBlankLine };
             ReadBlockContent(reader, kvBlock);
             doc.Blocks.Add(kvBlock);
+            precedingBlankLine = false;
         }
 
         return doc;

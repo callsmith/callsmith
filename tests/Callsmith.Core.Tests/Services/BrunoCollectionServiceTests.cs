@@ -864,9 +864,9 @@ public sealed class BrunoCollectionServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task OpenFolderAsync_MixedFolderAndRequest_OrderedBySeq()
+    public async Task OpenFolderAsync_FoldersAlwaysBeforeRequests_InItemOrder()
     {
-        // Folder with seq=2, request with seq=1, folder with seq=3 → request first
+        // Folders always come before requests in ItemOrder, even when a request has a lower seq.
         Directory.CreateDirectory(Path.Combine(_root, "Beta"));
         WriteFile("Beta/folder.bru", FolderBru("Beta", seq: 2));
         WriteFile("Beta/b-req.bru", BruFile("b-req", "get", "https://b.com", seq: 1));
@@ -878,16 +878,18 @@ public sealed class BrunoCollectionServiceTests : IDisposable
 
         var folder = await _sut.OpenFolderAsync(_root);
 
-        // ItemOrder should be: alpha (seq=1), Beta (seq=2), Gamma (seq=3)
+        // Folders first (by seq): Beta(2), Gamma(3); then requests: alpha.bru(1)
         Assert.Equal(3, folder.ItemOrder.Count);
-        Assert.Equal("alpha.bru", folder.ItemOrder[0]);
-        Assert.Equal("Beta", folder.ItemOrder[1]);
-        Assert.Equal("Gamma", folder.ItemOrder[2]);
+        Assert.Equal("Beta", folder.ItemOrder[0]);
+        Assert.Equal("Gamma", folder.ItemOrder[1]);
+        Assert.Equal("alpha.bru", folder.ItemOrder[2]);
     }
 
     [Fact]
-    public async Task OpenFolderAsync_FolderWithoutSeq_SortsAlphabeticallyAfterSequenced()
+    public async Task OpenFolderAsync_NoSeqItemsBeforeSeqItems_WithinSameGroup()
     {
+        // Within each group (folders or requests), items with no seq come before items
+        // that have a seq value (sorted alphabetically among no-seq items).
         Directory.CreateDirectory(Path.Combine(_root, "Alpha"));
         WriteFile("Alpha/folder.bru", FolderBru("Alpha")); // no seq
 
@@ -898,10 +900,54 @@ public sealed class BrunoCollectionServiceTests : IDisposable
 
         var folder = await _sut.OpenFolderAsync(_root);
 
-        // Zebra (seq=1), mid (seq=2), Alpha (no seq → last)
-        Assert.Equal("Zebra", folder.ItemOrder[0]);
-        Assert.Equal("mid.bru", folder.ItemOrder[1]);
-        Assert.Equal("Alpha", folder.ItemOrder[2]);
+        // Folders: Alpha (no seq, alphabetical first), then Zebra (seq:1)
+        // Requests after all folders: mid.bru (seq:2)
+        Assert.Equal("Alpha", folder.ItemOrder[0]);
+        Assert.Equal("Zebra", folder.ItemOrder[1]);
+        Assert.Equal("mid.bru", folder.ItemOrder[2]);
+    }
+
+    [Fact]
+    public async Task OpenFolderAsync_SeqGaps_OrderBySeqValueNotByDensity()
+    {
+        // seq values can have gaps — seq:2 and seq:4 means 2 before 4.
+        WriteFile("second.bru", BruFile("second", "get", "https://second.com", seq: 2));
+        WriteFile("fourth.bru", BruFile("fourth", "get", "https://fourth.com", seq: 4));
+
+        var folder = await _sut.OpenFolderAsync(_root);
+
+        Assert.Equal(2, folder.Requests.Count);
+        Assert.Equal("second", folder.Requests[0].Name);
+        Assert.Equal("fourth", folder.Requests[1].Name);
+    }
+
+    [Fact]
+    public async Task OpenFolderAsync_MixedNoSeqAndSeqRequests_NoSeqFirst()
+    {
+        // No-seq requests come before seq-ed requests (alphabetical within no-seq group).
+        WriteFile("bravo.bru", BruFile("bravo", "get", "https://bravo.com", seq: 1));
+
+        // Write a file without a seq manually
+        var noSeqContent = """
+            meta {
+              name: alpha
+              type: http
+            }
+
+            get {
+              url: https://alpha.com
+              body: none
+              auth: none
+            }
+            """;
+        WriteFile("alpha.bru", noSeqContent);
+
+        var folder = await _sut.OpenFolderAsync(_root);
+
+        // alpha (no seq) before bravo (seq:1)
+        Assert.Equal(2, folder.Requests.Count);
+        Assert.Equal("alpha", folder.Requests[0].Name);
+        Assert.Equal("bravo", folder.Requests[1].Name);
     }
 
     [Fact]
@@ -1172,5 +1218,296 @@ public sealed class BrunoCollectionServiceTests : IDisposable
         var content = await File.ReadAllTextAsync(filePath);
         // Computed requestId should never be written to the file
         Assert.DoesNotContain("requestId:", content);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Bruno compatibility: block-targeted save (preserves block order)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task SaveRequestAsync_PathParams_PreservesBlockPosition()
+    {
+        // params:path appears BEFORE script blocks in the original file.
+        // After a save, params:path should remain in the same position (not be moved to the end).
+        var original = """
+            meta {
+              name: get user
+              type: http
+              seq: 1
+            }
+
+            get {
+              url: https://api.example.com/users/:userId
+              body: none
+              auth: none
+            }
+
+            params:path {
+              userId: 1
+            }
+
+            script:pre-request {
+              bru.setVar('x', 1);
+            }
+            """;
+        WriteFile("user.bru", original);
+        var filePath = Path.Combine(_root, "user.bru");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+        var modified = new CollectionRequest
+        {
+            FilePath = loaded.FilePath,
+            Name = loaded.Name,
+            Method = loaded.Method,
+            Url = loaded.Url,
+            PathParams = new Dictionary<string, string> { ["userId"] = "42" },
+            Headers = loaded.Headers,
+            QueryParams = loaded.QueryParams,
+            BodyType = loaded.BodyType,
+            Body = loaded.Body,
+            Auth = loaded.Auth,
+        };
+        await _sut.SaveRequestAsync(modified);
+
+        var written = await File.ReadAllTextAsync(filePath);
+        // params:path must come before script:pre-request (block order preserved)
+        Assert.Contains("params:path {", written);
+        Assert.Contains("  userId: 42", written);
+        var pathIdx = written.IndexOf("params:path {", StringComparison.Ordinal);
+        var scriptIdx = written.IndexOf("script:pre-request {", StringComparison.Ordinal);
+        Assert.True(pathIdx < scriptIdx, "params:path block should come before script:pre-request");
+    }
+
+    [Fact]
+    public async Task SaveRequestAsync_BodyJsonPreserved_WhenBodyTypeChangedToNone()
+    {
+        // body:json must survive a save that switches body type to "none".
+        // Previously the block was removed because it was "owned" but not re-emitted.
+        var original = """
+            meta {
+              name: create item
+              type: http
+              seq: 1
+            }
+
+            post {
+              url: https://api.example.com/items
+              body: json
+              auth: none
+            }
+
+            body:json {
+              {"name": "test"}
+            }
+            """;
+        WriteFile("item.bru", original);
+        var filePath = Path.Combine(_root, "item.bru");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+        // Switch body type to "none" (e.g. user temporarily switches away from JSON)
+        var modified = new CollectionRequest
+        {
+            FilePath = loaded.FilePath,
+            Name = loaded.Name,
+            Method = loaded.Method,
+            Url = loaded.Url,
+            PathParams = loaded.PathParams,
+            Headers = loaded.Headers,
+            QueryParams = loaded.QueryParams,
+            BodyType = CollectionRequest.BodyTypes.None,
+            Body = null,
+            Auth = loaded.Auth,
+        };
+        await _sut.SaveRequestAsync(modified);
+
+        var written = await File.ReadAllTextAsync(filePath);
+        // body:json block must be preserved so the user can switch back
+        Assert.Contains("body:json {", written);
+        Assert.Contains("\"name\": \"test\"", written);
+    }
+
+    [Fact]
+    public async Task SaveRequestAsync_BodyJsonPreserved_WhenBodyTypeSwitchedToText()
+    {
+        // body:json must survive a save that switches body type to text.
+        var original = """
+            meta {
+              name: update item
+              type: http
+              seq: 1
+            }
+
+            put {
+              url: https://api.example.com/items/1
+              body: json
+              auth: none
+            }
+
+            body:json {
+              {"name": "updated"}
+            }
+            """;
+        WriteFile("update.bru", original);
+        var filePath = Path.Combine(_root, "update.bru");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+        var modified = new CollectionRequest
+        {
+            FilePath = loaded.FilePath,
+            Name = loaded.Name,
+            Method = loaded.Method,
+            Url = loaded.Url,
+            PathParams = loaded.PathParams,
+            Headers = loaded.Headers,
+            QueryParams = loaded.QueryParams,
+            BodyType = CollectionRequest.BodyTypes.Text,
+            Body = "plain text content",
+            Auth = loaded.Auth,
+        };
+        await _sut.SaveRequestAsync(modified);
+
+        var written = await File.ReadAllTextAsync(filePath);
+        // Both body:json (original) and body:text (new) must be present
+        Assert.Contains("body:json {", written);
+        Assert.Contains("\"name\": \"updated\"", written);
+        Assert.Contains("body:text {", written);
+        Assert.Contains("plain text content", written);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  AllBodyContents: per-type body content loaded from all body blocks
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task LoadRequestAsync_PopulatesAllBodyContents_ForAllPresentBlocks()
+    {
+        // A Bruno file may have multiple body blocks (e.g. body:json and body:text).
+        // AllBodyContents should capture all of them so the ViewModel can restore
+        // the correct content when the user switches body types.
+        var content = """
+            meta {
+              name: multi-body
+              type: http
+              seq: 1
+            }
+
+            post {
+              url: https://api.example.com/items
+              body: json
+              auth: none
+            }
+
+            body:json {
+              {"active": true}
+            }
+
+            body:text {
+              some plain text
+            }
+            """;
+        WriteFile("multi.bru", content);
+
+        var request = await _sut.LoadRequestAsync(Path.Combine(_root, "multi.bru"));
+
+        // Active body is JSON.
+        Assert.Equal(CollectionRequest.BodyTypes.Json, request.BodyType);
+        Assert.Contains("\"active\": true", request.Body ?? "");
+
+        // AllBodyContents has BOTH blocks.
+        Assert.True(request.AllBodyContents.ContainsKey(CollectionRequest.BodyTypes.Json));
+        Assert.True(request.AllBodyContents.ContainsKey(CollectionRequest.BodyTypes.Text));
+        Assert.Contains("\"active\": true", request.AllBodyContents[CollectionRequest.BodyTypes.Json]);
+        Assert.Contains("some plain text", request.AllBodyContents[CollectionRequest.BodyTypes.Text]);
+    }
+
+    [Fact]
+    public async Task SaveRequestAsync_WithAllBodyContents_WritesBothBodyBlocks()
+    {
+        // When AllBodyContents carries content for non-active body types, those
+        // blocks must be written to disk so they survive a save-and-reload cycle.
+        var original = """
+            meta {
+              name: item
+              type: http
+              seq: 1
+            }
+
+            post {
+              url: https://api.example.com/items
+              body: json
+              auth: none
+            }
+
+            body:json {
+              {"name": "original"}
+            }
+            """;
+        WriteFile("item.bru", original);
+        var filePath = Path.Combine(_root, "item.bru");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+
+        // Simulate the ViewModel switching to text and editing it.
+        var modified = new CollectionRequest
+        {
+            FilePath = loaded.FilePath,
+            Name = loaded.Name,
+            Method = loaded.Method,
+            Url = loaded.Url,
+            PathParams = loaded.PathParams,
+            Headers = loaded.Headers,
+            QueryParams = loaded.QueryParams,
+            Auth = loaded.Auth,
+            BodyType = CollectionRequest.BodyTypes.Text,
+            Body = "typed text",
+            AllBodyContents = new Dictionary<string, string>
+            {
+                [CollectionRequest.BodyTypes.Json] = "{\"name\": \"original\"}",
+                [CollectionRequest.BodyTypes.Text] = "typed text",
+            },
+        };
+        await _sut.SaveRequestAsync(modified);
+
+        var written = await File.ReadAllTextAsync(filePath);
+        Assert.Contains("body:text {", written);
+        Assert.Contains("typed text", written);
+        Assert.Contains("body:json {", written);
+        Assert.Contains("\"name\": \"original\"", written);
+    }
+
+    [Fact]
+    public async Task SaveRequestAsync_PreservesVarsPostResponseBlock()
+    {
+        // vars:post-response is not an "owned" block — it must survive saves unchanged.
+        var original = """
+            meta {
+              name: login
+              type: http
+              seq: 1
+            }
+
+            post {
+              url: https://api.example.com/auth/login
+              body: json
+              auth: none
+            }
+
+            body:json {
+              {"username": "user"}
+            }
+
+            vars:post-response {
+              jwt-token: res.body.token
+            }
+            """;
+        WriteFile("login.bru", original);
+        var filePath = Path.Combine(_root, "login.bru");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+        await _sut.SaveRequestAsync(loaded);
+
+        var written = await File.ReadAllTextAsync(filePath);
+        Assert.Contains("vars:post-response {", written);
+        Assert.Contains("  jwt-token: res.body.token", written);
     }
 }

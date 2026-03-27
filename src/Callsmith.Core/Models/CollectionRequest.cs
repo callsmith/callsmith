@@ -49,6 +49,15 @@ public sealed class CollectionRequest
     public string? Body { get; init; }
 
     /// <summary>
+    /// Body content for every text-based body type that was present in the source file,
+    /// regardless of which type is currently active.  Keys are <see cref="BodyTypes"/> constants
+    /// (<c>"json"</c>, <c>"text"</c>, <c>"xml"</c>).  Used by the UI to restore the editor
+    /// content when the user switches body types without saving in between.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> AllBodyContents { get; init; }
+        = new Dictionary<string, string>();
+
+    /// <summary>
     /// Query parameters stored separately from the base URL.
     /// Duplicate keys are preserved. Items may be disabled (IsEnabled = false) — disabled
     /// params are preserved on disk but not appended to the URL when sending.

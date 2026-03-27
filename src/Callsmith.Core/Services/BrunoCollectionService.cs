@@ -396,7 +396,7 @@ public sealed class BrunoCollectionService : ICollectionService
                 if (req is null) continue;
 
                 var seqStr = doc.GetValue("meta", "seq");
-                var seqVal = int.TryParse(seqStr, out var s) ? s : int.MaxValue;
+                var seqVal = int.TryParse(seqStr, out var s) ? s : NoSeq;
                 parsedRequests.Add((req, seqVal));
             }
             catch (Exception ex)
@@ -405,8 +405,7 @@ public sealed class BrunoCollectionService : ICollectionService
             }
         }
 
-        // Read sub-folders including their seq from folder.bru meta.seq so that mixed
-        // folder + request ordering (as set by the user in Bruno or Callsmith) is respected.
+        // Read sub-folders including their seq from folder.bru meta.seq.
         var parsedFolders = new List<(CollectionFolder Folder, int Seq)>();
         foreach (var dirPath in Directory
                      .EnumerateDirectories(folderPath)
@@ -416,26 +415,47 @@ public sealed class BrunoCollectionService : ICollectionService
             parsedFolders.Add((ReadFolder(dirPath), folderSeq));
         }
 
-        var sortedRequests = parsedRequests
+        // Ordering rules:
+        //  • Folders always come before requests.
+        //  • Within each group (folders / requests):
+        //      1. Items with no seq, sorted alphabetically.
+        //      2. Items with a seq, sorted by seq value (gaps are allowed and preserved).
+        var foldersNoSeq = parsedFolders
+            .Where(f => f.Seq == NoSeq)
+            .OrderBy(f => f.Folder.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var foldersWithSeq = parsedFolders
+            .Where(f => f.Seq != NoSeq)
+            .OrderBy(f => f.Seq)
+            .ToList();
+
+        var requestsNoSeq = parsedRequests
+            .Where(r => r.Seq == NoSeq)
+            .OrderBy(r => r.Request.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var requestsWithSeq = parsedRequests
+            .Where(r => r.Seq != NoSeq)
             .OrderBy(r => r.Seq)
-            .ThenBy(r => r.Request.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var sortedRequests = requestsNoSeq
+            .Concat(requestsWithSeq)
             .Select(r => r.Request)
             .ToList();
 
-        var subFolders = parsedFolders
-            .OrderBy(f => f.Seq)
-            .ThenBy(f => f.Folder.Name, StringComparer.OrdinalIgnoreCase)
+        var subFolders = foldersNoSeq
+            .Concat(foldersWithSeq)
             .Select(f => f.Folder)
             .ToList();
 
-        // Build ItemOrder as a truly mixed list ordered by seq across both folders and requests.
-        // Items with no seq (int.MaxValue) sort alphabetically at the end.
-        var itemOrder = parsedFolders
-            .Select(f => (Name: f.Folder.Name, Seq: f.Seq))
-            .Concat(parsedRequests.Select(r => (Name: Path.GetFileName(r.Request.FilePath), Seq: r.Seq)))
-            .OrderBy(item => item.Seq)
-            .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(item => item.Name)
+        // ItemOrder is the flat mixed list — folders first, then requests, each group with
+        // no-seq items (alphabetical) before seq items (ordered by seq value).
+        var itemOrder = foldersNoSeq.Select(f => f.Folder.Name)
+            .Concat(foldersWithSeq.Select(f => f.Folder.Name))
+            .Concat(requestsNoSeq.Select(r => Path.GetFileName(r.Request.FilePath)))
+            .Concat(requestsWithSeq.Select(r => Path.GetFileName(r.Request.FilePath)))
             .ToList();
 
         return new CollectionFolder
@@ -448,18 +468,21 @@ public sealed class BrunoCollectionService : ICollectionService
         };
     }
 
+    /// <summary>Sentinel value meaning "no seq assigned".</summary>
+    private const int NoSeq = int.MinValue;
+
     private static int GetFolderSeq(string folderPath)
     {
         var folderBruPath = Path.Combine(folderPath, "folder.bru");
-        if (!File.Exists(folderBruPath)) return int.MaxValue;
+        if (!File.Exists(folderBruPath)) return NoSeq;
         try
         {
             var text = File.ReadAllText(folderBruPath);
             var doc = BruParser.Parse(text);
             var seqStr = doc.GetValue("meta", "seq");
-            return int.TryParse(seqStr, out var s) ? s : int.MaxValue;
+            return int.TryParse(seqStr, out var s) ? s : NoSeq;
         }
-        catch { return int.MaxValue; }
+        catch { return NoSeq; }
     }
 
     private static string GetRootDisplayName(string folderPath)
@@ -554,6 +577,7 @@ public sealed class BrunoCollectionService : ICollectionService
 
         var bodyType = MapBrunoBodyType(bruBodyType);
         var body = BuildBody(doc, bodyType);
+        var allBodyContents = BuildAllBodyContents(doc);
         var formParams = BuildFormParams(doc, bodyType);
         var authType = MapBrunoAuthType(bruAuthType);
         var auth = BuildAuth(doc, authType, basicPasswordOverride);
@@ -591,6 +615,7 @@ public sealed class BrunoCollectionService : ICollectionService
             QueryParams = queryParams,
             BodyType = bodyType,
             Body = body,
+            AllBodyContents = allBodyContents,
             FormParams = formParams,
             Auth = auth,
         };
@@ -604,6 +629,22 @@ public sealed class BrunoCollectionService : ICollectionService
         // Form and multipart params are stored in FormParams, not Body
         _ => null,
     };
+
+    /// <summary>
+    /// Reads ALL text body blocks present in the document — regardless of which body type is
+    /// currently active — so the UI can restore editor content when the user switches types.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string> BuildAllBodyContents(BruDocument doc)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (doc.Find("body:json")?.RawContent is { } json)
+            result[CollectionRequest.BodyTypes.Json] = json;
+        if (doc.Find("body:text")?.RawContent is { } text)
+            result[CollectionRequest.BodyTypes.Text] = text;
+        if (doc.Find("body:xml")?.RawContent is { } xml)
+            result[CollectionRequest.BodyTypes.Xml] = xml;
+        return result;
+    }
 
     private static IReadOnlyList<KeyValuePair<string, string>> BuildFormParams(
         BruDocument doc, string bodyType)
@@ -681,117 +722,254 @@ public sealed class BrunoCollectionService : ICollectionService
 
     private static string BuildBruContent(CollectionRequest request, BruDocument? existing)
     {
-        var blocks = new List<BruBlock>();
+        // Block-targeted update: start from existing blocks (preserving original order and
+        // non-owned content), then update only the specific blocks that Callsmith owns.
+        // This prevents block reordering and avoids introducing whitespace changes.
+        var blocks = existing is not null
+            ? new List<BruBlock>(existing.Blocks)
+            : new List<BruBlock>();
 
-        // meta
-        var meta = new BruBlock("meta");
-        meta.Items.Add(new BruKv("name", request.Name));
-        meta.Items.Add(new BruKv("type", "http"));
-        meta.Items.Add(new BruKv("seq", existing?.GetValue("meta", "seq") ?? "1"));
-        // requestId is intentionally omitted — Bruno does not use this field.
-        blocks.Add(meta);
-
-        // HTTP method block
         var bruMethod = request.Method.Method.ToLowerInvariant();
-        var method = new BruBlock(bruMethod);
-        // Write the full URL (with query params) so Bruno's address bar shows the complete URL.
-        method.Items.Add(new BruKv("url", request.FullUrl));
-        method.Items.Add(new BruKv("body", MapCallsmithBodyType(request.BodyType)));
-        method.Items.Add(new BruKv("auth", MapCallsmithAuthType(request.Auth.AuthType)));
-        blocks.Add(method);
 
-        // params:query — write all items (enabled and disabled) with their state.
+        // meta — update in-place (or insert at top if not present)
+        var metaBlock = new BruBlock("meta");
+        metaBlock.Items.Add(new BruKv("name", request.Name));
+        metaBlock.Items.Add(new BruKv("type", "http"));
+        metaBlock.Items.Add(new BruKv("seq", existing?.GetValue("meta", "seq") ?? "1"));
+        // requestId is intentionally omitted — Bruno does not use this field.
+        SetOrInsertAt(blocks, "meta", metaBlock, 0);
+
+        // HTTP method block — locate the existing verb block (any verb) and replace it
+        // in-place so that block position is preserved even when the method changes.
+        var methodBlock = new BruBlock(bruMethod);
+        // Write the full URL (with query params) so Bruno's address bar shows the complete URL.
+        methodBlock.Items.Add(new BruKv("url", request.FullUrl));
+        methodBlock.Items.Add(new BruKv("body", MapCallsmithBodyType(request.BodyType)));
+        methodBlock.Items.Add(new BruKv("auth", MapCallsmithAuthType(request.Auth.AuthType)));
+        ReplaceVerbBlock(blocks, bruMethod, methodBlock);
+
+        // params:query — update in-place or remove when empty
         if (request.QueryParams.Count > 0)
         {
             var queryBlock = new BruBlock("params:query");
             foreach (var p in request.QueryParams)
                 queryBlock.Items.Add(new BruKv(p.Key, p.Value, p.IsEnabled));
-            blocks.Add(queryBlock);
+            SetOrInsertAfter(blocks, "params:query", queryBlock, bruMethod);
+        }
+        else
+        {
+            RemoveBlock(blocks, "params:query");
         }
 
-        // headers — write all items (enabled and disabled) with their state.
+        // headers — update in-place or remove when empty
         if (request.Headers.Count > 0)
         {
             var headersBlock = new BruBlock("headers");
             foreach (var h in request.Headers)
                 headersBlock.Items.Add(new BruKv(h.Key, h.Value, h.IsEnabled));
-            blocks.Add(headersBlock);
+            SetOrInsertAfter(blocks, "headers", headersBlock, bruMethod);
+        }
+        else
+        {
+            RemoveBlock(blocks, "headers");
         }
 
-        // body
-        AddBodyBlock(blocks, request);
+        // body — update the active body block in-place; all other body blocks are left
+        // untouched so that content is not lost when the user switches body types.
+        UpdateBodyBlockInPlace(blocks, request, bruMethod);
 
-        // auth
-        AddAuthBlock(blocks, request, existing);
+        // auth — update auth block in-place
+        UpdateAuthBlockInPlace(blocks, request, existing, bruMethod);
 
-        // params:path — written from the model rather than preserved from the file, so that
-        // user edits in Callsmith are persisted and the UI always reflects the current values.
+        // params:path — update in-place so that Callsmith edits are persisted and the UI
+        // reflects current values, while preserving the block's original position.
         if (request.PathParams is { Count: > 0 })
         {
             var pathBlock = new BruBlock("params:path");
             foreach (var (k, v) in request.PathParams)
                 pathBlock.Items.Add(new BruKv(k, v));
-            blocks.Add(pathBlock);
+            SetOrInsertAfter(blocks, "params:path", pathBlock, "headers");
         }
-
-        // Preserve every existing block that Callsmith does not explicitly own/rewrite.
-        if (existing is not null)
+        else
         {
-            foreach (var block in existing.Blocks)
-            {
-                if (!IsOwnedBlockName(block.Name))
-                    blocks.Add(block);
-            }
+            RemoveBlock(blocks, "params:path");
         }
 
         return BruWriter.Write(blocks);
     }
 
-    private static void AddBodyBlock(List<BruBlock> blocks, CollectionRequest request)
+    /// <summary>
+    /// Finds an existing block with <paramref name="name"/> and replaces it (preserving
+    /// <see cref="BruBlock.HasPrecedingBlankLine"/> from the original), or inserts
+    /// <paramref name="block"/> at <paramref name="fallbackIndex"/> when not found.
+    /// </summary>
+    private static void SetOrInsertAt(List<BruBlock> blocks, string name, BruBlock block, int fallbackIndex)
     {
-        if (request.BodyType is CollectionRequest.BodyTypes.Form or CollectionRequest.BodyTypes.Multipart)
+        var idx = IndexOf(blocks, name);
+        if (idx >= 0)
         {
-            if (request.FormParams.Count == 0) return;
+            block.HasPrecedingBlankLine = blocks[idx].HasPrecedingBlankLine;
+            blocks[idx] = block;
+        }
+        else
+        {
+            blocks.Insert(Math.Min(fallbackIndex, blocks.Count), block);
+        }
+    }
 
-            var blockName = request.BodyType == CollectionRequest.BodyTypes.Form
-                ? "body:form-urlencoded"
-                : "body:multipart";
-            var block = new BruBlock(blockName);
-            foreach (var (k, v) in request.FormParams)
-                block.Items.Add(new BruKv(k, v));
-            blocks.Add(block);
+    /// <summary>
+    /// Finds an existing block with <paramref name="name"/> and replaces it (preserving
+    /// <see cref="BruBlock.HasPrecedingBlankLine"/> from the original), or inserts
+    /// <paramref name="block"/> immediately after the block named <paramref name="afterName"/>.
+    /// Falls back to appending at the end when neither block is found.
+    /// </summary>
+    private static void SetOrInsertAfter(List<BruBlock> blocks, string name, BruBlock block, string afterName)
+    {
+        var idx = IndexOf(blocks, name);
+        if (idx >= 0)
+        {
+            block.HasPrecedingBlankLine = blocks[idx].HasPrecedingBlankLine;
+            blocks[idx] = block;
             return;
         }
+        var afterIdx = IndexOf(blocks, afterName);
+        // New blocks inserted between existing ones get a preceding blank line for readability.
+        block.HasPrecedingBlankLine = true;
+        blocks.Insert(afterIdx >= 0 ? afterIdx + 1 : blocks.Count, block);
+    }
 
-        if (request.Body is null) return;
+    /// <summary>
+    /// Finds any existing HTTP-verb block, replaces its name and content with
+    /// <paramref name="block"/>, or appends after <c>meta</c> when none is found.
+    /// </summary>
+    private static void ReplaceVerbBlock(List<BruBlock> blocks, string bruMethod, BruBlock block)
+    {
+        // Find the first existing verb block (method may have changed, e.g. GET → POST).
+        var verbIdx = -1;
+        for (var i = 0; i < blocks.Count; i++)
+        {
+            if (_httpVerbs.Contains(blocks[i].Name, StringComparer.OrdinalIgnoreCase))
+            {
+                verbIdx = i;
+                break;
+            }
+        }
 
-        var bodyBlockName = request.BodyType switch
+        if (verbIdx >= 0)
+        {
+            block.HasPrecedingBlankLine = blocks[verbIdx].HasPrecedingBlankLine;
+            blocks[verbIdx] = block;
+        }
+        else
+        {
+            var metaIdx = IndexOf(blocks, "meta");
+            block.HasPrecedingBlankLine = true;
+            blocks.Insert(metaIdx >= 0 ? metaIdx + 1 : blocks.Count, block);
+        }
+    }
+
+    /// <summary>Removes the first block with the given name, if present.</summary>
+    private static void RemoveBlock(List<BruBlock> blocks, string name)
+    {
+        var idx = IndexOf(blocks, name);
+        if (idx >= 0) blocks.RemoveAt(idx);
+    }
+
+    /// <summary>Returns the index of the first block matching <paramref name="name"/> (case-insensitive).</summary>
+    private static int IndexOf(List<BruBlock> blocks, string name) =>
+        blocks.FindIndex(b => string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Updates body blocks for <paramref name="request"/> in <paramref name="blocks"/>.
+    /// <para>
+    /// The active body block is updated with <see cref="CollectionRequest.Body"/>.
+    /// Non-active text body blocks that have content tracked in
+    /// <see cref="CollectionRequest.AllBodyContents"/> are also updated so that edits made
+    /// in the UI while a different body type was active are persisted.
+    /// Body blocks with no tracked content are left unchanged (preserving any content
+    /// written by external tools such as Bruno).
+    /// </para>
+    /// </summary>
+    private static void UpdateBodyBlockInPlace(List<BruBlock> blocks, CollectionRequest request, string bruMethod)
+    {
+        var activeBodyBlockName = request.BodyType switch
         {
             CollectionRequest.BodyTypes.Json => "body:json",
             CollectionRequest.BodyTypes.Text => "body:text",
             CollectionRequest.BodyTypes.Xml => "body:xml",
-            _ => "body:json",
+            CollectionRequest.BodyTypes.Form => "body:form-urlencoded",
+            CollectionRequest.BodyTypes.Multipart => "body:multipart",
+            _ => null,
         };
 
-        var rawBlock = new BruBlock(bodyBlockName);
-        var raw = request.Body;
-        rawBlock.RawContent = raw.StartsWith(' ') || raw.StartsWith('\t')
-            ? raw
-            : IndentRawContent(raw);
-        blocks.Add(rawBlock);
+        if (activeBodyBlockName is null)
+            return; // body type is none — preserve all existing body blocks as-is
+
+        BruBlock? newBodyBlock = null;
+
+        if (request.BodyType is CollectionRequest.BodyTypes.Form or CollectionRequest.BodyTypes.Multipart)
+        {
+            if (request.FormParams.Count > 0)
+            {
+                newBodyBlock = new BruBlock(activeBodyBlockName);
+                foreach (var (k, v) in request.FormParams)
+                    newBodyBlock.Items.Add(new BruKv(k, v));
+            }
+        }
+        else if (request.Body is not null)
+        {
+            newBodyBlock = new BruBlock(activeBodyBlockName);
+            var raw = request.Body;
+            newBodyBlock.RawContent = raw.StartsWith(' ') || raw.StartsWith('\t')
+                ? raw
+                : IndentRawContent(raw);
+        }
+
+        if (newBodyBlock is not null)
+            SetOrInsertAfter(blocks, activeBodyBlockName, newBodyBlock, bruMethod);
+
+        // Also update non-active text body blocks that have tracked content.
+        // These come from AllBodyContents, which the ViewModel keeps in sync as the user
+        // switches between body types, so edits to a body type that wasn't active at save
+        // time are not silently discarded.
+        var inactiveTextTypes = new[]
+        {
+            (CollectionRequest.BodyTypes.Json, "body:json"),
+            (CollectionRequest.BodyTypes.Text, "body:text"),
+            (CollectionRequest.BodyTypes.Xml,  "body:xml"),
+        };
+        foreach (var (type, blockName) in inactiveTextTypes)
+        {
+            if (type == request.BodyType) continue; // already handled as active block above
+            if (!request.AllBodyContents.TryGetValue(type, out var inactiveContent)) continue;
+
+            var inactiveBlock = new BruBlock(blockName);
+            inactiveBlock.RawContent = inactiveContent.StartsWith(' ') || inactiveContent.StartsWith('\t')
+                ? inactiveContent
+                : IndentRawContent(inactiveContent);
+            SetOrInsertAfter(blocks, blockName, inactiveBlock, bruMethod);
+        }
     }
 
-    private static void AddAuthBlock(List<BruBlock> blocks, CollectionRequest request, BruDocument? existing)
+    /// <summary>
+    /// Updates or removes auth blocks (<c>auth:bearer</c> / <c>auth:basic</c>) in-place.
+    /// </summary>
+    private static void UpdateAuthBlockInPlace(
+        List<BruBlock> blocks, CollectionRequest request, BruDocument? existing, string bruMethod)
     {
+        // Remove both auth blocks first; re-add the one that's active below.
+        // (We replace in-place when possible to preserve position.)
         switch (request.Auth.AuthType)
         {
             case AuthConfig.AuthTypes.Bearer:
+                RemoveBlock(blocks, "auth:basic");
                 var bearerBlock = new BruBlock("auth:bearer");
                 bearerBlock.Items.Add(new BruKv("token", request.Auth.Token ?? string.Empty));
-                blocks.Add(bearerBlock);
+                SetOrInsertAfter(blocks, "auth:bearer", bearerBlock, bruMethod);
                 break;
 
             case AuthConfig.AuthTypes.Basic:
+                RemoveBlock(blocks, "auth:bearer");
                 var basicBlock = new BruBlock("auth:basic");
                 basicBlock.Items.Add(new BruKv("username", request.Auth.Username ?? string.Empty));
                 // Password is stored in local secret storage — never write a literal value to the
@@ -800,7 +978,12 @@ public sealed class BrunoCollectionService : ICollectionService
                 var existingPw = existing?.GetValue("auth:basic", "password") ?? string.Empty;
                 var pwToWrite = IsEnvVarRef(existingPw) ? existingPw : string.Empty;
                 basicBlock.Items.Add(new BruKv("password", pwToWrite));
-                blocks.Add(basicBlock);
+                SetOrInsertAfter(blocks, "auth:basic", basicBlock, bruMethod);
+                break;
+
+            default:
+                RemoveBlock(blocks, "auth:bearer");
+                RemoveBlock(blocks, "auth:basic");
                 break;
         }
     }
@@ -812,22 +995,6 @@ public sealed class BrunoCollectionService : ICollectionService
     private static bool IsEnvVarRef(string value) =>
         value.StartsWith("{{" , StringComparison.Ordinal) &&
         value.EndsWith("}}", StringComparison.Ordinal);
-
-    private static bool IsOwnedBlockName(string name) => name switch
-    {
-        "meta" => true,
-        "params:query" => true,
-        "headers" => true,
-        "params:path" => true,
-        "auth:bearer" => true,
-        "auth:basic" => true,
-        "body:json" => true,
-        "body:text" => true,
-        "body:xml" => true,
-        "body:form-urlencoded" => true,
-        "body:multipart" => true,
-        _ => _httpVerbs.Contains(name, StringComparer.OrdinalIgnoreCase),
-    };
 
     private static string IndentRawContent(string content)
     {

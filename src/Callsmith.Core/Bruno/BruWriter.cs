@@ -4,7 +4,13 @@ namespace Callsmith.Core.Bruno;
 
 /// <summary>
 /// Serialises a sequence of <see cref="BruBlock"/> entries back to <c>.bru</c> text.
-/// Blocks are separated by a single blank line; the file ends with a trailing newline.
+/// <para>
+/// When a block carries <see cref="BruBlock.HasPrecedingBlankLine"/> = <c>true</c> (set by
+/// <see cref="BruParser"/> during round-trip reads), the blank line before that block is
+/// preserved.  For blocks that did <em>not</em> come from a parsed file (e.g. newly created
+/// blocks inserted by Callsmith), a blank line is emitted by default so that the output
+/// remains readable.
+/// </para>
 /// </summary>
 internal static class BruWriter
 {
@@ -18,7 +24,16 @@ internal static class BruWriter
 
         foreach (var block in blocks)
         {
-            if (!first) sb.AppendLine();
+            if (!first)
+            {
+                // Honour the blank-line flag captured during parsing so that round-trip
+                // saves do not introduce blank lines that were not in the original file.
+                // Newly-created blocks (HasPrecedingBlankLine = false on construction) that
+                // are inserted via SetOrInsertAfter get the flag set to true so that they
+                // still receive a separator for readability.
+                if (block.HasPrecedingBlankLine)
+                    sb.AppendLine();
+            }
             first = false;
             WriteBlock(sb, block);
         }

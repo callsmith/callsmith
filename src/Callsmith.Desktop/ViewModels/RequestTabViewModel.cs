@@ -29,6 +29,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private readonly IMessenger _messenger;
     private readonly Action<RequestTabViewModel> _requestClose;
     private readonly IHistoryService? _historyService;
+    private readonly IEnvironmentService? _environmentService;
 
     /// <summary>Source request loaded from disk. Null for brand-new unsaved tabs.</summary>
     private CollectionRequest? _sourceRequest;
@@ -41,6 +42,13 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private bool _syncingPathParams;
     private long _historyHydrationVersion;
     private bool _closeAfterSaveAs;
+
+    /// <summary>
+    /// Per-body-type content store. Keyed by <see cref="CollectionRequest.BodyTypes"/> constants.
+    /// Updated when the user switches body types so that each type's editor content is preserved
+    /// independently and restored immediately when the user switches back.
+    /// </summary>
+    private readonly Dictionary<string, string> _bodyContents = new(StringComparer.Ordinal);
 
     // -------------------------------------------------------------------------
     // Tab identity
@@ -557,7 +565,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         IMessenger messenger,
         Action<RequestTabViewModel> requestClose,
         IDynamicVariableEvaluator? dynamicEvaluator = null,
-        IHistoryService? historyService = null)
+        IHistoryService? historyService = null,
+        IEnvironmentService? environmentService = null)
     {
         ArgumentNullException.ThrowIfNull(transportRegistry);
         ArgumentNullException.ThrowIfNull(collectionService);
@@ -570,6 +579,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _messenger = messenger;
         _requestClose = requestClose;
         _historyService = historyService;
+        _environmentService = environmentService;
 
         // Initialize auth segment fields — sync back to plain string properties.
         SegmentedValueFieldViewModel? authTokenField = null;
@@ -698,6 +708,17 @@ public sealed partial class RequestTabViewModel : ObservableObject
             Headers.LoadFrom(req.Headers);
             SelectedBodyType = req.BodyType;
             Body = req.Body ?? string.Empty;
+            // Seed the per-type dictionary so switching body types immediately shows the
+            // correct editor content without needing a tab reload.
+            _bodyContents.Clear();
+            foreach (var (type, content) in req.AllBodyContents)
+                _bodyContents[type] = content;
+            // Ensure the active type is up-to-date (AllBodyContents may have been built before
+            // the ViewModel edits; this is the authoritative current value).
+            if (req.BodyType is CollectionRequest.BodyTypes.Json
+                             or CollectionRequest.BodyTypes.Text
+                             or CollectionRequest.BodyTypes.Xml)
+                _bodyContents[req.BodyType] = req.Body ?? string.Empty;
             FormParams.LoadFrom(req.FormParams);
             AuthType = req.Auth.AuthType;
             AuthToken = req.Auth.Token ?? string.Empty;
@@ -1455,6 +1476,17 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
         var baseUrl = Url.Contains('?') ? Url[..Url.IndexOf('?')] : Url;
 
+        // Snapshot the per-type body contents dictionary, making sure the active body
+        // type reflects the current editor content.
+        var allBodyContents = new Dictionary<string, string>(_bodyContents, StringComparer.Ordinal);
+        if (SelectedBodyType is CollectionRequest.BodyTypes.Json
+                             or CollectionRequest.BodyTypes.Text
+                             or CollectionRequest.BodyTypes.Xml
+            && !string.IsNullOrEmpty(Body))
+        {
+            allBodyContents[SelectedBodyType] = Body;
+        }
+
         var updated = new CollectionRequest
         {
             FilePath = _sourceRequest.FilePath,
@@ -1468,6 +1500,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             QueryParams = QueryParams.GetAllKv(),
             BodyType = SelectedBodyType,
             Body = string.IsNullOrEmpty(Body) ? null : Body,
+            AllBodyContents = allBodyContents,
             FormParams = FormParams.GetEnabledPairs().ToList(),
             Auth = new AuthConfig
             {
@@ -1505,6 +1538,35 @@ public sealed partial class RequestTabViewModel : ObservableObject
         finally
         {
             _saving = false;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Body type switching
+    // -------------------------------------------------------------------------
+
+    partial void OnSelectedBodyTypeChanged(string? oldValue, string newValue)
+    {
+        if (_loading) return;
+
+        // Stash the current editor content under the old body type.
+        if (oldValue is CollectionRequest.BodyTypes.Json
+                     or CollectionRequest.BodyTypes.Text
+                     or CollectionRequest.BodyTypes.Xml)        {
+            _bodyContents[oldValue] = Body;
+        }
+
+        // Restore the editor content that was last used with the new body type.
+        if (newValue is CollectionRequest.BodyTypes.Json
+                     or CollectionRequest.BodyTypes.Text
+                     or CollectionRequest.BodyTypes.Xml)
+        {
+            Body = _bodyContents.GetValueOrDefault(newValue, string.Empty);
+        }
+        else
+        {
+            // Switching to "none", "form", or "multipart" — clear the text editor.
+            Body = string.Empty;
         }
     }
 

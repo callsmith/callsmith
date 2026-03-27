@@ -425,5 +425,61 @@ vars:secret {
         Assert.Contains(secretVars, v => v.Name == "token");
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Bruno compatibility: block-targeted env save (preserves block order)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task SaveEnvironmentAsync_NoOpSave_DoesNotAddBlankLineBetweenVarsAndVarsSecret()
+    {
+        // Env file with no blank line between vars and vars:secret.
+        // A no-op save must not introduce a blank line there.
+        var envDir = Path.Combine(_root, "environments");
+        Directory.CreateDirectory(envDir);
+        var filePath = Path.Combine(envDir, "Dev.bru");
+        var originalContent = "vars {\n  url: https://dev.example.com/\n}\nvars:secret [\n  token\n]\n";
+        File.WriteAllText(filePath, originalContent);
+
+        var loaded = await _sut.LoadEnvironmentAsync(filePath);
+        await _sut.SaveEnvironmentAsync(loaded);
+
+        var written = (await File.ReadAllTextAsync(filePath)).Replace("\r\n", "\n");
+        // No blank line should have been added between the two blocks
+        Assert.DoesNotContain("}\n\nvars:secret", written);
+        Assert.Contains("}\nvars:secret", written);
+    }
+
+    [Fact]
+    public async Task SaveEnvironmentAsync_PreservesVarsBlockBeforeVarsSecretBlock()
+    {
+        // When both blocks exist, vars must always appear before vars:secret after a save
+        // (their original relative order is preserved by the block-targeted approach).
+        var envDir = Path.Combine(_root, "environments");
+        Directory.CreateDirectory(envDir);
+        var filePath = Path.Combine(envDir, "Test.bru");
+        File.WriteAllText(filePath, """
+            vars {
+              base-url: https://test.example.com/
+            }
+            vars:secret [
+              api-key
+            ]
+            """);
+
+        var loaded = await _sut.LoadEnvironmentAsync(filePath);
+        // Add a new regular variable
+        var modified = loaded with
+        {
+            Variables = [..loaded.Variables, new EnvironmentVariable { Name = "new-var", Value = "hello" }],
+        };
+        await _sut.SaveEnvironmentAsync(modified);
+
+        var written = (await File.ReadAllTextAsync(filePath)).Replace("\r\n", "\n");
+        var varsIdx = written.IndexOf("vars {", StringComparison.Ordinal);
+        var secretIdx = written.IndexOf("vars:secret", StringComparison.Ordinal);
+        Assert.True(varsIdx < secretIdx, "vars block must come before vars:secret block");
+        Assert.Contains("new-var: hello", written);
+    }
+
     private static string VarsFile(string kvLines) => $"vars {{\n  {kvLines}\n}}\n";
 }
