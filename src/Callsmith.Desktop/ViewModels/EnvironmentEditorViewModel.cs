@@ -301,7 +301,31 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     [RelayCommand(CanExecute = nameof(HasSelectedEnvironment))]
     private void RevertSelected()
     {
-        SelectedEnvironment?.Revert();
+        if (SelectedEnvironment is null) return;
+        SelectedEnvironment.Revert();
+
+        // If the global env was reverted, also restore the saved preview env selection and
+        // re-run the preview refresh. Revert() only reloads the variable list from the backing
+        // model and does not update SelectedGlobalPreviewEnvironment or the async preview state.
+        if (!SelectedEnvironment.IsGlobal) return;
+
+        var persistedPreviewName = SelectedEnvironment.BuildModel().GlobalPreviewEnvironmentName;
+        _syncingGlobalPreviewSelection = true;
+        try
+        {
+            SelectedGlobalPreviewEnvironment = !string.IsNullOrWhiteSpace(persistedPreviewName)
+                ? Environments.FirstOrDefault(e => !e.IsGlobal
+                    && string.Equals(e.Name, persistedPreviewName, StringComparison.OrdinalIgnoreCase))
+                : Environments.FirstOrDefault(e => !e.IsGlobal);
+        }
+        finally
+        {
+            _syncingGlobalPreviewSelection = false;
+        }
+
+        _dynPreviewCts?.Cancel();
+        _dynPreviewCts = new CancellationTokenSource();
+        _ = RefreshDynamicPreviewsAsync(SelectedEnvironment, _dynPreviewCts.Token);
     }
 
     /// <summary>Saves variable changes for the currently selected environment to disk.</summary>
@@ -652,10 +676,6 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             }
         }
 
-        // No effective change from the persisted value.
-        if (string.Equals(persistedPreviewName, value?.Name, StringComparison.OrdinalIgnoreCase))
-            return;
-
         // Only mark dirty if this is a user change, not a programmatic restore during load.
         if (!_loadingEnvironments)
             globalEnv.IsDirty = true;
@@ -746,8 +766,9 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             // Always push conflict info (even when there are no dynamics to resolve).
             PushConflictInfo(env);
 
-            if (!hasDynamic) return;
-
+            // Always compute the merged preview context, even without dynamic vars.
+            // This is needed so that static vars with {{token}} references resolve
+            // against the correctly-merged dict (same precedence as BuildMergedVars at send time).
             var globalStaticVars = model.Variables
                 .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.Static
                          && !string.IsNullOrWhiteSpace(v.Name))
@@ -765,14 +786,32 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             if (contextEnv is not null)
             {
                 cacheNamespace = $"{env.EnvironmentId:N}[env:{contextEnv.EnvironmentId:N}]";
+                // Overlay preview env statics — non-force-override global vars yield to the preview env.
                 foreach (var v in contextEnv.BuildModel().Variables
                     .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.Static
+                             && !string.IsNullOrWhiteSpace(v.Name)))
+                    globalStaticVars[v.Name.Trim()] = v.Value;
+
+                // Re-apply force-override global statics so they win over the preview env,
+                // mirroring the three-layer precedence used by BuildMergedVars() at send time:
+                //   (1) global statics → (2) active-env statics → (3) force-override global statics.
+                foreach (var v in model.Variables
+                    .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.Static
+                             && v.IsForceGlobalOverride
                              && !string.IsNullOrWhiteSpace(v.Name)))
                     globalStaticVars[v.Name.Trim()] = v.Value;
             }
             else
             {
                 cacheNamespace = env.EnvironmentId.ToString("N");
+            }
+
+            if (!hasDynamic)
+            {
+                // No dynamic vars — still push merged static context so that {{token}}-style
+                // references in static var values resolve correctly in the preview column.
+                env.SetGlobalPreviewValues(globalStaticVars, new Dictionary<string, MockDataEntry>());
+                return;
             }
 
             try
@@ -787,6 +826,9 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                     .Where(kv => !globalOwnStaticKeys.Contains(kv.Key))
                     .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
                 env.SetDynamicPreviewValues(dynVars, resolved.MockGenerators);
+                // Also push the merged static context so that {{token}}-style references in
+                // static var values resolve against the effective (preview-env-aware) merged dict.
+                env.SetGlobalPreviewValues(globalStaticVars, resolved.MockGenerators);
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)

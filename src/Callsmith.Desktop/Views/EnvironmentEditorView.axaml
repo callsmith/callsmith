@@ -458,8 +458,8 @@
               </StackPanel>
             </Border>
 
-            <!-- Column headers: Drag(24) | Name(320) | Value(*) | Override(72) | Type(140) | Delete(28) -->
-            <Grid ColumnDefinitions="24,320,*,72,140,28"
+            <!-- Column headers: Drag(24) | Name(320) | Value(*) | Override(Auto=72/0) | Type(140) | Delete(28) -->
+            <Grid ColumnDefinitions="24,320,*,Auto,140,28"
                   Margin="0,0,0,4">
               <TextBlock Grid.Column="1"
                          Text="NAME"
@@ -480,6 +480,7 @@
                          FontSize="10"
                          FontWeight="SemiBold"
                          LetterSpacing="1"
+                         Width="72"
                          HorizontalAlignment="Center"
                          IsVisible="{Binding SelectedEnvironment.IsGlobal, FallbackValue=False}"
                          ToolTip.Tip="Force this global variable to take priority over a same-named concrete environment variable"/>
@@ -496,8 +497,8 @@
                           ItemsSource="{Binding SelectedEnvironment.Variables}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:EnvironmentVariableItemViewModel">
-                  <!-- Columns: Drag(24) | Name(320) | Value(*) | Override(72) | Type(140) | Delete(28) -->
-                  <Grid ColumnDefinitions="24,320,*,72,140,28"
+                  <!-- Columns: Drag(24) | Name(320) | Value(*) | Override(Auto=72/0) | Type(140) | Delete(28) -->
+                  <Grid ColumnDefinitions="24,320,*,Auto,140,28"
                         RowDefinitions="Auto,Auto,Auto"
                         Margin="0,2">
 
@@ -659,6 +660,7 @@
                     <CheckBox Grid.Row="0" Grid.Column="3"
                               IsChecked="{Binding IsForceGlobalOverride}"
                               IsVisible="{Binding IsGlobal}"
+                              Width="72"
                               HorizontalAlignment="Center"
                               VerticalAlignment="Center"
                               ToolTip.Tip="Force this global variable to take priority over a same-named concrete environment variable"/>

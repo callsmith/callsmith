@@ -396,7 +396,16 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         {
             var key = v.Name.Trim();
             if (v.IsStatic)
-                vars[key] = v.Value;
+            {
+                // For the global environment, _globalPreviewVars already contains the effective
+                // merged value (global statics + preview-env overlay + force-override re-applied),
+                // mirroring the three-layer precedence of BuildMergedVars() at send time.
+                // Overwriting it with v.Value (the raw own value) would ignore that merging and
+                // cause {{token}} substitutions in static vars to resolve against the wrong value.
+                // For concrete envs, own statics always win over the global-context baseline.
+                if (!IsGlobal || !_globalPreviewVars.ContainsKey(key))
+                    vars[key] = v.Value;
+            }
             else if (_resolvedDynVars.TryGetValue(key, out var dyn))
                 vars[key] = dyn;
         }
