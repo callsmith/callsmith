@@ -29,6 +29,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private readonly IMessenger _messenger;
     private readonly Action<RequestTabViewModel> _requestClose;
     private readonly IHistoryService? _historyService;
+    private readonly IEnvironmentService? _environmentService;
 
     /// <summary>Source request loaded from disk. Null for brand-new unsaved tabs.</summary>
     private CollectionRequest? _sourceRequest;
@@ -564,7 +565,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         IMessenger messenger,
         Action<RequestTabViewModel> requestClose,
         IDynamicVariableEvaluator? dynamicEvaluator = null,
-        IHistoryService? historyService = null)
+        IHistoryService? historyService = null,
+        IEnvironmentService? environmentService = null)
     {
         ArgumentNullException.ThrowIfNull(transportRegistry);
         ArgumentNullException.ThrowIfNull(collectionService);
@@ -577,6 +579,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _messenger = messenger;
         _requestClose = requestClose;
         _historyService = historyService;
+        _environmentService = environmentService;
 
         // Initialize auth segment fields — sync back to plain string properties.
         SegmentedValueFieldViewModel? authTokenField = null;

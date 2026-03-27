@@ -84,9 +84,10 @@ public sealed class CollectionRequest
     /// Response captures declared in a Bruno <c>vars:post-response</c> block.
     /// Each entry maps a variable name to a Bruno extraction expression (e.g. <c>res.body.token</c>).
     /// <para>
-    /// Only populated when loading a request from a Bruno <c>.bru</c> file.  Use
-    /// <see cref="ToResponseBodyVariable"/> to convert an entry to a Callsmith
-    /// <see cref="Models.EnvironmentVariable"/> of type <c>response-body</c>.
+    /// Only populated when loading a request from a Bruno <c>.bru</c> file.  After a request
+    /// completes, <c>BrunoPostResponseCaptureHelper.Apply</c> evaluates each expression against
+    /// the response body and writes the extracted values into the currently active environment
+    /// as plain static variable values.
     /// </para>
     /// </summary>
     public IReadOnlyList<KeyValuePair<string, string>> BrunoPostResponseCaptures { get; init; } = [];
@@ -105,37 +106,6 @@ public sealed class CollectionRequest
                 .ToList();
             return enabled.Count > 0 ? QueryStringHelper.ApplyQueryParams(Url, enabled) : Url;
         }
-    }
-
-    /// <summary>
-    /// Converts a single Bruno <c>vars:post-response</c> capture entry into a Callsmith
-    /// <see cref="EnvironmentVariable"/> of type <c>response-body</c>.
-    /// </summary>
-    /// <param name="variableName">The variable name (left-hand side of the capture).</param>
-    /// <param name="brunoExpression">
-    /// The Bruno extraction expression (right-hand side, e.g. <c>res.body.token</c>).
-    /// <c>res.body.</c> is stripped and the remainder is converted to a JSONPath expression
-    /// (<c>$.token</c>).
-    /// </param>
-    /// <returns>
-    /// A new <see cref="EnvironmentVariable"/> or <c>null</c> when the expression cannot be
-    /// translated (e.g. non-body paths such as <c>res.headers.X</c>).
-    /// </returns>
-    public EnvironmentVariable? ToResponseBodyVariable(string variableName, string brunoExpression)
-    {
-        const string bodyPrefix = "res.body.";
-        if (!brunoExpression.StartsWith(bodyPrefix, StringComparison.Ordinal))
-            return null;
-
-        var jsonPath = "$." + brunoExpression[bodyPrefix.Length..];
-        return new EnvironmentVariable
-        {
-            Name = variableName,
-            Value = string.Empty,
-            VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
-            ResponseRequestName = Name,
-            ResponsePath = jsonPath,
-        };
     }
 
     /// <summary>Well-known body type constants to avoid magic strings.</summary>
