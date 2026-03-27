@@ -753,6 +753,10 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                          && !string.IsNullOrWhiteSpace(v.Name))
                 .ToDictionary(v => v.Name.Trim(), v => v.Value, StringComparer.Ordinal);
 
+            // Track which keys are the global env's OWN static vars so the dynVars filter
+            // below only excludes them — not same-named statics from the concrete context env.
+            var globalOwnStaticKeys = new HashSet<string>(globalStaticVars.Keys, StringComparer.Ordinal);
+
             // Use the env-level preview selection when set; otherwise fall back to the first
             // concrete environment. This matches the send-time cache namespace so cached tokens
             // from recent request sends are reused without an extra HTTP call.
@@ -777,8 +781,10 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                     .ResolveAsync(_collectionFolderPath, cacheNamespace, model.Variables, globalStaticVars, ct)
                     .ConfigureAwait(true);
                 ct.ThrowIfCancellationRequested();
+                // Only exclude the global env's OWN static keys — not same-named statics from
+                // the preview context env (those must not suppress response-body preview values).
                 var dynVars = resolved.Variables
-                    .Where(kv => !globalStaticVars.ContainsKey(kv.Key))
+                    .Where(kv => !globalOwnStaticKeys.Contains(kv.Key))
                     .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
                 env.SetDynamicPreviewValues(dynVars, resolved.MockGenerators);
             }
@@ -803,6 +809,9 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         var globalContextVars = new Dictionary<string, string>(StringComparer.Ordinal);
         IReadOnlyDictionary<string, MockDataEntry> globalMockGenerators
             = new Dictionary<string, MockDataEntry>();
+        // Global-only resolved values (no concrete-env statics re-applied on top).
+        // Used for conflict info so "OVERRIDDEN BY" shows the global var's own value.
+        Dictionary<string, string> pureGlobalContextVars = globalContextVars;
         var globalItem = Environments.FirstOrDefault(e => e.IsGlobal);
         if (globalItem is not null)
         {
@@ -880,6 +889,11 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                     }
                 }
 
+                // Snapshot the pure global-resolved values BEFORE re-applying the active env's
+                // own statics. This is used for conflict info display so that "OVERRIDDEN BY"
+                // shows the global var's own value, not the concrete env's value.
+                pureGlobalContextVars = new Dictionary<string, string>(globalContextVars, StringComparer.Ordinal);
+
                 // Re-apply active env's own statics at the end to maintain override precedence.
                 foreach (var kv in activeStaticVars)
                     globalContextVars[kv.Key] = kv.Value;
@@ -899,15 +913,20 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 }
                 if (mockGens.Count > 0)
                     globalMockGenerators = mockGens;
+
+                // No activeStaticVars overlay in this branch — globalContextVars is already pure.
+                pureGlobalContextVars = globalContextVars;
             }
 
             // Push global context: {{base-url}}, {{token}}, {{faker-*}}, etc. now resolve
             // in the preview column regardless of whether this env has its own dynamic vars.
             env.SetGlobalPreviewValues(globalContextVars, globalMockGenerators);
+            // Store pure global values (before concrete-env statics overlay) for conflict display.
+            env.SetPureGlobalPreviewVars(pureGlobalContextVars);
 
-            // Push conflict info using the fully-resolved global context vars so that
+            // Push conflict info using the pure global context vars so that
             // "OVERRIDDEN BY" on concrete vars shows the global env's resolved value.
-            PushConflictInfoForConcreteEnv(env, globalContextVars);
+            PushConflictInfoForConcreteEnv(env, pureGlobalContextVars);
         }
 
         if (!hasDynamic) return; // No dynamic vars in this env — global context above is sufficient.
