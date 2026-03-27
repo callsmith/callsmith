@@ -7,6 +7,10 @@
              x:Class="Callsmith.Desktop.Views.AdvancedHistorySearchView"
              x:DataType="vm:AdvancedHistorySearchViewModel">
 
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Enter" Command="{Binding ApplyCommand}"/>
+  </UserControl.KeyBindings>
+
   <Border Background="#2d2d30"
           BorderBrush="#555"
           BorderThickness="1"

@@ -32,6 +32,9 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private string? _pendingPurgeEnvironmentName;
     private int? _pendingPurgeDays;
     private bool _pendingPurgeAllTime;
+    private bool _isRefreshingEnvironmentOptions;
+    private CancellationTokenSource? _searchDebounceCts;
+    private const int SearchDebounceMs = 400;
 
     // -------------------------------------------------------------------------
     // List state
@@ -249,6 +252,33 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         }
     }
 
+    partial void OnSelectedEnvironmentOptionChanged(HistoryEnvironmentOptionViewModel? value)
+    {
+        if (_isRefreshingEnvironmentOptions)
+            return;
+
+        _ = SearchAsync();
+    }
+
+    partial void OnGlobalSearchTextChanged(string value)
+    {
+        var previous = _searchDebounceCts;
+        _searchDebounceCts = new CancellationTokenSource();
+        previous?.Cancel();
+        previous?.Dispose();
+        _ = DebounceSearchAsync(_searchDebounceCts.Token);
+    }
+
+    private async Task DebounceSearchAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(SearchDebounceMs, ct);
+            await SearchAsync();
+        }
+        catch (OperationCanceledException) { }
+    }
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
@@ -312,6 +342,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     [RelayCommand]
     private async Task SearchAsync()
     {
+        _searchDebounceCts?.Cancel();
         _nextPage = 0;
         await ReloadEntriesAsync();
     }
@@ -326,10 +357,10 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private void ClearAdvancedFilters()
     {
         AdvancedSearch.ClearAllCommand.Execute(null);
-        // ClearAll fires Applied which already triggers a search and closes the modal;
-        // also ensure badge updates even if the modal is not open.
+        // Ensure badge updates even if the modal is not open.
         OnPropertyChanged(nameof(HasActiveAdvancedFilters));
         OnPropertyChanged(nameof(ActiveAdvancedFilterCount));
+        _ = SearchAsync();
     }
 
     public async Task EnsureMoreEntriesAsync()
@@ -702,46 +733,81 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         var previousSelectionName = SelectedEnvironmentOption?.Name ?? AllEnvironmentsOption;
         var deletedOptions = BuildDeletedEnvironmentOptionsFromShownEntries();
 
-        EnvironmentOptions.Clear();
-        EnvironmentOptions.Add(new HistoryEnvironmentOptionViewModel
+        // Build the desired ordered list of options.
+        var desired = new List<HistoryEnvironmentOptionViewModel>
         {
-            Name = AllEnvironmentsOption,
-            Id = null,
-            Color = null,
-        });
-        EnvironmentOptions.Add(new HistoryEnvironmentOptionViewModel
-        {
-            Name = NoEnvironmentOption,
-            Id = null,
-            Color = null,
-        });
+            new() { Name = AllEnvironmentsOption, Id = null, Color = null },
+            new() { Name = NoEnvironmentOption, Id = null, Color = null },
+        };
 
         if (_environmentViewModel is not null)
         {
             foreach (var env in _environmentViewModel.Environments)
             {
-                if (string.IsNullOrWhiteSpace(env.Name))
-                    continue;
-
-                EnvironmentOptions.Add(new HistoryEnvironmentOptionViewModel
-                {
-                    Name = env.Name,
-                    Id = env.EnvironmentId,
-                    Color = env.Color,
-                });
+                if (!string.IsNullOrWhiteSpace(env.Name))
+                    desired.Add(new HistoryEnvironmentOptionViewModel
+                    {
+                        Name = env.Name,
+                        Id = env.EnvironmentId,
+                        Color = env.Color,
+                    });
             }
         }
 
         foreach (var option in deletedOptions.OrderBy(static o => o.Name, StringComparer.OrdinalIgnoreCase))
-            EnvironmentOptions.Add(new HistoryEnvironmentOptionViewModel
+            desired.Add(new HistoryEnvironmentOptionViewModel
             {
                 Name = option.Name,
                 Id = option.Id,
                 Color = option.Color,
             });
 
-        SelectedEnvironmentOption = ResolveEnvironmentOption(previousSelectionId, previousSelectionName)
-            ?? EnvironmentOptions.FirstOrDefault();
+        // Sync EnvironmentOptions incrementally — no Clear() — so Avalonia's ComboBox
+        // never receives a collection Reset and keeps its visual selection display.
+        _isRefreshingEnvironmentOptions = true;
+        try
+        {
+            // Remove items that are no longer needed.
+            for (var i = EnvironmentOptions.Count - 1; i >= 0; i--)
+            {
+                if (!desired.Any(d => AreSameEnvironmentOption(d, EnvironmentOptions[i])))
+                    EnvironmentOptions.RemoveAt(i);
+            }
+
+            // Insert new items and move existing ones into the desired order.
+            for (var i = 0; i < desired.Count; i++)
+            {
+                var existingIdx = -1;
+                for (var j = 0; j < EnvironmentOptions.Count; j++)
+                {
+                    if (AreSameEnvironmentOption(desired[i], EnvironmentOptions[j]))
+                    {
+                        existingIdx = j;
+                        break;
+                    }
+                }
+
+                if (existingIdx < 0)
+                    EnvironmentOptions.Insert(Math.Min(i, EnvironmentOptions.Count), desired[i]);
+                else if (existingIdx != i)
+                    EnvironmentOptions.Move(existingIdx, i);
+            }
+
+            SelectedEnvironmentOption = ResolveEnvironmentOption(previousSelectionId, previousSelectionName)
+                ?? EnvironmentOptions.FirstOrDefault();
+        }
+        finally
+        {
+            _isRefreshingEnvironmentOptions = false;
+        }
+    }
+
+    private static bool AreSameEnvironmentOption(HistoryEnvironmentOptionViewModel a, HistoryEnvironmentOptionViewModel b)
+    {
+        // Match by stable ID when both have one, otherwise match by name.
+        if (a.Id.HasValue && b.Id.HasValue)
+            return a.Id == b.Id;
+        return string.Equals(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

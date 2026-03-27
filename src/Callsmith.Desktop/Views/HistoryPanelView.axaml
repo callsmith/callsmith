@@ -12,7 +12,7 @@
              Background="#1e1e1e">
 
   <UserControl.KeyBindings>
-    <KeyBinding Gesture="Ctrl+Enter" Command="{Binding SearchCommand}"/>
+    <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}"/>
   </UserControl.KeyBindings>
 
   <Grid RowDefinitions="Auto,Auto,*">
@@ -159,15 +159,6 @@
                       ToolTip.Tip="Clear all advanced filters"/>
             </StackPanel>
           </Border>
-
-          <!-- Search button -->
-          <Button Content="Search"
-                  Command="{Binding SearchCommand}"
-                  FontSize="12"
-                  Background="#0d7377"
-                  Foreground="#ffffff"
-                  BorderThickness="0"
-                  Padding="12,4"/>
 
           <!-- Result count -->
           <TextBlock Text="{Binding ResultCountLabel}"
