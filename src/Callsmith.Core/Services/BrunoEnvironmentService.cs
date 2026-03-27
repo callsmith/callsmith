@@ -379,7 +379,7 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
                 secretBlock.Items.Add(new BruKv(v.Name, string.Empty));
             foreach (var kv in disabledSecretVars)
                 secretBlock.Items.Add(new BruKv(kv.Key, string.Empty, kv.IsEnabled));
-            SetOrInsertAfterEnv(blocks, "vars:secret", secretBlock, "vars");
+            SetOrInsertAfter(blocks, "vars:secret", secretBlock, "vars");
         }
         else
         {
@@ -407,7 +407,7 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
         }
     }
 
-    private static void SetOrInsertAfterEnv(List<BruBlock> blocks, string name, BruBlock block, string afterName)
+    private static void SetOrInsertAfter(List<BruBlock> blocks, string name, BruBlock block, string afterName)
     {
         var idx = blocks.FindIndex(b => string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase));
         if (idx >= 0)

@@ -1384,7 +1384,7 @@ public sealed class BrunoCollectionServiceTests : IDisposable
     {
         var request = new CollectionRequest
         {
-            FilePath = "/tmp/login.bru",
+            FilePath = Path.Combine(Path.GetTempPath(), "login.bru"),
             Name = "login",
             Method = HttpMethod.Post,
             Url = "https://api.example.com/auth/login",
@@ -1404,7 +1404,7 @@ public sealed class BrunoCollectionServiceTests : IDisposable
     {
         var request = new CollectionRequest
         {
-            FilePath = "/tmp/req.bru",
+            FilePath = Path.Combine(Path.GetTempPath(), "req.bru"),
             Name = "get data",
             Method = HttpMethod.Get,
             Url = "https://api.example.com/data",
@@ -1421,7 +1421,7 @@ public sealed class BrunoCollectionServiceTests : IDisposable
     {
         var request = new CollectionRequest
         {
-            FilePath = "/tmp/req.bru",
+            FilePath = Path.Combine(Path.GetTempPath(), "req.bru"),
             Name = "get data",
             Method = HttpMethod.Get,
             Url = "https://api.example.com/data",
