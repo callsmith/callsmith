@@ -54,7 +54,7 @@ public sealed class BrunoCollectionServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task OpenFolderAsync_WithBruFiles_LoadsRequestsOrderedBySeq()
+    public async Task OpenFolderAsync_WithBruFiles_LoadsRequestsOrderedAlphabetically()
     {
         WriteFile("b.bru", BruFile("b", "get", "https://b.com", seq: 2));
         WriteFile("a.bru", BruFile("a", "get", "https://a.com", seq: 1));
@@ -864,9 +864,10 @@ public sealed class BrunoCollectionServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task OpenFolderAsync_MixedFolderAndRequest_OrderedBySeq()
+    public async Task OpenFolderAsync_MixedFolderAndRequest_OrderedAlphabetically()
     {
-        // Folder with seq=2, request with seq=1, folder with seq=3 → request first
+        // seq values are present in files but intentionally ignored for ordering;
+        // items are sorted alphabetically instead.
         Directory.CreateDirectory(Path.Combine(_root, "Beta"));
         WriteFile("Beta/folder.bru", FolderBru("Beta", seq: 2));
         WriteFile("Beta/b-req.bru", BruFile("b-req", "get", "https://b.com", seq: 1));
@@ -878,7 +879,7 @@ public sealed class BrunoCollectionServiceTests : IDisposable
 
         var folder = await _sut.OpenFolderAsync(_root);
 
-        // ItemOrder should be: alpha (seq=1), Beta (seq=2), Gamma (seq=3)
+        // ItemOrder should be purely alphabetical: alpha.bru < Beta < Gamma
         Assert.Equal(3, folder.ItemOrder.Count);
         Assert.Equal("alpha.bru", folder.ItemOrder[0]);
         Assert.Equal("Beta", folder.ItemOrder[1]);
@@ -886,8 +887,10 @@ public sealed class BrunoCollectionServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task OpenFolderAsync_FolderWithoutSeq_SortsAlphabeticallyAfterSequenced()
+    public async Task OpenFolderAsync_FolderWithoutSeq_SortsAlphabetically()
     {
+        // seq values are present in some files and absent in others, but ordering is always
+        // alphabetical regardless because Bruno does not reliably maintain seq across tools.
         Directory.CreateDirectory(Path.Combine(_root, "Alpha"));
         WriteFile("Alpha/folder.bru", FolderBru("Alpha")); // no seq
 
@@ -898,10 +901,10 @@ public sealed class BrunoCollectionServiceTests : IDisposable
 
         var folder = await _sut.OpenFolderAsync(_root);
 
-        // Zebra (seq=1), mid (seq=2), Alpha (no seq → last)
-        Assert.Equal("Zebra", folder.ItemOrder[0]);
+        // Alphabetical: Alpha < mid.bru < Zebra
+        Assert.Equal("Alpha", folder.ItemOrder[0]);
         Assert.Equal("mid.bru", folder.ItemOrder[1]);
-        Assert.Equal("Alpha", folder.ItemOrder[2]);
+        Assert.Equal("Zebra", folder.ItemOrder[2]);
     }
 
     [Fact]
@@ -1172,5 +1175,297 @@ public sealed class BrunoCollectionServiceTests : IDisposable
         var content = await File.ReadAllTextAsync(filePath);
         // Computed requestId should never be written to the file
         Assert.DoesNotContain("requestId:", content);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Bruno compatibility: block-targeted save (preserves block order)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task SaveRequestAsync_PathParams_PreservesBlockPosition()
+    {
+        // params:path appears BEFORE script blocks in the original file.
+        // After a save, params:path should remain in the same position (not be moved to the end).
+        var original = """
+            meta {
+              name: get user
+              type: http
+              seq: 1
+            }
+
+            get {
+              url: https://api.example.com/users/:userId
+              body: none
+              auth: none
+            }
+
+            params:path {
+              userId: 1
+            }
+
+            script:pre-request {
+              bru.setVar('x', 1);
+            }
+            """;
+        WriteFile("user.bru", original);
+        var filePath = Path.Combine(_root, "user.bru");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+        var modified = new CollectionRequest
+        {
+            FilePath = loaded.FilePath,
+            Name = loaded.Name,
+            Method = loaded.Method,
+            Url = loaded.Url,
+            PathParams = new Dictionary<string, string> { ["userId"] = "42" },
+            Headers = loaded.Headers,
+            QueryParams = loaded.QueryParams,
+            BodyType = loaded.BodyType,
+            Body = loaded.Body,
+            Auth = loaded.Auth,
+        };
+        await _sut.SaveRequestAsync(modified);
+
+        var written = await File.ReadAllTextAsync(filePath);
+        // params:path must come before script:pre-request (block order preserved)
+        Assert.Contains("params:path {", written);
+        Assert.Contains("  userId: 42", written);
+        var pathIdx = written.IndexOf("params:path {", StringComparison.Ordinal);
+        var scriptIdx = written.IndexOf("script:pre-request {", StringComparison.Ordinal);
+        Assert.True(pathIdx < scriptIdx, "params:path block should come before script:pre-request");
+    }
+
+    [Fact]
+    public async Task SaveRequestAsync_BodyJsonPreserved_WhenBodyTypeChangedToNone()
+    {
+        // body:json must survive a save that switches body type to "none".
+        // Previously the block was removed because it was "owned" but not re-emitted.
+        var original = """
+            meta {
+              name: create item
+              type: http
+              seq: 1
+            }
+
+            post {
+              url: https://api.example.com/items
+              body: json
+              auth: none
+            }
+
+            body:json {
+              {"name": "test"}
+            }
+            """;
+        WriteFile("item.bru", original);
+        var filePath = Path.Combine(_root, "item.bru");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+        // Switch body type to "none" (e.g. user temporarily switches away from JSON)
+        var modified = new CollectionRequest
+        {
+            FilePath = loaded.FilePath,
+            Name = loaded.Name,
+            Method = loaded.Method,
+            Url = loaded.Url,
+            PathParams = loaded.PathParams,
+            Headers = loaded.Headers,
+            QueryParams = loaded.QueryParams,
+            BodyType = CollectionRequest.BodyTypes.None,
+            Body = null,
+            Auth = loaded.Auth,
+        };
+        await _sut.SaveRequestAsync(modified);
+
+        var written = await File.ReadAllTextAsync(filePath);
+        // body:json block must be preserved so the user can switch back
+        Assert.Contains("body:json {", written);
+        Assert.Contains("\"name\": \"test\"", written);
+    }
+
+    [Fact]
+    public async Task SaveRequestAsync_BodyJsonPreserved_WhenBodyTypeSwitchedToText()
+    {
+        // body:json must survive a save that switches body type to text.
+        var original = """
+            meta {
+              name: update item
+              type: http
+              seq: 1
+            }
+
+            put {
+              url: https://api.example.com/items/1
+              body: json
+              auth: none
+            }
+
+            body:json {
+              {"name": "updated"}
+            }
+            """;
+        WriteFile("update.bru", original);
+        var filePath = Path.Combine(_root, "update.bru");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+        var modified = new CollectionRequest
+        {
+            FilePath = loaded.FilePath,
+            Name = loaded.Name,
+            Method = loaded.Method,
+            Url = loaded.Url,
+            PathParams = loaded.PathParams,
+            Headers = loaded.Headers,
+            QueryParams = loaded.QueryParams,
+            BodyType = CollectionRequest.BodyTypes.Text,
+            Body = "plain text content",
+            Auth = loaded.Auth,
+        };
+        await _sut.SaveRequestAsync(modified);
+
+        var written = await File.ReadAllTextAsync(filePath);
+        // Both body:json (original) and body:text (new) must be present
+        Assert.Contains("body:json {", written);
+        Assert.Contains("\"name\": \"updated\"", written);
+        Assert.Contains("body:text {", written);
+        Assert.Contains("plain text content", written);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Bruno compatibility: vars:post-response captures
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task LoadRequestAsync_WithPostResponseBlock_PopulatesCaptures()
+    {
+        var content = """
+            meta {
+              name: login
+              type: http
+              seq: 1
+            }
+
+            post {
+              url: https://api.example.com/auth/login
+              body: json
+              auth: none
+            }
+
+            body:json {
+              {"username": "user", "password": "pass"}
+            }
+
+            vars:post-response {
+              jwt-token: res.body.token
+              user-id: res.body.userId
+            }
+            """;
+        WriteFile("login.bru", content);
+
+        var request = await _sut.LoadRequestAsync(Path.Combine(_root, "login.bru"));
+
+        Assert.Equal(2, request.BrunoPostResponseCaptures.Count);
+        Assert.Contains(request.BrunoPostResponseCaptures, kv => kv.Key == "jwt-token" && kv.Value == "res.body.token");
+        Assert.Contains(request.BrunoPostResponseCaptures, kv => kv.Key == "user-id" && kv.Value == "res.body.userId");
+    }
+
+    [Fact]
+    public async Task LoadRequestAsync_WithNoPostResponseBlock_EmptyCaptures()
+    {
+        WriteFile("req.bru", BruFile("req", "get", "https://example.com", seq: 1));
+
+        var request = await _sut.LoadRequestAsync(Path.Combine(_root, "req.bru"));
+
+        Assert.Empty(request.BrunoPostResponseCaptures);
+    }
+
+    [Fact]
+    public void ToResponseBodyVariable_BodyExpression_ReturnsResponseBodyVariable()
+    {
+        var request = new CollectionRequest
+        {
+            FilePath = "/tmp/login.bru",
+            Name = "login",
+            Method = HttpMethod.Post,
+            Url = "https://api.example.com/auth/login",
+        };
+
+        var variable = request.ToResponseBodyVariable("jwt-token", "res.body.token");
+
+        Assert.NotNull(variable);
+        Assert.Equal("jwt-token", variable!.Name);
+        Assert.Equal(EnvironmentVariable.VariableTypes.ResponseBody, variable.VariableType);
+        Assert.Equal("login", variable.ResponseRequestName);
+        Assert.Equal("$.token", variable.ResponsePath);
+    }
+
+    [Fact]
+    public void ToResponseBodyVariable_NestedBodyExpression_ReturnsCorrectJsonPath()
+    {
+        var request = new CollectionRequest
+        {
+            FilePath = "/tmp/req.bru",
+            Name = "get data",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com/data",
+        };
+
+        var variable = request.ToResponseBodyVariable("item-id", "res.body.data.items.id");
+
+        Assert.NotNull(variable);
+        Assert.Equal("$.data.items.id", variable!.ResponsePath);
+    }
+
+    [Fact]
+    public void ToResponseBodyVariable_NonBodyExpression_ReturnsNull()
+    {
+        var request = new CollectionRequest
+        {
+            FilePath = "/tmp/req.bru",
+            Name = "get data",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com/data",
+        };
+
+        // res.headers.X is not a body path — cannot be mapped to response-body variable
+        var variable = request.ToResponseBodyVariable("auth-header", "res.headers.Authorization");
+
+        Assert.Null(variable);
+    }
+
+    [Fact]
+    public async Task SaveRequestAsync_PreservesVarsPostResponseBlock()
+    {
+        // vars:post-response is not an "owned" block — it must survive saves unchanged.
+        var original = """
+            meta {
+              name: login
+              type: http
+              seq: 1
+            }
+
+            post {
+              url: https://api.example.com/auth/login
+              body: json
+              auth: none
+            }
+
+            body:json {
+              {"username": "user"}
+            }
+
+            vars:post-response {
+              jwt-token: res.body.token
+            }
+            """;
+        WriteFile("login.bru", original);
+        var filePath = Path.Combine(_root, "login.bru");
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+        await _sut.SaveRequestAsync(loaded);
+
+        var written = await File.ReadAllTextAsync(filePath);
+        Assert.Contains("vars:post-response {", written);
+        Assert.Contains("  jwt-token: res.body.token", written);
     }
 }

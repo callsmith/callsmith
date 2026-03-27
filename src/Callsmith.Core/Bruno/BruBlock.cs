@@ -18,6 +18,15 @@ internal sealed class BruBlock
     /// <summary><c>true</c> when the block holds raw text rather than key-value pairs.</summary>
     public bool IsRaw => IsRawBlockName(Name);
 
+    /// <summary>
+    /// <c>true</c> when the block was preceded by a blank line in the source file, or when the
+    /// block is newly created (default). Set to <c>false</c> only by <see cref="BruParser"/> when
+    /// a block immediately follows another with no blank line between them.
+    /// Preserved by <see cref="BruWriter"/> so that round-trip saves do not introduce or
+    /// remove blank lines between blocks.
+    /// </summary>
+    public bool HasPrecedingBlankLine { get; set; } = true;
+
     public BruBlock(string name) => Name = name;
 
     /// <summary>

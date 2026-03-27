@@ -343,12 +343,16 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
 
     private static string BuildEnvContent(EnvironmentModel environment, BruDocument? existing)
     {
-        var blocks = new List<BruBlock>();
-
         var regularVars = environment.Variables.Where(v => !v.IsSecret).ToList();
         var secretVars = environment.Variables.Where(v => v.IsSecret).ToList();
 
-        // vars block (non-secret)
+        // Block-targeted update: start from existing blocks to preserve the original
+        // ordering and separator whitespace (prevents adding blank lines on no-op saves).
+        var blocks = existing is not null
+            ? new List<BruBlock>(existing.Blocks)
+            : new List<BruBlock>();
+
+        // vars block (non-secret) — update in-place or insert when not present
         var disabledVars = GetDisabledItems(existing, "vars");
         if (regularVars.Count > 0 || disabledVars.Count > 0)
         {
@@ -357,7 +361,12 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
                 varsBlock.Items.Add(new BruKv(v.Name, v.Value));
             foreach (var kv in disabledVars)
                 varsBlock.Items.Add(kv);
-            blocks.Add(varsBlock);
+            SetOrInsertAt(blocks, "vars", varsBlock, 0);
+        }
+        else
+        {
+            // Remove the vars block if there are no regular vars (not even disabled).
+            RemoveEnvBlock(blocks, "vars");
         }
 
         // vars:secret block — Bruno stores only secret variable names in the file; actual
@@ -370,16 +379,52 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
                 secretBlock.Items.Add(new BruKv(v.Name, string.Empty));
             foreach (var kv in disabledSecretVars)
                 secretBlock.Items.Add(new BruKv(kv.Key, string.Empty, kv.IsEnabled));
-            blocks.Add(secretBlock);
+            SetOrInsertAfterEnv(blocks, "vars:secret", secretBlock, "vars");
+        }
+        else
+        {
+            RemoveEnvBlock(blocks, "vars:secret");
         }
 
         // If there are no variables at all, emit an empty vars block so the file is valid.
         if (blocks.Count == 0)
-        {
             blocks.Add(new BruBlock("vars"));
-        }
 
         return BruWriter.Write(blocks);
+    }
+
+    private static void SetOrInsertAt(List<BruBlock> blocks, string name, BruBlock block, int fallbackIndex)
+    {
+        var idx = blocks.FindIndex(b => string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (idx >= 0)
+        {
+            block.HasPrecedingBlankLine = blocks[idx].HasPrecedingBlankLine;
+            blocks[idx] = block;
+        }
+        else
+        {
+            blocks.Insert(Math.Min(fallbackIndex, blocks.Count), block);
+        }
+    }
+
+    private static void SetOrInsertAfterEnv(List<BruBlock> blocks, string name, BruBlock block, string afterName)
+    {
+        var idx = blocks.FindIndex(b => string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (idx >= 0)
+        {
+            block.HasPrecedingBlankLine = blocks[idx].HasPrecedingBlankLine;
+            blocks[idx] = block;
+            return;
+        }
+        var afterIdx = blocks.FindIndex(b => string.Equals(b.Name, afterName, StringComparison.OrdinalIgnoreCase));
+        block.HasPrecedingBlankLine = true;
+        blocks.Insert(afterIdx >= 0 ? afterIdx + 1 : blocks.Count, block);
+    }
+
+    private static void RemoveEnvBlock(List<BruBlock> blocks, string name)
+    {
+        var idx = blocks.FindIndex(b => string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (idx >= 0) blocks.RemoveAt(idx);
     }
 
     private static IReadOnlyList<BruKv> GetDisabledItems(BruDocument? doc, string blockName) =>
