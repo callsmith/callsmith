@@ -426,6 +426,29 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Returns a snapshot of the resolved global preview variables stored on this environment.
+    /// Used by <see cref="EnvironmentEditorViewModel"/> to populate the "OVERRIDDEN BY" conflict
+    /// row on concrete-env variables when a force-override global var wins.
+    /// </summary>
+    internal IReadOnlyDictionary<string, string> GetResolvedGlobalPreviewVars() => _globalPreviewVars;
+
+    /// <summary>
+    /// Updates the conflict label/value for each variable row based on a pre-built conflict map.
+    /// Variables not present in <paramref name="conflicts"/> have their conflict info cleared.
+    /// </summary>
+    internal void SetConflictValues(IReadOnlyDictionary<string, (string label, string value)> conflicts)
+    {
+        foreach (var v in Variables)
+        {
+            var key = v.Name.Trim();
+            if (!string.IsNullOrWhiteSpace(key) && conflicts.TryGetValue(key, out var info))
+                v.SetConflictInfo(info.label, info.value);
+            else
+                v.SetConflictInfo(null, null);
+        }
+    }
+
+    /// <summary>
     /// Stores pre-evaluated dynamic variable values so that static variable previews
     /// can fully resolve <c>{{token}}</c>-style references to response-body or mock-data vars,
     /// and so dynamic variables (mock-data / response-body) can display their resolved preview values.

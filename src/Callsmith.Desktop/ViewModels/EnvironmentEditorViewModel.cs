@@ -708,6 +708,11 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         if (ReferenceEquals(changed, SelectedEnvironment)
             || (!SelectedEnvironment.IsGlobal && changed.IsGlobal))
             RefreshSelectedEnvironmentSuggestions();
+
+        // Re-push conflict info whenever the selected env's own vars change OR when global
+        // vars change (e.g. user toggles the override checkbox) regardless of which env is selected.
+        if (ReferenceEquals(changed, SelectedEnvironment) || changed.IsGlobal)
+            PushConflictInfo(SelectedEnvironment);
     }
 
     /// <summary>
@@ -738,6 +743,9 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         // ── Global env path ──────────────────────────────────────────────────
         if (env.IsGlobal)
         {
+            // Always push conflict info (even when there are no dynamics to resolve).
+            PushConflictInfo(env);
+
             if (!hasDynamic) return;
 
             var globalStaticVars = model.Variables
@@ -896,6 +904,10 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             // Push global context: {{base-url}}, {{token}}, {{faker-*}}, etc. now resolve
             // in the preview column regardless of whether this env has its own dynamic vars.
             env.SetGlobalPreviewValues(globalContextVars, globalMockGenerators);
+
+            // Push conflict info using the fully-resolved global context vars so that
+            // "OVERRIDDEN BY" on concrete vars shows the global env's resolved value.
+            PushConflictInfoForConcreteEnv(env, globalContextVars);
         }
 
         if (!hasDynamic) return; // No dynamic vars in this env — global context above is sufficient.
@@ -931,6 +943,84 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             _logger.LogDebug(ex,
                 "Could not refresh dynamic variable previews for environment '{Name}'", env.Name);
         }
+    }
+
+    /// <summary>
+    /// Pushes conflict info (OVERRIDES / OVERRIDDEN BY) to each variable row in <paramref name="env"/>.
+    /// </summary>
+    private void PushConflictInfo(EnvironmentListItemViewModel env)
+    {
+        if (env.IsGlobal)
+        {
+            // For global env: compare each var against the "preview against" concrete env.
+            var previewEnv = SelectedGlobalPreviewEnvironment ?? Environments.FirstOrDefault(e => !e.IsGlobal);
+            if (previewEnv is null)
+            {
+                env.SetConflictValues(new Dictionary<string, (string, string)>());
+                return;
+            }
+
+            var concreteVars = previewEnv.BuildModel().Variables
+                .Where(v => !string.IsNullOrWhiteSpace(v.Name))
+                .ToDictionary(v => v.Name.Trim(), v => v.Value, StringComparer.Ordinal);
+
+            var conflicts = new Dictionary<string, (string label, string value)>(StringComparer.Ordinal);
+            foreach (var v in env.BuildModel().Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
+            {
+                var key = v.Name.Trim();
+                if (concreteVars.TryGetValue(key, out var concreteValue))
+                {
+                    var label = v.IsForceGlobalOverride ? "OVERRIDES" : "OVERRIDDEN BY";
+                    conflicts[key] = (label, concreteValue);
+                }
+            }
+
+            env.SetConflictValues(conflicts);
+        }
+        else
+        {
+            // For concrete env: use the pre-resolved global preview vars (already cached on the env).
+            PushConflictInfoForConcreteEnv(env, env.GetResolvedGlobalPreviewVars());
+        }
+    }
+
+    /// <summary>
+    /// Pushes "OVERRIDDEN BY" conflict info to a concrete env's variable rows, using
+    /// <paramref name="resolvedGlobalVars"/> as the source of the global env's resolved values.
+    /// Only variables that have a matching force-override global var receive conflict info.
+    /// </summary>
+    private void PushConflictInfoForConcreteEnv(
+        EnvironmentListItemViewModel env,
+        IReadOnlyDictionary<string, string> resolvedGlobalVars)
+    {
+        var globalItem = Environments.FirstOrDefault(e => e.IsGlobal);
+        if (globalItem is null)
+        {
+            env.SetConflictValues(new Dictionary<string, (string, string)>());
+            return;
+        }
+
+        // Collect only force-override global var names.
+        var forceOverrideNames = globalItem.BuildModel().Variables
+            .Where(v => v.IsForceGlobalOverride && !string.IsNullOrWhiteSpace(v.Name))
+            .Select(v => v.Name.Trim())
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (forceOverrideNames.Count == 0)
+        {
+            env.SetConflictValues(new Dictionary<string, (string, string)>());
+            return;
+        }
+
+        var conflicts = new Dictionary<string, (string label, string value)>(StringComparer.Ordinal);
+        foreach (var v in env.BuildModel().Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
+        {
+            var key = v.Name.Trim();
+            if (forceOverrideNames.Contains(key) && resolvedGlobalVars.TryGetValue(key, out var globalValue))
+                conflicts[key] = ("OVERRIDDEN BY", globalValue);
+        }
+
+        env.SetConflictValues(conflicts);
     }
 
     /// <summary>

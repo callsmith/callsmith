@@ -50,6 +50,24 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     private bool _isForceGlobalOverride;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasConflict))]
+    private string? _conflictLabel;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasConflict))]
+    private string? _conflictValue;
+
+    /// <summary>True when this variable has a conflict with the preview environment that should be shown.</summary>
+    public bool HasConflict => ConflictLabel is not null && ConflictValue is not null;
+
+    /// <summary>Updates the conflict label and value shown in the override/overridden-by preview row.</summary>
+    internal void SetConflictInfo(string? label, string? value)
+    {
+        ConflictLabel = label;
+        ConflictValue = value;
+    }
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsStatic))]
     [NotifyPropertyChangedFor(nameof(IsMockData))]
     [NotifyPropertyChangedFor(nameof(IsResponseBody))]

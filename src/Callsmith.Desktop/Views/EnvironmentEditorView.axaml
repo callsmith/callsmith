@@ -428,9 +428,7 @@
                            FontSize="12">
                   Global variables are always active for this collection, regardless of which
                   environment is selected. They are scoped to this collection folder and can be
-                  checked in to source control. By default, a collection environment variable
-                  with the same name takes priority — enable the OVERRIDE checkbox on any global
-                  variable to force that global value to win instead.
+                  checked in to source control.
                 </TextBlock>
                 <!-- Preview env selector — makes all global dynamic var previews use one consistent context -->
                 <StackPanel Orientation="Horizontal"
@@ -460,8 +458,8 @@
               </StackPanel>
             </Border>
 
-            <!-- Column headers: Drag(24) | Name(320) | Value(*) | Override(44) | Type(140) | Delete(28) -->
-            <Grid ColumnDefinitions="24,320,*,44,140,28"
+            <!-- Column headers: Drag(24) | Name(320) | Value(*) | Override(72) | Type(140) | Delete(28) -->
+            <Grid ColumnDefinitions="24,320,*,72,140,28"
                   Margin="0,0,0,4">
               <TextBlock Grid.Column="1"
                          Text="NAME"
@@ -498,9 +496,9 @@
                           ItemsSource="{Binding SelectedEnvironment.Variables}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:EnvironmentVariableItemViewModel">
-                  <!-- Columns: Drag(24) | Name(320) | Value(*) | Override(44) | Type(140) | Delete(28) -->
-                  <Grid ColumnDefinitions="24,320,*,44,140,28"
-                        RowDefinitions="Auto,Auto"
+                  <!-- Columns: Drag(24) | Name(320) | Value(*) | Override(72) | Type(140) | Delete(28) -->
+                  <Grid ColumnDefinitions="24,320,*,72,140,28"
+                        RowDefinitions="Auto,Auto,Auto"
                         Margin="0,2">
 
                     <!-- Drag handle -->
@@ -707,6 +705,32 @@
                                    Margin="8,0,8,0"/>
                         <TextBlock Grid.Column="1"
                                    Text="{Binding PreviewValue}"
+                                   Foreground="#888"
+                                   FontSize="12"
+                                   FontFamily="Consolas,Menlo,monospace"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"/>
+                      </Grid>
+                    </Border>
+
+                    <!-- Conflict row — OVERRIDES or OVERRIDDEN BY -->
+                        <Border Grid.Row="2" Grid.Column="2"
+                            IsVisible="{Binding HasConflict}"
+                            Background="#1e1e1e"
+                            BorderBrush="#3a3a3a"
+                            BorderThickness="0,1,0,0"
+                            Padding="0,3"
+                            Margin="0,0,0,4">
+                      <Grid ColumnDefinitions="Auto,*">
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding ConflictLabel}"
+                                   Foreground="#5a5a5a"
+                                   FontSize="10"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Margin="8,0,8,0"/>
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding ConflictValue}"
                                    Foreground="#888"
                                    FontSize="12"
                                    FontFamily="Consolas,Menlo,monospace"
