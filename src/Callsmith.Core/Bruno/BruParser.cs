@@ -31,7 +31,7 @@ internal static class BruParser
     /// <summary>Parses <paramref name="text"/> and returns the resulting document.</summary>
     public static BruDocument Parse(string text)
     {
-        var doc = new BruDocument();
+        var doc = new BruDocument { LineEnding = DetectLineEnding(text) };
         using var reader = new StringReader(text);
 
         string? line;
@@ -171,5 +171,14 @@ internal static class BruParser
         colon = kvText.IndexOf(':');
         if (colon >= 0)
             block.Items.Add(new BruKv(kvText[..colon].Trim(), string.Empty, isEnabled));
+    }
+
+    /// <summary>
+    /// Returns <c>"\r\n"</c> if <paramref name="text"/> contains a CRLF sequence, otherwise <c>"\n"</c>.
+    /// </summary>
+    private static string DetectLineEnding(string text)
+    {
+        var idx = text.IndexOf('\n');
+        return idx > 0 && text[idx - 1] == '\r' ? "\r\n" : "\n";
     }
 }

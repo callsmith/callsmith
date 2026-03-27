@@ -179,7 +179,7 @@ public sealed class BrunoCollectionService : ICollectionService
         var existingText = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
         var doc = BruParser.Parse(existingText);
         SetMetaName(doc, newName);
-        var newContent = BruWriter.Write(doc.Blocks);
+        var newContent = BruWriter.Write(doc.Blocks, doc.LineEnding);
         await File.WriteAllTextAsync(newFilePath, newContent, ct).ConfigureAwait(false);
 
         if (!string.Equals(filePath, newFilePath, StringComparison.OrdinalIgnoreCase))
@@ -298,7 +298,7 @@ public sealed class BrunoCollectionService : ICollectionService
                 var text = await File.ReadAllTextAsync(folderBruPath, ct).ConfigureAwait(false);
                 var doc = BruParser.Parse(text);
                 SetMetaName(doc, newName);
-                await File.WriteAllTextAsync(folderBruPath, BruWriter.Write(doc.Blocks), ct).ConfigureAwait(false);
+                await File.WriteAllTextAsync(folderBruPath, BruWriter.Write(doc.Blocks, doc.LineEnding), ct).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -795,14 +795,9 @@ public sealed class BrunoCollectionService : ICollectionService
             RemoveBlock(blocks, "params:path");
         }
 
-        return BruWriter.Write(blocks);
+        return BruWriter.Write(blocks, existing?.LineEnding ?? "\n");
     }
 
-    /// <summary>
-    /// Finds an existing block with <paramref name="name"/> and replaces it (preserving
-    /// <see cref="BruBlock.HasPrecedingBlankLine"/> from the original), or inserts
-    /// <paramref name="block"/> at <paramref name="fallbackIndex"/> when not found.
-    /// </summary>
     private static void SetOrInsertAt(List<BruBlock> blocks, string name, BruBlock block, int fallbackIndex)
     {
         var idx = IndexOf(blocks, name);
@@ -1058,7 +1053,7 @@ public sealed class BrunoCollectionService : ICollectionService
         else
             meta.Items.Add(seqKv);
 
-        await File.WriteAllTextAsync(filePath, BruWriter.Write(doc.Blocks), ct).ConfigureAwait(false);
+        await File.WriteAllTextAsync(filePath, BruWriter.Write(doc.Blocks, doc.LineEnding), ct).ConfigureAwait(false);
     }
 
     private static void SetMetaName(BruDocument doc, string name)

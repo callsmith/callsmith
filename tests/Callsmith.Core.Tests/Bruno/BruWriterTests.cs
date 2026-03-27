@@ -113,4 +113,64 @@ public sealed class BruWriterTests
         reparsed.GetValue("auth:bearer", "token").Should().Be("{{access-token}}");
         reparsed.Find("script:pre-request")!.RawContent.Should().Contain("setGlobalEnvVar");
     }
+
+    [Fact]
+    public void Write_CrlfNewLine_ProducesCrlfLineEndings()
+    {
+        var meta = new BruBlock("meta");
+        meta.Items.Add(new BruKv("name", "test"));
+        meta.Items.Add(new BruKv("type", "http"));
+
+        var output = BruWriter.Write([meta], "\r\n");
+
+        // Every line (including block header and closing brace) must end with CRLF.
+        output.Should().Contain("meta {\r\n");
+        output.Should().Contain("  name: test\r\n");
+        output.Should().Contain("  type: http\r\n");
+        output.Should().Contain("}\r\n");
+        // Should contain no bare LF (every \n must be preceded by \r).
+        output.Should().NotMatchRegex(@"(?<!\r)\n");
+    }
+
+    [Fact]
+    public void RoundTrip_CrlfInput_PreservesCrlfLineEndings()
+    {
+        // Simulate a .bru file that was originally written with CRLF line endings.
+        var crlfOriginal =
+            "meta {\r\n" +
+            "  name: my request\r\n" +
+            "  type: http\r\n" +
+            "  seq: 1\r\n" +
+            "}\r\n" +
+            "\r\n" +
+            "get {\r\n" +
+            "  url: https://example.com\r\n" +
+            "  body: none\r\n" +
+            "  auth: none\r\n" +
+            "}\r\n";
+
+        var doc = BruParser.Parse(crlfOriginal);
+        var written = BruWriter.Write(doc.Blocks, doc.LineEnding);
+
+        // Round-tripped content must not contain bare LF.
+        written.Should().NotMatchRegex(@"(?<!\r)\n");
+        // And structural content must be correct.
+        written.Should().Contain("meta {\r\n");
+        written.Should().Contain("  name: my request\r\n");
+    }
+
+    [Fact]
+    public void RoundTrip_CrlfRawBlock_PreservesCrlfLineEndings()
+    {
+        var crlfOriginal =
+            "body:json {\r\n" +
+            "  {\"key\": \"value\"}\r\n" +
+            "}\r\n";
+
+        var doc = BruParser.Parse(crlfOriginal);
+        var written = BruWriter.Write(doc.Blocks, doc.LineEnding);
+
+        written.Should().NotMatchRegex(@"(?<!\r)\n");
+        written.Should().Contain("body:json {\r\n");
+    }
 }
