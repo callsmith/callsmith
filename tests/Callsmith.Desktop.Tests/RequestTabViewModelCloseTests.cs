@@ -99,15 +99,15 @@ public sealed class RequestTabViewModelCloseTests
 
         sut.ShowSaveAsPanel.Should().BeTrue();
         sut.PendingClose.Should().BeFalse();
-    closeTracker.Count.Should().Be(0);
+        closeTracker.Count.Should().Be(0);
 
         await sut.CommitSaveAsCommand.ExecuteAsync(null);
 
         sut.ShowSaveAsPanel.Should().BeFalse();
         sut.IsNew.Should().BeFalse();
-    closeTracker.Count.Should().Be(1);
+        closeTracker.Count.Should().Be(1);
         savedRequest.Should().NotBeNull();
-        savedRequest!.FilePath.Should().Be(@"c:\tmp\callsmith-tests\Created Request.callsmith");
+        savedRequest!.FilePath.Should().Be(Path.Combine(sut.CollectionRootPath, "Created Request.callsmith"));
         savedRequest.Method.Should().Be(HttpMethod.Post);
         savedRequest.Url.Should().Be("https://api.example.com/users");
     }
