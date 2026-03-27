@@ -32,7 +32,8 @@ public sealed class MainWindowViewModelTests
 
         var requestEditor = new RequestEditorViewModel(
             transportRegistry, collectionService, preferencesService, dynamicEvaluator,
-            messenger, NullLogger<RequestEditorViewModel>.Instance, historyService);
+            messenger, NullLogger<RequestEditorViewModel>.Instance,
+            historyService: historyService);
 
         var environment = new EnvironmentViewModel(
             environmentService, preferencesService, messenger,
