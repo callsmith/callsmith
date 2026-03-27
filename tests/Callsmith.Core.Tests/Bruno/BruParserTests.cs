@@ -352,4 +352,34 @@ public sealed class BruParserTests
         secretBlock.Should().NotBeNull();
         secretBlock!.Items.Should().HaveCount(2);
     }
+
+    [Fact]
+    public void Parse_LfInput_DetectsLfLineEnding()
+    {
+        const string bru = "meta {\n  name: test\n}\n";
+
+        var doc = BruParser.Parse(bru);
+
+        doc.LineEnding.Should().Be("\n");
+    }
+
+    [Fact]
+    public void Parse_CrlfInput_DetectsCrlfLineEnding()
+    {
+        const string bru = "meta {\r\n  name: test\r\n}\r\n";
+
+        var doc = BruParser.Parse(bru);
+
+        doc.LineEnding.Should().Be("\r\n");
+    }
+
+    [Fact]
+    public void Parse_NoNewlines_DefaultsToLf()
+    {
+        const string bru = "meta {";
+
+        var doc = BruParser.Parse(bru);
+
+        doc.LineEnding.Should().Be("\n");
+    }
 }

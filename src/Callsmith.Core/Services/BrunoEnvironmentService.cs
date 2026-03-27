@@ -390,7 +390,7 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
         if (blocks.Count == 0)
             blocks.Add(new BruBlock("vars"));
 
-        return BruWriter.Write(blocks);
+        return BruWriter.Write(blocks, existing?.LineEnding ?? "\n");
     }
 
     private static void SetOrInsertAt(List<BruBlock> blocks, string name, BruBlock block, int fallbackIndex)
