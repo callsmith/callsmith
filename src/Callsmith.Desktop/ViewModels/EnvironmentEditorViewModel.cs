@@ -889,10 +889,24 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                     }
                 }
 
-                // Snapshot the pure global-resolved values BEFORE re-applying the active env's
-                // own statics. This is used for conflict info display so that "OVERRIDDEN BY"
-                // shows the global var's own value, not the concrete env's value.
-                pureGlobalContextVars = new Dictionary<string, string>(globalContextVars, StringComparer.Ordinal);
+                // Build pureGlobalContextVars with ONLY the global env's OWN variable values —
+                // not the concrete-env statics that were seeded into phase1Context for token
+                // expansion and then echoed back by ResolveAsync (which prefills resolvedVars
+                // from staticVariables). Using globalContextVars directly would give the
+                // concrete env's value for any shared name (e.g. "api-version → 2.1" instead
+                // of "api-version → 3.0"), producing a wrong "OVERRIDDEN BY" label.
+                pureGlobalContextVars = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var gv in globalModel.Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
+                {
+                    var gvKey = gv.Name.Trim();
+                    if (gv.VariableType == EnvironmentVariable.VariableTypes.Static)
+                        // Always use the model value; context may have overridden it.
+                        pureGlobalContextVars[gvKey] = gv.Value;
+                    else if (globalContextVars.TryGetValue(gvKey, out var resolvedVal))
+                        // Response-body / legacy-dynamic vars: use the resolved value from the
+                        // candidate pass if it was written back into globalContextVars.
+                        pureGlobalContextVars[gvKey] = resolvedVal;
+                }
 
                 // Re-apply active env's own statics at the end to maintain override precedence.
                 foreach (var kv in activeStaticVars)
@@ -914,8 +928,14 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 if (mockGens.Count > 0)
                     globalMockGenerators = mockGens;
 
-                // No activeStaticVars overlay in this branch — globalContextVars is already pure.
-                pureGlobalContextVars = globalContextVars;
+                // No activeStaticVars overlay in this branch — but still build pureGlobalContextVars
+                // explicitly from the global model's static values rather than reusing the
+                // globalContextVars reference, so that any future modification cannot contaminate it.
+                pureGlobalContextVars = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var gv in globalModel.Variables
+                    .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.Static
+                             && !string.IsNullOrWhiteSpace(v.Name)))
+                    pureGlobalContextVars[gv.Name.Trim()] = gv.Value;
             }
 
             // Push global context: {{base-url}}, {{token}}, {{faker-*}}, etc. now resolve
