@@ -30,7 +30,7 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
     public IReadOnlyList<MatcherOption> MatcherOptions { get; } =
     [
         new(ResponseValueMatcher.JsonPath, "JSONPath"),
-        new(ResponseValueMatcher.XPath, "XPath"),
+        new(ResponseValueMatcher.XPath, "XPath (HTML compatible)"),
         new(ResponseValueMatcher.Regex, "Regex"),
     ];
 

@@ -49,6 +49,32 @@ public sealed class ResponseBodyValueExtractorTests
     }
 
     [Fact]
+    public void Extract_XPath_FromHtml_ReturnsExpectedValue()
+    {
+        var html = """
+                   <!DOCTYPE html>
+                   <html lang="en">
+                     <head>
+                       <title>Example Domain</title>
+                       <meta name="viewport" content="width=device-width, initial-scale=1">
+                     </head>
+                     <body>
+                       <div>
+                         <h1>Example Domain</h1>
+                       </div>
+                     </body>
+                   </html>
+                   """;
+
+        var result = ResponseBodyValueExtractor.Extract(
+            html,
+            ResponseValueMatcher.XPath,
+            "//html[1]/head/title/text()");
+
+        result.Should().Be("Example Domain");
+    }
+
+    [Fact]
     public void Extract_Regex_ReturnsFirstMatch()
     {
         var text = "Sir, I send a rhyme excelling, in sacred truth and rigid spelling";
