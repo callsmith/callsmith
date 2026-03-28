@@ -130,4 +130,85 @@ public sealed class RequestEditorViewModelCloseWithoutSavingTests
         sut.Tabs.Should().HaveCount(1);
         sut.Tabs.Should().NotContain(dirtyTab);
     }
+
+    [Fact]
+    public void CloseAllTabs_PromptsDirtyTabsOneByOne_AndSwitchesToEachDirtyTab()
+    {
+        var (sut, _) = BuildSut();
+        sut.NewTab();
+        sut.NewTab();
+        sut.NewTab();
+
+        var firstDirty = sut.Tabs[0];
+        firstDirty.RequestName = "First";
+        firstDirty.IsNew = false;
+        firstDirty.HasUnsavedChanges = true;
+
+        var clean = sut.Tabs[1];
+        clean.RequestName = "Clean";
+        clean.IsNew = false;
+        clean.HasUnsavedChanges = false;
+
+        var secondDirty = sut.Tabs[2];
+        secondDirty.RequestName = "Second";
+        secondDirty.IsNew = false;
+        secondDirty.HasUnsavedChanges = true;
+
+        sut.CloseAllTabs();
+
+        sut.ShowCloseWithoutSavingDialog.Should().BeTrue();
+        sut.ActiveTab.Should().Be(firstDirty);
+        sut.CloseWithoutSavingRequestName.Should().Be("First");
+
+        sut.ConfirmCloseWithoutSavingCommand.Execute(null);
+
+        sut.ShowCloseWithoutSavingDialog.Should().BeTrue();
+        sut.ActiveTab.Should().Be(secondDirty);
+        sut.CloseWithoutSavingRequestName.Should().Be("Second");
+        sut.Tabs.Should().ContainSingle().Which.Should().Be(secondDirty);
+    }
+
+    [Fact]
+    public void CloseOtherTabs_PromptsDirtyTabsOneByOne_ThenReturnsFocusToKeepTab()
+    {
+        var (sut, _) = BuildSut();
+        sut.NewTab();
+        sut.NewTab();
+        sut.NewTab();
+
+        var leftDirty = sut.Tabs[0];
+        leftDirty.RequestName = "Left";
+        leftDirty.IsNew = false;
+        leftDirty.HasUnsavedChanges = true;
+
+        var keep = sut.Tabs[1];
+        keep.RequestName = "Keep";
+        keep.IsNew = false;
+        keep.HasUnsavedChanges = false;
+
+        var rightDirty = sut.Tabs[2];
+        rightDirty.RequestName = "Right";
+        rightDirty.IsNew = false;
+        rightDirty.HasUnsavedChanges = true;
+
+        sut.ActiveTab = keep;
+
+        sut.CloseOtherTabs(keep);
+
+        sut.ShowCloseWithoutSavingDialog.Should().BeTrue();
+        sut.ActiveTab.Should().Be(leftDirty);
+        sut.CloseWithoutSavingRequestName.Should().Be("Left");
+
+        sut.ConfirmCloseWithoutSavingCommand.Execute(null);
+
+        sut.ShowCloseWithoutSavingDialog.Should().BeTrue();
+        sut.ActiveTab.Should().Be(rightDirty);
+        sut.CloseWithoutSavingRequestName.Should().Be("Right");
+
+        sut.ConfirmCloseWithoutSavingCommand.Execute(null);
+
+        sut.ShowCloseWithoutSavingDialog.Should().BeFalse();
+        sut.Tabs.Should().ContainSingle().Which.Should().Be(keep);
+        sut.ActiveTab.Should().Be(keep);
+    }
 }

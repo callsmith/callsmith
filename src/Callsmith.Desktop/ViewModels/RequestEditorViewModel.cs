@@ -70,6 +70,9 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private string _closeWithoutSavingRequestName = string.Empty;
 
     private RequestTabViewModel? _pendingCloseTab;
+    private readonly Queue<RequestTabViewModel> _pendingBulkCloseTabs = new();
+    private RequestTabViewModel? _bulkClosePreferredActiveTab;
+    private bool _bulkCloseInProgress;
 
     private IReadOnlyList<string> _availableRequestNames = [];
 
@@ -144,6 +147,10 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         _pendingCloseTab = null;
         ShowCloseWithoutSavingDialog = false;
         CloseWithoutSavingRequestName = string.Empty;
+
+        // Canceling any prompt during bulk close aborts remaining close operations.
+        if (_bulkCloseInProgress)
+            EndBulkClose(aborted: true);
     }
 
     [RelayCommand]
@@ -155,10 +162,17 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         CloseWithoutSavingRequestName = string.Empty;
 
         if (tab is null || !Tabs.Contains(tab))
+        {
+            if (_bulkCloseInProgress)
+                ProcessNextBulkClose();
             return;
+        }
 
         if (tab.DiscardAndCloseCommand.CanExecute(null))
             tab.DiscardAndCloseCommand.Execute(null);
+
+        if (_bulkCloseInProgress)
+            ProcessNextBulkClose();
     }
 
     [RelayCommand]
@@ -170,23 +184,34 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         CloseWithoutSavingRequestName = string.Empty;
 
         if (tab is null || !Tabs.Contains(tab))
+        {
+            if (_bulkCloseInProgress)
+                ProcessNextBulkClose();
             return;
+        }
 
         // Save As is tab-local UI for new tabs, so ensure it is visible when chosen.
         if (tab.IsNew && ActiveTab != tab)
             ActiveTab = tab;
 
         if (tab.SaveAndCloseCommand.CanExecute(null))
-            await tab.SaveAndCloseCommand.ExecuteAsync(null);
+            await tab.SaveAndCloseCommand.ExecuteAsync(ct);
+
+        if (_bulkCloseInProgress)
+        {
+            // Continue only when this tab actually closed; otherwise stop the batch.
+            if (!Tabs.Contains(tab))
+                ProcessNextBulkClose();
+            else
+                EndBulkClose(aborted: true);
+        }
     }
 
     /// <summary>Closes all tabs except the specified one.</summary>
     public void CloseOtherTabs(RequestTabViewModel keep)
     {
         var toClose = Tabs.Where(t => t != keep).ToList();
-        foreach (var tab in toClose)
-            RemoveTab(tab);
-        ActiveTab = keep;
+        StartBulkClose(toClose, keep);
     }
 
     /// <summary>Closes all tabs to the right of the specified tab (higher indices).</summary>
@@ -195,8 +220,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         var idx = Tabs.IndexOf(pivot);
         if (idx < 0) return;
         var toClose = Tabs.Skip(idx + 1).ToList();
-        foreach (var tab in toClose)
-            RemoveTab(tab);
+        StartBulkClose(toClose, pivot);
     }
 
     /// <summary>Closes all tabs whose requests have been saved to disk (non-new, non-dirty).</summary>
@@ -211,8 +235,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     public void CloseAllTabs()
     {
         var toClose = Tabs.ToList();
-        foreach (var tab in toClose)
-            RemoveTab(tab);
+        StartBulkClose(toClose, preferredActiveTab: null);
     }
 
     /// <summary>Makes the specified tab active (called by clicking a tab chip).</summary>
@@ -408,6 +431,59 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         _pendingCloseTab = tab;
         CloseWithoutSavingRequestName = string.IsNullOrWhiteSpace(tab.TabTitle) ? "New Request" : tab.TabTitle;
         ShowCloseWithoutSavingDialog = true;
+    }
+
+    private void StartBulkClose(IEnumerable<RequestTabViewModel> tabsToClose, RequestTabViewModel? preferredActiveTab)
+    {
+        _pendingBulkCloseTabs.Clear();
+        foreach (var tab in tabsToClose)
+            _pendingBulkCloseTabs.Enqueue(tab);
+
+        _bulkClosePreferredActiveTab = preferredActiveTab;
+        _bulkCloseInProgress = true;
+
+        ProcessNextBulkClose();
+    }
+
+    private void ProcessNextBulkClose()
+    {
+        if (!_bulkCloseInProgress)
+            return;
+
+        while (_pendingBulkCloseTabs.Count > 0)
+        {
+            var tab = _pendingBulkCloseTabs.Dequeue();
+
+            if (!Tabs.Contains(tab))
+                continue;
+
+            if (tab.TabIsDirty)
+            {
+                // For bulk close actions, focus each dirty tab as it's being confirmed.
+                ActiveTab = tab;
+                ShowGlobalCloseWithoutSavingDialog(tab);
+                return;
+            }
+
+            RemoveTab(tab);
+        }
+
+        EndBulkClose(aborted: false);
+    }
+
+    private void EndBulkClose(bool aborted)
+    {
+        _bulkCloseInProgress = false;
+        _pendingBulkCloseTabs.Clear();
+
+        var preferred = _bulkClosePreferredActiveTab;
+        _bulkClosePreferredActiveTab = null;
+
+        if (aborted)
+            return;
+
+        if (preferred is not null && Tabs.Contains(preferred))
+            ActiveTab = preferred;
     }
 
     private async Task PersistLayoutAsync()
