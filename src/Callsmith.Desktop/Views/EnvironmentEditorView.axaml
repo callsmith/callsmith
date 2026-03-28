@@ -449,8 +449,8 @@
               </StackPanel>
             </Border>
 
-            <!-- Column headers: Drag(24) | Name(320) | Value(*) | Override(Auto=72/0) | Type(140) | Delete(28) -->
-            <Grid ColumnDefinitions="24,320,*,Auto,140,28"
+            <!-- Column headers: Drag(24) | Name(320) | Value(*) | Override(Auto=72/0) | Type(170) | Delete(28) -->
+            <Grid ColumnDefinitions="24,320,*,Auto,170,28"
                   Margin="0,0,0,4">
               <TextBlock Grid.Column="1"
                          Text="NAME"
@@ -488,8 +488,8 @@
                           ItemsSource="{Binding SelectedEnvironment.Variables}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:EnvironmentVariableItemViewModel">
-                  <!-- Columns: Drag(24) | Name(320) | Value(*) | Override(Auto=72/0) | Type(140) | Delete(28) -->
-                  <Grid ColumnDefinitions="24,320,*,Auto,140,28"
+                  <!-- Columns: Drag(24) | Name(320) | Value(*) | Override(Auto=72/0) | Type(170) | Delete(28) -->
+                  <Grid ColumnDefinitions="24,320,*,Auto,170,28"
                         RowDefinitions="Auto,Auto,Auto"
                         Margin="0,2">
 
@@ -648,13 +648,16 @@
                     </Grid>
 
                     <!-- Override checkbox — visible only for global environment variables -->
-                    <CheckBox Grid.Row="0" Grid.Column="3"
-                              IsChecked="{Binding IsForceGlobalOverride}"
-                              IsVisible="{Binding IsGlobal}"
-                              Width="72"
-                              HorizontalAlignment="Center"
-                              VerticalAlignment="Center"
-                              ToolTip.Tip="Force this global variable to take priority over a same-named concrete environment variable"/>
+                    <!-- Keep a fixed-width host so the checkbox can be visually centered,
+                      while the Auto column still collapses to width 0 on concrete rows. -->
+                    <Grid Grid.Row="0" Grid.Column="3"
+                       Width="72"
+                       IsVisible="{Binding IsGlobal}">
+                      <CheckBox IsChecked="{Binding IsForceGlobalOverride}"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          ToolTip.Tip="Force this global variable to take priority over a same-named concrete environment variable"/>
+                    </Grid>
 
                     <!-- Type dropdown -->
                     <ComboBox Grid.Row="0" Grid.Column="4"

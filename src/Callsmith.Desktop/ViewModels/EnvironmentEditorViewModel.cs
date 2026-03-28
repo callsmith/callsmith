@@ -46,6 +46,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     // Prevents changes driven by the load (e.g. restoring GlobalPreviewEnvironmentName)
     // from marking environments dirty before the user has touched anything.
     private bool _loadingEnvironments;
+    private const string MaskedSecretValue = "\u2022\u2022\u2022\u2022\u2022";
 
     // ─── Observable state ────────────────────────────────────────────────────
 
@@ -1030,19 +1031,19 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
             var concreteVars = previewEnv.BuildModel().Variables
                 .Where(v => !string.IsNullOrWhiteSpace(v.Name))
-                .ToDictionary(v => v.Name.Trim(), v => v.Value, StringComparer.Ordinal);
+                .ToDictionary(v => v.Name.Trim(), v => (v.Value, v.IsSecret), StringComparer.Ordinal);
 
             var conflicts = new Dictionary<string, (string label, string value, string toolTip)>(StringComparer.Ordinal);
             foreach (var v in env.BuildModel().Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
             {
                 var key = v.Name.Trim();
-                if (concreteVars.TryGetValue(key, out var concreteValue))
+                if (concreteVars.TryGetValue(key, out var concreteVar))
                 {
                     var label = v.IsForceGlobalOverride ? "OVERRIDES" : "OVERRIDDEN WITH";
                     var toolTip = v.IsForceGlobalOverride
                         ? "Will override this value when used in requests in the previewed environment."
                         : "Will be overridden with this value when used in requests in the previewed environment.";
-                    conflicts[key] = (label, concreteValue, toolTip);
+                    conflicts[key] = (label, concreteVar.IsSecret ? MaskedSecretValue : concreteVar.Value, toolTip);
                 }
             }
 
@@ -1077,6 +1078,10 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             .Select(v => v.Name.Trim())
             .ToHashSet(StringComparer.Ordinal);
 
+        var globalVarsByName = globalItem.BuildModel().Variables
+            .Where(v => !string.IsNullOrWhiteSpace(v.Name))
+            .ToDictionary(v => v.Name.Trim(), v => v, StringComparer.Ordinal);
+
         if (forceOverrideNames.Count == 0)
         {
             env.SetConflictValues(new Dictionary<string, (string, string, string)>());
@@ -1087,7 +1092,19 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         foreach (var v in env.BuildModel().Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
         {
             var key = v.Name.Trim();
-            if (forceOverrideNames.Contains(key) && resolvedGlobalVars.TryGetValue(key, out var globalValue))
+            if (!forceOverrideNames.Contains(key))
+                continue;
+
+            if (!globalVarsByName.TryGetValue(key, out var globalVar))
+                continue;
+
+            if (globalVar.IsSecret)
+            {
+                conflicts[key] = ("OVERRIDDEN WITH", MaskedSecretValue, "Overriden by a global variable with the same name that has 'Override' enabled.");
+                continue;
+            }
+
+            if (resolvedGlobalVars.TryGetValue(key, out var globalValue))
                 conflicts[key] = ("OVERRIDDEN WITH", globalValue, "Overriden by a global variable with the same name that has 'Override' enabled.");
         }
 
