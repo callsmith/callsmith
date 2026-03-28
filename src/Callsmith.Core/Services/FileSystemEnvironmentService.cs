@@ -415,6 +415,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
                 ResponsePath = v.ResponsePath,
                 ResponseFrequency = v.ResponseFrequency ?? DynamicFrequency.Always,
                 ResponseExpiresAfterSeconds = v.ResponseExpiresAfterSeconds,
+                IsForceGlobalOverride = v.IsForceGlobalOverride ?? false,
             })
             .Where(v => !string.IsNullOrWhiteSpace(v.Name))
             .ToList(),
@@ -443,6 +444,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
                 ResponsePath = v.ResponsePath,
                 ResponseFrequency = v.ResponseFrequency == DynamicFrequency.Always ? null : v.ResponseFrequency,
                 ResponseExpiresAfterSeconds = v.ResponseExpiresAfterSeconds,
+                IsForceGlobalOverride = v.IsForceGlobalOverride ? (bool?)true : null,
             })
             .ToList(),
     };
@@ -483,5 +485,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         public DynamicFrequency? ResponseFrequency { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public int? ResponseExpiresAfterSeconds { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? IsForceGlobalOverride { get; init; }
     }
 }

@@ -64,6 +64,12 @@ public sealed class BrunoCollectionMeta
         public string? ResponsePath { get; init; }
         public DynamicFrequency? ResponseFrequency { get; init; }
         public int? ResponseExpiresAfterSeconds { get; init; }
+
+        /// <summary>
+        /// When <see langword="true"/>, this global variable takes priority over a concrete
+        /// environment variable with the same name. Null is treated as <see langword="false"/>.
+        /// </summary>
+        public bool? IsForceGlobalOverride { get; init; }
     }
 
     /// <summary>A single secret global variable entry (with full metadata for type information).</summary>
@@ -86,5 +92,11 @@ public sealed class BrunoCollectionMeta
         public string? ResponsePath { get; init; }
         public DynamicFrequency? ResponseFrequency { get; init; }
         public int? ResponseExpiresAfterSeconds { get; init; }
+
+        /// <summary>
+        /// When <see langword="true"/>, this global variable takes priority over a concrete
+        /// environment variable with the same name. Null is treated as <see langword="false"/>.
+        /// </summary>
+        public bool? IsForceGlobalOverride { get; init; }
     }
 }

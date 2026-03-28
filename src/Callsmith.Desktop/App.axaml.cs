@@ -85,6 +85,9 @@ public partial class App : Application
         // Core -- dynamic variable evaluation
         services.AddSingleton<IDynamicVariableEvaluator, DynamicVariableEvaluatorService>();
 
+        // Core -- environment variable merge (shared algorithm used by both send and preview)
+        services.AddSingleton<IEnvironmentMergeService, EnvironmentMergeService>();
+
         // Core -- collection preferences
         services.AddSingleton<ICollectionPreferencesService, FileSystemCollectionPreferencesService>();
 

@@ -35,6 +35,11 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     // {{base-url}} and {{token}} that live in the global env resolve in the preview column.
     private Dictionary<string, string> _globalPreviewVars = new(StringComparer.Ordinal);
 
+    // Global-only resolved values (no concrete-env statics overlaid). Used for conflict
+    // info display ("OVERRIDDEN BY") so that the value shown is the global var's own value
+    // rather than the concrete env's value that was re-applied as context for token expansion.
+    private Dictionary<string, string> _pureGlobalPreviewVars = new(StringComparer.Ordinal);
+
     // Mock-data generators from the global environment so that {{faker-internet-example-email}}
     // and similar global mock vars resolve in the preview column of concrete environments.
     private IReadOnlyDictionary<string, MockDataEntry> _globalMockGenerators
@@ -309,6 +314,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
             Name = migrated.Name,
             Value = migrated.Value,
             IsSecret = migrated.IsSecret,
+            IsForceGlobalOverride = migrated.IsForceGlobalOverride,
             SuggestionNames = _suggestions,
             VariableType = migrated.VariableType,
             MockDataCategory = migrated.MockDataCategory,
@@ -318,6 +324,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
             ResponseFrequency = migrated.ResponseFrequency,
             ResponseExpiresAfterSeconds = migrated.ResponseExpiresAfterSeconds,
             IsBrunoConcreteEnvironment = isBrunoConcreteEnv,
+            IsGlobal = IsGlobal,
         };
         return item;
     }
@@ -389,7 +396,16 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         {
             var key = v.Name.Trim();
             if (v.IsStatic)
-                vars[key] = v.Value;
+            {
+                // For the global environment, _globalPreviewVars already contains the effective
+                // merged value (global statics + preview-env overlay + force-override re-applied),
+                // mirroring the three-layer precedence of BuildMergedVars() at send time.
+                // Overwriting it with v.Value (the raw own value) would ignore that merging and
+                // cause {{token}} substitutions in static vars to resolve against the wrong value.
+                // For concrete envs, own statics always win over the global-context baseline.
+                if (!IsGlobal || !_globalPreviewVars.ContainsKey(key))
+                    vars[key] = v.Value;
+            }
             else if (_resolvedDynVars.TryGetValue(key, out var dyn))
                 vars[key] = dyn;
         }
@@ -421,6 +437,40 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         _globalMockGenerators = globalMockGenerators;
         foreach (var v in Variables)
             v.NotifyPreviewChanged();
+    }
+
+    /// <summary>
+    /// Stores global-only resolved values (without any concrete-env statics overlaid on top).
+    /// Used by <see cref="EnvironmentEditorViewModel"/> to populate the "OVERRIDDEN BY" conflict
+    /// row: the value shown must be the global var's own resolved value, not the concrete env's.
+    /// Must be called <em>before</em> active-env statics are re-applied to the context dict.
+    /// </summary>
+    internal void SetPureGlobalPreviewVars(IReadOnlyDictionary<string, string> pureGlobalVars)
+    {
+        _pureGlobalPreviewVars = new Dictionary<string, string>(pureGlobalVars, StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// Returns a snapshot of the resolved global preview variables stored on this environment.
+    /// Used by <see cref="EnvironmentEditorViewModel"/> to populate the "OVERRIDDEN BY" conflict
+    /// row on concrete-env variables when a force-override global var wins.
+    /// </summary>
+    internal IReadOnlyDictionary<string, string> GetResolvedGlobalPreviewVars() => _pureGlobalPreviewVars;
+
+    /// <summary>
+    /// Updates the conflict label/value for each variable row based on a pre-built conflict map.
+    /// Variables not present in <paramref name="conflicts"/> have their conflict info cleared.
+    /// </summary>
+    internal void SetConflictValues(IReadOnlyDictionary<string, (string label, string value)> conflicts)
+    {
+        foreach (var v in Variables)
+        {
+            var key = v.Name.Trim();
+            if (!string.IsNullOrWhiteSpace(key) && conflicts.TryGetValue(key, out var info))
+                v.SetConflictInfo(info.label, info.value);
+            else
+                v.SetConflictInfo(null, null);
+        }
     }
 
     /// <summary>

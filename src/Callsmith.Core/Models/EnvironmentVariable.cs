@@ -25,6 +25,13 @@ public sealed class EnvironmentVariable
     /// </summary>
     public bool IsSecret { get; init; }
 
+    /// <summary>
+    /// When <see langword="true"/>, this global variable takes priority over a concrete environment
+    /// variable with the same name, overriding the default behaviour where the concrete environment
+    /// variable wins. Only meaningful on variables in the global environment.
+    /// </summary>
+    public bool IsForceGlobalOverride { get; init; }
+
     // ── Mock data type properties (VariableType == VariableTypes.MockData) ─────
 
     /// <summary>Mock data category e.g. "Internet". Only relevant for mock-data variables.</summary>

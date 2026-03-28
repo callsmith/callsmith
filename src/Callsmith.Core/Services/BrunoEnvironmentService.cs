@@ -538,6 +538,7 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
                 ResponsePath = v.ResponsePath,
                 ResponseFrequency = v.ResponseFrequency ?? DynamicFrequency.Always,
                 ResponseExpiresAfterSeconds = v.ResponseExpiresAfterSeconds,
+                IsForceGlobalOverride = v.IsForceGlobalOverride ?? false,
             })
             .Concat(meta.GlobalSecretVariables
                 .Select(s => new EnvironmentVariable
@@ -552,6 +553,7 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
                     ResponseFrequency = s.ResponseFrequency ?? DynamicFrequency.Always,
                     ResponseExpiresAfterSeconds = s.ResponseExpiresAfterSeconds,
                     IsSecret = true,
+                    IsForceGlobalOverride = s.IsForceGlobalOverride ?? false,
                 }))
             .ToList();
 
@@ -590,6 +592,7 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
                 ResponsePath = v.ResponsePath,
                 ResponseFrequency = v.ResponseFrequency == DynamicFrequency.Always ? null : v.ResponseFrequency,
                 ResponseExpiresAfterSeconds = v.ResponseExpiresAfterSeconds,
+                IsForceGlobalOverride = v.IsForceGlobalOverride ? (bool?)true : null,
             })
             .ToList();
 
@@ -605,6 +608,7 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
                 ResponsePath = v.ResponsePath,
                 ResponseFrequency = v.ResponseFrequency == DynamicFrequency.Always ? null : v.ResponseFrequency,
                 ResponseExpiresAfterSeconds = v.ResponseExpiresAfterSeconds,
+                IsForceGlobalOverride = v.IsForceGlobalOverride ? (bool?)true : null,
             })
             .ToList();
 

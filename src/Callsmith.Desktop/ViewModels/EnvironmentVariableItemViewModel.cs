@@ -27,6 +27,12 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     /// </summary>
     public bool IsBrunoConcreteEnvironment { get; set; }
 
+    /// <summary>
+    /// True if this variable belongs to the global environment.
+    /// Controls visibility of the "force override" checkbox in the UI.
+    /// </summary>
+    public bool IsGlobal { get; set; }
+
     // ── Observable state ─────────────────────────────────────────────────────
 
     [ObservableProperty]
@@ -39,6 +45,27 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isSecret;
+
+    [ObservableProperty]
+    private bool _isForceGlobalOverride;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasConflict))]
+    private string? _conflictLabel;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasConflict))]
+    private string? _conflictValue;
+
+    /// <summary>True when this variable has a conflict with the preview environment that should be shown.</summary>
+    public bool HasConflict => ConflictLabel is not null && ConflictValue is not null;
+
+    /// <summary>Updates the conflict label and value shown in the override/overridden-by preview row.</summary>
+    internal void SetConflictInfo(string? label, string? value)
+    {
+        ConflictLabel = label;
+        ConflictValue = value;
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsStatic))]
@@ -294,6 +321,7 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
         Value = Value,
         VariableType = VariableType,
         IsSecret = IsSecret,
+        IsForceGlobalOverride = IsForceGlobalOverride,
         MockDataCategory = MockDataCategory,
         MockDataField = MockDataField,
         ResponseRequestName = ResponseRequestName,
@@ -322,6 +350,8 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
         OnPropertyChanged(nameof(IsStaticNotSecret));
         OnPropertyChanged(nameof(IsStaticAndSecret));
     }
+
+    partial void OnIsForceGlobalOverrideChanged(bool value) => _onChanged();
 
     partial void OnMockDataCategoryChanged(string? value)
     {

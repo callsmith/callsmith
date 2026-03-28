@@ -428,8 +428,7 @@
                            FontSize="12">
                   Global variables are always active for this collection, regardless of which
                   environment is selected. They are scoped to this collection folder and can be
-                  checked in to source control. A collection environment variable with the same
-                  name takes priority.
+                  checked in to source control.
                 </TextBlock>
                 <!-- Preview env selector — makes all global dynamic var previews use one consistent context -->
                 <StackPanel Orientation="Horizontal"
@@ -459,8 +458,8 @@
               </StackPanel>
             </Border>
 
-            <!-- Column headers: Drag(24) | Name(320) | Value(*) | Type(140) | Delete(28) -->
-            <Grid ColumnDefinitions="24,320,*,140,28"
+            <!-- Column headers: Drag(24) | Name(320) | Value(*) | Override(Auto=72/0) | Type(140) | Delete(28) -->
+            <Grid ColumnDefinitions="24,320,*,Auto,140,28"
                   Margin="0,0,0,4">
               <TextBlock Grid.Column="1"
                          Text="NAME"
@@ -476,6 +475,16 @@
                          LetterSpacing="1"
                          Margin="6,0"/>
               <TextBlock Grid.Column="3"
+                         Text="OVERRIDE"
+                         Foreground="#666"
+                         FontSize="10"
+                         FontWeight="SemiBold"
+                         LetterSpacing="1"
+                         Width="72"
+                         HorizontalAlignment="Center"
+                         IsVisible="{Binding SelectedEnvironment.IsGlobal, FallbackValue=False}"
+                         ToolTip.Tip="Force this global variable to take priority over a same-named concrete environment variable"/>
+              <TextBlock Grid.Column="4"
                          Text="TYPE"
                          Foreground="#666"
                          FontSize="10"
@@ -488,9 +497,9 @@
                           ItemsSource="{Binding SelectedEnvironment.Variables}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:EnvironmentVariableItemViewModel">
-                  <!-- Columns: Drag(24) | Name(320) | Value(*) | Type(140) | Delete(28) -->
-                  <Grid ColumnDefinitions="24,320,*,140,28"
-                        RowDefinitions="Auto,Auto"
+                  <!-- Columns: Drag(24) | Name(320) | Value(*) | Override(Auto=72/0) | Type(140) | Delete(28) -->
+                  <Grid ColumnDefinitions="24,320,*,Auto,140,28"
+                        RowDefinitions="Auto,Auto,Auto"
                         Margin="0,2">
 
                     <!-- Drag handle -->
@@ -647,8 +656,17 @@
                       </ToggleButton>
                     </Grid>
 
+                    <!-- Override checkbox — visible only for global environment variables -->
+                    <CheckBox Grid.Row="0" Grid.Column="3"
+                              IsChecked="{Binding IsForceGlobalOverride}"
+                              IsVisible="{Binding IsGlobal}"
+                              Width="72"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"
+                              ToolTip.Tip="Force this global variable to take priority over a same-named concrete environment variable"/>
+
                     <!-- Type dropdown -->
-                    <ComboBox Grid.Row="0" Grid.Column="3"
+                    <ComboBox Grid.Row="0" Grid.Column="4"
                               ItemsSource="{Binding AvailableVariableTypeOptions}"
                               SelectedItem="{Binding VariableTypeDisplay}"
                               IsEnabled="{Binding !IsTypeDropdownDisabled}"
@@ -659,7 +677,7 @@
                               ToolTip.Tip="Variable type"/>
 
                     <!-- Delete -->
-                        <Button Grid.Row="0" Grid.Column="4"
+                        <Button Grid.Row="0" Grid.Column="5"
                             Content="×"
                             Command="{Binding DeleteCommand}"
                             Background="Transparent"
@@ -689,6 +707,32 @@
                                    Margin="8,0,8,0"/>
                         <TextBlock Grid.Column="1"
                                    Text="{Binding PreviewValue}"
+                                   Foreground="#888"
+                                   FontSize="12"
+                                   FontFamily="Consolas,Menlo,monospace"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"/>
+                      </Grid>
+                    </Border>
+
+                    <!-- Conflict row — OVERRIDES or OVERRIDDEN BY -->
+                        <Border Grid.Row="2" Grid.Column="2"
+                            IsVisible="{Binding HasConflict}"
+                            Background="#1e1e1e"
+                            BorderBrush="#3a3a3a"
+                            BorderThickness="0,1,0,0"
+                            Padding="0,3"
+                            Margin="0,0,0,4">
+                      <Grid ColumnDefinitions="Auto,*">
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding ConflictLabel}"
+                                   Foreground="#5a5a5a"
+                                   FontSize="10"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Margin="8,0,8,0"/>
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding ConflictValue}"
                                    Foreground="#888"
                                    FontSize="12"
                                    FontFamily="Consolas,Menlo,monospace"
