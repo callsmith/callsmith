@@ -953,6 +953,22 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 foreach (var kv in candidateMerge.Variables)
                     globalContextVars[kv.Key] = kv.Value;
                 globalMockGenerators = candidateMerge.MockGenerators;
+
+                // Build conflict values from a global-only dynamic resolve. The merged
+                // candidate includes active-env static re-application, which can overwrite
+                // same-name global dynamic vars and cause an incorrect OVERRIDES preview.
+                var globalStaticContext = _mergeService.BuildStaticMerge(globalModel, model);
+                var globalResolvedForConflicts = await _dynamicEvaluator
+                    .ResolveAsync(
+                        _collectionFolderPath,
+                        BuildGlobalCacheNamespace(globalModel, model),
+                        globalModel.Variables,
+                        globalStaticContext,
+                        ct)
+                    .ConfigureAwait(true);
+                ct.ThrowIfCancellationRequested();
+
+                pureGlobalContextVars = BuildPureGlobalPreviewVars(globalModel, globalResolvedForConflicts.Variables);
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
@@ -960,13 +976,6 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 _logger.LogDebug(ex,
                     "Could not resolve global dynamic vars for concrete env '{Name}'", env.Name);
             }
-
-            // Build pureGlobalContextVars with ONLY the global env's OWN variable values —
-            // not the concrete-env statics that were merged into the service result for token
-            // expansion. Using globalContextVars directly would give the concrete env's value
-            // for any shared name (e.g. "api-version → 2.1" instead of "api-version → 3.0"),
-            // producing a wrong "OVERRIDDEN BY" label.
-            pureGlobalContextVars = BuildPureGlobalPreviewVars(globalModel, globalContextVars);
 
             // Re-apply active env's own statics at the end to maintain override precedence.
             foreach (var kv in activeStaticVars)
@@ -1111,8 +1120,8 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 {
                     var label = v.IsForceGlobalOverride ? "OVERRIDES" : "OVERRIDDEN WITH";
                     var toolTip = v.IsForceGlobalOverride
-                        ? "Will override this value when used in requests in the previewed environment."
-                        : "Will be overridden with this value when used in requests in the previewed environment.";
+                        ? "Overrides this value when used in requests in the previewed environment"
+                        : "Overridden with this value when used in requests in the previewed environment";
                     conflicts[key] = (label, concreteVar.IsSecret ? MaskedSecretValue : concreteVar.Value, toolTip);
                 }
             }
@@ -1127,9 +1136,10 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     }
 
     /// <summary>
-    /// Pushes "OVERRIDDEN BY" conflict info to a concrete env's variable rows, using
+    /// Pushes conflict info to a concrete env's variable rows, using
     /// <paramref name="resolvedGlobalVars"/> as the source of the global env's resolved values.
-    /// Only variables that have a matching force-override global var receive conflict info.
+    /// Matching vars show either "OVERRIDDEN WITH" (global Override enabled) or
+    /// "OVERRIDES" (global Override disabled).
     /// </summary>
     private void PushConflictInfoForConcreteEnv(
         EnvironmentListItemViewModel env,
@@ -1142,17 +1152,11 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             return;
         }
 
-        // Collect only force-override global var names.
-        var forceOverrideNames = globalItem.BuildModel().Variables
-            .Where(v => v.IsForceGlobalOverride && !string.IsNullOrWhiteSpace(v.Name))
-            .Select(v => v.Name.Trim())
-            .ToHashSet(StringComparer.Ordinal);
-
         var globalVarsByName = globalItem.BuildModel().Variables
             .Where(v => !string.IsNullOrWhiteSpace(v.Name))
             .ToDictionary(v => v.Name.Trim(), v => v, StringComparer.Ordinal);
 
-        if (forceOverrideNames.Count == 0)
+        if (globalVarsByName.Count == 0)
         {
             env.SetConflictValues(new Dictionary<string, (string, string, string)>());
             return;
@@ -1162,20 +1166,31 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         foreach (var v in env.BuildModel().Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
         {
             var key = v.Name.Trim();
-            if (!forceOverrideNames.Contains(key))
-                continue;
-
             if (!globalVarsByName.TryGetValue(key, out var globalVar))
                 continue;
 
-            if (globalVar.IsSecret)
+            if (globalVar.IsForceGlobalOverride)
             {
-                conflicts[key] = ("OVERRIDDEN WITH", MaskedSecretValue, "Overriden by a global variable with the same name that has 'Override' enabled.");
+                if (globalVar.IsSecret)
+                {
+                    conflicts[key] = ("OVERRIDDEN WITH", MaskedSecretValue, "Overridden by a secret global variable");
+                    continue;
+                }
+
+                if (resolvedGlobalVars.TryGetValue(key, out var globalValue))
+                    conflicts[key] = ("OVERRIDDEN WITH", globalValue, "Overridden with this value by a global variable");
+
                 continue;
             }
 
-            if (resolvedGlobalVars.TryGetValue(key, out var globalValue))
-                conflicts[key] = ("OVERRIDDEN WITH", globalValue, "Overriden by a global variable with the same name that has 'Override' enabled.");
+            if (globalVar.IsSecret)
+            {
+                conflicts[key] = ("OVERRIDES", MaskedSecretValue, "Overrides a secret global variable");
+                continue;
+            }
+
+            if (resolvedGlobalVars.TryGetValue(key, out var globalPreviewValue))
+                conflicts[key] = ("OVERRIDES", globalPreviewValue, "Overrides this global variable value");
         }
 
         env.SetConflictValues(conflicts);
