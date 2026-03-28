@@ -418,18 +418,9 @@
             <!-- Global environment explanation banner -->
             <Border IsVisible="{Binding SelectedEnvironment.IsGlobal, FallbackValue=False}"
                     Background="#1a2a1a"
-                    BorderBrush="#2a5a3a"
-                    BorderThickness="0,0,0,1"
                     Padding="10,8"
                     Margin="0,0,0,8">
               <StackPanel Spacing="8">
-                <TextBlock TextWrapping="Wrap"
-                           Foreground="#7db87d"
-                           FontSize="12">
-                  Global variables are always active for this collection, regardless of which
-                  environment is selected. They are scoped to this collection folder and can be
-                  checked in to source control.
-                </TextBlock>
                 <!-- Preview env selector — makes all global dynamic var previews use one consistent context -->
                 <StackPanel Orientation="Horizontal"
                             Spacing="8"
@@ -447,7 +438,7 @@
                             Foreground="#cccccc"
                             BorderBrush="#2a5a3a"
                             IsEnabled="{Binding HasGlobalPreviewEnvironments}"
-                            ToolTip.Tip="All global dynamic variable previews are resolved using this environment's static variables (e.g. baseUrl, credentials).">
+                            ToolTip.Tip="The environment to be used as the context for previewing global variables">
                     <ComboBox.ItemTemplate>
                       <DataTemplate x:DataType="vm:EnvironmentListItemViewModel">
                         <TextBlock Text="{Binding Name}" FontSize="11"/>
@@ -718,6 +709,8 @@
                     <!-- Conflict row — OVERRIDES or OVERRIDDEN BY -->
                         <Border Grid.Row="2" Grid.Column="2"
                             IsVisible="{Binding HasConflict}"
+                            ToolTip.Tip="{Binding ConflictToolTip}"
+                            Cursor="Help"
                             Background="#1e1e1e"
                             BorderBrush="#3a3a3a"
                             BorderThickness="0,1,0,0"

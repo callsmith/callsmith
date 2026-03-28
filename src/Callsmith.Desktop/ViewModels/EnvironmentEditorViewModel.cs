@@ -809,22 +809,29 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
             try
             {
-                // Full merge (send-time semantics): global → context-env → force-override-global,
-                // then phase-1 global dynamics, then context-env dynamics (no-op if static-only).
-                var merged = await _mergeService
-                    .MergeAsync(_collectionFolderPath, model, contextEnvModel, ct)
+                // Resolve the global env's own dynamic vars against the preview context, but keep
+                // the row preview tied to the global variable's own resolved value rather than the
+                // final post-override merged value. The conflict row separately communicates when a
+                // concrete env value wins.
+                var globalResolved = await _dynamicEvaluator
+                    .ResolveAsync(
+                        _collectionFolderPath,
+                        BuildGlobalCacheNamespace(model, contextEnvModel),
+                        model.Variables,
+                        globalStaticVars,
+                        ct)
                     .ConfigureAwait(true);
                 ct.ThrowIfCancellationRequested();
 
                 // Only exclude the global env's OWN static keys — not same-named statics from
                 // the preview context env (those must not suppress response-body preview values).
-                var dynVars = merged.Variables
+                var dynVars = globalResolved.Variables
                     .Where(kv => !globalOwnStaticKeys.Contains(kv.Key))
                     .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
-                env.SetDynamicPreviewValues(dynVars, merged.MockGenerators);
+                env.SetDynamicPreviewValues(dynVars, globalResolved.MockGenerators);
                 // Also push the merged static context so that {{token}}-style references in
                 // static var values resolve against the effective (preview-env-aware) merged dict.
-                env.SetGlobalPreviewValues(globalStaticVars, merged.MockGenerators);
+                env.SetGlobalPreviewValues(globalStaticVars, globalResolved.MockGenerators);
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
@@ -888,18 +895,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             // expansion. Using globalContextVars directly would give the concrete env's value
             // for any shared name (e.g. "api-version → 2.1" instead of "api-version → 3.0"),
             // producing a wrong "OVERRIDDEN BY" label.
-            pureGlobalContextVars = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var gv in globalModel.Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
-            {
-                var gvKey = gv.Name.Trim();
-                if (gv.VariableType == EnvironmentVariable.VariableTypes.Static)
-                    // Always use the model value; merged context may have overridden it.
-                    pureGlobalContextVars[gvKey] = gv.Value;
-                else if (globalContextVars.TryGetValue(gvKey, out var resolvedVal))
-                    // Response-body / legacy-dynamic vars: use the resolved value from the
-                    // candidate pass if it was written back into globalContextVars.
-                    pureGlobalContextVars[gvKey] = resolvedVal;
-            }
+            pureGlobalContextVars = BuildPureGlobalPreviewVars(globalModel, globalContextVars);
 
             // Re-apply active env's own statics at the end to maintain override precedence.
             foreach (var kv in activeStaticVars)
@@ -927,11 +923,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             // No activeStaticVars overlay in this branch — but still build pureGlobalContextVars
             // explicitly from the global model's static values rather than reusing the
             // globalContextVars reference, so that any future modification cannot contaminate it.
-            pureGlobalContextVars = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var gv in globalModel.Variables
-                .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.Static
-                         && !string.IsNullOrWhiteSpace(v.Name)))
-                pureGlobalContextVars[gv.Name.Trim()] = gv.Value;
+            pureGlobalContextVars = BuildPureGlobalPreviewVars(globalModel, globalContextVars);
         }
 
         // Push global context: {{base-url}}, {{token}}, {{faker-*}}, etc. now resolve
@@ -982,6 +974,45 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         }
     }
 
+    private static Dictionary<string, string> BuildPureGlobalPreviewVars(
+        EnvironmentModel globalModel,
+        IReadOnlyDictionary<string, string> resolvedGlobalVars)
+    {
+        var pureGlobalContextVars = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var globalVariable in globalModel.Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
+        {
+            var key = globalVariable.Name.Trim();
+
+            if (globalVariable.VariableType == EnvironmentVariable.VariableTypes.Static)
+            {
+                pureGlobalContextVars[key] = globalVariable.Value;
+                continue;
+            }
+
+            if (globalVariable.VariableType == EnvironmentVariable.VariableTypes.MockData)
+            {
+                var entry = globalVariable.GetMockEntry();
+                if (entry is not null)
+                    pureGlobalContextVars[key] = MockDataCatalog.Generate(entry.Category, entry.Field);
+
+                continue;
+            }
+
+            if (resolvedGlobalVars.TryGetValue(key, out var resolvedValue))
+                pureGlobalContextVars[key] = resolvedValue;
+        }
+
+        return pureGlobalContextVars;
+    }
+
+    private static string BuildGlobalCacheNamespace(EnvironmentModel globalEnv, EnvironmentModel? contextEnv)
+    {
+        return contextEnv is not null
+            ? $"{globalEnv.EnvironmentId:N}[env:{contextEnv.EnvironmentId:N}]"
+            : globalEnv.EnvironmentId.ToString("N");
+    }
+
     /// <summary>
     /// Pushes conflict info (OVERRIDES / OVERRIDDEN BY) to each variable row in <paramref name="env"/>.
     /// </summary>
@@ -993,7 +1024,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             var previewEnv = SelectedGlobalPreviewEnvironment ?? Environments.FirstOrDefault(e => !e.IsGlobal);
             if (previewEnv is null)
             {
-                env.SetConflictValues(new Dictionary<string, (string, string)>());
+                env.SetConflictValues(new Dictionary<string, (string, string, string)>());
                 return;
             }
 
@@ -1001,14 +1032,17 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 .Where(v => !string.IsNullOrWhiteSpace(v.Name))
                 .ToDictionary(v => v.Name.Trim(), v => v.Value, StringComparer.Ordinal);
 
-            var conflicts = new Dictionary<string, (string label, string value)>(StringComparer.Ordinal);
+            var conflicts = new Dictionary<string, (string label, string value, string toolTip)>(StringComparer.Ordinal);
             foreach (var v in env.BuildModel().Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
             {
                 var key = v.Name.Trim();
                 if (concreteVars.TryGetValue(key, out var concreteValue))
                 {
-                    var label = v.IsForceGlobalOverride ? "OVERRIDES" : "OVERRIDDEN BY";
-                    conflicts[key] = (label, concreteValue);
+                    var label = v.IsForceGlobalOverride ? "OVERRIDES" : "OVERRIDDEN WITH";
+                    var toolTip = v.IsForceGlobalOverride
+                        ? "Will override this value when used in requests in the previewed environment."
+                        : "Will be overridden with this value when used in requests in the previewed environment.";
+                    conflicts[key] = (label, concreteValue, toolTip);
                 }
             }
 
@@ -1033,7 +1067,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         var globalItem = Environments.FirstOrDefault(e => e.IsGlobal);
         if (globalItem is null)
         {
-            env.SetConflictValues(new Dictionary<string, (string, string)>());
+            env.SetConflictValues(new Dictionary<string, (string, string, string)>());
             return;
         }
 
@@ -1045,16 +1079,16 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
         if (forceOverrideNames.Count == 0)
         {
-            env.SetConflictValues(new Dictionary<string, (string, string)>());
+            env.SetConflictValues(new Dictionary<string, (string, string, string)>());
             return;
         }
 
-        var conflicts = new Dictionary<string, (string label, string value)>(StringComparer.Ordinal);
+        var conflicts = new Dictionary<string, (string label, string value, string toolTip)>(StringComparer.Ordinal);
         foreach (var v in env.BuildModel().Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
         {
             var key = v.Name.Trim();
             if (forceOverrideNames.Contains(key) && resolvedGlobalVars.TryGetValue(key, out var globalValue))
-                conflicts[key] = ("OVERRIDDEN BY", globalValue);
+                conflicts[key] = ("OVERRIDDEN WITH", globalValue, "Overriden by a global variable with the same name that has 'Override' enabled.");
         }
 
         env.SetConflictValues(conflicts);

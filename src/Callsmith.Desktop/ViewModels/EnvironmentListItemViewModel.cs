@@ -461,15 +461,15 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     /// Updates the conflict label/value for each variable row based on a pre-built conflict map.
     /// Variables not present in <paramref name="conflicts"/> have their conflict info cleared.
     /// </summary>
-    internal void SetConflictValues(IReadOnlyDictionary<string, (string label, string value)> conflicts)
+    internal void SetConflictValues(IReadOnlyDictionary<string, (string label, string value, string toolTip)> conflicts)
     {
         foreach (var v in Variables)
         {
             var key = v.Name.Trim();
             if (!string.IsNullOrWhiteSpace(key) && conflicts.TryGetValue(key, out var info))
-                v.SetConflictInfo(info.label, info.value);
+                v.SetConflictInfo(info.label, info.value, info.toolTip);
             else
-                v.SetConflictInfo(null, null);
+                v.SetConflictInfo(null, null, null);
         }
     }
 

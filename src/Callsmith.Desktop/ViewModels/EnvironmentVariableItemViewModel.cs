@@ -57,14 +57,19 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasConflict))]
     private string? _conflictValue;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasConflict))]
+    private string? _conflictToolTip;
+
     /// <summary>True when this variable has a conflict with the preview environment that should be shown.</summary>
     public bool HasConflict => ConflictLabel is not null && ConflictValue is not null;
 
     /// <summary>Updates the conflict label and value shown in the override/overridden-by preview row.</summary>
-    internal void SetConflictInfo(string? label, string? value)
+    internal void SetConflictInfo(string? label, string? value, string? toolTip)
     {
         ConflictLabel = label;
         ConflictValue = value;
+        ConflictToolTip = toolTip;
     }
 
     [ObservableProperty]

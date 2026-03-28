@@ -1062,6 +1062,142 @@ public sealed class EnvironmentEditorViewModelTests
         authHeaderVar.PreviewValue.Should().Be($"Key {resolvedKey}");
     }
 
+    [Fact]
+    public async Task Preview_ConcreteEnv_ForceOverrideGlobalMockData_ShowsGeneratedConflictValue()
+    {
+        var globalModel = new EnvironmentModel
+        {
+            FilePath = GlobalEnvPath,
+            Name = "Global",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "guid",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.MockData,
+                    MockDataCategory = "Random",
+                    MockDataField = "UUID",
+                    IsForceGlobalOverride = true,
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        };
+
+        var devModel = new EnvironmentModel
+        {
+            Name = "dev",
+            FilePath = @"C:\collections\my-api\environment\dev.env.callsmith",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "guid",
+                    Value = "local-guid",
+                    VariableType = EnvironmentVariable.VariableTypes.Static,
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        };
+
+        var service = Substitute.For<IEnvironmentService>();
+        service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+               .Returns(globalModel);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([devModel]);
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(300);
+
+        var devEnv = sut.Environments.First(e => !e.IsGlobal);
+        var guidVar = devEnv.Variables.First(v => v.Name == "guid");
+
+        guidVar.ConflictLabel.Should().Be("OVERRIDDEN WITH");
+        guidVar.ConflictValue.Should().NotBeNullOrWhiteSpace();
+        Guid.TryParse(guidVar.ConflictValue, out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Preview_GlobalEnv_UncheckedConcreteOverride_KeepsOwnResolvedPreviewAndShowsOverridingValue()
+    {
+        const string resolvedToken = "eyJ.preview.jwt";
+
+        var globalModel = new EnvironmentModel
+        {
+            FilePath = GlobalEnvPath,
+            Name = "Global",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "jwt-token",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                    ResponseRequestName = "Auth/login",
+                    ResponsePath = "$.token",
+                    IsForceGlobalOverride = false,
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        };
+
+        var devModel = new EnvironmentModel
+        {
+            Name = "dev",
+            FilePath = @"C:\collections\my-api\environment\dev.env.callsmith",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "jwt-token",
+                    Value = "null",
+                    VariableType = EnvironmentVariable.VariableTypes.Static,
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        };
+
+        var service = Substitute.For<IEnvironmentService>();
+        service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+               .Returns(globalModel);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([devModel]);
+
+        var evaluator = Substitute.For<IDynamicVariableEvaluator>();
+        evaluator.ResolveAsync(
+                CollectionPath,
+                Arg.Any<string>(),
+                Arg.Is<IReadOnlyList<EnvironmentVariable>>(vars =>
+                    vars.Any(v => v.Name == "jwt-token"
+                               && v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody)),
+                Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new ResolvedEnvironment
+            {
+                Variables = new Dictionary<string, string> { ["jwt-token"] = resolvedToken },
+                MockGenerators = new Dictionary<string, MockDataEntry>(),
+            });
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger, dynamicEvaluator: evaluator);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(300);
+
+        sut.SelectedEnvironment = sut.Environments.First(e => e.IsGlobal);
+        await Task.Delay(300);
+
+        var globalEnv = sut.Environments.First(e => e.IsGlobal);
+        var jwtTokenVar = globalEnv.Variables.First(v => v.Name == "jwt-token");
+
+        jwtTokenVar.PreviewValue.Should().Be(resolvedToken);
+        jwtTokenVar.ConflictLabel.Should().Be("OVERRIDDEN WITH");
+        jwtTokenVar.ConflictValue.Should().Be("null");
+    }
+
     /// <summary>
     /// Regression: restoring the saved GlobalPreviewEnvironmentName during collection load
     /// used to set IsDirty = true on the global env before the user touched anything.
