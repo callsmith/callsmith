@@ -255,6 +255,7 @@ public sealed class EnvironmentMergeServiceTests
             Variables = [new EnvironmentVariable
             {
                 Name = "token",
+                Value = string.Empty,
                 VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
                 ResponseRequestName = "get-token",
                 IsForceGlobalOverride = true,
@@ -345,8 +346,12 @@ public sealed class EnvironmentMergeServiceTests
     public async Task MergeAsync_WhenEvaluatorThrows_FallsBackToStaticMerge()
     {
         var evaluator = Substitute.For<IDynamicVariableEvaluator>();
-        evaluator.ResolveAsync(default!, default!, default!, default!, default)
-            .ThrowsAsyncForAnyArgs(new InvalidOperationException("network error"));
+        evaluator.ResolveAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
+                Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("network error"));
 
         var sut = new EnvironmentMergeService(evaluator);
         var global = GlobalEnv(Static("base-url", "https://api.example.com"), ResponseBodyVar("token"));
@@ -366,8 +371,12 @@ public sealed class EnvironmentMergeServiceTests
         cts.Cancel();
 
         var evaluator = Substitute.For<IDynamicVariableEvaluator>();
-        evaluator.ResolveAsync(default!, default!, default!, default!, default)
-            .ThrowsAsyncForAnyArgs(new OperationCanceledException());
+        evaluator.ResolveAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
+                Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<CancellationToken>())
+            .ThrowsAsync(new OperationCanceledException());
 
         var sut = new EnvironmentMergeService(evaluator);
         var global = GlobalEnv(ResponseBodyVar("token"));
@@ -379,12 +388,12 @@ public sealed class EnvironmentMergeServiceTests
     // ─── Precedence table ────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData("global-only", "g-val", null, null, false, "g-val")]
-    [InlineData("shared", "g-val", "a-val", null, false, "a-val")]       // active wins
-    [InlineData("shared", "g-val", "a-val", null, true, "g-val")]         // force-override wins
-    [InlineData("global-only", "g-val", null, null, true, "g-val")]       // force-override, no conflict
+    [InlineData("global-only", "g-val", null, false, "g-val")]
+    [InlineData("shared", "g-val", "a-val", false, "a-val")]       // active wins
+    [InlineData("shared", "g-val", "a-val", true, "g-val")]         // force-override wins
+    [InlineData("global-only", "g-val", null, true, "g-val")]       // force-override, no conflict
     public void BuildStaticMerge_PrecedenceTable(
-        string varName, string globalValue, string? activeValue, string? expected, bool forceOverride, string expectedResult)
+        string varName, string globalValue, string? activeValue, bool forceOverride, string expectedResult)
     {
         var sut = new EnvironmentMergeService();
         var globalVars = new List<EnvironmentVariable> { Static(varName, globalValue, forceOverride) };

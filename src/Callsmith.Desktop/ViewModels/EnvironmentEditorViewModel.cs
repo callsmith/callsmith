@@ -737,6 +737,16 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         // vars change (e.g. user toggles the override checkbox) regardless of which env is selected.
         if (ReferenceEquals(changed, SelectedEnvironment) || changed.IsGlobal)
             PushConflictInfo(SelectedEnvironment);
+
+        // Re-run the full dynamic preview whenever the global env's variables change (e.g.
+        // the force-override checkbox is toggled). That change alters the effective merge for
+        // every concrete env, so the preview values must be recalculated.
+        if (changed.IsGlobal)
+        {
+            _dynPreviewCts?.Cancel();
+            _dynPreviewCts = new CancellationTokenSource();
+            _ = RefreshDynamicPreviewsAsync(SelectedEnvironment, _dynPreviewCts.Token);
+        }
     }
 
     /// <summary>
@@ -849,59 +859,28 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             || v.VariableType == EnvironmentVariable.VariableTypes.Dynamic);
 
         // Resolve global response-body vars whenever the global env has them.
-        // The current env's static vars may reference global dynamic vars (e.g.
-        // "Bearer {{access-token}}") and need those values to render their preview.
-        // The service uses the same cache namespace as the send pipeline, so warm
-        // cache entries from recent sends are reused without extra HTTP calls.
+        // Use only the concrete env being viewed as the resolution context — this ensures
+        // the preview is honest: if the env is misconfigured (e.g. wrong base URL), the
+        // global dynamic vars that depend on it correctly show blank rather than leaking
+        // a resolved value from a different, working environment.
         if (globalHasResponseBody)
         {
-            // Resolve global dynamics using the first concrete env that has a warm
-            // cache entry. Strategy: try the being-edited env first (env-specific token);
-            // if Phase 1 leaves global response-body vars unresolved, fall back to the
-            // first available concrete env (which is most likely to have a cached token
-            // from a recent send). The config dialog's own preview offers exact per-env
-            // control when needed.
-            var candidateEnvs = new List<EnvironmentListItemViewModel> { env };
-            var firstConcrete = Environments.FirstOrDefault(e => !e.IsGlobal && e != env);
-            if (firstConcrete is not null)
-                candidateEnvs.Add(firstConcrete);
-
-            foreach (var candidate in candidateEnvs)
+            try
             {
-                try
-                {
-                    var candidateModel = candidate.BuildModel();
-                    // Use the service with the candidate as active env — this mirrors the
-                    // send-time merge and reuses the same per-env cache namespace so warm
-                    // cache entries from real sends are picked up automatically.
-                    var candidateMerge = await _mergeService
-                        .MergeAsync(_collectionFolderPath, globalModel, candidateModel, ct)
-                        .ConfigureAwait(true);
-                    ct.ThrowIfCancellationRequested();
+                var candidateMerge = await _mergeService
+                    .MergeAsync(_collectionFolderPath, globalModel, model, ct)
+                    .ConfigureAwait(true);
+                ct.ThrowIfCancellationRequested();
 
-                    // Check whether any response-body vars actually resolved.
-                    var responseBodyNames = globalModel.Variables
-                        .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
-                                 && !string.IsNullOrWhiteSpace(v.Name))
-                        .Select(v => v.Name.Trim())
-                        .ToHashSet(StringComparer.Ordinal);
-                    var anyResolved = responseBodyNames.Count == 0
-                        || responseBodyNames.Any(n => candidateMerge.Variables.TryGetValue(n, out var val)
-                                                      && !string.IsNullOrEmpty(val));
-
-                    foreach (var kv in candidateMerge.Variables)
-                        globalContextVars[kv.Key] = kv.Value;
-                    globalMockGenerators = candidateMerge.MockGenerators;
-
-                    if (anyResolved) break; // Good result — no need to try the next candidate.
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug(ex,
-                        "Could not resolve global dynamic vars using '{Candidate}' context for '{Name}'",
-                        candidate.Name, env.Name);
-                }
+                foreach (var kv in candidateMerge.Variables)
+                    globalContextVars[kv.Key] = kv.Value;
+                globalMockGenerators = candidateMerge.MockGenerators;
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex,
+                    "Could not resolve global dynamic vars for concrete env '{Name}'", env.Name);
             }
 
             // Build pureGlobalContextVars with ONLY the global env's OWN variable values —
