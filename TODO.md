@@ -183,7 +183,7 @@
 - [x] Variable substitution engine:
   - [x] Replace `{{variableName}}` in URL, headers, and body at send time
   - [ ] Evaluate JavaScript expressions — **deferred**
-  - [ ] Execute chained requests — **deferred**
+  - [x] Execute chained requests
 - [x] Environment editor UI (full CRUD from within the app):
   - [x] List environments (dev, staging, production, etc.)
   - [x] Add, rename, delete environments
@@ -210,18 +210,18 @@
 - [x] Implement `HistoryRepository` backed by SQLite (history is too large for flat files)
 - [x] Auto-record every sent request+response pair
 - [x] History panel with columns: timestamp, method, URL, status code, elapsed time
-- [ ] Filter history by:
-  - [ ] Status code or status code range (e.g. `>= 400`, `= 200`)
-  - [ ] Response body contains string
-  - [ ] Request or response header name/value (e.g. `X-Correlation-Id = abc123`)
-  - [ ] Request name or collection name
+- [x] Filter history by:
+  - [x] Status code or status code range (e.g. `>= 400`, `= 200`)
+  - [x] Response body contains string
+  - [x] Request or response header name/value (e.g. `X-Correlation-Id = abc123`)
+  - [x] Request name or collection name
   - [ ] URL pattern (contains, starts with, regex)
-  - [ ] Date range
-- [ ] Combine multiple filters at once
+  - [x] Date range
+- [x] Combine multiple filters at once
 - [x] Click a history entry to open the full request/response in a read-only detail view
-- [ ] Re-send a history entry (loads it into the request editor)
+- [x] Re-send a history entry (loads it into the request editor)
 - [x] Clear history: all, or entries older than N days
-- [ ] Write unit tests for filter logic
+- [x] Write unit tests for filter logic
 
 ---
 
@@ -289,7 +289,7 @@
   - Script-valued env vars (`{% response … %}`) are skipped on import (unsupported)
   - Ready for Postman support: add a new `ICollectionImporter` implementation and register it in DI
 - [ ] OpenAPI / Swagger file import — generates request files on disk from a spec
-- [ ] Request chaining in collections — define a sequence of requests, pass values between them
+- [x] Request chaining in collections — define a sequence of requests, pass values between them
 
 ---
 
