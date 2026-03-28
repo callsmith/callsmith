@@ -62,9 +62,21 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     [ObservableProperty]
     private IReadOnlyList<string> _availableFolders = [];
 
+    [ObservableProperty]
+    private bool _showCloseWithoutSavingDialog;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CloseWithoutSavingPrompt))]
+    private string _closeWithoutSavingRequestName = string.Empty;
+
+    private RequestTabViewModel? _pendingCloseTab;
+
     private IReadOnlyList<string> _availableRequestNames = [];
 
     public bool HasTabs => Tabs.Count > 0;
+
+    public string CloseWithoutSavingPrompt =>
+        $"Are you sure you want to close \"{CloseWithoutSavingRequestName}\" without saving?";
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -124,6 +136,48 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     public void CloseTab(RequestTabViewModel tab)
     {
         tab.CloseCommand.Execute(null);
+    }
+
+    [RelayCommand]
+    private void CancelCloseWithoutSaving()
+    {
+        _pendingCloseTab = null;
+        ShowCloseWithoutSavingDialog = false;
+        CloseWithoutSavingRequestName = string.Empty;
+    }
+
+    [RelayCommand]
+    private void ConfirmCloseWithoutSaving()
+    {
+        var tab = _pendingCloseTab;
+        _pendingCloseTab = null;
+        ShowCloseWithoutSavingDialog = false;
+        CloseWithoutSavingRequestName = string.Empty;
+
+        if (tab is null || !Tabs.Contains(tab))
+            return;
+
+        if (tab.DiscardAndCloseCommand.CanExecute(null))
+            tab.DiscardAndCloseCommand.Execute(null);
+    }
+
+    [RelayCommand]
+    private async Task SaveAndClosePendingTabAsync(CancellationToken ct)
+    {
+        var tab = _pendingCloseTab;
+        _pendingCloseTab = null;
+        ShowCloseWithoutSavingDialog = false;
+        CloseWithoutSavingRequestName = string.Empty;
+
+        if (tab is null || !Tabs.Contains(tab))
+            return;
+
+        // Save As is tab-local UI for new tabs, so ensure it is visible when chosen.
+        if (tab.IsNew && ActiveTab != tab)
+            ActiveTab = tab;
+
+        if (tab.SaveAndCloseCommand.CanExecute(null))
+            await tab.SaveAndCloseCommand.ExecuteAsync(null);
     }
 
     /// <summary>Closes all tabs except the specified one.</summary>
@@ -322,6 +376,8 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             _environmentService,
             _mergeService);
 
+        tab.SetGlobalCloseGuardHandler(ShowGlobalCloseWithoutSavingDialog);
+
         tab.AvailableFolders = AvailableFolders;
         tab.CollectionRootPath = _collectionPath;
         tab.AvailableRequestNames = _availableRequestNames;
@@ -345,6 +401,13 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             tab.IsNew = true;
 
         return tab;
+    }
+
+    private void ShowGlobalCloseWithoutSavingDialog(RequestTabViewModel tab)
+    {
+        _pendingCloseTab = tab;
+        CloseWithoutSavingRequestName = string.IsNullOrWhiteSpace(tab.TabTitle) ? "New Request" : tab.TabTitle;
+        ShowCloseWithoutSavingDialog = true;
     }
 
     private async Task PersistLayoutAsync()

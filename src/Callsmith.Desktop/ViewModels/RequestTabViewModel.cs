@@ -29,6 +29,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private readonly IEnvironmentMergeService _mergeService;
     private readonly IMessenger _messenger;
     private readonly Action<RequestTabViewModel> _requestClose;
+    private Action<RequestTabViewModel>? _requestGlobalCloseGuard;
     private readonly IHistoryService? _historyService;
     private readonly IEnvironmentService? _environmentService;
 
@@ -774,6 +775,15 @@ public sealed partial class RequestTabViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Sets a callback used when this tab requests a close guard while dirty.
+    /// When set, the host can present a global confirmation UI.
+    /// </summary>
+    internal void SetGlobalCloseGuardHandler(Action<RequestTabViewModel> handler)
+    {
+        _requestGlobalCloseGuard = handler;
+    }
+
+    /// <summary>
     /// Populates this tab with the fully-resolved field values from a history entry.
     /// Used when the user clicks "Resend Request" in the history panel.
     /// All variable bindings should already be revealed (secrets decrypted) before calling this.
@@ -1354,6 +1364,12 @@ public sealed partial class RequestTabViewModel : ObservableObject
     {
         if (TabIsDirty)
         {
+            if (_requestGlobalCloseGuard is not null)
+            {
+                _requestGlobalCloseGuard(this);
+                return;
+            }
+
             PendingClose = true;
             return;
         }

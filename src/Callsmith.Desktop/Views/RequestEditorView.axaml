@@ -206,6 +206,59 @@
       <Panel IsVisible="{Binding HasTabs}">
         <views:RequestView DataContext="{Binding ActiveTab}"/>
       </Panel>
+
+      <Border IsVisible="{Binding ShowCloseWithoutSavingDialog}"
+              Background="#66000000">
+        <Border HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Margin="0,40,0,0"
+                Width="360"
+                Background="#2d2d30"
+                BorderBrush="#555"
+                BorderThickness="1"
+                CornerRadius="6"
+                Padding="14,12"
+                BoxShadow="0 4 20 0 #CC000000">
+          <StackPanel Spacing="10">
+            <TextBlock Foreground="#f0c060"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       Text="Close without saving?"/>
+            <TextBlock Foreground="#dddddd"
+                       FontSize="12"
+                       TextWrapping="Wrap"
+                       Text="{Binding CloseWithoutSavingPrompt}"/>
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        Spacing="6">
+              <Button Content="Cancel"
+                      Command="{Binding CancelCloseWithoutSavingCommand}"
+                      Background="#3a3a3a"
+                      Foreground="#ccc"
+                      BorderThickness="0"
+                      Padding="12,4"
+                      FontSize="11"
+                      CornerRadius="3"/>
+                  <Button Content="Save &amp; close"
+                    Command="{Binding SaveAndClosePendingTabCommand}"
+                    Background="#1e7340"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Padding="12,4"
+                    FontSize="11"
+                    CornerRadius="3"/>
+              <Button Content="Close without saving"
+                      Command="{Binding ConfirmCloseWithoutSavingCommand}"
+                      Background="#6c2020"
+                      Foreground="White"
+                      BorderThickness="0"
+                      Padding="12,4"
+                      FontSize="11"
+                      CornerRadius="3"/>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </Border>
     </Grid>
 
   </DockPanel>
