@@ -256,12 +256,12 @@ public sealed class ImportCollectionViewModelTests
             sut.FilePath = @"/fake/file.yaml";
             sut.FolderPath = tempDir.FullName;
 
-            var closeRaised = false;
-            sut.CloseRequested += (_, _) => closeRaised = true;
+            var closeRaised = 0;
+            sut.CloseRequested += (_, _) => Interlocked.Exchange(ref closeRaised, 1);
 
             await sut.ImportCommand.ExecuteAsync(null);
 
-            closeRaised.Should().BeTrue();
+            (Volatile.Read(ref closeRaised) == 1).Should().BeTrue();
         }
         finally
         {
@@ -354,12 +354,12 @@ public sealed class ImportCollectionViewModelTests
             sut.FilePath = @"/fake/file.yaml";
             sut.FolderPath = tempDir.FullName;
 
-            var closeRaised = false;
-            sut.CloseRequested += (_, _) => closeRaised = true;
+            var closeRaised = 0;
+            sut.CloseRequested += (_, _) => Interlocked.Exchange(ref closeRaised, 1);
 
             await sut.ImportCommand.ExecuteAsync(null);
 
-            closeRaised.Should().BeFalse();
+            (Volatile.Read(ref closeRaised) == 1).Should().BeFalse();
         }
         finally
         {

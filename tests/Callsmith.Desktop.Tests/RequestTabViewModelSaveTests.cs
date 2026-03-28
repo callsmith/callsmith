@@ -567,7 +567,7 @@ public sealed class RequestTabViewModelSaveTests
         var historyService = Substitute.For<IHistoryService>();
         var devEnvId = Guid.NewGuid();
         var prodEnvId = Guid.NewGuid();
-        var prodLookupRequested = false;
+        var prodLookupRequested = 0;
         historyService
             .GetLatestForRequestInEnvironmentAsync(requestId, devEnvId, Arg.Any<CancellationToken>())
             .Returns(new HistoryEntry
@@ -595,7 +595,7 @@ public sealed class RequestTabViewModelSaveTests
             .GetLatestForRequestInEnvironmentAsync(requestId, prodEnvId, Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
-                prodLookupRequested = true;
+                Interlocked.Exchange(ref prodLookupRequested, 1);
                 return (HistoryEntry?)null;
             });
 
@@ -624,7 +624,7 @@ public sealed class RequestTabViewModelSaveTests
 
         sut.SetEnvironment(new EnvironmentModel { FilePath = "prod.env.callsmith", Name = "prod", Variables = [], EnvironmentId = prodEnvId });
 
-        await AssertEventuallyAsync(() => prodLookupRequested);
+        await AssertEventuallyAsync(() => Volatile.Read(ref prodLookupRequested) == 1);
         await AssertEventuallyAsync(() => sut.Response is null && !sut.IsResponseFromHistory);
 
         await historyService.Received(1)
