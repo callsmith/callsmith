@@ -1,4 +1,5 @@
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.Services;
 using Callsmith.Desktop.ViewModels;
 using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
@@ -32,6 +33,7 @@ public sealed class MainWindowViewModelTests
 
         var requestEditor = new RequestEditorViewModel(
             transportRegistry, collectionService, preferencesService, dynamicEvaluator,
+            new EnvironmentMergeService(dynamicEvaluator),
             messenger, NullLogger<RequestEditorViewModel>.Instance,
             historyService: historyService);
 

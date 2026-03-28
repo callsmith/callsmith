@@ -29,6 +29,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private readonly ICollectionService _collectionService;
     private readonly ICollectionPreferencesService _preferencesService;
     private readonly IDynamicVariableEvaluator _dynamicEvaluator;
+    private readonly IEnvironmentMergeService _mergeService;
     private readonly IHistoryService? _historyService;
     private readonly IEnvironmentService? _environmentService;
     private readonly ILogger<RequestEditorViewModel> _logger;
@@ -74,6 +75,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         ICollectionService collectionService,
         ICollectionPreferencesService preferencesService,
         IDynamicVariableEvaluator dynamicEvaluator,
+        IEnvironmentMergeService mergeService,
         IMessenger messenger,
         ILogger<RequestEditorViewModel> logger,
         IEnvironmentService? environmentService = null,
@@ -84,11 +86,13 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         ArgumentNullException.ThrowIfNull(collectionService);
         ArgumentNullException.ThrowIfNull(preferencesService);
         ArgumentNullException.ThrowIfNull(dynamicEvaluator);
+        ArgumentNullException.ThrowIfNull(mergeService);
         ArgumentNullException.ThrowIfNull(logger);
         _transportRegistry = transportRegistry;
         _collectionService = collectionService;
         _preferencesService = preferencesService;
         _dynamicEvaluator = dynamicEvaluator;
+        _mergeService = mergeService;
         _historyService = historyService;
         _environmentService = environmentService;
         _logger = logger;
@@ -315,7 +319,8 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             RemoveTab,
             _dynamicEvaluator,
             _historyService,
-            _environmentService);
+            _environmentService,
+            _mergeService);
 
         tab.AvailableFolders = AvailableFolders;
         tab.CollectionRootPath = _collectionPath;
