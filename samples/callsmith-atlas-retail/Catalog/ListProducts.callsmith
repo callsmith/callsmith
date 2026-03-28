@@ -1,0 +1,35 @@
+{
+  "requestId": "aa81308f-89bf-4fa7-a27b-b0932f62cc21",
+  "method": "GET",
+  "url": "{{base-url}}/catalog/products",
+  "description": "Browse products with paging and optional tag filtering.",
+  "headerEntries": [
+    {
+      "name": "Authorization",
+      "value": "Bearer {{session-access-token}}",
+      "enabled": true
+    },
+    {
+      "name": "X-Correlation-Id",
+      "value": "{{request-id}}",
+      "enabled": true
+    }
+  ],
+  "queryParamEntries": [
+    {
+      "name": "page",
+      "value": "{{page-number}}",
+      "enabled": true
+    },
+    {
+      "name": "pageSize",
+      "value": "{{page-size}}",
+      "enabled": true
+    },
+    {
+      "name": "tag",
+      "value": "{{featured-tag}}",
+      "enabled": false
+    }
+  ]
+}

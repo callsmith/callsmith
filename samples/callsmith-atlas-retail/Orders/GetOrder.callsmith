@@ -1,0 +1,16 @@
+{
+  "requestId": "be532126-f51b-4f39-9f8e-2a43f42f0ca1",
+  "method": "GET",
+  "url": "{{base-url}}/orders/{orderId}",
+  "description": "Fetch a recently-created order by captured ID.",
+  "headerEntries": [
+    {
+      "name": "Authorization",
+      "value": "Bearer {{session-access-token}}",
+      "enabled": true
+    }
+  ],
+  "pathParams": {
+    "orderId": "{{latest-order-id}}"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "requestId": "907604fc-092d-453f-a332-d01ec7e518e2",
+  "method": "GET",
+  "url": "{{base-url}}/accounts",
+  "description": "List customer accounts available to the logged-in operator.",
+  "headerEntries": [
+    {
+      "name": "Authorization",
+      "value": "Bearer {{session-access-token}}",
+      "enabled": true
+    }
+  ],
+  "queryParamEntries": [
+    {
+      "name": "customerId",
+      "value": "{{customer-id}}",
+      "enabled": true
+    },
+    {
+      "name": "status",
+      "value": "active",
+      "enabled": true
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+meta {
+  name: List Accounts
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{base-url}}/accounts
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session-access-token}}
+}
+
+params:query {
+  customerId: {{customer-id}}
+  status: active
+}

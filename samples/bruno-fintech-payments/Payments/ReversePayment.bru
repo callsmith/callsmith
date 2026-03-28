@@ -1,0 +1,27 @@
+meta {
+  name: Reverse Payment
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{base-url}}/payments/:paymentId/reversal
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session-access-token}}
+  Content-Type: application/json
+}
+
+params:path {
+  paymentId: {{latest-payment-id}}
+}
+
+body:json {
+  {
+    "reason": "duplicate-transfer",
+    "operator": "{{mock-operator-email}}"
+  }
+}

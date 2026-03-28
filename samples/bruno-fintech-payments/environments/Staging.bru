@@ -1,0 +1,26 @@
+vars {
+  api-version: v1
+  protocol: https
+  api-subdomain: core-stg
+  domain-root: payments.northbank.example
+  base-url: {{protocol}}://{{api-subdomain}}.{{domain-root}}/{{api-version}}
+  institution-id: northbank-stg
+  customer-id: CUST-102944
+  counterparty-iban: FR7630006000011234567890189
+  region: us-west-2
+  currency: USD
+  transfer-amount: 750.25
+  request-id: 874ca0db-d8e2-4ef2-ba8d-43441b36edf4
+  idempotency-key: {{request-id}}
+  mock-operator-email: ops.staging@northbank.example
+  payment-reference: payout-batch-774
+  primary-account-id: ACC-771102
+  latest-payment-id: PAY-0019042
+  session-access-token: paste-access-token-here
+  session-refresh-token: paste-refresh-token-here
+  auth-email: staging.ops@northbank.example
+}
+
+vars:secret [
+  auth-password
+]

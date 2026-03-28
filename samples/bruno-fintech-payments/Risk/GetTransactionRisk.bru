@@ -1,0 +1,25 @@
+meta {
+  name: Get Transaction Risk
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{base-url}}/risk/transactions/score
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session-access-token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "paymentId": "{{latest-payment-id}}",
+    "customerId": "{{customer-id}}",
+    "region": "{{region}}",
+    "operatorEmail": "{{mock-operator-email}}"
+  }
+}

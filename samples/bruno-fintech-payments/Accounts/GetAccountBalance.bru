@@ -1,0 +1,19 @@
+meta {
+  name: Get Account Balance
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{base-url}}/accounts/:accountId/balance
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session-access-token}}
+}
+
+params:path {
+  accountId: {{primary-account-id}}
+}

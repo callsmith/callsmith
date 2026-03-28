@@ -1,0 +1,33 @@
+{
+  "requestId": "48a3f204-2f4d-4f4d-8082-cf6afb664961",
+  "method": "GET",
+  "url": "{{base-url}}/admin/tenants/{tenantId}/metrics",
+  "description": "Tenant-level dashboard metrics for docs screenshots.",
+  "headerEntries": [
+    {
+      "name": "Authorization",
+      "value": "Bearer {{session-access-token}}",
+      "enabled": true
+    },
+    {
+      "name": "X-Feature-Preview",
+      "value": "{{feature-preview}}",
+      "enabled": true
+    }
+  ],
+  "pathParams": {
+    "tenantId": "{{tenant-id}}"
+  },
+  "queryParamEntries": [
+    {
+      "name": "window",
+      "value": "7d",
+      "enabled": true
+    },
+    {
+      "name": "groupBy",
+      "value": "channel",
+      "enabled": true
+    }
+  ]
+}

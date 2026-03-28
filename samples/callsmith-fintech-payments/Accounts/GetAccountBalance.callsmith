@@ -1,0 +1,16 @@
+{
+  "requestId": "b892ca7a-4367-4855-8815-793b4f52a76a",
+  "method": "GET",
+  "url": "{{base-url}}/accounts/{accountId}/balance",
+  "description": "Fetch account balance snapshot and available amount.",
+  "headerEntries": [
+    {
+      "name": "Authorization",
+      "value": "Bearer {{session-access-token}}",
+      "enabled": true
+    }
+  ],
+  "pathParams": {
+    "accountId": "{{primary-account-id}}"
+  }
+}

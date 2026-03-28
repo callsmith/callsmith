@@ -1,0 +1,20 @@
+{
+  "requestId": "0d8d52d2-3b3a-4e43-a852-dde0d6f859f1",
+  "method": "POST",
+  "url": "{{base-url}}/catalog/search",
+  "description": "Search products by keyword and availability windows.",
+  "headerEntries": [
+    {
+      "name": "Authorization",
+      "value": "Bearer {{session-access-token}}",
+      "enabled": true
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/json",
+      "enabled": true
+    }
+  ],
+  "bodyType": "json",
+  "body": "{\n  \"query\": \"{{search-term}}\",\n  \"inStockOnly\": true,\n  \"requestor\": \"{{mock-operator-email}}\",\n  \"region\": \"{{region}}\"\n}"
+}

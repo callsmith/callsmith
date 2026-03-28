@@ -1,0 +1,25 @@
+{
+  "requestId": "f8f2686a-6ec5-413a-b77e-b8dbff89a5f0",
+  "method": "POST",
+  "url": "{{base-url}}/payments",
+  "description": "Create a payment transfer and return transaction identifiers.",
+  "headerEntries": [
+    {
+      "name": "Authorization",
+      "value": "Bearer {{session-access-token}}",
+      "enabled": true
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/json",
+      "enabled": true
+    },
+    {
+      "name": "Idempotency-Key",
+      "value": "{{idempotency-key}}",
+      "enabled": true
+    }
+  ],
+  "bodyType": "json",
+  "body": "{\n  \"sourceAccountId\": \"{{primary-account-id}}\",\n  \"destinationIban\": \"{{counterparty-iban}}\",\n  \"amount\": \"{{transfer-amount}}\",\n  \"currency\": \"{{currency}}\",\n  \"reference\": \"{{payment-reference}}\",\n  \"initiatedBy\": \"{{mock-operator-email}}\"\n}"
+}

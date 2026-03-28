@@ -1,0 +1,35 @@
+meta {
+  name: Create Order
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{base-url}}/orders
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session-access-token}}
+  Content-Type: application/json
+  Idempotency-Key: {{idempotency-key}}
+  X-Client-Trace: {{request-id}}
+}
+
+body:json {
+  {
+    "customer": {
+      "email": "{{mock-buyer-email}}",
+      "name": "{{mock-buyer-name}}"
+    },
+    "currency": "{{currency}}",
+    "items": [
+      {
+        "sku": "{{featured-product-id}}",
+        "quantity": 2
+      }
+    ],
+    "notes": "{{order-note-template}}"
+  }
+}

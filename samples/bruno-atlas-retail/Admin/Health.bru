@@ -1,0 +1,15 @@
+meta {
+  name: Health
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{protocol}}://{{tenant-subdomain}}.{{domain-root}}/health
+  body: none
+  auth: none
+}
+
+params:query {
+  full: true
+}

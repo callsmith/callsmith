@@ -1,0 +1,28 @@
+meta {
+  name: Create Payment
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{base-url}}/payments
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session-access-token}}
+  Content-Type: application/json
+  Idempotency-Key: {{idempotency-key}}
+}
+
+body:json {
+  {
+    "sourceAccountId": "{{primary-account-id}}",
+    "destinationIban": "{{counterparty-iban}}",
+    "amount": "{{transfer-amount}}",
+    "currency": "{{currency}}",
+    "reference": "{{payment-reference}}",
+    "initiatedBy": "{{mock-operator-email}}"
+  }
+}

@@ -1,0 +1,26 @@
+vars {
+  api-version: v1
+  protocol: https
+  api-subdomain: core-sbx
+  domain-root: payments.northbank.example
+  base-url: {{protocol}}://{{api-subdomain}}.{{domain-root}}/{{api-version}}
+  institution-id: northbank-sbx
+  customer-id: CUST-880001
+  counterparty-iban: GB29NWBK60161331926819
+  region: eu-west-1
+  currency: EUR
+  transfer-amount: 99.95
+  request-id: 626d57c2-a962-4f42-bc64-99726fa59f75
+  idempotency-key: {{request-id}}
+  mock-operator-email: qa.sandbox@northbank.example
+  payment-reference: sandbox-wire-009
+  primary-account-id: ACC-500019
+  latest-payment-id: PAY-0055001
+  session-access-token: paste-access-token-here
+  session-refresh-token: paste-refresh-token-here
+  auth-email: sandbox.qa@northbank.example
+}
+
+vars:secret [
+  auth-password
+]

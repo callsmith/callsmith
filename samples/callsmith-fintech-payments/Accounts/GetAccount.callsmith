@@ -1,0 +1,16 @@
+{
+  "requestId": "04d79af6-f822-48c7-bc39-936a078cb8ae",
+  "method": "GET",
+  "url": "{{base-url}}/accounts/{accountId}",
+  "description": "Fetch a single account profile by account ID.",
+  "headerEntries": [
+    {
+      "name": "Authorization",
+      "value": "Bearer {{session-access-token}}",
+      "enabled": true
+    }
+  ],
+  "pathParams": {
+    "accountId": "{{primary-account-id}}"
+  }
+}

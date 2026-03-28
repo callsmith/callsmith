@@ -1,0 +1,16 @@
+{
+  "requestId": "25e4a836-268f-4d69-a8a4-c6d0f3685c31",
+  "method": "GET",
+  "url": "{{base-url}}/catalog/products/{productId}",
+  "description": "Load a single product by ID.",
+  "headerEntries": [
+    {
+      "name": "Authorization",
+      "value": "Bearer {{session-access-token}}",
+      "enabled": true
+    }
+  ],
+  "pathParams": {
+    "productId": "{{featured-product-id}}"
+  }
+}

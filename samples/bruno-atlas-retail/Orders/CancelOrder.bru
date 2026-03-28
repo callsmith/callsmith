@@ -1,0 +1,27 @@
+meta {
+  name: Cancel Order
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{base-url}}/orders/:orderId/cancel
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session-access-token}}
+  Content-Type: application/json
+}
+
+params:path {
+  orderId: {{latest-order-id}}
+}
+
+body:json {
+  {
+    "reason": "duplicate-order",
+    "cancelledBy": "{{mock-operator-email}}"
+  }
+}

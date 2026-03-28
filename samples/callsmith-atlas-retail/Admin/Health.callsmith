@@ -1,0 +1,13 @@
+{
+  "requestId": "c03ea8f8-ece3-42df-a305-6634ffec2af1",
+  "method": "GET",
+  "url": "{{protocol}}://{{tenant-subdomain}}.{{domain-root}}/health",
+  "description": "Simple unauthenticated probe for gateway health.",
+  "queryParamEntries": [
+    {
+      "name": "full",
+      "value": "true",
+      "enabled": true
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+meta {
+  name: Search Products
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{base-url}}/catalog/search
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session-access-token}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "query": "{{search-term}}",
+    "inStockOnly": true,
+    "requestor": "{{mock-operator-email}}",
+    "region": "{{region}}"
+  }
+}

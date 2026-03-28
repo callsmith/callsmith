@@ -1,0 +1,25 @@
+{
+  "requestId": "6a513467-d511-46d3-b51b-a27530a01641",
+  "method": "POST",
+  "url": "{{base-url}}/orders",
+  "description": "Create an order and return the normalized order summary.",
+  "headerEntries": [
+    {
+      "name": "Authorization",
+      "value": "Bearer {{session-access-token}}",
+      "enabled": true
+    },
+    {
+      "name": "Idempotency-Key",
+      "value": "{{idempotency-key}}",
+      "enabled": true
+    },
+    {
+      "name": "X-Client-Trace",
+      "value": "{{request-id}}",
+      "enabled": true
+    }
+  ],
+  "bodyType": "json",
+  "body": "{\n  \"customer\": {\n    \"email\": \"{{mock-buyer-email}}\",\n    \"name\": \"{{mock-buyer-name}}\"\n  },\n  \"currency\": \"{{currency}}\",\n  \"items\": [\n    {\n      \"sku\": \"{{featured-product-id}}\",\n      \"quantity\": 2\n    }\n  ],\n  \"notes\": \"{{order-note-template}}\"\n}"
+}

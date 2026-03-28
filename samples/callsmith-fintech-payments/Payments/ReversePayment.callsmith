@@ -1,0 +1,23 @@
+{
+  "requestId": "73dcebaa-b35e-4ce6-8588-9a25e2cc88fa",
+  "method": "POST",
+  "url": "{{base-url}}/payments/{paymentId}/reversal",
+  "description": "Reverse an existing payment and annotate operational reason.",
+  "headerEntries": [
+    {
+      "name": "Authorization",
+      "value": "Bearer {{session-access-token}}",
+      "enabled": true
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/json",
+      "enabled": true
+    }
+  ],
+  "pathParams": {
+    "paymentId": "{{latest-payment-id}}"
+  },
+  "bodyType": "json",
+  "body": "{\n  \"reason\": \"duplicate-transfer\",\n  \"operator\": \"{{mock-operator-email}}\"\n}"
+}

@@ -1,0 +1,23 @@
+{
+  "requestId": "13a7bc59-e4d6-4ad4-af87-c6f968e8fd51",
+  "method": "POST",
+  "url": "{{base-url}}/orders/{orderId}/cancel",
+  "description": "Cancel an order and include the reason code used by support workflows.",
+  "headerEntries": [
+    {
+      "name": "Authorization",
+      "value": "Bearer {{session-access-token}}",
+      "enabled": true
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/json",
+      "enabled": true
+    }
+  ],
+  "pathParams": {
+    "orderId": "{{latest-order-id}}"
+  },
+  "bodyType": "json",
+  "body": "{\n  \"reason\": \"duplicate-order\",\n  \"cancelledBy\": \"{{mock-operator-email}}\"\n}"
+}

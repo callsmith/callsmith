@@ -1,0 +1,26 @@
+vars {
+  api-version: v1
+  protocol: https
+  api-subdomain: core-dev
+  domain-root: payments.northbank.example
+  base-url: {{protocol}}://{{api-subdomain}}.{{domain-root}}/{{api-version}}
+  institution-id: northbank-dev
+  customer-id: CUST-000812
+  counterparty-iban: DE89370400440532013000
+  region: us-east-1
+  currency: USD
+  transfer-amount: 250.00
+  request-id: 9e981e84-3254-4911-bf69-c3953fec84bb
+  idempotency-key: {{request-id}}
+  mock-operator-email: ops.dev@northbank.example
+  payment-reference: invoice-2026-03
+  primary-account-id: ACC-001948
+  latest-payment-id: PAY-0003772
+  session-access-token: paste-access-token-here
+  session-refresh-token: paste-refresh-token-here
+  auth-email: dev.analyst@northbank.example
+}
+
+vars:secret [
+  auth-password
+]

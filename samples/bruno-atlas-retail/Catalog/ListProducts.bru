@@ -1,0 +1,22 @@
+meta {
+  name: List Products
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{base-url}}/catalog/products
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session-access-token}}
+  X-Correlation-Id: {{request-id}}
+}
+
+params:query {
+  page: {{page-number}}
+  pageSize: {{page-size}}
+  ~tag: {{featured-tag}}
+}

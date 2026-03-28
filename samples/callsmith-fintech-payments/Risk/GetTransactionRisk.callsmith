@@ -1,0 +1,20 @@
+{
+  "requestId": "da45fd22-6a0a-4051-8918-4f0aa64f6115",
+  "method": "POST",
+  "url": "{{base-url}}/risk/transactions/score",
+  "description": "Score a payment transaction for AML/fraud review.",
+  "headerEntries": [
+    {
+      "name": "Authorization",
+      "value": "Bearer {{session-access-token}}",
+      "enabled": true
+    },
+    {
+      "name": "Content-Type",
+      "value": "application/json",
+      "enabled": true
+    }
+  ],
+  "bodyType": "json",
+  "body": "{\n  \"paymentId\": \"{{latest-payment-id}}\",\n  \"customerId\": \"{{customer-id}}\",\n  \"region\": \"{{region}}\",\n  \"operatorEmail\": \"{{mock-operator-email}}\"\n}"
+}

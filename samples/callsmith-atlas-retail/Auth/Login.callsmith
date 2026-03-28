@@ -1,0 +1,25 @@
+{
+  "requestId": "9ea9c70c-d8f2-47b5-89eb-093f10f90a11",
+  "method": "POST",
+  "url": "{{base-url}}/auth/login",
+  "description": "Sign in with environment-specific credentials and cache tokens for downstream requests.",
+  "headerEntries": [
+    {
+      "name": "Content-Type",
+      "value": "application/json",
+      "enabled": true
+    },
+    {
+      "name": "X-Request-Id",
+      "value": "{{request-id}}",
+      "enabled": true
+    },
+    {
+      "name": "X-Debug-Mode",
+      "value": "1",
+      "enabled": false
+    }
+  ],
+  "bodyType": "json",
+  "body": "{\n  \"email\": \"{{auth-email}}\",\n  \"password\": \"{{auth-password}}\",\n  \"tenant\": \"{{tenant-id}}\"\n}"
+}

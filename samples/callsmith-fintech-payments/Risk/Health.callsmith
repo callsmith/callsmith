@@ -1,0 +1,13 @@
+{
+  "requestId": "3540a734-1de0-4a1c-9fee-430c9544d5a8",
+  "method": "GET",
+  "url": "{{protocol}}://{{api-subdomain}}.{{domain-root}}/health",
+  "description": "Simple service probe endpoint for monitoring screenshots.",
+  "queryParamEntries": [
+    {
+      "name": "verbose",
+      "value": "true",
+      "enabled": true
+    }
+  ]
+}

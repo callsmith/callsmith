@@ -1,0 +1,30 @@
+vars {
+  api-version: v2
+  page-size: 25
+  featured-tag: seasonal
+  protocol: https
+  domain-root: north-api.dev.atlasretail.example
+  tenant-subdomain: tenant-spruce
+  base-url: {{protocol}}://{{tenant-subdomain}}.{{domain-root}}/{{api-version}}
+  tenant-id: tenant-spruce
+  region: us-east-1
+  featured-product-id: SKU-100045
+  page-number: 1
+  search-term: wireless headset
+  request-id: 2a8d35ef-0b89-4efb-ad2b-425b8dd1f0e0
+  idempotency-key: {{request-id}}
+  mock-buyer-email: buyer.dev@example.com
+  mock-buyer-name: Devin Mason
+  mock-operator-email: ops.dev@example.com
+  currency: USD
+  feature-preview: beta-checkout-v2
+  latest-order-id: ord-demo-1001
+  session-access-token: paste-access-token-here
+  session-refresh-token: paste-refresh-token-here
+  auth-email: dev.engineer@atlasretail.example
+  order-note-template: Demo order for {{tenant-id}} in {{region}}
+}
+
+vars:secret [
+  auth-password
+]

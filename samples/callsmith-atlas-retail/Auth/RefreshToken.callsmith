@@ -1,0 +1,20 @@
+{
+  "requestId": "f38f7eb2-8d5d-481a-af20-9cf5ab5f8a12",
+  "method": "POST",
+  "url": "{{base-url}}/auth/refresh",
+  "description": "Exchange a refresh token for a fresh access token.",
+  "headerEntries": [
+    {
+      "name": "Content-Type",
+      "value": "application/json",
+      "enabled": true
+    },
+    {
+      "name": "Authorization",
+      "value": "Bearer {{session-access-token}}",
+      "enabled": true
+    }
+  ],
+  "bodyType": "json",
+  "body": "{\n  \"refreshToken\": \"{{session-refresh-token}}\"\n}"
+}

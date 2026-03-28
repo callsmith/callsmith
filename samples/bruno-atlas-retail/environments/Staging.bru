@@ -1,0 +1,30 @@
+vars {
+  api-version: v2
+  page-size: 25
+  featured-tag: seasonal
+  protocol: https
+  domain-root: north-api.staging.atlasretail.example
+  tenant-subdomain: tenant-maple
+  base-url: {{protocol}}://{{tenant-subdomain}}.{{domain-root}}/{{api-version}}
+  tenant-id: tenant-maple
+  region: us-west-2
+  featured-product-id: SKU-203991
+  page-number: 2
+  search-term: office chair
+  request-id: 5fd57697-cef8-455f-bf5f-eeb2af6fcd66
+  idempotency-key: {{request-id}}
+  mock-buyer-email: buyer.staging@example.com
+  mock-buyer-name: Morgan Hayes
+  mock-operator-email: qa.staging@example.com
+  currency: USD
+  feature-preview: beta-checkout-v2
+  latest-order-id: ord-demo-2107
+  session-access-token: paste-access-token-here
+  session-refresh-token: paste-refresh-token-here
+  auth-email: staging.qa@atlasretail.example
+  order-note-template: Staging checkout run for {{tenant-id}}
+}
+
+vars:secret [
+  auth-password
+]

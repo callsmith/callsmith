@@ -1,0 +1,30 @@
+vars {
+  api-version: v2
+  page-size: 25
+  featured-tag: seasonal
+  protocol: https
+  domain-root: north-api.sandbox.atlasretail.example
+  tenant-subdomain: tenant-oak
+  base-url: {{protocol}}://{{tenant-subdomain}}.{{domain-root}}/{{api-version}}
+  tenant-id: tenant-oak
+  region: eu-west-1
+  featured-product-id: SKU-302010
+  page-number: 1
+  search-term: espresso machine
+  request-id: 89bf20ac-f35e-45fc-9c93-06f587b6db31
+  idempotency-key: {{request-id}}
+  mock-buyer-email: buyer.sandbox@example.com
+  mock-buyer-name: Taylor Reed
+  mock-operator-email: ops.sandbox@example.com
+  currency: EUR
+  feature-preview: beta-checkout-v2
+  latest-order-id: ord-demo-3019
+  session-access-token: paste-access-token-here
+  session-refresh-token: paste-refresh-token-here
+  auth-email: sandbox.ops@atlasretail.example
+  order-note-template: Sandbox verification for {{tenant-id}} / {{region}}
+}
+
+vars:secret [
+  auth-password
+]

@@ -1,0 +1,20 @@
+{
+  "requestId": "de3afb5b-43d4-496b-bac1-aed5f76d6444",
+  "method": "POST",
+  "url": "{{base-url}}/auth/refresh",
+  "description": "Exchange refresh token for a new bearer token.",
+  "headerEntries": [
+    {
+      "name": "Content-Type",
+      "value": "application/json",
+      "enabled": true
+    },
+    {
+      "name": "Authorization",
+      "value": "Bearer {{session-access-token}}",
+      "enabled": true
+    }
+  ],
+  "bodyType": "json",
+  "body": "{\n  \"refreshToken\": \"{{session-refresh-token}}\"\n}"
+}

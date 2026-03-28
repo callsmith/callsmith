@@ -1,0 +1,25 @@
+meta {
+  name: Get Tenant Metrics
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{base-url}}/admin/tenants/:tenantId/metrics
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{session-access-token}}
+  X-Feature-Preview: {{feature-preview}}
+}
+
+params:path {
+  tenantId: {{tenant-id}}
+}
+
+params:query {
+  window: 7d
+  groupBy: channel
+}

@@ -1,0 +1,16 @@
+{
+  "requestId": "f21a8981-8f67-4621-bdbe-ab7a8f488f20",
+  "method": "GET",
+  "url": "{{base-url}}/payments/{paymentId}",
+  "description": "Retrieve a payment by ID captured from CreatePayment response.",
+  "headerEntries": [
+    {
+      "name": "Authorization",
+      "value": "Bearer {{session-access-token}}",
+      "enabled": true
+    }
+  ],
+  "pathParams": {
+    "paymentId": "{{latest-payment-id}}"
+  }
+}
