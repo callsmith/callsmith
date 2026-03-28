@@ -845,6 +845,8 @@ public sealed class EnvironmentEditorViewModelTests
         SetupGlobalEnv(service);
         service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
                .Returns([MakeModel("dev")]);
+         service.SaveEnvironmentAsync(Arg.Any<EnvironmentModel>(), Arg.Any<CancellationToken>())
+             .Returns(Task.CompletedTask);
 
         var messenger = new WeakReferenceMessenger();
         var sut = BuildSut(service, messenger);
@@ -878,9 +880,38 @@ public sealed class EnvironmentEditorViewModelTests
         };
 
         messenger.Send(new RequestRenamedMessage(oldFilePath, renamedRequest));
+        await Task.Delay(100);
 
         variable.ResponseRequestName.Should().Be("Auth/signin");
-        devEnv.IsDirty.Should().BeTrue();
+        devEnv.IsDirty.Should().BeFalse("renamed request references are auto-saved");
+        await service.Received(1).SaveEnvironmentAsync(
+            Arg.Is<EnvironmentModel>(m =>
+                m.Name == "dev"
+                && m.Variables.Any(v => v.Name == "access-token" && v.ResponseRequestName == "Auth/signin")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Receive_CollectionOpened_SelectsCurrentlyActiveEnvironment_WhenAvailable()
+    {
+        var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
+
+        var dev = MakeModel("dev");
+        var local = MakeModel("local");
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+            .Returns([dev, local]);
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        messenger.Send(new EnvironmentChangedMessage(local));
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        sut.SelectedEnvironment.Should().NotBeNull();
+        sut.SelectedEnvironment!.Name.Should().Be("local");
+        sut.SelectedEnvironment.FilePath.Should().Be(local.FilePath);
     }
 
     /// <summary>

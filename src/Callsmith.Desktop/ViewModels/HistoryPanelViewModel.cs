@@ -106,10 +106,16 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private string _detailResponseHeaders = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDetailResponseHeaders))]
+    private IReadOnlyList<ResponseHeaderRowViewModel> _detailResponseHeaderRows = [];
+
+    [ObservableProperty]
     private string _detailSentAtDisplay = string.Empty;
 
     [ObservableProperty]
     private bool _detailHasResponseBody;
+
+    public bool HasDetailResponseHeaders => DetailResponseHeaderRows.Count > 0;
 
     [ObservableProperty]
     private bool _hasDetail;
@@ -247,6 +253,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             DetailResponse = string.Empty;
             DetailResponseLanguage = string.Empty;
             DetailResponseHeaders = string.Empty;
+            DetailResponseHeaderRows = [];
             DetailSentAtDisplay = string.Empty;
             DetailHasResponseBody = false;
         }
@@ -964,9 +971,15 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             DetailResponseLanguage = GetResponseLanguage(contentType);
             DetailHasResponseBody = !string.IsNullOrWhiteSpace(snap.Body);
             var rh = new StringBuilder();
+            var rows = new List<ResponseHeaderRowViewModel>(snap.Headers.Count);
+            var rowIndex = 0;
             foreach (var kv in snap.Headers)
+            {
                 rh.AppendLine($"{kv.Key}: {kv.Value}");
+                rows.Add(new ResponseHeaderRowViewModel(kv.Key, kv.Value, rowIndex++));
+            }
             DetailResponseHeaders = TrimTrailingBlankLines(rh.ToString());
+            DetailResponseHeaderRows = rows;
         }
         else
         {
@@ -974,6 +987,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             DetailResponseLanguage = string.Empty;
             DetailHasResponseBody = false;
             DetailResponseHeaders = string.Empty;
+            DetailResponseHeaderRows = [];
         }
     }
 

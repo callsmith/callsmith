@@ -58,7 +58,7 @@
             Padding="8,2"
             Margin="8,0,0,0"
             VerticalAlignment="Center"
-            ToolTip.Tip="Open the environment variable editor"/>
+            ToolTip.Tip="Open the environment variable editor (Ctrl+E)"/>
 
   </DockPanel>
 </UserControl>

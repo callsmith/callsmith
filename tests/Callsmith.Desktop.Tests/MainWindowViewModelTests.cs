@@ -86,4 +86,27 @@ public sealed class MainWindowViewModelTests
 
         sut.CommandPalette.IsOpen.Should().BeTrue();
     }
+
+    [Fact]
+    public void OpenEnvironmentConfiguration_WhenCollectionIsOpenAndHistoryClosed_OpensEditor()
+    {
+        var sut = BuildSut();
+        sut.Collections.HasCollection = true;
+
+        sut.OpenEnvironmentConfigurationCommand.Execute(null);
+
+        sut.Environment.IsEditorOpen.Should().BeTrue();
+    }
+
+    [Fact]
+    public void OpenEnvironmentConfiguration_WhenHistoryPanelIsOpen_DoesNotOpenEditor()
+    {
+        var sut = BuildSut();
+        sut.Collections.HasCollection = true;
+        sut.HistoryPanel.IsOpen = true;
+
+        sut.OpenEnvironmentConfigurationCommand.Execute(null);
+
+        sut.Environment.IsEditorOpen.Should().BeFalse();
+    }
 }

@@ -17,6 +17,7 @@
     <Window.KeyBindings>
         <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}"/>
         <KeyBinding Gesture="Ctrl+P" Command="{Binding OpenCommandPaletteCommand}"/>
+        <KeyBinding Gesture="Ctrl+E" Command="{Binding OpenEnvironmentConfigurationCommand}"/>
         <KeyBinding Gesture="Ctrl+H" Command="{Binding OpenActiveRequestHistoryCommand}"/>
         <KeyBinding Gesture="Ctrl+Shift+H" Command="{Binding OpenGlobalHistoryCommand}"/>
         <KeyBinding Gesture="Alt+R" Command="{Binding RevealActiveRequestCommand}"/>
@@ -72,7 +73,7 @@
                             Padding="10,3"
                             Margin="8,0,0,0"
                             VerticalAlignment="Center"
-                            ToolTip.Tip="View sent request history"/>
+                            ToolTip.Tip="View sent request history (Ctrl+Shift+H)"/>
                 </Grid>
             </Border>
 

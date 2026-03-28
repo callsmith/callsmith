@@ -28,7 +28,8 @@ namespace Callsmith.Desktop.ViewModels;
 /// </summary>
 public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     IRecipient<CollectionOpenedMessage>,
-    IRecipient<RequestRenamedMessage>
+    IRecipient<RequestRenamedMessage>,
+    IRecipient<EnvironmentChangedMessage>
 {
     private readonly IEnvironmentService _environmentService;
     private readonly ICollectionService _collectionService;
@@ -37,6 +38,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     private readonly ILogger<EnvironmentEditorViewModel> _logger;
 
     private string? _collectionFolderPath;
+    private string? _activeEnvironmentFilePath;
     private List<string> _availableRequestNames = [];
     private TaskCompletionSource<EnvironmentVariable?>? _pendingMockDataTcs;
     private TaskCompletionSource<EnvironmentVariable?>? _pendingResponseBodyTcs;
@@ -387,6 +389,22 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         _ = LoadRequestNamesAsync(message.Value);
     }
 
+    /// <inheritdoc/>
+    public void Receive(EnvironmentChangedMessage message)
+    {
+        _activeEnvironmentFilePath = message.Value?.FilePath;
+
+        if (string.IsNullOrEmpty(_activeEnvironmentFilePath))
+            return;
+
+        var matchingEnvironment = Environments.FirstOrDefault(e =>
+            !e.IsGlobal &&
+            string.Equals(e.FilePath, _activeEnvironmentFilePath, StringComparison.OrdinalIgnoreCase));
+
+        if (matchingEnvironment is not null)
+            SelectedEnvironment = matchingEnvironment;
+    }
+
     /// <summary>
     /// Called when a request is renamed. Updates the request selector list
     /// and updates any response-body variables that referenced the old request name.
@@ -415,6 +433,8 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 PendingResponseBodyConfig.SelectedRequest = newRequestName;
         }
 
+        var updatedEnvironments = new List<EnvironmentListItemViewModel>();
+
         foreach (var environment in Environments)
         {
             var anyUpdated = false;
@@ -436,6 +456,54 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 environment.IsDirty = true;
                 foreach (var variable in environment.Variables)
                     variable.NotifyPreviewChanged();
+
+                updatedEnvironments.Add(environment);
+            }
+        }
+
+        if (updatedEnvironments.Count > 0)
+            _ = PersistRenamedRequestReferencesAsync(updatedEnvironments);
+    }
+
+    private async Task PersistRenamedRequestReferencesAsync(
+        IReadOnlyList<EnvironmentListItemViewModel> updatedEnvironments)
+    {
+        foreach (var environment in updatedEnvironments)
+        {
+            try
+            {
+                var model = environment.BuildModel();
+                if (environment.IsGlobal)
+                {
+                    var modelWithPreview = model with
+                    {
+                        GlobalPreviewEnvironmentName = SelectedGlobalPreviewEnvironment?.Name,
+                    };
+
+                    await _environmentService
+                        .SaveGlobalEnvironmentAsync(modelWithPreview, CancellationToken.None)
+                        .ConfigureAwait(true);
+
+                    environment.MarkSaved(modelWithPreview);
+                    Messenger.Send(new GlobalEnvironmentChangedMessage(modelWithPreview));
+                }
+                else
+                {
+                    await _environmentService
+                        .SaveEnvironmentAsync(model, CancellationToken.None)
+                        .ConfigureAwait(true);
+
+                    environment.MarkSaved(model);
+                    Messenger.Send(new EnvironmentSavedMessage(model));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Failed to auto-save renamed request references in environment '{Name}'",
+                    environment.Name);
+                environment.IsDirty = true;
             }
         }
     }
@@ -1201,8 +1269,15 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 _loadingEnvironments = false;
             }
 
-            // Select the first non-global env, falling back to global if none present.
-            SelectedEnvironment = Environments.Count > 1 ? Environments[1] : Environments[0];
+            // Select the active environment when available; otherwise keep the prior
+            // behavior of selecting the first non-global environment.
+            var activeMatch = !string.IsNullOrEmpty(_activeEnvironmentFilePath)
+                ? Environments.FirstOrDefault(e =>
+                    !e.IsGlobal &&
+                    string.Equals(e.FilePath, _activeEnvironmentFilePath, StringComparison.OrdinalIgnoreCase))
+                : null;
+
+            SelectedEnvironment = activeMatch ?? (Environments.Count > 1 ? Environments[1] : Environments[0]);
 
             // Broadcast the current global vars so request tabs are up-to-date.
             Messenger.Send(new GlobalEnvironmentChangedMessage(globalModel));

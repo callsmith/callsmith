@@ -215,6 +215,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(FormattedResponseBody))]
     [NotifyPropertyChangedFor(nameof(FormattedResponseHeaders))]
+    [NotifyPropertyChangedFor(nameof(ResponseHeaderRows))]
+    [NotifyPropertyChangedFor(nameof(HasResponseHeaders))]
     [NotifyPropertyChangedFor(nameof(ResponseLanguage))]
     [NotifyPropertyChangedFor(nameof(StatusDisplay))]
     [NotifyPropertyChangedFor(nameof(ElapsedDisplay))]
@@ -521,6 +523,26 @@ public sealed partial class RequestTabViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Response headers projected into rows for table rendering.
+    /// </summary>
+    public IReadOnlyList<ResponseHeaderRowViewModel> ResponseHeaderRows
+    {
+        get
+        {
+            if (Response is null || Response.Headers.Count == 0)
+                return [];
+
+            var rows = new List<ResponseHeaderRowViewModel>(Response.Headers.Count);
+            var rowIndex = 0;
+            foreach (var kv in Response.Headers)
+                rows.Add(new ResponseHeaderRowViewModel(kv.Key, kv.Value, rowIndex++));
+            return rows;
+        }
+    }
+
+    public bool HasResponseHeaders => ResponseHeaderRows.Count > 0;
+
     public bool IsAuthBearer => AuthType == AuthConfig.AuthTypes.Bearer;
     public bool IsAuthBasic  => AuthType == AuthConfig.AuthTypes.Basic;
     public bool IsAuthApiKey => AuthType == AuthConfig.AuthTypes.ApiKey;
@@ -639,7 +661,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(IsAuthBearer) or nameof(IsAuthBasic) or nameof(IsAuthApiKey) or
                 nameof(ShowAuthPassword) or nameof(ShowAuthApiKeyValue) or
                 nameof(EnvVarNames) or
-                nameof(FormattedResponseBody) or nameof(FormattedResponseHeaders) or nameof(IsBodyJson) or
+                nameof(FormattedResponseBody) or nameof(FormattedResponseHeaders) or
+                nameof(ResponseHeaderRows) or nameof(HasResponseHeaders) or nameof(IsBodyJson) or
                 nameof(BodyLanguage) or nameof(ResponseLanguage) or
                 nameof(ShowDynamicValueConfig) or nameof(ShowMockDataConfig) or
                 nameof(ShowCurlDialog) or

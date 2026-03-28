@@ -68,7 +68,8 @@
                     Content="Send" Command="{Binding SendCommand}"
                     Background="#0e639c" Foreground="White" FontWeight="SemiBold"
                     FontSize="14" Padding="28,6" CornerRadius="4,0,0,4"
-                    BorderThickness="0" VerticalAlignment="Stretch"/>
+                  BorderThickness="0" VerticalAlignment="Stretch"
+                  ToolTip.Tip="Send Current Request (Ctrl+Enter)"/>
             <!-- Divider between Send and dropdown arrow -->
             <Rectangle Grid.Column="1"
                        IsVisible="{Binding !IsSending}"
@@ -758,7 +759,7 @@
                   CornerRadius="3"
                   FontSize="11"
                   VerticalAlignment="Center"
-                  ToolTip.Tip="Open history scoped to this request"/>
+                  ToolTip.Tip="Open history scoped to this request (Ctrl+H)"/>
         </Grid>
       </Border>
 
@@ -787,13 +788,65 @@
         </TabItem>
         <TabItem Header="Headers">
           <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
-            <SelectableTextBlock Text="{Binding FormattedResponseHeaders}"
-                                 Background="Transparent"
-                                 Foreground="#9cdcfe"
-                                 FontFamily="Consolas,Cascadia Mono,monospace"
-                                 FontSize="12"
-                                 Margin="8"
-                                 TextWrapping="Wrap"/>
+            <StackPanel Margin="8" Spacing="0">
+              <Border Background="#3a3a3a"
+                      CornerRadius="4,4,0,0"
+                      Padding="10,6"
+                      IsVisible="{Binding HasResponseHeaders}">
+                <Grid ColumnDefinitions="220,*">
+                  <TextBlock Text="Header"
+                             Foreground="#c5c5c5"
+                             FontSize="11"
+                             FontWeight="SemiBold"
+                             LetterSpacing="0.4"/>
+                  <TextBlock Grid.Column="1"
+                             Text="Value"
+                             Foreground="#c5c5c5"
+                             FontSize="11"
+                             FontWeight="SemiBold"
+                             LetterSpacing="0.4"/>
+                </Grid>
+              </Border>
+
+              <ItemsControl ItemsSource="{Binding ResponseHeaderRows}"
+                            IsVisible="{Binding HasResponseHeaders}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:ResponseHeaderRowViewModel">
+                    <Border Background="{Binding RowBackground}"
+                            BorderBrush="#3c3c3c"
+                            BorderThickness="0,0,0,1"
+                            Padding="10,6">
+                      <Grid ColumnDefinitions="220,*">
+                        <SelectableTextBlock Text="{Binding Name}"
+                                             Background="Transparent"
+                                             Foreground="#d7d7d7"
+                                             FontFamily="Consolas,Cascadia Mono,monospace"
+                                             FontSize="12"
+                                             HorizontalAlignment="Stretch"
+                                             VerticalAlignment="Stretch"
+                                             TextWrapping="Wrap"/>
+                        <SelectableTextBlock Grid.Column="1"
+                                             Text="{Binding Value}"
+                                             Background="Transparent"
+                                             Foreground="#9cdcfe"
+                                             FontFamily="Consolas,Cascadia Mono,monospace"
+                                             FontSize="12"
+                                             HorizontalAlignment="Stretch"
+                                             VerticalAlignment="Stretch"
+                                             TextWrapping="Wrap"/>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <TextBlock Text="No response headers"
+                         IsVisible="{Binding !HasResponseHeaders}"
+                         Foreground="#777"
+                         FontStyle="Italic"
+                         FontSize="12"
+                         Margin="2,4,0,0"/>
+            </StackPanel>
           </ScrollViewer>
         </TabItem>
       </TabControl>

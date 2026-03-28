@@ -119,6 +119,17 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Ctrl+E handler: opens the environment configuration screen from the main editor view.
+    /// </summary>
+    [RelayCommand]
+    private void OpenEnvironmentConfiguration()
+    {
+        if (!Collections.HasCollection) return;
+        if (HistoryPanel.IsOpen) return;
+        Environment.OpenEditorCommand.Execute(null);
+    }
+
+    /// <summary>
     /// Alt+R handler: reveals the currently active request in the collections sidebar.
     /// </summary>
     [RelayCommand]
