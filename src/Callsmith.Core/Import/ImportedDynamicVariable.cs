@@ -24,8 +24,14 @@ public sealed class ImportedDynamicVariable
     /// <summary>Collection-relative request path to execute.</summary>
     public string? ResponseRequestName { get; init; }
 
-    /// <summary>JSONPath expression to extract from the response body.</summary>
+    /// <summary>Extractor expression to apply to the response body.</summary>
     public string? ResponsePath { get; init; }
+
+    /// <summary>
+    /// Matcher that interprets <see cref="ResponsePath"/>.
+    /// Defaults to JSONPath for backward compatibility with imported collections.
+    /// </summary>
+    public ResponseValueMatcher ResponseMatcher { get; init; } = ResponseValueMatcher.JsonPath;
 
     /// <summary>Caching frequency for the response-body request.</summary>
     public DynamicFrequency ResponseFrequency { get; init; }

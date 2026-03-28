@@ -9,7 +9,7 @@ namespace Callsmith.Desktop.ViewModels;
 /// <summary>
 /// ViewModel for the dynamic environment variable configuration dialog.
 /// Allows the user to select a collection request, choose a frequency policy,
-/// and enter a JSONPath expression to extract a value from the response.
+/// and enter an extraction expression (JSONPath, XPath, or Regex) to extract a value from the response.
 /// </summary>
 public sealed partial class DynamicValueConfigViewModel : ObservableObject
 {
@@ -25,6 +25,14 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
 
     /// <summary>All request names available in the current collection (slash-separated paths).</summary>
     public ObservableCollection<string> AvailableRequests { get; } = [];
+
+    /// <summary>Matcher options shown in the dropdown.</summary>
+    public IReadOnlyList<MatcherOption> MatcherOptions { get; } =
+    [
+        new(ResponseValueMatcher.JsonPath, "JSONPath"),
+        new(ResponseValueMatcher.XPath, "XPath"),
+        new(ResponseValueMatcher.Regex, "Regex"),
+    ];
 
     /// <summary>Frequency options shown in the dropdown.</summary>
     public IReadOnlyList<FrequencyOption> FrequencyOptions { get; } =
@@ -47,6 +55,9 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
 
     [ObservableProperty]
     private int _expiresAfterSeconds = 900;
+
+    [ObservableProperty]
+    private MatcherOption _selectedMatcher;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ConfirmCommand))]
@@ -108,6 +119,7 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
         foreach (var r in availableRequests)
             AvailableRequests.Add(r);
 
+        _selectedMatcher = MatcherOptions[0]; // JSONPath
         _selectedFrequency = FrequencyOptions[0]; // Always
 
         // Pre-populate from an existing segment when editing
@@ -115,6 +127,8 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
         {
             _selectedRequest = existing.RequestName;
             _path = existing.Path;
+            _selectedMatcher = MatcherOptions.FirstOrDefault(
+                o => o.Matcher == existing.Matcher) ?? MatcherOptions[0];
             _selectedFrequency = FrequencyOptions.FirstOrDefault(
                 o => o.Frequency == existing.Frequency) ?? FrequencyOptions[0];
             _expiresAfterSeconds = existing.ExpiresAfterSeconds ?? 900;
@@ -129,7 +143,7 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(SelectedRequest) || string.IsNullOrWhiteSpace(Path))
         {
-            PreviewError = "Select a request and enter a JSONPath expression first.";
+            PreviewError = "Select a request and enter an extraction expression first.";
             PreviewResult = string.Empty;
             return;
         }
@@ -183,6 +197,7 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
                 VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
                 ResponseRequestName = segment.RequestName,
                 ResponsePath = segment.Path,
+                ResponseMatcher = segment.Matcher,
                 ResponseFrequency = segment.Frequency,
                 ResponseExpiresAfterSeconds = segment.ExpiresAfterSeconds,
             };
@@ -192,7 +207,7 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
                 .ConfigureAwait(true);
 
             if (result is null)
-                PreviewError = "No value extracted. Check the request name or JSONPath expression.";
+                PreviewError = $"No value extracted. Check the request name or {SelectedMatcher.Label} expression.";
             else
                 PreviewResult = result;
         }
@@ -237,11 +252,20 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
     {
         RequestName = SelectedRequest.Trim(),
         Path = Path.Trim(),
+        Matcher = SelectedMatcher.Matcher,
         Frequency = SelectedFrequency.Frequency,
         ExpiresAfterSeconds = IsIfExpiredSelected ? ExpiresAfterSeconds : null,
     };
 
     // ─── Nested types ────────────────────────────────────────────────────────
+
+    /// <summary>A display item for the matcher ComboBox.</summary>
+    public sealed class MatcherOption(ResponseValueMatcher matcher, string label)
+    {
+        public ResponseValueMatcher Matcher { get; } = matcher;
+        public string Label { get; } = label;
+        public override string ToString() => Label;
+    }
 
     /// <summary>A display item for the frequency ComboBox.</summary>
     public sealed class FrequencyOption(DynamicFrequency frequency, string label)

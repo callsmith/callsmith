@@ -543,6 +543,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             {
                 RequestName = existing.ResponseRequestName,
                 Path = existing.ResponsePath ?? string.Empty,
+                Matcher = existing.ResponseMatcher,
                 Frequency = existing.ResponseFrequency,
                 ExpiresAfterSeconds = existing.ResponseExpiresAfterSeconds,
             };
@@ -618,6 +619,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
                 ResponseRequestName = seg.RequestName,
                 ResponsePath = seg.Path,
+                ResponseMatcher = seg.Matcher,
                 ResponseFrequency = seg.Frequency,
                 ResponseExpiresAfterSeconds = seg.ExpiresAfterSeconds,
             };

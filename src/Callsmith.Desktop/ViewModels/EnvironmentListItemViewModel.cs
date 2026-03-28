@@ -321,6 +321,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
             MockDataField = migrated.MockDataField,
             ResponseRequestName = migrated.ResponseRequestName,
             ResponsePath = migrated.ResponsePath,
+            ResponseMatcher = migrated.ResponseMatcher,
             ResponseFrequency = migrated.ResponseFrequency,
             ResponseExpiresAfterSeconds = migrated.ResponseExpiresAfterSeconds,
             IsBrunoConcreteEnvironment = isBrunoConcreteEnv,
@@ -364,6 +365,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
                         VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
                         ResponseRequestName = d.RequestName,
                         ResponsePath = d.Path,
+                        ResponseMatcher = d.Matcher,
                         ResponseFrequency = d.Frequency,
                         ResponseExpiresAfterSeconds = d.ExpiresAfterSeconds,
                     };

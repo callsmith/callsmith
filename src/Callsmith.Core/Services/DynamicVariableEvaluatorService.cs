@@ -184,6 +184,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         {
             RequestName = variable.ResponseRequestName,
             Path = variable.ResponsePath,
+            Matcher = variable.ResponseMatcher,
             Frequency = variable.ResponseFrequency,
             ExpiresAfterSeconds = variable.ResponseExpiresAfterSeconds,
         };
@@ -226,12 +227,13 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
 
         foreach (var variable in matchingVars)
         {
-            var extracted = JsonPathHelper.Extract(responseBody, variable.ResponsePath!);
+            var extracted = ResponseBodyValueExtractor.Extract(
+                responseBody, variable.ResponseMatcher, variable.ResponsePath!);
             if (extracted is null)
             {
                 _logger.LogDebug(
-                    "Cache update skipped for '{Name}': no value at JSONPath '{Path}'",
-                    variable.Name, variable.ResponsePath);
+                    "Cache update skipped for '{Name}': no value at {Matcher} expression '{Path}'",
+                    variable.Name, variable.ResponseMatcher, variable.ResponsePath);
                 continue;
             }
 
@@ -275,6 +277,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         {
             RequestName = variable.ResponseRequestName!,
             Path = variable.ResponsePath ?? string.Empty,
+            Matcher = variable.ResponseMatcher,
             Frequency = variable.ResponseFrequency,
             ExpiresAfterSeconds = variable.ResponseExpiresAfterSeconds,
         };
@@ -439,7 +442,8 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
 
         if (string.IsNullOrEmpty(response.Body)) return null;
 
-        var extracted = JsonPathHelper.Extract(response.Body, segment.Path);
+        var extracted = ResponseBodyValueExtractor.Extract(
+            response.Body, segment.Matcher, segment.Path);
         _logger.LogDebug(
             "Dynamic variable '{RequestName}' + path '{Path}' → '{Value}'",
             segment.RequestName, segment.Path, extracted);

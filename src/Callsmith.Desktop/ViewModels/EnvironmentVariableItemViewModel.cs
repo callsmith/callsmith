@@ -124,6 +124,10 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     private string? _responsePath;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ResponseBodySummary))]
+    private ResponseValueMatcher _responseMatcher = ResponseValueMatcher.JsonPath;
+
+    [ObservableProperty]
     private DynamicFrequency _responseFrequency;
 
     [ObservableProperty]
@@ -131,7 +135,7 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
 
     public string ResponseBodySummary =>
         ResponseRequestName is not null
-            ? $"{LeafName(ResponseRequestName)} → {ResponsePath}"
+            ? $"{LeafName(ResponseRequestName)} [{ResponseMatcher}] → {ResponsePath}"
             : "Not configured";
 
     /// <summary>Extracts the last path segment so folder prefixes are hidden in the UI.</summary>
@@ -309,10 +313,12 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
         if (result is null) return;
         var changed = result.ResponseRequestName          != ResponseRequestName
                    || result.ResponsePath                 != ResponsePath
+                   || result.ResponseMatcher             != ResponseMatcher
                    || result.ResponseFrequency            != ResponseFrequency
                    || result.ResponseExpiresAfterSeconds  != ResponseExpiresAfterSeconds;
         ResponseRequestName           = result.ResponseRequestName;
         ResponsePath                  = result.ResponsePath;
+        ResponseMatcher               = result.ResponseMatcher;
         ResponseFrequency             = result.ResponseFrequency;
         ResponseExpiresAfterSeconds   = result.ResponseExpiresAfterSeconds;
         if (changed) _onChanged();
@@ -331,6 +337,7 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
         MockDataField = MockDataField,
         ResponseRequestName = ResponseRequestName,
         ResponsePath = ResponsePath,
+        ResponseMatcher = ResponseMatcher,
         ResponseFrequency = ResponseFrequency,
         ResponseExpiresAfterSeconds = ResponseExpiresAfterSeconds,
     };

@@ -62,6 +62,7 @@ public sealed class BrunoCollectionMeta
         // Response-body type fields
         public string? ResponseRequestName { get; init; }
         public string? ResponsePath { get; init; }
+        public ResponseValueMatcher? ResponseMatcher { get; init; }
         public DynamicFrequency? ResponseFrequency { get; init; }
         public int? ResponseExpiresAfterSeconds { get; init; }
 
@@ -90,6 +91,7 @@ public sealed class BrunoCollectionMeta
         // Response-body type fields
         public string? ResponseRequestName { get; init; }
         public string? ResponsePath { get; init; }
+        public ResponseValueMatcher? ResponseMatcher { get; init; }
         public DynamicFrequency? ResponseFrequency { get; init; }
         public int? ResponseExpiresAfterSeconds { get; init; }
 

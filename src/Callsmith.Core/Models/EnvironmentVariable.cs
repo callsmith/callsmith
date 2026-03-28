@@ -49,10 +49,17 @@ public sealed class EnvironmentVariable
     public string? ResponseRequestName { get; init; }
 
     /// <summary>
-    /// JSONPath expression used to extract the desired value from the response body.
+    /// Expression used to extract the desired value from the response body.
+    /// Interpreted by <see cref="ResponseMatcher"/> (JSONPath, XPath, or Regex).
     /// Only relevant for response-body variables.
     /// </summary>
     public string? ResponsePath { get; init; }
+
+    /// <summary>
+    /// Matcher that interprets <see cref="ResponsePath"/> for response-body variables.
+    /// Defaults to <see cref="ResponseValueMatcher.JsonPath"/>.
+    /// </summary>
+    public ResponseValueMatcher ResponseMatcher { get; init; } = ResponseValueMatcher.JsonPath;
 
     /// <summary>How often the linked request should be re-executed. Defaults to Always.</summary>
     public DynamicFrequency ResponseFrequency { get; init; }
@@ -111,8 +118,9 @@ public sealed class EnvironmentVariable
         /// <summary>
         /// Value extracted from a collection request's response body at send time.
         /// Configured by <see cref="EnvironmentVariable.ResponseRequestName"/>,
-        /// <see cref="EnvironmentVariable.ResponsePath"/>, <see cref="EnvironmentVariable.ResponseFrequency"/>,
-        /// and optionally <see cref="EnvironmentVariable.ResponseExpiresAfterSeconds"/>.
+        /// <see cref="EnvironmentVariable.ResponsePath"/>, <see cref="EnvironmentVariable.ResponseMatcher"/>,
+        /// <see cref="EnvironmentVariable.ResponseFrequency"/>, and optionally
+        /// <see cref="EnvironmentVariable.ResponseExpiresAfterSeconds"/>.
         /// </summary>
         public const string ResponseBody = "response-body";
     }

@@ -34,10 +34,15 @@ public sealed class DynamicValueSegment : ValueSegment
     public required string RequestName { get; init; }
 
     /// <summary>
-    /// JSONPath expression used to extract the desired value from the response body.
-    /// Example: <c>$.access_token</c>, <c>$.data.token</c>.
+    /// Expression used to extract the desired value from the response body.
+    /// Interpreted by <see cref="Matcher"/>.
     /// </summary>
     public required string Path { get; init; }
+
+    /// <summary>
+    /// Matcher that interprets <see cref="Path"/> (JSONPath, XPath, or Regex).
+    /// </summary>
+    public ResponseValueMatcher Matcher { get; init; } = ResponseValueMatcher.JsonPath;
 
     /// <summary>How often the linked request should be re-executed.</summary>
     public DynamicFrequency Frequency { get; init; }

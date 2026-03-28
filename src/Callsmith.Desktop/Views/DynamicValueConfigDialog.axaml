@@ -22,7 +22,7 @@
     <TextBlock TextWrapping="Wrap"
                Foreground="#888"
                FontSize="11">
-      Select a request to execute and a JSONPath expression to extract its response value.
+      Select a request to execute, choose a matcher, and enter an extraction expression.
     </TextBlock>
 
     <!-- Request search + dropdown -->
@@ -60,6 +60,31 @@
           </DataTemplate>
         </AutoCompleteBox.ItemTemplate>
       </AutoCompleteBox>
+    </Grid>
+
+    <!-- Matcher dropdown -->
+    <Grid ColumnDefinitions="110,10,*">
+      <TextBlock Grid.Column="0"
+                 Text="Matcher"
+                 Foreground="#aaa"
+                 FontSize="12"
+                 VerticalAlignment="Center"/>
+      <ComboBox Grid.Column="2"
+                ItemsSource="{Binding MatcherOptions}"
+                SelectedItem="{Binding SelectedMatcher, Mode=TwoWay}"
+                HorizontalAlignment="Stretch"
+                Foreground="#d4d4d4"
+                Background="#3c3c3c"
+                BorderBrush="#555"
+                FontSize="12"
+                Padding="8,0"
+                VerticalContentAlignment="Center">
+        <ComboBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:DynamicValueConfigViewModel+MatcherOption">
+            <TextBlock Text="{Binding Label}" FontSize="12"/>
+          </DataTemplate>
+        </ComboBox.ItemTemplate>
+      </ComboBox>
     </Grid>
 
     <!-- Frequency dropdown -->
@@ -111,16 +136,16 @@
                      ToolTip.Tip="Cache lifetime in seconds (e.g. 900 = 15 minutes)"/>
     </Grid>
 
-    <!-- JSONPath expression -->
+    <!-- Extractor expression -->
     <Grid ColumnDefinitions="110,10,*">
       <TextBlock Grid.Column="0"
-                 Text="JSONPath"
+                 Text="Expression"
                  Foreground="#aaa"
                  FontSize="12"
                  VerticalAlignment="Center"/>
       <TextBox Grid.Column="2"
                Text="{Binding Path}"
-               Watermark="e.g. $.access_token"
+               Watermark="e.g. $.access_token, //node/text(), (&lt;=foo)bar"
                Foreground="#d4d4d4"
                Background="#3c3c3c"
                BorderBrush="#555"

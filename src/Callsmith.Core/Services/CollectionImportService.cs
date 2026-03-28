@@ -230,6 +230,7 @@ public sealed class CollectionImportService : ICollectionImportService
                     IsSecret = false,
                     ResponseRequestName = dv.ResponseRequestName,
                     ResponsePath = dv.ResponsePath,
+                    ResponseMatcher = dv.ResponseMatcher,
                     ResponseFrequency = dv.ResponseFrequency,
                     ResponseExpiresAfterSeconds = dv.ResponseExpiresAfterSeconds,
                 };
@@ -314,6 +315,7 @@ public sealed class CollectionImportService : ICollectionImportService
                     VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
                     ResponseRequestName = dv.ResponseRequestName,
                     ResponsePath = dv.ResponsePath,
+                    ResponseMatcher = dv.ResponseMatcher,
                     ResponseFrequency = dv.ResponseFrequency,
                     ResponseExpiresAfterSeconds = dv.ResponseExpiresAfterSeconds,
                 });

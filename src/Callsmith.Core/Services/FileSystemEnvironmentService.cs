@@ -413,6 +413,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
                 MockDataField = v.MockDataField,
                 ResponseRequestName = v.ResponseRequestName,
                 ResponsePath = v.ResponsePath,
+                ResponseMatcher = v.ResponseMatcher ?? ResponseValueMatcher.JsonPath,
                 ResponseFrequency = v.ResponseFrequency ?? DynamicFrequency.Always,
                 ResponseExpiresAfterSeconds = v.ResponseExpiresAfterSeconds,
                 IsForceGlobalOverride = v.IsForceGlobalOverride ?? false,
@@ -442,6 +443,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
                 MockDataField = v.MockDataField,
                 ResponseRequestName = v.ResponseRequestName,
                 ResponsePath = v.ResponsePath,
+                ResponseMatcher = v.ResponseMatcher == ResponseValueMatcher.JsonPath ? null : v.ResponseMatcher,
                 ResponseFrequency = v.ResponseFrequency == DynamicFrequency.Always ? null : v.ResponseFrequency,
                 ResponseExpiresAfterSeconds = v.ResponseExpiresAfterSeconds,
                 IsForceGlobalOverride = v.IsForceGlobalOverride ? (bool?)true : null,
@@ -481,6 +483,8 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         public string? ResponseRequestName { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? ResponsePath { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ResponseValueMatcher? ResponseMatcher { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public DynamicFrequency? ResponseFrequency { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

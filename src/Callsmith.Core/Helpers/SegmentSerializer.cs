@@ -25,10 +25,10 @@ public static partial class SegmentSerializer
     [GeneratedRegex(@"\{%-?\s*faker\s+'([^']+)'\s*-?%\}", RegexOptions.Compiled)]
     private static partial Regex FakerTag();
 
-    // Matches {% response 'body', 'reqName/path', 'jsonPath', 'frequency'[, seconds] %}
+    // Matches {% response 'body', 'reqName/path', 'path'[, 'matcher'], 'frequency'[, seconds] %}
     [GeneratedRegex(
-        @"\{%-?\s*response\s+'([^']*)'\s*,\s*'([^']*)'\s*,\s*'([^']*)'\s*,\s*'([^']*)'(?:\s*,\s*(\d+))?\s*-?%\}",
-        RegexOptions.Compiled | RegexOptions.Singleline)]
+        @"\{%-?\s*response\s+'([^']*)'\s*,\s*'([^']*)'\s*,\s*'([^']*)'(?:\s*,\s*'(jsonpath|xpath|regex)')?\s*,\s*'([^']*)'(?:\s*,\s*(\d+))?\s*-?%\}",
+        RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.IgnoreCase)]
     private static partial Regex ResponseTag();
 
     // Used to split on any {% %} block so we can walk static segments between them
@@ -64,12 +64,14 @@ public static partial class SegmentSerializer
             var responseMatch = ResponseTag().Match(part);
             if (responseMatch.Success)
             {
-                var frequency = ParseFrequency(responseMatch.Groups[4].Value);
-                int? expires = int.TryParse(responseMatch.Groups[5].Value, out var s) ? s : null;
+                var matcher = ParseMatcher(responseMatch.Groups[4].Value);
+                var frequency = ParseFrequency(responseMatch.Groups[5].Value);
+                int? expires = int.TryParse(responseMatch.Groups[6].Value, out var s) ? s : null;
                 segments.Add(new DynamicValueSegment
                 {
                     RequestName = responseMatch.Groups[2].Value,
                     Path = responseMatch.Groups[3].Value,
+                    Matcher = matcher,
                     Frequency = frequency,
                     ExpiresAfterSeconds = expires,
                 });
@@ -109,10 +111,21 @@ public static partial class SegmentSerializer
                     break;
                 case DynamicValueSegment d:
                     var freq = SerializeFrequency(d.Frequency);
+                    var matcher = SerializeMatcher(d.Matcher);
                     if (d.ExpiresAfterSeconds.HasValue)
-                        sb.Append($"{{% response 'body', '{d.RequestName}', '{d.Path}', '{freq}', {d.ExpiresAfterSeconds} %}}");
+                    {
+                        if (d.Matcher == ResponseValueMatcher.JsonPath)
+                            sb.Append($"{{% response 'body', '{d.RequestName}', '{d.Path}', '{freq}', {d.ExpiresAfterSeconds} %}}");
+                        else
+                            sb.Append($"{{% response 'body', '{d.RequestName}', '{d.Path}', '{matcher}', '{freq}', {d.ExpiresAfterSeconds} %}}");
+                    }
                     else
-                        sb.Append($"{{% response 'body', '{d.RequestName}', '{d.Path}', '{freq}' %}}");
+                    {
+                        if (d.Matcher == ResponseValueMatcher.JsonPath)
+                            sb.Append($"{{% response 'body', '{d.RequestName}', '{d.Path}', '{freq}' %}}");
+                        else
+                            sb.Append($"{{% response 'body', '{d.RequestName}', '{d.Path}', '{matcher}', '{freq}' %}}");
+                    }
                     break;
             }
         }
@@ -151,6 +164,14 @@ public static partial class SegmentSerializer
         return ("Random", "UUID");
     }
 
+    private static ResponseValueMatcher ParseMatcher(string raw) =>
+        raw.ToLowerInvariant() switch
+        {
+            "xpath" => ResponseValueMatcher.XPath,
+            "regex" => ResponseValueMatcher.Regex,
+            _ => ResponseValueMatcher.JsonPath,
+        };
+
     private static DynamicFrequency ParseFrequency(string raw) =>
         raw switch
         {
@@ -158,6 +179,14 @@ public static partial class SegmentSerializer
             "when-expired" => DynamicFrequency.IfExpired,
             "never" => DynamicFrequency.Never,
             _ => DynamicFrequency.Always,
+        };
+
+    private static string SerializeMatcher(ResponseValueMatcher matcher) =>
+        matcher switch
+        {
+            ResponseValueMatcher.XPath => "xpath",
+            ResponseValueMatcher.Regex => "regex",
+            _ => "jsonpath",
         };
 
     private static string SerializeFrequency(DynamicFrequency freq) =>
