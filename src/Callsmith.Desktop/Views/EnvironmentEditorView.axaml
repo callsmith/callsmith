@@ -634,9 +634,10 @@
                       </StackPanel>
                     </Grid>
 
-                    <!-- SECRET column — lock toggle for all variable types -->
+                    <!-- SECRET column — lock toggle for all variable types (disabled for mock data) -->
                     <ToggleButton Grid.Row="0" Grid.Column="3"
                                   IsChecked="{Binding IsSecret}"
+                                  IsEnabled="{Binding CanBeSecret}"
                                   Width="28" Height="26"
                                   Background="Transparent"
                                   BorderBrush="#444"
@@ -644,7 +645,12 @@
                                   CornerRadius="3"
                                   HorizontalAlignment="Center"
                                   VerticalAlignment="Center"
-                                  ToolTip.Tip="Mark or unmark as secret — secret values are masked in the UI">
+                                  ToolTip.Tip="{Binding SecretLockTooltip}">
+                      <ToggleButton.Styles>
+                        <Style Selector="ToggleButton:disabled">
+                          <Setter Property="Cursor" Value="Help"/>
+                        </Style>
+                      </ToggleButton.Styles>
                       <TextBlock Text="🔒" FontSize="11"
                                  HorizontalAlignment="Center"
                                  VerticalAlignment="Center"/>

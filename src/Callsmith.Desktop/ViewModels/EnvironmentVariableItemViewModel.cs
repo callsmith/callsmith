@@ -78,6 +78,8 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsResponseBody))]
     [NotifyPropertyChangedFor(nameof(IsStaticNotSecret))]
     [NotifyPropertyChangedFor(nameof(IsStaticAndSecret))]
+    [NotifyPropertyChangedFor(nameof(CanBeSecret))]
+    [NotifyPropertyChangedFor(nameof(SecretLockTooltip))]
     [NotifyPropertyChangedFor(nameof(VariableTypeDisplay))]
     [NotifyPropertyChangedFor(nameof(HasPreview))]
     [NotifyPropertyChangedFor(nameof(PreviewValue))]
@@ -178,6 +180,20 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     public bool IsResponseBody => VariableType == EnvironmentVariable.VariableTypes.ResponseBody;
     public bool IsStaticNotSecret => IsStatic && !IsSecret;
     public bool IsStaticAndSecret  => IsStatic && IsSecret;
+
+    /// <summary>
+    /// True when the secret lock button should be enabled.
+    /// Mock data variables cannot be marked secret.
+    /// </summary>
+    public bool CanBeSecret => !IsMockData;
+
+    /// <summary>
+    /// Tooltip shown on the secret lock button — explains why it is disabled for mock data variables.
+    /// </summary>
+    public string SecretLockTooltip =>
+        IsMockData
+            ? "Mock data variables cannot be marked secret"
+            : "Mark or unmark as secret — secret values are masked in the UI";
 
     /// <summary>Human-readable label for the currently selected type; two-way bound to the dropdown.</summary>
     public string VariableTypeDisplay

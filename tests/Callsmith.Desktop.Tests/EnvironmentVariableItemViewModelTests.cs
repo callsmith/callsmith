@@ -250,4 +250,46 @@ public sealed class EnvironmentVariableItemViewModelTests
         // Assert — reveal state stays false (was already false; marking secret doesn't force reveal)
         vm.IsValueRevealed.Should().BeFalse();
     }
+
+    // ─── Tests: CanBeSecret ───────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(EnvironmentVariable.VariableTypes.Static, true)]
+    [InlineData(EnvironmentVariable.VariableTypes.MockData, false)]
+    [InlineData(EnvironmentVariable.VariableTypes.ResponseBody, true)]
+    public void CanBeSecret_ReturnsFalseOnlyForMockData(string variableType, bool expectedCanBeSecret)
+    {
+        // Arrange
+        var vm = new EnvironmentVariableItemViewModel(
+            onDelete: _ => { },
+            onChanged: () => { },
+            getResolvedEnv: () => new ResolvedEnvironment())
+        {
+            VariableType = variableType,
+        };
+
+        // Assert
+        vm.CanBeSecret.Should().Be(expectedCanBeSecret);
+    }
+
+    [Fact]
+    public void CanBeSecret_UpdatesWhenVariableTypeChanges()
+    {
+        // Arrange
+        var vm = new EnvironmentVariableItemViewModel(
+            onDelete: _ => { },
+            onChanged: () => { },
+            getResolvedEnv: () => new ResolvedEnvironment())
+        {
+            VariableType = EnvironmentVariable.VariableTypes.Static,
+        };
+        vm.CanBeSecret.Should().BeTrue();
+
+        // Act — switch to mock data
+        vm.VariableType = EnvironmentVariable.VariableTypes.MockData;
+
+        // Assert — lock button should now be disabled
+        vm.CanBeSecret.Should().BeFalse();
+        vm.SecretLockTooltip.Should().Contain("cannot be marked secret");
+    }
 }
