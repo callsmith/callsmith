@@ -313,6 +313,42 @@ public sealed class EnvironmentEditorViewModelTests
         sut.SelectedEnvironment.IsDirty.Should().BeFalse();
     }
 
+    /// <summary>
+    /// Regression test: saving Env2 while Env1 is the active collection environment must
+    /// not switch the environment editor back to Env1.
+    /// </summary>
+    [Fact]
+    public async Task SaveSelected_PreservesEditorSelection_WhenActiveCollectionEnvDiffers()
+    {
+        var env1 = MakeModel("env1");
+        var env2 = MakeModel("env2");
+
+        var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([env1, env2]);
+        service.SaveEnvironmentAsync(Arg.Any<EnvironmentModel>(), Arg.Any<CancellationToken>())
+               .Returns(Task.CompletedTask);
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        // Env1 is the active collection environment.
+        messenger.Send(new EnvironmentChangedMessage(env1));
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        // User navigates to Env2 in the editor.
+        sut.SelectedEnvironment = sut.Environments.First(e => e.Name == "env2");
+
+        // Simulate a reload caused by a save (same active env path re-broadcast).
+        messenger.Send(new EnvironmentChangedMessage(env1));
+
+        // The editor must still show Env2 — Env1 is only the active collection env.
+        sut.SelectedEnvironment.Should().NotBeNull();
+        sut.SelectedEnvironment!.Name.Should().Be("env2");
+    }
+
     [Fact]
     public async Task SelectedConcreteEnvironment_BuildsSuggestionsFromGlobalAndOwnVariables()
     {

@@ -392,7 +392,16 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     /// <inheritdoc/>
     public void Receive(EnvironmentChangedMessage message)
     {
-        _activeEnvironmentFilePath = message.Value?.FilePath;
+        var newFilePath = message.Value?.FilePath;
+
+        // Only switch the editor's selected environment when the active environment actually
+        // changes to a different one. Reloads (e.g. triggered by a save) re-broadcast the
+        // same active-environment path, and we must not override the user's current selection
+        // in those cases.
+        if (string.Equals(_activeEnvironmentFilePath, newFilePath, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _activeEnvironmentFilePath = newFilePath;
 
         if (string.IsNullOrEmpty(_activeEnvironmentFilePath))
             return;
