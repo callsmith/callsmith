@@ -39,6 +39,10 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
     private string? _collectionFolderPath;
     private string? _activeEnvironmentFilePath;
+    // True once the editor has synced SelectedEnvironment to the active environment on initial
+    // collection load. After that the user owns the selection and EnvironmentChangedMessage
+    // broadcasts (e.g. re-broadcasts triggered by a save) must not override it.
+    private bool _hasInitializedEditorSelection;
     private List<string> _availableRequestNames = [];
     private TaskCompletionSource<EnvironmentVariable?>? _pendingMockDataTcs;
     private TaskCompletionSource<EnvironmentVariable?>? _pendingResponseBodyTcs;
@@ -385,6 +389,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     public void Receive(CollectionOpenedMessage message)
     {
         _collectionFolderPath = message.Value;
+        _hasInitializedEditorSelection = false;
         _ = LoadEnvironmentsAsync(message.Value);
         _ = LoadRequestNamesAsync(message.Value);
     }
@@ -394,7 +399,9 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     {
         _activeEnvironmentFilePath = message.Value?.FilePath;
 
-        if (string.IsNullOrEmpty(_activeEnvironmentFilePath))
+        // After the initial collection load the user owns the editor selection.
+        // Re-broadcasts caused by saves or reloads must not override it.
+        if (_hasInitializedEditorSelection || string.IsNullOrEmpty(_activeEnvironmentFilePath))
             return;
 
         var matchingEnvironment = Environments.FirstOrDefault(e =>
@@ -402,7 +409,10 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             string.Equals(e.FilePath, _activeEnvironmentFilePath, StringComparison.OrdinalIgnoreCase));
 
         if (matchingEnvironment is not null)
+        {
             SelectedEnvironment = matchingEnvironment;
+            _hasInitializedEditorSelection = true;
+        }
     }
 
     /// <summary>
@@ -1293,6 +1303,14 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 : null;
 
             SelectedEnvironment = activeMatch ?? (Environments.Count > 1 ? Environments[1] : Environments[0]);
+
+            // Mark the initial selection done so that subsequent EnvironmentChangedMessage
+            // broadcasts (e.g. re-broadcasts triggered by a save reload) do not override
+            // the user's selection.  Only mark done when we actually matched the active env;
+            // if we fell back to the first item, a later message may still legitimately correct
+            // the selection before the user has taken any action.
+            if (activeMatch is not null)
+                _hasInitializedEditorSelection = true;
 
             // Broadcast the current global vars so request tabs are up-to-date.
             Messenger.Send(new GlobalEnvironmentChangedMessage(globalModel));
