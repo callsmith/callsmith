@@ -35,12 +35,15 @@ jobs:
 
       - name: Publish
         run: |
+          VERSION="${GITHUB_REF_NAME#v}"
           dotnet publish src/Callsmith.Desktop/Callsmith.Desktop.csproj \
             --configuration Release \
             --runtime ${{ matrix.rid }} \
             --self-contained true \
             -p:PublishSingleFile=true \
             -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:Version="$VERSION" \
+            -p:InformationalVersion="${GITHUB_REF_NAME}" \
             --output publish/${{ matrix.rid }}
 
       - name: Archive (zip)
