@@ -1136,7 +1136,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                         var value = previewEnv.TryGetResolvedPreviewValue(key, out var resolvedPreview)
                             ? resolvedPreview
                             : v.Value;
-                        return (value, v.IsSecret);
+                        return (value, v.IsSecret, v.VariableType);
                     },
                     StringComparer.Ordinal);
 
@@ -1146,11 +1146,11 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 var key = v.Name.Trim();
                 if (concreteVars.TryGetValue(key, out var concreteVar))
                 {
-                    var label = v.IsForceGlobalOverride ? "OVERRIDES" : "OVERRIDDEN WITH";
+                    var label = v.IsForceGlobalOverride ? $"OVERRIDES" : $"OVERRIDDEN WITH";
                     var toolTip = v.IsForceGlobalOverride
                         ? "Overrides this value when used in requests in the previewed environment"
                         : "Overridden with this value when used in requests in the previewed environment";
-                    conflicts[key] = (label, concreteVar.IsSecret ? MaskedSecretValue : concreteVar.value, toolTip);
+                    conflicts[key] = ($"{label}{ConflictLabelSuffix(concreteVar.VariableType)}", concreteVar.IsSecret ? MaskedSecretValue : concreteVar.value, toolTip);
                 }
             }
 
@@ -1197,28 +1197,31 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             if (!globalVarsByName.TryGetValue(key, out var globalVar))
                 continue;
 
+            var shortLabel = globalVar.IsForceGlobalOverride ? "OVERRIDDEN WITH" : "OVERRIDES";
+            var label = $"{shortLabel}{ConflictLabelSuffix(globalVar.VariableType)}";
+
             if (globalVar.IsForceGlobalOverride)
             {
                 if (globalVar.IsSecret)
                 {
-                    conflicts[key] = ("OVERRIDDEN WITH", MaskedSecretValue, "Overridden by a secret global variable");
+                    conflicts[key] = ($"{label}", MaskedSecretValue, "Overridden by a secret global variable");
                     continue;
                 }
 
                 if (resolvedGlobalVars.TryGetValue(key, out var globalValue))
-                    conflicts[key] = ("OVERRIDDEN WITH", globalValue, "Overridden with this value by a global variable");
+                    conflicts[key] = ($"{label}", globalValue, "Overridden with this value by a global variable");
 
                 continue;
             }
 
             if (globalVar.IsSecret)
             {
-                conflicts[key] = ("OVERRIDES", MaskedSecretValue, "Overrides a secret global variable");
+                conflicts[key] = ($"{label}", MaskedSecretValue, "Overrides a secret global variable");
                 continue;
             }
 
             if (resolvedGlobalVars.TryGetValue(key, out var globalPreviewValue))
-                conflicts[key] = ("OVERRIDES", globalPreviewValue, "Overrides this global variable value");
+                conflicts[key] = ($"{label}", globalPreviewValue, "Overrides this global variable value");
         }
 
         env.SetConflictValues(conflicts);
@@ -1520,4 +1523,12 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         }
         return names;
     }
+
+    private static string ConflictLabelSuffix(string variableType) => variableType switch
+    {
+        EnvironmentVariable.VariableTypes.ResponseBody or
+        EnvironmentVariable.VariableTypes.Dynamic => " (DYNAMIC DATA)",
+        EnvironmentVariable.VariableTypes.MockData => " (MOCK DATA)",
+        _ => ""
+    };
 }
