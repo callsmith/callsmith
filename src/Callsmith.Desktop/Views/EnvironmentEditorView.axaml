@@ -633,27 +633,38 @@
                       </StackPanel>
                     </Grid>
 
-                    <!-- SECRET column — lock toggle for all variable types (disabled for mock data) -->
-                    <ToggleButton Grid.Row="0" Grid.Column="3"
-                                  IsChecked="{Binding IsSecret}"
-                                  IsEnabled="{Binding CanBeSecret}"
-                                  Width="28" Height="26"
-                                  Background="Transparent"
-                                  BorderBrush="#444"
-                                  BorderThickness="1"
-                                  CornerRadius="3"
-                                  HorizontalAlignment="Center"
-                                  VerticalAlignment="Center"
-                                  ToolTip.Tip="{Binding SecretLockTooltip}">
-                      <ToggleButton.Styles>
-                        <Style Selector="ToggleButton:disabled">
-                          <Setter Property="Cursor" Value="Help"/>
-                        </Style>
-                      </ToggleButton.Styles>
-                      <TextBlock Text="🔒" FontSize="11"
-                                 HorizontalAlignment="Center"
-                                 VerticalAlignment="Center"/>
-                    </ToggleButton>
+                    <!-- SECRET column — lock toggle for all variable types (disabled for mock data).
+                         The Panel + transparent overlay trick is needed because Avalonia's Fluent theme
+                         makes a disabled button's interior non-hit-testable, so ToolTip and Cursor
+                         would never fire on the ToggleButton itself when IsEnabled=False.
+                         The overlay is only visible when the button is disabled; it intercepts mouse
+                         events and shows the tooltip + help cursor instead. -->
+                    <Panel Grid.Row="0" Grid.Column="3"
+                           Width="28"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center">
+                      <ToggleButton IsChecked="{Binding IsSecret}"
+                                    IsEnabled="{Binding CanBeSecret}"
+                                    Width="28" Height="26"
+                                    Background="Transparent"
+                                    BorderBrush="#444"
+                                    BorderThickness="1"
+                                    CornerRadius="3"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    ToolTip.Tip="{Binding SecretLockTooltip}">
+                        <TextBlock Text="🔒" FontSize="11"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                      </ToggleButton>
+                      <!-- Transparent overlay — only present when the button is disabled;
+                           captures pointer events so the tooltip and help cursor fire. -->
+                      <Border Width="28" Height="26"
+                              Background="Transparent"
+                              IsVisible="{Binding !CanBeSecret}"
+                              Cursor="Help"
+                              ToolTip.Tip="{Binding SecretLockTooltip}"/>
+                    </Panel>
 
                     <!-- Override checkbox — visible only for global environment variables -->
                     <!-- Keep a fixed-width host so the checkbox can be visually centered,
