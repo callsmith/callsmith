@@ -634,13 +634,19 @@
                     </Grid>
 
                     <!-- SECRET column — checkbox matches the Override checkbox style and renders
-                         cleanly in both themes whether enabled or disabled. -->
-                    <CheckBox Grid.Row="0" Grid.Column="3"
-                              IsChecked="{Binding IsSecret}"
-                              IsEnabled="{Binding CanBeSecret}"
-                              HorizontalAlignment="Center"
-                              VerticalAlignment="Center"
-                              ToolTip.Tip="{Binding SecretLockTooltip}"/>
+                         cleanly in both themes whether enabled or disabled.
+                         The Border wrapper ensures the tooltip is visible even when the checkbox
+                         is disabled (Avalonia does not fire pointer events on disabled controls). -->
+                    <Border Grid.Row="0" Grid.Column="3"
+                            Background="Transparent"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            ToolTip.Tip="{Binding SecretLockTooltip}">
+                      <CheckBox IsChecked="{Binding IsSecret}"
+                                IsEnabled="{Binding CanBeSecret}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"/>
+                    </Border>
 
                     <!-- Override checkbox — visible only for global environment variables -->
                     <!-- Keep a fixed-width host so the checkbox can be visually centered,
