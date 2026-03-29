@@ -460,6 +460,22 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     internal IReadOnlyDictionary<string, string> GetResolvedGlobalPreviewVars() => _pureGlobalPreviewVars;
 
     /// <summary>
+    /// Returns the currently resolved preview value for <paramref name="variableName"/>, if any.
+    /// This uses the same merged preview context as the PREVIEW column.
+    /// </summary>
+    internal bool TryGetResolvedPreviewValue(string variableName, out string resolvedValue)
+    {
+        resolvedValue = string.Empty;
+        if (string.IsNullOrWhiteSpace(variableName))
+            return false;
+
+        var found = BuildResolvedEnvironment().Variables
+            .TryGetValue(variableName.Trim(), out var previewValue);
+        resolvedValue = previewValue ?? string.Empty;
+        return found;
+    }
+
+    /// <summary>
     /// Updates the conflict label/value for each variable row based on a pre-built conflict map.
     /// Variables not present in <paramref name="conflicts"/> have their conflict info cleared.
     /// </summary>

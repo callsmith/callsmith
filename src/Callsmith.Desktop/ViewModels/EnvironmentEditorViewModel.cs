@@ -873,9 +873,6 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         // ── Global env path ──────────────────────────────────────────────────
         if (env.IsGlobal)
         {
-            // Always push conflict info (even when there are no dynamics to resolve).
-            PushConflictInfo(env);
-
             // Use the env-level preview selection when set; otherwise fall back to the first
             // concrete environment. This matches the send-time cache namespace so cached tokens
             // from recent request sends are reused without an extra HTTP call.
@@ -900,6 +897,13 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 // No dynamic vars — still push merged static context so that {{token}}-style
                 // references in static var values resolve correctly in the preview column.
                 env.SetGlobalPreviewValues(globalStaticVars, new Dictionary<string, MockDataEntry>());
+
+                // Keep global conflict rows honest by refreshing the preview env first so
+                // its response-body values are available for OVERRIDES / OVERRIDDEN WITH.
+                if (contextEnv is not null)
+                    await RefreshDynamicPreviewsAsync(contextEnv, ct).ConfigureAwait(true);
+
+                PushConflictInfo(env);
                 return;
             }
 
@@ -928,12 +932,20 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 // Also push the merged static context so that {{token}}-style references in
                 // static var values resolve against the effective (preview-env-aware) merged dict.
                 env.SetGlobalPreviewValues(globalStaticVars, globalResolved.MockGenerators);
+
+                // Keep global conflict rows honest by refreshing the preview env first so
+                // its response-body values are available for OVERRIDES / OVERRIDDEN WITH.
+                if (contextEnv is not null)
+                    await RefreshDynamicPreviewsAsync(contextEnv, ct).ConfigureAwait(true);
+
+                PushConflictInfo(env);
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
                 _logger.LogDebug(ex,
                     "Could not refresh dynamic variable previews for environment '{Name}'", env.Name);
+                PushConflictInfo(env);
             }
             return;
         }
@@ -1043,30 +1055,37 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
         if (!hasDynamic) return; // No dynamic vars in this env — global context above is sufficient.
 
-        // Step 2: Resolve this env's own dynamic vars using the service (send-time semantics).
-        // This runs the full two-phase merge: global dynamics first, then active-env dynamics,
-        // with the active env's statics winning over resolved global values in between.
+        // Step 2: Resolve this env's own dynamic vars from the pre-final-override context so
+        // PREVIEW reflects concrete-env evaluation, while the conflict row communicates when
+        // a force-override global var wins at send time.
         try
         {
-            var fullMerge = await _mergeService
-                .MergeAsync(_collectionFolderPath, globalModel, model, ct)
+            var activeResolveContext = new Dictionary<string, string>(pureGlobalContextVars, StringComparer.Ordinal);
+            foreach (var kv in activeStaticVars)
+                activeResolveContext[kv.Key] = kv.Value;
+
+            var activeResolved = await _dynamicEvaluator
+                .ResolveAsync(
+                    _collectionFolderPath,
+                    model.EnvironmentId.ToString("N"),
+                    model.Variables,
+                    activeResolveContext,
+                    ct)
                 .ConfigureAwait(true);
             ct.ThrowIfCancellationRequested();
 
-            // Extract only the active env's own dynamic var values from the full merged result.
+            // Extract only the active env's own dynamic var values.
             var activeDynVarNames = model.Variables
                 .Where(v => v.VariableType != EnvironmentVariable.VariableTypes.Static
                          && !string.IsNullOrWhiteSpace(v.Name))
                 .Select(v => v.Name.Trim())
                 .ToHashSet(StringComparer.Ordinal);
 
-            // Store only the dynamically-derived values — static vars are read directly from
-            // v.Value in BuildResolvedEnvironment(); global vars have their own _globalPreviewVars.
-            var dynVars = fullMerge.Variables
+            var dynVars = activeResolved.Variables
                 .Where(kv => activeDynVarNames.Contains(kv.Key))
                 .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
 
-            env.SetDynamicPreviewValues(dynVars, fullMerge.MockGenerators);
+            env.SetDynamicPreviewValues(dynVars, activeResolved.MockGenerators);
         }
         catch (OperationCanceledException)
         {
@@ -1135,7 +1154,17 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
             var concreteVars = previewEnv.BuildModel().Variables
                 .Where(v => !string.IsNullOrWhiteSpace(v.Name))
-                .ToDictionary(v => v.Name.Trim(), v => (v.Value, v.IsSecret), StringComparer.Ordinal);
+                .ToDictionary(
+                    v => v.Name.Trim(),
+                    v =>
+                    {
+                        var key = v.Name.Trim();
+                        var value = previewEnv.TryGetResolvedPreviewValue(key, out var resolvedPreview)
+                            ? resolvedPreview
+                            : v.Value;
+                        return (value, v.IsSecret);
+                    },
+                    StringComparer.Ordinal);
 
             var conflicts = new Dictionary<string, (string label, string value, string toolTip)>(StringComparer.Ordinal);
             foreach (var v in env.BuildModel().Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
@@ -1147,7 +1176,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                     var toolTip = v.IsForceGlobalOverride
                         ? "Overrides this value when used in requests in the previewed environment"
                         : "Overridden with this value when used in requests in the previewed environment";
-                    conflicts[key] = (label, concreteVar.IsSecret ? MaskedSecretValue : concreteVar.Value, toolTip);
+                    conflicts[key] = (label, concreteVar.IsSecret ? MaskedSecretValue : concreteVar.value, toolTip);
                 }
             }
 
