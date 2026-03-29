@@ -634,17 +634,18 @@
                     </Grid>
 
                     <!-- SECRET column — lock toggle for all variable types (disabled for mock data).
-                         The Panel + transparent overlay trick is needed because Avalonia's Fluent theme
-                         makes a disabled button's interior non-hit-testable, so ToolTip and Cursor
-                         would never fire on the ToggleButton itself when IsEnabled=False.
-                         The overlay is only visible when the button is disabled; it intercepts mouse
-                         events and shows the tooltip + help cursor instead. -->
+                         When CanBeSecret=false (mock data) we hide the ToggleButton entirely and
+                         show a custom visual instead.  Avalonia's Fluent theme applies a background
+                         tint to any disabled ToggleButton that, in a dark theme, is indistinguishable
+                         from the checked/on state — hiding the button and replacing it with an
+                         explicitly styled placeholder is cleaner than fighting the theme. -->
                     <Panel Grid.Row="0" Grid.Column="3"
                            Width="28"
                            HorizontalAlignment="Center"
                            VerticalAlignment="Center">
+                      <!-- Enabled state: the real interactive ToggleButton -->
                       <ToggleButton IsChecked="{Binding IsSecret}"
-                                    IsEnabled="{Binding CanBeSecret}"
+                                    IsVisible="{Binding CanBeSecret}"
                                     Width="28" Height="26"
                                     Background="Transparent"
                                     BorderBrush="#444"
@@ -657,13 +658,26 @@
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"/>
                       </ToggleButton>
-                      <!-- Transparent overlay — only present when the button is disabled;
-                           captures pointer events so the tooltip and help cursor fire. -->
+                      <!-- Disabled state: custom placeholder that clearly reads as "off and not
+                           changeable".  Transparent background (no checked-style shading), dim
+                           border and a low-opacity lock icon convey "off/unavailable".
+                           Also captures pointer events so the tooltip and help cursor work. -->
                       <Border Width="28" Height="26"
                               Background="Transparent"
+                              BorderBrush="#2e2e2e"
+                              BorderThickness="1"
+                              CornerRadius="3"
                               IsVisible="{Binding !CanBeSecret}"
                               Cursor="Help"
-                              ToolTip.Tip="{Binding SecretLockTooltip}"/>
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"
+                              ToolTip.Tip="{Binding SecretLockTooltip}">
+                        <TextBlock Text="🔒" FontSize="11"
+                                   Foreground="#555"
+                                   Opacity="0.4"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                      </Border>
                     </Panel>
 
                     <!-- Override checkbox — visible only for global environment variables -->
