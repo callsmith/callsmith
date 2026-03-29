@@ -29,7 +29,8 @@ namespace Callsmith.Desktop.ViewModels;
 public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     IRecipient<CollectionOpenedMessage>,
     IRecipient<RequestRenamedMessage>,
-    IRecipient<EnvironmentChangedMessage>
+    IRecipient<EnvironmentChangedMessage>,
+    IRecipient<CloseEnvironmentEditorMessage>
 {
     private readonly IEnvironmentService _environmentService;
     private readonly ICollectionService _collectionService;
@@ -166,7 +167,13 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
     /// <summary>Sends <see cref="CloseEnvironmentEditorMessage"/> so the environment panel closes.</summary>
     [RelayCommand]
-    private void CloseEditor() => Messenger.Send(new CloseEnvironmentEditorMessage());
+    private void CloseEditor()
+    {
+        // Closing the editor ends the current "user-owned" selection session.
+        // The next EnvironmentChangedMessage should be allowed to re-initialize selection.
+        _hasInitializedEditorSelection = false;
+        Messenger.Send(new CloseEnvironmentEditorMessage());
+    }
 
     /// <summary>Shows the inline new-environment input row.</summary>
     [RelayCommand]
@@ -413,6 +420,14 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             SelectedEnvironment = matchingEnvironment;
             _hasInitializedEditorSelection = true;
         }
+    }
+
+    /// <inheritdoc/>
+    public void Receive(CloseEnvironmentEditorMessage message)
+    {
+        // Handle close requests from other ViewModels (e.g. toolbar back button)
+        // so the next editor open can re-sync to the currently active environment.
+        _hasInitializedEditorSelection = false;
     }
 
     /// <summary>

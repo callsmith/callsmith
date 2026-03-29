@@ -114,7 +114,7 @@ public sealed partial class EnvironmentViewModel : ObservableRecipient,
     [RelayCommand]
     private void CloseEditor()
     {
-        IsEditorOpen = false;
+        Messenger.Send(new CloseEnvironmentEditorMessage());
     }
 
     /// <inheritdoc/>

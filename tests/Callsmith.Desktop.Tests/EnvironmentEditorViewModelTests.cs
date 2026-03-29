@@ -349,6 +349,44 @@ public sealed class EnvironmentEditorViewModelTests
         sut.SelectedEnvironment!.Name.Should().Be("env2");
     }
 
+    /// <summary>
+    /// Regression: after closing the environment editor, a later active-environment change
+    /// must re-initialize which environment is auto-selected next time the editor is shown.
+    /// </summary>
+    [Fact]
+    public async Task CloseEditor_AllowsActiveEnvironmentChangeToReinitializeSelection()
+    {
+        var env1 = MakeModel("env1");
+        var env2 = MakeModel("env2");
+
+        var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([env1, env2]);
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        // Initial open: active collection env is env1, so editor auto-selects env1.
+        messenger.Send(new EnvironmentChangedMessage(env1));
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        sut.SelectedEnvironment.Should().NotBeNull();
+        sut.SelectedEnvironment!.Name.Should().Be("env1");
+
+        // User browses a different env in the editor.
+        sut.SelectedEnvironment = sut.Environments.First(e => e.Name == "env2");
+
+        // User closes the editor, then changes active env in request editor.
+        sut.CloseEditorCommand.Execute(null);
+        messenger.Send(new EnvironmentChangedMessage(env1));
+
+        // Selection must re-sync to the current active env.
+        sut.SelectedEnvironment.Should().NotBeNull();
+        sut.SelectedEnvironment!.Name.Should().Be("env1");
+    }
+
     [Fact]
     public async Task SelectedConcreteEnvironment_BuildsSuggestionsFromGlobalAndOwnVariables()
     {
