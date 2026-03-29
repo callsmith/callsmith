@@ -184,4 +184,70 @@ public sealed class EnvironmentVariableItemViewModelTests
         vm.IsMockData.Should().BeFalse();
         vm.IsResponseBody.Should().BeTrue();
     }
+
+    // ─── Tests: Eye reveal button ─────────────────────────────────────────────
+
+    [Fact]
+    public void IsValueRevealed_WhenToggled_DoesNotCallOnChanged()
+    {
+        // Arrange
+        var changedCount = 0;
+        var vm = new EnvironmentVariableItemViewModel(
+            onDelete: _ => { },
+            onChanged: () => { changedCount++; },
+            getResolvedEnv: () => new ResolvedEnvironment())
+        {
+            IsSecret = true,
+            VariableType = EnvironmentVariable.VariableTypes.Static,
+        };
+        var baseCount = changedCount; // capture count after setting IsSecret=true
+        baseCount.Should().BeGreaterThan(0, "setting IsSecret=true must have triggered onChanged");
+
+        // Act — toggle reveal on and back off
+        vm.IsValueRevealed = true;
+        vm.IsValueRevealed = false;
+
+        // Assert — no additional dirty mark calls from toggling reveal
+        changedCount.Should().Be(baseCount);
+    }
+
+    [Fact]
+    public void IsValueRevealed_WhenIsSecretSetToFalse_ResetsToFalse()
+    {
+        // Arrange
+        var vm = new EnvironmentVariableItemViewModel(
+            onDelete: _ => { },
+            onChanged: () => { },
+            getResolvedEnv: () => new ResolvedEnvironment())
+        {
+            IsSecret = true,
+            IsValueRevealed = true,
+        };
+
+        // Act — unlock the variable
+        vm.IsSecret = false;
+
+        // Assert — reveal state is cleared automatically
+        vm.IsValueRevealed.Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValueRevealed_WhenIsSecretSetToTrue_IsNotReset()
+    {
+        // Arrange — variable starts as non-secret, not revealed
+        var vm = new EnvironmentVariableItemViewModel(
+            onDelete: _ => { },
+            onChanged: () => { },
+            getResolvedEnv: () => new ResolvedEnvironment())
+        {
+            IsSecret = false,
+            IsValueRevealed = false,
+        };
+
+        // Act — mark as secret
+        vm.IsSecret = true;
+
+        // Assert — reveal state stays false (was already false; marking secret doesn't force reveal)
+        vm.IsValueRevealed.Should().BeFalse();
+    }
 }

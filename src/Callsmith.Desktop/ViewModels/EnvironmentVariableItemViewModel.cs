@@ -361,6 +361,7 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
         _onChanged();
         OnPropertyChanged(nameof(IsStaticNotSecret));
         OnPropertyChanged(nameof(IsStaticAndSecret));
+        if (!value) IsValueRevealed = false;
     }
 
     partial void OnIsForceGlobalOverrideChanged(bool value) => _onChanged();
