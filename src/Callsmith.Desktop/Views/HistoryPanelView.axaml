@@ -273,13 +273,18 @@
                   <TextBlock Grid.Column="2"
                              Text="{Binding StatusCode}"
                              Foreground="{Binding StatusColor}"
+                             ToolTip.Tip="{Binding DetailStatusCode}"
                              FontSize="12"
                              FontWeight="SemiBold"
                              VerticalAlignment="Center"
                              HorizontalAlignment="Right"/>
 
                   <!-- Sent At + elapsed -->
-                  <StackPanel Grid.Column="3" Margin="8,0,0,0" VerticalAlignment="Center">
+                  <StackPanel Grid.Column="3"
+                              Margin="8,0,0,0"
+                              VerticalAlignment="Center"
+                              Background="Transparent"
+                              ToolTip.Tip="{Binding DetailSentAtDisplay}">
                     <TextBlock Text="{Binding SentAtDisplay}"
                                Foreground="#888"
                                FontSize="10"
@@ -388,6 +393,7 @@
                        Foreground="#888"
                        FontSize="11"
                        FontStyle="Italic"
+                       Padding="0,0,5,0"
                        VerticalAlignment="Center"
                        IsVisible="{Binding DetailSentAtDisplay, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
           </StackPanel>

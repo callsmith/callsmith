@@ -240,7 +240,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     public string HistoryResponseDisplay =>
         IsResponseFromHistory && HistoryResponseDate is not null
-            ? $"Loaded from history ({HistoryResponseDate.Value.LocalDateTime:yyyy-MM-dd HH:mm:ss})"
+            ? $"Loaded from history ({HistoryResponseDate.Value.LocalDateTime:g})"
             : string.Empty;
 
     // -------------------------------------------------------------------------

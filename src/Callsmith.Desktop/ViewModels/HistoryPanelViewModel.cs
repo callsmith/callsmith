@@ -91,7 +91,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     // -------------------------------------------------------------------------
 
     [ObservableProperty]
-    private string _detailConfigured = string.Empty;
+    private string _detailConfigured = string.Empty; 
 
     [ObservableProperty]
     private string _detailResolved = string.Empty;
@@ -896,7 +896,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private void PopulateDetail(HistoryEntry entry, bool resolved)
     {
         // Date/time of the entry
-        DetailSentAtDisplay = entry.SentAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss");
+        DetailSentAtDisplay = entry.SentAt.LocalDateTime.ToString("g");
 
         // Configured tab — the raw template as the user wrote it
         var cfg = entry.ConfiguredSnapshot;

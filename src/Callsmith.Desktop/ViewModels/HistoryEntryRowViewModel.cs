@@ -1,3 +1,4 @@
+using System.Net;
 using Callsmith.Core.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -12,14 +13,15 @@ public sealed partial class HistoryEntryRowViewModel : ObservableObject
 
     public string Method => Entry.Method;
     public int? StatusCode => Entry.StatusCode;
+    public string? DetailStatusCode => ((HttpStatusCode?)Entry.StatusCode)?.ToString(); 
     public string DisplayUrl => Entry.ResolvedUrl;
     public string? RequestName => Entry.RequestName;
     public string? CollectionName => Entry.CollectionName;
     public string? EnvironmentName => Entry.EnvironmentName;
     public string? EnvironmentColor => Entry.EnvironmentColor;
     public long ElapsedMs => Entry.ElapsedMs;
-
     public string SentAtDisplay => FormatRelative(Entry.SentAt);
+    public string DetailSentAtDisplay => Entry.SentAt.LocalDateTime.ToString("g");
     public string ElapsedDisplay => Entry.ElapsedMs < 1000
         ? $"{Entry.ElapsedMs} ms"
         : $"{Entry.ElapsedMs / 1000.0:F1} s";
