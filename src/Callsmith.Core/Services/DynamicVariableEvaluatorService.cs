@@ -320,7 +320,8 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         }
 
         var resolved = await ExecuteAndExtractAsync(segment, folder, vars, ct).ConfigureAwait(false);
-        cache[cacheKey] = new CacheEntry(resolved ?? string.Empty, DateTime.UtcNow);
+        if (resolved is not null)
+            cache[cacheKey] = new CacheEntry(resolved, DateTime.UtcNow);
         return resolved;
     }
 
