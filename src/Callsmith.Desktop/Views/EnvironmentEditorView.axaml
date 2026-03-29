@@ -613,8 +613,7 @@
                       <StackPanel Grid.Column="0"
                                   Orientation="Horizontal"
                                   Spacing="8"
-                                  VerticalAlignment="Center"
-                                  Margin="6,0,6,0">
+                                  VerticalAlignment="Center">
                         <Button Content="Configure…"
                                 Command="{Binding OpenResponseBodyConfigCommand}"
                                 Background="#3a3a3a"
