@@ -333,28 +333,25 @@ public sealed class EnvironmentEditorViewModelTests
         var messenger = new WeakReferenceMessenger();
         var sut = BuildSut(service, messenger);
 
-        // Env1 is the active collection environment.
-        messenger.Send(new EnvironmentChangedMessage(env1));
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(100);
+
+        // Opening the manager auto-selects the current active collection env.
+        messenger.Send(new OpenEnvironmentEditorMessage(env1.FilePath));
 
         // User navigates to Env2 in the editor.
         sut.SelectedEnvironment = sut.Environments.First(e => e.Name == "env2");
 
-        // Simulate a reload caused by a save (same active env path re-broadcast).
-        messenger.Send(new EnvironmentChangedMessage(env1));
+        // Save while Env2 is selected.
+        await sut.SaveSelectedCommand.ExecuteAsync(null);
 
         // The editor must still show Env2 — Env1 is only the active collection env.
         sut.SelectedEnvironment.Should().NotBeNull();
         sut.SelectedEnvironment!.Name.Should().Be("env2");
     }
 
-    /// <summary>
-    /// Regression: after closing the environment editor, a later active-environment change
-    /// must re-initialize which environment is auto-selected next time the editor is shown.
-    /// </summary>
     [Fact]
-    public async Task CloseEditor_AllowsActiveEnvironmentChangeToReinitializeSelection()
+    public async Task OpenEnvironmentEditor_SelectsActiveCollectionEnvironment_WhenAvailable()
     {
         var env1 = MakeModel("env1");
         var env2 = MakeModel("env2");
@@ -367,24 +364,35 @@ public sealed class EnvironmentEditorViewModelTests
         var messenger = new WeakReferenceMessenger();
         var sut = BuildSut(service, messenger);
 
-        // Initial open: active collection env is env1, so editor auto-selects env1.
-        messenger.Send(new EnvironmentChangedMessage(env1));
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(100);
 
+        messenger.Send(new OpenEnvironmentEditorMessage(env1.FilePath));
+
         sut.SelectedEnvironment.Should().NotBeNull();
         sut.SelectedEnvironment!.Name.Should().Be("env1");
+    }
 
-        // User browses a different env in the editor.
-        sut.SelectedEnvironment = sut.Environments.First(e => e.Name == "env2");
+    [Fact]
+    public async Task OpenEnvironmentEditor_WithNoActiveEnvironment_SelectsGlobal()
+    {
+        var env1 = MakeModel("env1");
 
-        // User closes the editor, then changes active env in request editor.
-        sut.CloseEditorCommand.Execute(null);
-        messenger.Send(new EnvironmentChangedMessage(env1));
+        var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([env1]);
 
-        // Selection must re-sync to the current active env.
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        messenger.Send(new OpenEnvironmentEditorMessage(null));
+
         sut.SelectedEnvironment.Should().NotBeNull();
-        sut.SelectedEnvironment!.Name.Should().Be("env1");
+        sut.SelectedEnvironment!.IsGlobal.Should().BeTrue();
     }
 
     [Fact]
@@ -966,7 +974,7 @@ public sealed class EnvironmentEditorViewModelTests
     }
 
     [Fact]
-    public async Task Receive_CollectionOpened_SelectsCurrentlyActiveEnvironment_WhenAvailable()
+    public async Task OpenEnvironmentEditor_AfterLoad_SelectsMatchingEnvironment()
     {
         var service = Substitute.For<IEnvironmentService>();
         SetupGlobalEnv(service);
@@ -979,9 +987,10 @@ public sealed class EnvironmentEditorViewModelTests
         var messenger = new WeakReferenceMessenger();
         var sut = BuildSut(service, messenger);
 
-        messenger.Send(new EnvironmentChangedMessage(local));
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(100);
+
+        messenger.Send(new OpenEnvironmentEditorMessage(local.FilePath));
 
         sut.SelectedEnvironment.Should().NotBeNull();
         sut.SelectedEnvironment!.Name.Should().Be("local");

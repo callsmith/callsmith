@@ -108,13 +108,14 @@ public sealed partial class EnvironmentViewModel : ObservableRecipient,
     private void OpenEditor()
     {
         IsEditorOpen = true;
+        Messenger.Send(new OpenEnvironmentEditorMessage(ActiveEnvironment?.FilePath));
     }
 
     /// <summary>Closes whichever editor panel is currently open and returns to the request editor.</summary>
     [RelayCommand]
     private void CloseEditor()
     {
-        Messenger.Send(new CloseEnvironmentEditorMessage());
+        IsEditorOpen = false;
     }
 
     /// <inheritdoc/>

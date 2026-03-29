@@ -29,8 +29,7 @@ namespace Callsmith.Desktop.ViewModels;
 public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     IRecipient<CollectionOpenedMessage>,
     IRecipient<RequestRenamedMessage>,
-    IRecipient<EnvironmentChangedMessage>,
-    IRecipient<CloseEnvironmentEditorMessage>
+    IRecipient<OpenEnvironmentEditorMessage>
 {
     private readonly IEnvironmentService _environmentService;
     private readonly ICollectionService _collectionService;
@@ -39,11 +38,8 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     private readonly ILogger<EnvironmentEditorViewModel> _logger;
 
     private string? _collectionFolderPath;
-    private string? _activeEnvironmentFilePath;
-    // True once the editor has synced SelectedEnvironment to the active environment on initial
-    // collection load. After that the user owns the selection and EnvironmentChangedMessage
-    // broadcasts (e.g. re-broadcasts triggered by a save) must not override it.
-    private bool _hasInitializedEditorSelection;
+    private bool _hasPendingOpenEditorSelection;
+    private string? _pendingOpenEditorEnvironmentFilePath;
     private List<string> _availableRequestNames = [];
     private TaskCompletionSource<EnvironmentVariable?>? _pendingMockDataTcs;
     private TaskCompletionSource<EnvironmentVariable?>? _pendingResponseBodyTcs;
@@ -167,13 +163,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
     /// <summary>Sends <see cref="CloseEnvironmentEditorMessage"/> so the environment panel closes.</summary>
     [RelayCommand]
-    private void CloseEditor()
-    {
-        // Closing the editor ends the current "user-owned" selection session.
-        // The next EnvironmentChangedMessage should be allowed to re-initialize selection.
-        _hasInitializedEditorSelection = false;
-        Messenger.Send(new CloseEnvironmentEditorMessage());
-    }
+    private void CloseEditor() => Messenger.Send(new CloseEnvironmentEditorMessage());
 
     /// <summary>Shows the inline new-environment input row.</summary>
     [RelayCommand]
@@ -396,38 +386,22 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     public void Receive(CollectionOpenedMessage message)
     {
         _collectionFolderPath = message.Value;
-        _hasInitializedEditorSelection = false;
         _ = LoadEnvironmentsAsync(message.Value);
         _ = LoadRequestNamesAsync(message.Value);
     }
 
     /// <inheritdoc/>
-    public void Receive(EnvironmentChangedMessage message)
+    public void Receive(OpenEnvironmentEditorMessage message)
     {
-        _activeEnvironmentFilePath = message.Value?.FilePath;
-
-        // After the initial collection load the user owns the editor selection.
-        // Re-broadcasts caused by saves or reloads must not override it.
-        if (_hasInitializedEditorSelection || string.IsNullOrEmpty(_activeEnvironmentFilePath))
-            return;
-
-        var matchingEnvironment = Environments.FirstOrDefault(e =>
-            !e.IsGlobal &&
-            string.Equals(e.FilePath, _activeEnvironmentFilePath, StringComparison.OrdinalIgnoreCase));
-
-        if (matchingEnvironment is not null)
+        var activeEnvironmentFilePath = message.Value;
+        if (Environments.Count == 0)
         {
-            SelectedEnvironment = matchingEnvironment;
-            _hasInitializedEditorSelection = true;
+            _hasPendingOpenEditorSelection = true;
+            _pendingOpenEditorEnvironmentFilePath = activeEnvironmentFilePath;
+            return;
         }
-    }
 
-    /// <inheritdoc/>
-    public void Receive(CloseEnvironmentEditorMessage message)
-    {
-        // Handle close requests from other ViewModels (e.g. toolbar back button)
-        // so the next editor open can re-sync to the currently active environment.
-        _hasInitializedEditorSelection = false;
+        ApplyManagerOpenSelection(activeEnvironmentFilePath);
     }
 
     /// <summary>
@@ -1338,23 +1312,17 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 _loadingEnvironments = false;
             }
 
-            // Select the active environment when available; otherwise keep the prior
-            // behavior of selecting the first non-global environment.
-            var activeMatch = !string.IsNullOrEmpty(_activeEnvironmentFilePath)
-                ? Environments.FirstOrDefault(e =>
-                    !e.IsGlobal &&
-                    string.Equals(e.FilePath, _activeEnvironmentFilePath, StringComparison.OrdinalIgnoreCase))
-                : null;
+            // Default selection while loading data.
+            SelectedEnvironment = Environments.Count > 1 ? Environments[1] : Environments[0];
 
-            SelectedEnvironment = activeMatch ?? (Environments.Count > 1 ? Environments[1] : Environments[0]);
-
-            // Mark the initial selection done so that subsequent EnvironmentChangedMessage
-            // broadcasts (e.g. re-broadcasts triggered by a save reload) do not override
-            // the user's selection.  Only mark done when we actually matched the active env;
-            // if we fell back to the first item, a later message may still legitimately correct
-            // the selection before the user has taken any action.
-            if (activeMatch is not null)
-                _hasInitializedEditorSelection = true;
+            // If the editor was opened while environments were loading, apply the explicit
+            // open-time selection now.
+            if (_hasPendingOpenEditorSelection)
+            {
+                ApplyManagerOpenSelection(_pendingOpenEditorEnvironmentFilePath);
+                _hasPendingOpenEditorSelection = false;
+                _pendingOpenEditorEnvironmentFilePath = null;
+            }
 
             // Broadcast the current global vars so request tabs are up-to-date.
             Messenger.Send(new GlobalEnvironmentChangedMessage(globalModel));
@@ -1368,6 +1336,30 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         {
             IsBusy = false;
         }
+    }
+
+    private void ApplyManagerOpenSelection(string? activeEnvironmentFilePath)
+    {
+        // Requirement: opening manager with "(no environment)" selected should open Global.
+        if (string.IsNullOrWhiteSpace(activeEnvironmentFilePath))
+        {
+            SelectedEnvironment = Environments.FirstOrDefault(e => e.IsGlobal)
+                ?? (Environments.Count > 0 ? Environments[0] : null);
+            return;
+        }
+
+        var activeMatch = Environments.FirstOrDefault(e =>
+            !e.IsGlobal &&
+            string.Equals(e.FilePath, activeEnvironmentFilePath, StringComparison.OrdinalIgnoreCase));
+
+        if (activeMatch is not null)
+        {
+            SelectedEnvironment = activeMatch;
+            return;
+        }
+
+        SelectedEnvironment = Environments.FirstOrDefault(e => e.IsGlobal)
+            ?? (Environments.Count > 0 ? Environments[0] : null);
     }
 
     private EnvironmentListItemViewModel CreateListItem(EnvironmentModel model, bool isGlobal = false)
