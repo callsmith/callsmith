@@ -449,8 +449,8 @@
               </StackPanel>
             </Border>
 
-            <!-- Column headers: Drag(24) | Name(320) | Value(*) | Override(Auto=72/0) | Type(170) | Delete(28) -->
-            <Grid ColumnDefinitions="24,320,*,Auto,170,28"
+            <!-- Column headers: Drag(24) | Name(320) | Value(*) | Secret(58) | Override(Auto=72/0) | Type(170) | Delete(28) -->
+            <Grid ColumnDefinitions="24,320,*,58,Auto,170,28"
                   Margin="0,0,0,4">
               <TextBlock Grid.Column="1"
                          Text="NAME"
@@ -466,6 +466,13 @@
                          LetterSpacing="1"
                          Margin="6,0"/>
               <TextBlock Grid.Column="3"
+                         Text="SECRET"
+                         Foreground="#666"
+                         FontSize="10"
+                         FontWeight="SemiBold"
+                         LetterSpacing="1"
+                         HorizontalAlignment="Center"/>
+              <TextBlock Grid.Column="4"
                          Text="OVERRIDE"
                          Foreground="#666"
                          FontSize="10"
@@ -475,7 +482,7 @@
                          HorizontalAlignment="Center"
                          IsVisible="{Binding SelectedEnvironment.IsGlobal, FallbackValue=False}"
                          ToolTip.Tip="Force this global variable to take priority over a same-named concrete environment variable"/>
-              <TextBlock Grid.Column="4"
+              <TextBlock Grid.Column="5"
                          Text="TYPE"
                          Foreground="#666"
                          FontSize="10"
@@ -488,8 +495,8 @@
                           ItemsSource="{Binding SelectedEnvironment.Variables}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:EnvironmentVariableItemViewModel">
-                  <!-- Columns: Drag(24) | Name(320) | Value(*) | Override(Auto=72/0) | Type(170) | Delete(28) -->
-                  <Grid ColumnDefinitions="24,320,*,Auto,170,28"
+                  <!-- Columns: Drag(24) | Name(320) | Value(*) | Secret(58) | Override(Auto=72/0) | Type(170) | Delete(28) -->
+                  <Grid ColumnDefinitions="24,320,*,58,Auto,170,28"
                         RowDefinitions="Auto,Auto,Auto"
                         Margin="0,2">
 
@@ -516,9 +523,8 @@
                              VerticalContentAlignment="Center"
                              FontFamily="Consolas,Menlo,monospace"/>
 
-                    <!-- Value: static plain — text input with inline lock toggle -->
+                    <!-- Value: static plain — text input (lock is in the SECRET column) -->
                       <Grid Grid.Row="0" Grid.Column="2"
-                          ColumnDefinitions="*,Auto"
                           IsVisible="{Binding IsStaticNotSecret}"
                           Margin="0,0,6,0">
                       <TextBox Grid.Column="0"
@@ -532,22 +538,9 @@
                                VerticalContentAlignment="Center"
                                FontFamily="Consolas,Menlo,monospace"
                                controls:EnvVarCompletion.Suggestions="{Binding SuggestionNames}"/>
-                      <ToggleButton Grid.Column="1"
-                                    IsChecked="{Binding IsSecret}"
-                                    Width="28" Height="26"
-                                    Background="Transparent"
-                                    BorderBrush="#444"
-                                    BorderThickness="1"
-                                    CornerRadius="3"
-                                    Margin="4,0,0,0"
-                                    ToolTip.Tip="Mark as secret — masks the value in the UI">
-                        <TextBlock Text="🔒" FontSize="11"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"/>
-                      </ToggleButton>
                     </Grid>
 
-                    <!-- Value: static secret — masked input with inline lock toggle -->
+                    <!-- Value: static secret — masked input with eye reveal toggle (lock is in the SECRET column) -->
                       <Grid Grid.Row="0" Grid.Column="2"
                           ColumnDefinitions="*,Auto"
                           IsVisible="{Binding IsStaticAndSecret}"
@@ -565,18 +558,26 @@
                                PasswordChar="•"
                                RevealPassword="{Binding IsValueRevealed}"
                                controls:EnvVarCompletion.Suggestions="{Binding SuggestionNames}"/>
+                      <!-- Eye toggle — reveals the secret value without marking the env dirty -->
                       <ToggleButton Grid.Column="1"
-                                    IsChecked="{Binding IsSecret}"
+                                    IsChecked="{Binding IsValueRevealed}"
                                     Width="28" Height="26"
                                     Background="Transparent"
                                     BorderBrush="#444"
                                     BorderThickness="1"
                                     CornerRadius="3"
                                     Margin="4,0,0,0"
-                                    ToolTip.Tip="Click to reveal and unlock the value">
-                        <TextBlock Text="🔒" FontSize="11"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"/>
+                                    ToolTip.Tip="Reveal or hide the secret value">
+                        <Grid>
+                          <!-- Eye icon shown when value is hidden -->
+                          <PathIcon Width="14" Height="14" Foreground="#888"
+                                    IsVisible="{Binding IsValueRevealed, Converter={x:Static BoolConverters.Not}}"
+                                    Data="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+                          <!-- Eye-slash icon shown when value is revealed -->
+                          <PathIcon Width="14" Height="14" Foreground="#888"
+                                    IsVisible="{Binding IsValueRevealed}"
+                                    Data="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
+                        </Grid>
                       </ToggleButton>
                     </Grid>
 
@@ -605,16 +606,14 @@
                                  TextTrimming="CharacterEllipsis"/>
                     </StackPanel>
 
-                    <!-- Value: response-body type — configure button + "name → path" summary -->
+                    <!-- Value: response-body type — configure button + "name → path" summary (lock is in the SECRET column) -->
                     <Grid Grid.Row="0" Grid.Column="2"
-                          ColumnDefinitions="*,Auto"
                           IsVisible="{Binding IsResponseBody}"
                           Margin="6,0,6,0">
                       <StackPanel Grid.Column="0"
                                   Orientation="Horizontal"
                                   Spacing="8"
-                                  VerticalAlignment="Center"
-                                  Margin="6,0,6,0">
+                                  VerticalAlignment="Center">
                         <Button Content="Configure…"
                                 Command="{Binding OpenResponseBodyConfigCommand}"
                                 Background="#3a3a3a"
@@ -632,25 +631,28 @@
                                   VerticalAlignment="Center"
                                   TextTrimming="CharacterEllipsis"/>
                       </StackPanel>
-                      <ToggleButton Grid.Column="1"
-                                    IsChecked="{Binding IsSecret}"
-                                    Width="28" Height="26"
-                                    Background="Transparent"
-                                    BorderBrush="#444"
-                                    BorderThickness="1"
-                                    CornerRadius="3"
-                                    Margin="4,0,0,0"
-                                    ToolTip.Tip="Determines if the resolved value is encrypted at rest">
-                        <TextBlock Text="🔒" FontSize="11"
-                                  HorizontalAlignment="Center"
-                                  VerticalAlignment="Center"/>
-                      </ToggleButton>
                     </Grid>
+
+                    <!-- SECRET column — checkbox matches the Override checkbox style and renders
+                         cleanly in both themes whether enabled or disabled.
+                         The Border wrapper ensures the tooltip is visible even when the checkbox
+                         is disabled (Avalonia does not fire pointer events on disabled controls). -->
+                    <Border Grid.Row="0" Grid.Column="3"
+                            Background="Transparent"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Cursor="{Binding CanBeSecret, Converter={x:Static conv:BoolToCursorConverter.Instance}}"
+                            ToolTip.Tip="{Binding SecretLockTooltip}">
+                      <CheckBox IsChecked="{Binding IsSecret}"
+                                IsEnabled="{Binding CanBeSecret}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"/>
+                    </Border>
 
                     <!-- Override checkbox — visible only for global environment variables -->
                     <!-- Keep a fixed-width host so the checkbox can be visually centered,
                       while the Auto column still collapses to width 0 on concrete rows. -->
-                    <Grid Grid.Row="0" Grid.Column="3"
+                    <Grid Grid.Row="0" Grid.Column="4"
                        Width="72"
                        IsVisible="{Binding IsGlobal}">
                       <CheckBox IsChecked="{Binding IsForceGlobalOverride}"
@@ -660,7 +662,7 @@
                     </Grid>
 
                     <!-- Type dropdown -->
-                    <ComboBox Grid.Row="0" Grid.Column="4"
+                    <ComboBox Grid.Row="0" Grid.Column="5"
                               ItemsSource="{Binding AvailableVariableTypeOptions}"
                               SelectedItem="{Binding VariableTypeDisplay}"
                               IsEnabled="{Binding !IsTypeDropdownDisabled}"
@@ -671,7 +673,7 @@
                               ToolTip.Tip="Variable type"/>
 
                     <!-- Delete -->
-                        <Button Grid.Row="0" Grid.Column="5"
+                        <Button Grid.Row="0" Grid.Column="6"
                             Content="×"
                             Command="{Binding DeleteCommand}"
                             Background="Transparent"
