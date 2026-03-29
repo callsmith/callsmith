@@ -641,6 +641,7 @@
                             Background="Transparent"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
+                            Cursor="{Binding CanBeSecret, Converter={x:Static conv:BoolToCursorConverter.Instance}}"
                             ToolTip.Tip="{Binding SecretLockTooltip}">
                       <CheckBox IsChecked="{Binding IsSecret}"
                                 IsEnabled="{Binding CanBeSecret}"
