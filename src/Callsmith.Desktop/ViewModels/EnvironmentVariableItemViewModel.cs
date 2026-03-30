@@ -168,12 +168,11 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     public bool IsTypeDropdownDisabled => IsBrunoConcreteEnvironment;
 
     /// <summary>
-    /// Tooltip shown when type dropdown is disabled.
+    /// Tooltip for the Type combobox
     /// </summary>
-    public string TypeDropdownDisabledReason =>
-        IsBrunoConcreteEnvironment
-            ? "Bruno environments only support static environment variables"
-            : string.Empty;
+    public string TypeComboBoxToolTip => IsBrunoConcreteEnvironment
+        ? "Bruno only supports static environment variables"
+        : "Variable type";
 
     public bool IsStatic => VariableType == EnvironmentVariable.VariableTypes.Static;
     public bool IsMockData => VariableType == EnvironmentVariable.VariableTypes.MockData;

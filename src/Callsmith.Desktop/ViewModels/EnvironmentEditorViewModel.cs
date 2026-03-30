@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.Bruno;
 using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
@@ -121,6 +122,12 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     /// </summary>
     [ObservableProperty]
     private EnvironmentListItemViewModel? _selectedGlobalPreviewEnvironment;
+
+    /// <summary>
+    /// True if the currently selected environment is a non-global Bruno environment.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isBrunoConcreteEnvironment;
 
     /// <summary>All non-global environments available for selection as the global preview context.</summary>
     public IEnumerable<EnvironmentListItemViewModel> GlobalPreviewEnvironments =>
@@ -714,6 +721,13 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         _dynPreviewCts = new CancellationTokenSource();
         if (value is not null)
             _ = RefreshDynamicPreviewsAsync(value, _dynPreviewCts.Token);
+
+        // Update if this is a Bruno Concrete Environment
+        IsBrunoConcreteEnvironment =
+            value != null && 
+            !value.IsGlobal &&
+            !string.IsNullOrEmpty(_collectionFolderPath) && 
+            BrunoDetector.IsBrunoCollection(_collectionFolderPath);
     }
 
     partial void OnSelectedGlobalPreviewEnvironmentChanged(EnvironmentListItemViewModel? value)

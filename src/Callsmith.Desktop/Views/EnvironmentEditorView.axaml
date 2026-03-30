@@ -320,6 +320,13 @@
                           Orientation="Horizontal"
                           Spacing="8"
                           VerticalAlignment="Center">
+                <Image Width="20"
+                       Height="20"
+                       VerticalAlignment="Center"
+                       IsVisible="{Binding IsBrunoConcreteEnvironment}"
+                       Source="/Assets/bruno.png"
+                       ToolTip.Tip="Bruno Environment"
+                       RenderOptions.BitmapInterpolationMode="MediumQuality"/>
                 <TextBlock Text="{Binding SelectedEnvironment.Name, FallbackValue='No environment selected'}"
                            Foreground="#d4d4d4"
                            FontSize="13"
@@ -449,30 +456,37 @@
               </StackPanel>
             </Border>
 
-            <!-- Column headers: Drag(24) | Name(320) | Value(*) | Secret(58) | Override(Auto=72/0) | Type(170) | Delete(28) -->
-            <Grid ColumnDefinitions="24,320,*,58,Auto,170,28"
+            <!-- Column headers: Drag(24) | Type(170) | Name(320) | Value(*) | Secret(58) | Override(Auto=72/0) | Delete(28) -->
+            <Grid ColumnDefinitions="24,170,320,*,58,Auto,28"
                   Margin="0,0,0,4">
               <TextBlock Grid.Column="1"
+                         Text="TYPE"
+                         Foreground="#666"
+                         FontSize="10"
+                         FontWeight="SemiBold"
+                         LetterSpacing="1"
+                         Margin="4,0"/>
+              <TextBlock Grid.Column="2"
                          Text="NAME"
                          Foreground="#666"
                          FontSize="10"
                          FontWeight="SemiBold"
                          LetterSpacing="1"/>
-              <TextBlock Grid.Column="2"
+              <TextBlock Grid.Column="3"
                          Text="VALUE"
                          Foreground="#666"
                          FontSize="10"
                          FontWeight="SemiBold"
                          LetterSpacing="1"
                          Margin="6,0"/>
-              <TextBlock Grid.Column="3"
+              <TextBlock Grid.Column="4"
                          Text="SECRET"
                          Foreground="#666"
                          FontSize="10"
                          FontWeight="SemiBold"
                          LetterSpacing="1"
                          HorizontalAlignment="Center"/>
-              <TextBlock Grid.Column="4"
+              <TextBlock Grid.Column="5"
                          Text="OVERRIDE"
                          Foreground="#666"
                          FontSize="10"
@@ -482,21 +496,14 @@
                          HorizontalAlignment="Center"
                          IsVisible="{Binding SelectedEnvironment.IsGlobal, FallbackValue=False}"
                          ToolTip.Tip="Force this global variable to take priority over a same-named concrete environment variable"/>
-              <TextBlock Grid.Column="5"
-                         Text="TYPE"
-                         Foreground="#666"
-                         FontSize="10"
-                         FontWeight="SemiBold"
-                         LetterSpacing="1"
-                         Margin="4,0"/>
             </Grid>
 
             <ItemsControl x:Name="VariableRows"
                           ItemsSource="{Binding SelectedEnvironment.Variables}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:EnvironmentVariableItemViewModel">
-                  <!-- Columns: Drag(24) | Name(320) | Value(*) | Secret(58) | Override(Auto=72/0) | Type(170) | Delete(28) -->
-                  <Grid ColumnDefinitions="24,320,*,58,Auto,170,28"
+                  <!-- Columns: Drag(24) | Type(170) | Name(320) | Value(*) | Secret(58) | Override(Auto=72/0) | Delete(28) -->
+                  <Grid ColumnDefinitions="24,170,320,*,58,Auto,28"
                         RowDefinitions="Auto,Auto,Auto"
                         Margin="0,2">
 
@@ -510,8 +517,21 @@
                                ToolTip.Tip="Drag to reorder"
                                Cursor="Hand"/>
 
+                    <!-- Type dropdown -->
+                    <Border Grid.Row="0" Grid.Column="1"
+                            ToolTip.Tip="{Binding TypeComboBoxToolTip}"
+                            Background="Transparent">
+                      <ComboBox ItemsSource="{Binding AvailableVariableTypeOptions}"
+                                SelectedItem="{Binding VariableTypeDisplay}"
+                                IsEnabled="{Binding !IsTypeDropdownDisabled}"
+                                HorizontalAlignment="Stretch"
+                                FontSize="11"
+                                Margin="0,0,6,0"
+                                VerticalAlignment="Center"/>
+                    </Border>
+
                     <!-- Name -->
-                    <TextBox Grid.Row="0" Grid.Column="1"
+                    <TextBox Grid.Row="0" Grid.Column="2"
                              Text="{Binding Name}"
                              Watermark="name"
                              FontSize="12"
@@ -524,7 +544,7 @@
                              FontFamily="Consolas,Menlo,monospace"/>
 
                     <!-- Value: static plain — text input (lock is in the SECRET column) -->
-                      <Grid Grid.Row="0" Grid.Column="2"
+                    <Grid Grid.Row="0" Grid.Column="3"
                           IsVisible="{Binding IsStaticNotSecret}"
                           Margin="0,0,6,0">
                       <TextBox Grid.Column="0"
@@ -541,7 +561,7 @@
                     </Grid>
 
                     <!-- Value: static secret — masked input with eye reveal toggle (lock is in the SECRET column) -->
-                      <Grid Grid.Row="0" Grid.Column="2"
+                    <Grid Grid.Row="0" Grid.Column="3"
                           ColumnDefinitions="*,Auto"
                           IsVisible="{Binding IsStaticAndSecret}"
                           Margin="0,0,6,0">
@@ -582,7 +602,7 @@
                     </Grid>
 
                     <!-- Value: mock-data type — configure button + summary -->
-                    <StackPanel Grid.Row="0" Grid.Column="2"
+                    <StackPanel Grid.Row="0" Grid.Column="3"
                                 Orientation="Horizontal"
                                 Spacing="8"
                                 IsVisible="{Binding IsMockData}"
@@ -607,7 +627,7 @@
                     </StackPanel>
 
                     <!-- Value: response-body type — configure button + "name → path" summary (lock is in the SECRET column) -->
-                    <Grid Grid.Row="0" Grid.Column="2"
+                    <Grid Grid.Row="0" Grid.Column="3"
                           IsVisible="{Binding IsResponseBody}"
                           Margin="6,0,6,0">
                       <StackPanel Grid.Column="0"
@@ -637,7 +657,7 @@
                          cleanly in both themes whether enabled or disabled.
                          The Border wrapper ensures the tooltip is visible even when the checkbox
                          is disabled (Avalonia does not fire pointer events on disabled controls). -->
-                    <Border Grid.Row="0" Grid.Column="3"
+                    <Border Grid.Row="0" Grid.Column="4"
                             Background="Transparent"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
@@ -652,7 +672,7 @@
                     <!-- Override checkbox — visible only for global environment variables -->
                     <!-- Keep a fixed-width host so the checkbox can be visually centered,
                       while the Auto column still collapses to width 0 on concrete rows. -->
-                    <Grid Grid.Row="0" Grid.Column="4"
+                    <Grid Grid.Row="0" Grid.Column="5"
                        Width="72"
                        IsVisible="{Binding IsGlobal}">
                       <CheckBox IsChecked="{Binding IsForceGlobalOverride}"
@@ -661,32 +681,21 @@
                           ToolTip.Tip="Force this global variable to take priority over a same-named concrete environment variable"/>
                     </Grid>
 
-                    <!-- Type dropdown -->
-                    <ComboBox Grid.Row="0" Grid.Column="5"
-                              ItemsSource="{Binding AvailableVariableTypeOptions}"
-                              SelectedItem="{Binding VariableTypeDisplay}"
-                              IsEnabled="{Binding !IsTypeDropdownDisabled}"
-                              HorizontalAlignment="Stretch"
-                              FontSize="11"
-                              Margin="0,0,6,0"
-                              VerticalAlignment="Center"
-                              ToolTip.Tip="Variable type"/>
-
                     <!-- Delete -->
-                        <Button Grid.Row="0" Grid.Column="6"
-                            Content="×"
-                            Command="{Binding DeleteCommand}"
-                            Background="Transparent"
-                            Foreground="#aaa"
-                            BorderThickness="0"
-                            Padding="4,0"
-                            FontSize="14"
-                            VerticalAlignment="Center"
-                            HorizontalAlignment="Center"
-                            ToolTip.Tip="Remove variable"/>
+                    <Button Grid.Row="0" Grid.Column="6"
+                        Content="×"
+                        Command="{Binding DeleteCommand}"
+                        Background="Transparent"
+                        Foreground="#aaa"
+                        BorderThickness="0"
+                        Padding="4,0"
+                        FontSize="14"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        ToolTip.Tip="Remove variable"/>
 
                     <!-- Preview row — shown when a static value contains {{VAR}} references -->
-                        <Border Grid.Row="1" Grid.Column="2"
+                    <Border Grid.Row="1" Grid.Column="3"
                             IsVisible="{Binding HasPreview}"
                             Background="#1e1e1e"
                             BorderBrush="#3a3a3a"
@@ -712,7 +721,7 @@
                     </Border>
 
                     <!-- Conflict row — OVERRIDES or OVERRIDDEN BY -->
-                        <Border Grid.Row="2" Grid.Column="2"
+                    <Border Grid.Row="2" Grid.Column="3"
                             IsVisible="{Binding HasConflict}"
                             ToolTip.Tip="{Binding ConflictToolTip}"
                             Cursor="Help"

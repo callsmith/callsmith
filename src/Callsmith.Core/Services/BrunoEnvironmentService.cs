@@ -2,6 +2,7 @@ using Callsmith.Core.Abstractions;
 using Callsmith.Core.Bruno;
 using Callsmith.Core.Models;
 using Microsoft.Extensions.Logging;
+using static Callsmith.Core.Models.EnvironmentVariable;
 
 namespace Callsmith.Core.Services;
 
@@ -457,7 +458,8 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
         var result = new List<EnvironmentVariable>(model.Variables.Count);
         foreach (var v in model.Variables)
         {
-            if (!v.IsSecret)
+            // Do not modify non-secret, or non-static variables.
+            if (!v.IsSecret || v.VariableType != VariableTypes.Static)
             {
                 result.Add(v);
                 continue;

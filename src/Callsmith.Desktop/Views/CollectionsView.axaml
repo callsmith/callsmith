@@ -141,7 +141,7 @@
                VerticalAlignment="Center"
                IsVisible="{Binding IsBrunoCollection}"
                Source="/Assets/bruno.png"
-               ToolTip.Tip="Using a Bruno Collection"
+               ToolTip.Tip="Bruno Collection"
                RenderOptions.BitmapInterpolationMode="MediumQuality"/>
       </Grid>
     </Border>
