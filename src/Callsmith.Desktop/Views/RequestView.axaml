@@ -741,6 +741,7 @@
             <TextBlock Text="{Binding ElapsedDisplay}" Foreground="#888" FontSize="12" VerticalAlignment="Center"/>
             <TextBlock Text="{Binding SizeDisplay}" Foreground="#888" FontSize="12" VerticalAlignment="Center"/>
             <TextBlock Text="{Binding HistoryResponseDisplay}"
+                       ToolTip.Tip="{Binding HistoryResponseToolTip}"
                        Foreground="#dcdcaa"
                        FontSize="11"
                        VerticalAlignment="Center"

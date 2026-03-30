@@ -113,6 +113,9 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private string _detailSentAtDisplay = string.Empty;
 
     [ObservableProperty]
+    private string _detailSentAtToolTip = string.Empty;
+
+    [ObservableProperty]
     private bool _detailHasResponseBody;
 
     public bool HasDetailResponseHeaders => DetailResponseHeaderRows.Count > 0;
@@ -255,6 +258,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             DetailResponseHeaders = string.Empty;
             DetailResponseHeaderRows = [];
             DetailSentAtDisplay = string.Empty;
+            DetailSentAtToolTip = string.Empty;
             DetailHasResponseBody = false;
         }
     }
@@ -896,7 +900,8 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private void PopulateDetail(HistoryEntry entry, bool resolved)
     {
         // Date/time of the entry
-        DetailSentAtDisplay = entry.SentAt.LocalDateTime.ToString("g");
+        DetailSentAtDisplay = entry.SentAt.LocalDateTime.ToString("G");
+        DetailSentAtToolTip = entry.SentAt.LocalDateTime.ToString("F");
 
         // Configured tab — the raw template as the user wrote it
         var cfg = entry.ConfiguredSnapshot;

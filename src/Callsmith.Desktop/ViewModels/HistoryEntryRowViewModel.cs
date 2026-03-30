@@ -21,7 +21,7 @@ public sealed partial class HistoryEntryRowViewModel : ObservableObject
     public string? EnvironmentColor => Entry.EnvironmentColor;
     public long ElapsedMs => Entry.ElapsedMs;
     public string SentAtDisplay => FormatRelative(Entry.SentAt);
-    public string DetailSentAtDisplay => Entry.SentAt.LocalDateTime.ToString("g");
+    public string DetailSentAtDisplay => Entry.SentAt.LocalDateTime.ToString("F");
     public string ElapsedDisplay => Entry.ElapsedMs < 1000
         ? $"{Entry.ElapsedMs} ms"
         : $"{Entry.ElapsedMs / 1000.0:F1} s";

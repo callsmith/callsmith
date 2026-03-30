@@ -230,17 +230,22 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     /// <summary>True when the displayed response was loaded from history, not from a live send.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HistoryResponseDisplay))]
+    [NotifyPropertyChangedFor(nameof(HistoryResponseDisplay), nameof(HistoryResponseToolTip))]
     private bool _isResponseFromHistory;
 
     /// <summary>The timestamp of the history entry that was loaded, or null.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HistoryResponseDisplay))]
+    [NotifyPropertyChangedFor(nameof(HistoryResponseDisplay), nameof(HistoryResponseToolTip))]
     private DateTimeOffset? _historyResponseDate;
 
     public string HistoryResponseDisplay =>
         IsResponseFromHistory && HistoryResponseDate is not null
-            ? $"Loaded from history ({HistoryResponseDate.Value.LocalDateTime:g})"
+            ? $"Loaded from history ({HistoryResponseDate.Value.LocalDateTime:G})"
+            : string.Empty;
+
+    public string HistoryResponseToolTip =>
+        IsResponseFromHistory && HistoryResponseDate is not null
+            ? HistoryResponseDate.Value.LocalDateTime.ToString("F")
             : string.Empty;
 
     // -------------------------------------------------------------------------
@@ -653,7 +658,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(ShowSaveAsPanel) or nameof(SaveAsName) or nameof(SaveAsFolderPath) or
                 nameof(SaveAsError) or nameof(PendingClose) or
                 nameof(Response) or nameof(IsSending) or nameof(ErrorMessage) or
-                nameof(IsResponseFromHistory) or nameof(HistoryResponseDate) or nameof(HistoryResponseDisplay) or
+                nameof(IsResponseFromHistory) or nameof(HistoryResponseDate) or nameof(HistoryResponseDisplay) or nameof(HistoryResponseToolTip) or
                 nameof(StatusDisplay) or nameof(ElapsedDisplay) or nameof(SizeDisplay) or
                 nameof(StatusBadgeColor) or nameof(MethodColor) or
                 nameof(ShowBodyEditor) or nameof(ShowTextBodyEditor) or nameof(ShowFormBodyEditor) or

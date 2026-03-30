@@ -390,6 +390,7 @@
                        FontWeight="SemiBold"
                        VerticalAlignment="Center"/>
             <TextBlock Text="{Binding DetailSentAtDisplay}"
+                       ToolTip.Tip="{Binding DetailSentAtToolTip}"
                        Foreground="#888"
                        FontSize="11"
                        FontStyle="Italic"
