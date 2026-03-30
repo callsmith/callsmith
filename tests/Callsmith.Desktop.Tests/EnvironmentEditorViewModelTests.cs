@@ -112,6 +112,9 @@ public sealed class EnvironmentEditorViewModelTests
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(100);
 
+        sut.SelectedEnvironment = sut.Environments.First(e => !e.IsGlobal);
+        await Task.Delay(100);
+
         sut.SelectedEnvironment.Should().NotBeNull();
         sut.SelectedEnvironment!.Name.Should().Be("dev");
         sut.SelectedEnvironment.IsGlobal.Should().BeFalse();
@@ -131,7 +134,10 @@ public sealed class EnvironmentEditorViewModelTests
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(100);
 
-        // Only global env present — it is selected.
+        sut.SelectedEnvironment = sut.Environments.First(e => e.IsGlobal);
+        await Task.Delay(100);
+
+        // Only global env present — select it explicitly to mirror UI behavior.
         sut.Environments.Should().ContainSingle();
         sut.SelectedEnvironment.Should().NotBeNull();
         sut.SelectedEnvironment!.IsGlobal.Should().BeTrue();
@@ -431,6 +437,9 @@ public sealed class EnvironmentEditorViewModelTests
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(100);
 
+        sut.SelectedEnvironment = sut.Environments.First(e => !e.IsGlobal);
+        await Task.Delay(100);
+
         var variable = sut.SelectedEnvironment!.Variables.Single();
 
         variable.SuggestionNames.Should().BeEquivalentTo(
@@ -466,6 +475,9 @@ public sealed class EnvironmentEditorViewModelTests
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(100);
 
+        sut.SelectedEnvironment = sut.Environments.First(e => !e.IsGlobal);
+        await Task.Delay(100);
+
         sut.SelectedEnvironment!.AddVariableCommand.Execute(null);
         var newVariable = sut.SelectedEnvironment.Variables.Last();
         newVariable.Name = "base-url";
@@ -488,7 +500,8 @@ public sealed class EnvironmentEditorViewModelTests
 
         EnvironmentSavedMessage? received = null;
         var messenger = new WeakReferenceMessenger();
-        messenger.Register<EnvironmentSavedMessage>(new object(), (_, msg) => received = msg);
+        var recipient = new object();
+        messenger.Register<EnvironmentSavedMessage>(recipient, (_, msg) => received = msg);
 
         var sut = BuildSut(service, messenger);
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
@@ -496,6 +509,7 @@ public sealed class EnvironmentEditorViewModelTests
 
         // Select the dev env (first non-global) before saving.
         sut.SelectedEnvironment = sut.Environments.First(e => !e.IsGlobal);
+        await Task.Delay(100);
 
         await sut.SaveSelectedCommand.ExecuteAsync(null);
 
@@ -748,7 +762,10 @@ public sealed class EnvironmentEditorViewModelTests
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(100);
 
-        // Global env is at index 0 and auto-selected when no other envs exist.
+        sut.SelectedEnvironment = sut.Environments.First(e => e.IsGlobal);
+        await Task.Delay(100);
+
+        // Select global explicitly to trigger lazy-load behavior before save.
         sut.SelectedEnvironment!.IsGlobal.Should().BeTrue();
 
         // Clear the startup broadcast so we only catch the save one.
@@ -912,6 +929,9 @@ public sealed class EnvironmentEditorViewModelTests
         var sut = BuildSut(service, messenger, dynamicEvaluator: evaluator);
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(300); // allow fire-and-forget load + preview refresh
+
+        sut.SelectedEnvironment = sut.Environments.First(e => !e.IsGlobal);
+        await Task.Delay(300);
 
         var devEnv = sut.Environments.First(e => !e.IsGlobal);
         var authHeaderVar = devEnv.Variables.First(v => v.Name == "auth-header");
@@ -1106,6 +1126,9 @@ public sealed class EnvironmentEditorViewModelTests
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(300);
 
+        sut.SelectedEnvironment = sut.Environments.First(e => !e.IsGlobal);
+        await Task.Delay(300);
+
         var devEnv = sut.Environments.First(e => !e.IsGlobal);
         var fullUrlVar = devEnv.Variables.First(v => v.Name == "full-url");
 
@@ -1170,6 +1193,9 @@ public sealed class EnvironmentEditorViewModelTests
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(300);
 
+        sut.SelectedEnvironment = sut.Environments.First(e => !e.IsGlobal);
+        await Task.Delay(300);
+
         var devEnv = sut.Environments.First(e => !e.IsGlobal);
         var authHeaderVar = devEnv.Variables.First(v => v.Name == "auth-header");
 
@@ -1226,6 +1252,9 @@ public sealed class EnvironmentEditorViewModelTests
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
         await Task.Delay(300);
 
+        sut.SelectedEnvironment = sut.Environments.First(e => !e.IsGlobal);
+        await Task.Delay(300);
+
         var devEnv = sut.Environments.First(e => !e.IsGlobal);
         var guidVar = devEnv.Variables.First(v => v.Name == "guid");
 
@@ -1280,6 +1309,9 @@ public sealed class EnvironmentEditorViewModelTests
         var sut = BuildSut(service, messenger);
 
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(300);
+
+        sut.SelectedEnvironment = sut.Environments.First(e => !e.IsGlobal);
         await Task.Delay(300);
 
         var devEnv = sut.Environments.First(e => !e.IsGlobal);
@@ -1350,6 +1382,9 @@ public sealed class EnvironmentEditorViewModelTests
         var sut = BuildSut(service, messenger, dynamicEvaluator: evaluator);
 
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(300);
+
+        sut.SelectedEnvironment = sut.Environments.First(e => !e.IsGlobal);
         await Task.Delay(300);
 
         var devEnv = sut.Environments.First(e => !e.IsGlobal);
@@ -1662,6 +1697,9 @@ public sealed class EnvironmentEditorViewModelTests
         var sut = BuildSut(service, messenger);
 
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(300);
+
+        sut.SelectedEnvironment = sut.Environments.First(e => !e.IsGlobal);
         await Task.Delay(300);
 
         var devEnv = sut.Environments.First(e => !e.IsGlobal);
