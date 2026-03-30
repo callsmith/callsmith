@@ -1146,7 +1146,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 var key = v.Name.Trim();
                 if (concreteVars.TryGetValue(key, out var concreteVar))
                 {
-                    var label = v.IsForceGlobalOverride ? $"OVERRIDES" : $"OVERRIDDEN WITH";
+                    var label = v.IsForceGlobalOverride ? "OVERRIDES" : "OVERRIDDEN WITH";
                     var toolTip = v.IsForceGlobalOverride
                         ? "Overrides this value when used in requests in the previewed environment"
                         : "Overridden with this value when used in requests in the previewed environment";
@@ -1204,24 +1204,24 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             {
                 if (globalVar.IsSecret)
                 {
-                    conflicts[key] = ($"{label}", MaskedSecretValue, "Overridden by a secret global variable");
+                    conflicts[key] = (label, MaskedSecretValue, "Overridden by a secret global variable");
                     continue;
                 }
 
                 if (resolvedGlobalVars.TryGetValue(key, out var globalValue))
-                    conflicts[key] = ($"{label}", globalValue, "Overridden with this value by a global variable");
+                    conflicts[key] = (label, globalValue, "Overridden with this value by a global variable");
 
                 continue;
             }
 
             if (globalVar.IsSecret)
             {
-                conflicts[key] = ($"{label}", MaskedSecretValue, "Overrides a secret global variable");
+                conflicts[key] = (label, MaskedSecretValue, "Overrides a secret global variable");
                 continue;
             }
 
             if (resolvedGlobalVars.TryGetValue(key, out var globalPreviewValue))
-                conflicts[key] = ($"{label}", globalPreviewValue, "Overrides this global variable value");
+                conflicts[key] = (label, globalPreviewValue, "Overrides this global variable value");
         }
 
         env.SetConflictValues(conflicts);
