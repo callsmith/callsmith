@@ -1229,7 +1229,7 @@ public sealed class EnvironmentEditorViewModelTests
         var devEnv = sut.Environments.First(e => !e.IsGlobal);
         var guidVar = devEnv.Variables.First(v => v.Name == "guid");
 
-        guidVar.ConflictLabel.Should().Be("OVERRIDDEN WITH");
+        guidVar.ConflictLabel.Should().Be("OVERRIDDEN WITH (MOCK DATA)");
         guidVar.ConflictValue.Should().NotBeNullOrWhiteSpace();
         Guid.TryParse(guidVar.ConflictValue, out _).Should().BeTrue();
     }
@@ -1355,7 +1355,7 @@ public sealed class EnvironmentEditorViewModelTests
         var devEnv = sut.Environments.First(e => !e.IsGlobal);
         var jwtTokenVar = devEnv.Variables.First(v => v.Name == "jwt-token");
 
-        jwtTokenVar.ConflictLabel.Should().Be("OVERRIDES");
+        jwtTokenVar.ConflictLabel.Should().Be("OVERRIDES (DYNAMIC DATA)");
         jwtTokenVar.ConflictValue.Should().Be("global-dynamic-token");
     }
 
@@ -1438,8 +1438,8 @@ public sealed class EnvironmentEditorViewModelTests
     }
 
     [Theory]
-    [InlineData(false, "OVERRIDDEN WITH")]
-    [InlineData(true, "OVERRIDES")]
+    [InlineData(false, "OVERRIDDEN WITH (DYNAMIC DATA)")]
+    [InlineData(true, "OVERRIDES (DYNAMIC DATA)")]
     public async Task Preview_GlobalEnv_WhenBothVarsAreResponseBody_ConflictShowsPreviewEnvEvaluation(
         bool forceOverride,
         string expectedLabel)
@@ -1611,7 +1611,7 @@ public sealed class EnvironmentEditorViewModelTests
         var jwtTokenVar = devEnv.Variables.First(v => v.Name == "jwt-token");
 
         jwtTokenVar.PreviewValue.Should().Be(concreteToken);
-        jwtTokenVar.ConflictLabel.Should().Be("OVERRIDDEN WITH");
+        jwtTokenVar.ConflictLabel.Should().Be("OVERRIDDEN WITH (DYNAMIC DATA)");
         jwtTokenVar.ConflictValue.Should().Be(globalToken);
     }
 
