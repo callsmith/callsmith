@@ -1329,9 +1329,6 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 _loadingEnvironments = false;
             }
 
-            // Default selection while loading data.
-            SelectedEnvironment = Environments.Count > 1 ? Environments[1] : Environments[0];
-
             // If the editor was opened while environments were loading, apply the explicit
             // open-time selection now.
             if (_hasPendingOpenEditorSelection)
