@@ -501,11 +501,9 @@ public sealed class FileSystemCollectionService : ICollectionService
 
     private static CollectionRequest DtoToRequest(RequestFileDto dto, string filePath, string? basicAuthPassword = null, string? apiKeyValue = null)
     {
-        // Separate base URL from query params.
-        // New files store them separately; old files have the full URL in the url field.
         var rawUrl = dto.Url ?? string.Empty;
+        
         IReadOnlyList<RequestKv> queryParams = [];
-
         if (dto.QueryParamEntries is not null)
         {
             queryParams = dto.QueryParamEntries

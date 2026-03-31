@@ -205,8 +205,6 @@ public sealed class BrunoCollectionService : ICollectionService
         if (!File.Exists(filePath))
             throw new FileNotFoundException($"Request file not found: '{filePath}'", filePath);
 
-        var request = await LoadRequestAsync(filePath, ct).ConfigureAwait(false);
-
         var destinationDirectory = destinationFolderPath;
         Directory.CreateDirectory(destinationDirectory);
 
@@ -550,23 +548,13 @@ public sealed class BrunoCollectionService : ICollectionService
         var bruAuthType = methodBlock.GetValue("auth") ?? "none";
 
         // params:query block is authoritative for query params when present.
-        string baseUrl;
-        IReadOnlyList<RequestKv> queryParams;
+        IReadOnlyList<RequestKv> queryParams = [];
         var queryBlock = doc.Find("params:query");
         if (queryBlock?.Items.Count > 0)
         {
-            baseUrl = QueryStringHelper.GetBaseUrl(rawUrl);
             // Preserve all items (enabled and disabled) in the domain model.
             queryParams = queryBlock.Items
                 .Select(kv => new RequestKv(kv.Key, kv.Value, kv.IsEnabled))
-                .ToList();
-        }
-        else
-        {
-            // Fall back to parsing from the URL itself (e.g. no params:query block).
-            baseUrl = QueryStringHelper.GetBaseUrl(rawUrl);
-            queryParams = QueryStringHelper.ParseQueryParams(rawUrl)
-                .Select(kv => new RequestKv(kv.Key, kv.Value))
                 .ToList();
         }
 
@@ -609,7 +597,7 @@ public sealed class BrunoCollectionService : ICollectionService
             FilePath = filePath,
             Name = name,
             Method = new HttpMethod(httpMethod),
-            Url = baseUrl,
+            Url = rawUrl,
             Headers = headers,
             PathParams = pathParams,
             QueryParams = queryParams,
@@ -742,11 +730,10 @@ public sealed class BrunoCollectionService : ICollectionService
         // HTTP method block — locate the existing verb block (any verb) and replace it
         // in-place so that block position is preserved even when the method changes.
         var methodBlock = new BruBlock(bruMethod);
-        // Write the full URL (with query params) so Bruno's address bar shows the complete URL.
-        methodBlock.Items.Add(new BruKv("url", request.FullUrl));
+        methodBlock.Items.Add(new BruKv("url", request.Url));
         methodBlock.Items.Add(new BruKv("body", MapCallsmithBodyType(request.BodyType)));
         methodBlock.Items.Add(new BruKv("auth", MapCallsmithAuthType(request.Auth.AuthType)));
-        ReplaceVerbBlock(blocks, bruMethod, methodBlock);
+        ReplaceVerbBlock(blocks, methodBlock);
 
         // params:query — update in-place or remove when empty
         if (request.QueryParams.Count > 0)
@@ -837,7 +824,7 @@ public sealed class BrunoCollectionService : ICollectionService
     /// Finds any existing HTTP-verb block, replaces its name and content with
     /// <paramref name="block"/>, or appends after <c>meta</c> when none is found.
     /// </summary>
-    private static void ReplaceVerbBlock(List<BruBlock> blocks, string bruMethod, BruBlock block)
+    private static void ReplaceVerbBlock(List<BruBlock> blocks, BruBlock block)
     {
         // Find the first existing verb block (method may have changed, e.g. GET → POST).
         var verbIdx = -1;

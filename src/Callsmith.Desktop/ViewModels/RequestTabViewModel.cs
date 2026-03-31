@@ -724,9 +724,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                     .Where(p => p.IsEnabled)
                     .Select(p => new KeyValuePair<string, string>(p.Key, p.Value))
                     .ToList();
-                Url = enabledParams.Count > 0
-                    ? QueryStringHelper.AppendQueryParams(req.Url, enabledParams)
-                    : req.Url;
+                Url = req.Url;
                 QueryParams.LoadFrom(req.QueryParams);
                 SyncPathParamsWithUrl(Url, req.PathParams);
             }
