@@ -12,7 +12,8 @@
   <StackPanel>
 
     <!-- Column headers -->
-    <Grid ColumnDefinitions="28,*,*,28"
+    <Grid IsVisible="{Binding Items.Count}"
+          ColumnDefinitions="28,*,*,28"
           Margin="0,4,0,4">
       <TextBlock Grid.Column="1"
                  Text="Key"
