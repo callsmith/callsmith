@@ -906,9 +906,10 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         // Configured tab — the raw template as the user wrote it
         var cfg = entry.ConfiguredSnapshot;
         var sb = new StringBuilder();
+        sb.AppendLine(string.IsNullOrWhiteSpace(entry.EnvironmentName)
+            ? "(no environment)"
+            : $"Environment: {entry.EnvironmentName}");
         sb.AppendLine($"{cfg.Method} {cfg.Url}");
-        if (!string.IsNullOrWhiteSpace(entry.EnvironmentName))
-            sb.AppendLine($"Environment: {entry.EnvironmentName}");
         var enabledHeaders = cfg.Headers.Where(h => h.IsEnabled).ToList();
         if (enabledHeaders.Count > 0)
         {
@@ -917,12 +918,20 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             foreach (var h in enabledHeaders)
                 sb.AppendLine($"  {h.Key}: {h.Value}");
         }
-        if (cfg.AutoAppliedHeaders.Count > 0)
+        if (cfg.PathParams.Count > 0)
         {
             sb.AppendLine();
-            sb.AppendLine("Auto-applied:");
-            foreach (var h in cfg.AutoAppliedHeaders)
-                sb.AppendLine($"  {h.Key}: {h.Value}");
+            sb.AppendLine("Path Params:");
+            foreach (var p in cfg.PathParams)
+                sb.AppendLine($"  {p.Key}: {p.Value}");
+        }
+        var enabledQueryParams = cfg.QueryParams.Where(qp => qp.IsEnabled).ToList();
+        if (enabledQueryParams.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Query Params:");
+            foreach (var p in enabledQueryParams)
+                sb.AppendLine($"  {p.Key}: {p.Value}");
         }
         if (!string.IsNullOrEmpty(cfg.Body))
         {
@@ -930,6 +939,23 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             sb.AppendLine("Body:");
             sb.Append(cfg.Body);
         }
+        if (cfg.Auth.AuthType != AuthConfig.AuthTypes.None)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Auth:");
+            sb.AppendLine($"  Auth Type: {cfg.Auth.AuthType}");
+            switch (cfg.Auth.AuthType)
+            {
+                case AuthConfig.AuthTypes.Basic:
+                    sb.AppendLine($"  Username: {cfg.Auth.Username}");
+                    break;
+                case AuthConfig.AuthTypes.ApiKey:
+                    sb.AppendLine($"  Key Name: {cfg.Auth.ApiKeyName}");
+                    sb.AppendLine($"  Key In: {cfg.Auth.ApiKeyIn}");
+                    break;
+            }
+        }
+        
         DetailConfigured = TrimTrailingBlankLines(sb.ToString());
 
         // Resolved tab — rebuild wire-level view via HistorySentViewBuilder
