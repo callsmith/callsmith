@@ -933,12 +933,6 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             foreach (var p in enabledQueryParams)
                 sb.AppendLine($"  {p.Key}: {p.Value}");
         }
-        if (!string.IsNullOrEmpty(cfg.Body))
-        {
-            sb.AppendLine();
-            sb.AppendLine("Body:");
-            sb.Append(cfg.Body);
-        }
         if (cfg.Auth.AuthType != AuthConfig.AuthTypes.None)
         {
             sb.AppendLine();
@@ -954,6 +948,12 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                     sb.AppendLine($"  Key In: {cfg.Auth.ApiKeyIn}");
                     break;
             }
+        }
+        if (!string.IsNullOrEmpty(cfg.Body))
+        {
+            sb.AppendLine();
+            sb.AppendLine("Body:");
+            sb.Append(cfg.Body);
         }
         
         DetailConfigured = TrimTrailingBlankLines(sb.ToString());
