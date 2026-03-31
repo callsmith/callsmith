@@ -472,7 +472,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
                 VariableSubstitutionService.Substitute(p.Key, vars) ?? p.Key,
                 VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value))
             .ToList();
-        requestUrl = QueryStringHelper.ApplyQueryParams(requestUrl, queryPairs);
+        requestUrl = QueryStringHelper.AppendQueryParams(requestUrl, queryPairs);
 
         // Headers + auth
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

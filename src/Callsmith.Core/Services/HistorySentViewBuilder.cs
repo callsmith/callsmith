@@ -48,8 +48,7 @@ public static class HistorySentViewBuilder
                 p => p.Key,
                    p => Substitute(p.Value, vars) ?? p.Value);
 
-        var baseUrl = QueryStringHelper.GetBaseUrl(snapshot.Url);
-           var requestUrl = PathTemplateHelper.ApplyPathParams(baseUrl, resolvedPathParams);
+        var requestUrl = PathTemplateHelper.ApplyPathParams(snapshot.Url, resolvedPathParams);
 
         // 2. Resolve and append query params.
         var resolvedQueryParams = snapshot.QueryParams
@@ -59,7 +58,7 @@ public static class HistorySentViewBuilder
                 Substitute(p.Value, vars) ?? p.Value))
             .ToList();
 
-        requestUrl = QueryStringHelper.ApplyQueryParams(requestUrl, resolvedQueryParams);
+        requestUrl = QueryStringHelper.AppendQueryParams(requestUrl, resolvedQueryParams);
 
         // 3. Resolve headers (user-authored).
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

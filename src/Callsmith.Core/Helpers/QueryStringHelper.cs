@@ -8,15 +8,18 @@ public static class QueryStringHelper
 {
     /// <summary>
     /// Parses the query parameters out of a URL.
-    /// Returns an empty list if the URL has no query string or is not a valid absolute URI.
+    /// Returns an empty list if the URL has no query string.
     /// Keys and values are URL-decoded. Duplicate keys are preserved in order.
     /// </summary>
     public static IReadOnlyList<KeyValuePair<string, string>> ParseQueryParams(string url)
     {
-        if (string.IsNullOrEmpty(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        if (string.IsNullOrEmpty(url))
             return [];
 
-        var query = uri.Query.TrimStart('?');
+        var urlParts = url.Split('?', 2);
+        if (urlParts.Length == 1) return [];
+
+        var query = urlParts[1];
         if (string.IsNullOrEmpty(query))
             return [];
 

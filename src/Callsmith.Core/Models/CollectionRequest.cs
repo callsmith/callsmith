@@ -92,7 +92,7 @@ public sealed class CollectionRequest
                 .Where(p => p.IsEnabled)
                 .Select(p => new KeyValuePair<string, string>(p.Key, p.Value))
                 .ToList();
-            return enabled.Count > 0 ? QueryStringHelper.ApplyQueryParams(Url, enabled) : Url;
+            return enabled.Count > 0 ? QueryStringHelper.AppendQueryParams(Url, enabled) : Url;
         }
     }
 

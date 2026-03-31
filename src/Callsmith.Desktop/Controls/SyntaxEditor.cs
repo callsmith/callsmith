@@ -98,6 +98,7 @@ public sealed class SyntaxEditor : TextEditor
         // Don't turn URLs/emails into coloured hyperlinks — they should render as plain text.
         Options.EnableHyperlinks = false;
         Options.EnableEmailHyperlinks = false;
+        Options.AllowScrollBelowDocument = false;
 
         TextArea.SelectionBrush = new SolidColorBrush(Color.Parse("#264f78"));
         TextArea.CaretBrush = new SolidColorBrush(Color.Parse("#aeafad"));

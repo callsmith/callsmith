@@ -504,31 +504,12 @@ public sealed class FileSystemCollectionService : ICollectionService
         // Separate base URL from query params.
         // New files store them separately; old files have the full URL in the url field.
         var rawUrl = dto.Url ?? string.Empty;
-        string baseUrl;
-        IReadOnlyList<RequestKv> queryParams;
+        IReadOnlyList<RequestKv> queryParams = [];
 
         if (dto.QueryParamEntries is not null)
         {
-            // Current format: ordered list preserving duplicates and enabled state.
-            baseUrl = rawUrl;
             queryParams = dto.QueryParamEntries
                 .Select(e => new RequestKv(e.Name, e.Value, e.Enabled))
-                .ToList();
-        }
-        else if (dto.QueryParams is not null)
-        {
-            // Legacy format v2: separate dictionary field, all entries enabled.
-            baseUrl = rawUrl;
-            queryParams = dto.QueryParams
-                .Select(kv => new RequestKv(kv.Key, kv.Value))
-                .ToList();
-        }
-        else
-        {
-            // Legacy format v1: derive query params by parsing the URL field, all enabled.
-            baseUrl = rawUrl.Contains('?') ? rawUrl[..rawUrl.IndexOf('?')] : rawUrl;
-            queryParams = QueryStringHelper.ParseQueryParams(rawUrl)
-                .Select(kv => new RequestKv(kv.Key, kv.Value))
                 .ToList();
         }
 
@@ -553,7 +534,7 @@ public sealed class FileSystemCollectionService : ICollectionService
             FilePath = filePath,
             Name = Path.GetFileNameWithoutExtension(filePath),
             Method = new HttpMethod(dto.Method ?? HttpMethod.Get.Method),
-            Url = baseUrl,
+            Url = rawUrl,
             Description = dto.Description,
             Headers = headers,
             PathParams = dto.PathParams ?? new Dictionary<string, string>(),

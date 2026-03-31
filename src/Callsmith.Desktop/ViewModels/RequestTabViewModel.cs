@@ -456,8 +456,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                     p => p.Key,
                     p => VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value);
 
-            var baseUrl = GetBaseUrl(Url);
-            var resolved = PathTemplateHelper.ApplyPathParams(baseUrl, pathParamValues);
+            var resolved = PathTemplateHelper.ApplyPathParams(Url, pathParamValues);
 
             var substitutedQueryParams = QueryParams.GetEnabledPairs()
                 .Select(p => new KeyValuePair<string, string>(
@@ -465,7 +464,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                     VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value))
                 .ToList();
 
-            resolved = QueryStringHelper.ApplyQueryParams(resolved, substitutedQueryParams);
+            resolved = QueryStringHelper.AppendQueryParams(resolved, substitutedQueryParams);
 
             return VariableSubstitutionService.Substitute(resolved, vars) ?? resolved;
         }
@@ -685,7 +684,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
         QueryParams.Changed += (_, _) =>
         {
             if (!_loading && !_saving && _sourceRequest is not null) HasUnsavedChanges = true;
-            RebuildUrlFromParams();
             OnPropertyChanged(nameof(PreviewUrl));
         };
 
@@ -727,7 +725,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                     .Select(p => new KeyValuePair<string, string>(p.Key, p.Value))
                     .ToList();
                 Url = enabledParams.Count > 0
-                    ? QueryStringHelper.ApplyQueryParams(req.Url, enabledParams)
+                    ? QueryStringHelper.AppendQueryParams(req.Url, enabledParams)
                     : req.Url;
                 QueryParams.LoadFrom(req.QueryParams);
                 SyncPathParamsWithUrl(Url, req.PathParams);
@@ -867,7 +865,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                     .Select(p => new KeyValuePair<string, string>(p.Key, p.Value))
                     .ToList();
                 Url = enabledParams.Count > 0
-                    ? QueryStringHelper.ApplyQueryParams(resolvedUrl, enabledParams)
+                    ? QueryStringHelper.AppendQueryParams(resolvedUrl, enabledParams)
                     : resolvedUrl;
                 QueryParams.LoadFrom(resolvedQueryParams);
                 // Path params are already resolved into the URL; no {param} tokens remain.
@@ -1078,8 +1076,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 p => p.Key,
                 p => VariableSubstitutionService.Substitute(p.Value, env) ?? p.Value);
 
-        var baseUrl = GetBaseUrl(Url);
-        var requestUrl = PathTemplateHelper.ApplyPathParams(baseUrl, pathParamValues);
+        var requestUrl = PathTemplateHelper.ApplyPathParams(Url, pathParamValues);
 
         // Resolve query params
         var substitutedQueryParams = QueryParams.GetEnabledPairs()
@@ -1088,7 +1085,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 VariableSubstitutionService.Substitute(p.Value, env) ?? p.Value))
             .ToList();
 
-        requestUrl = QueryStringHelper.ApplyQueryParams(requestUrl, substitutedQueryParams);
+        requestUrl = QueryStringHelper.AppendQueryParams(requestUrl, substitutedQueryParams);
 
         // Headers + auth
         var headers = ResolveHeaders(Headers.GetEnabledPairs(), env.Variables);
@@ -1169,8 +1166,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                     p => p.Key,
                     p => VariableSubstitutionService.SubstituteCollecting(p.Value, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Value);
 
-            var baseUrl = GetBaseUrl(Url);
-            var requestUrl = PathTemplateHelper.ApplyPathParams(baseUrl, pathParamValues);
+            var requestUrl = PathTemplateHelper.ApplyPathParams(Url, pathParamValues);
 
             // Substitute variables in query param keys/values BEFORE URL-encoding.
             var substitutedQueryParams = QueryParams.GetEnabledPairs()
@@ -1179,7 +1175,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                     VariableSubstitutionService.SubstituteCollecting(p.Value, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Value))
                 .ToList();
 
-            requestUrl = QueryStringHelper.ApplyQueryParams(requestUrl, substitutedQueryParams);
+            requestUrl = QueryStringHelper.AppendQueryParams(requestUrl, substitutedQueryParams);
 
             ApplyAuthHeaders(headers, requestUrl, env.Variables, out requestUrl, env.MockGenerators, secretNames, sentBindings);
 
@@ -1419,8 +1415,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
     {
         if (_sourceRequest is null) return false;
 
-        var baseUrl = Url.Contains('?') ? Url[..Url.IndexOf('?')] : Url;
-
         // Snapshot the per-type body contents dictionary, making sure the active body
         // type reflects the current editor content.
         var allBodyContents = new Dictionary<string, string>(_bodyContents, StringComparer.Ordinal);
@@ -1437,7 +1431,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             FilePath = _sourceRequest.FilePath,
             Name = RequestName,
             Method = new HttpMethod(SelectedMethod),
-            Url = baseUrl,
+            Url = Url,
             RequestId = _sourceRequest.RequestId ?? Guid.NewGuid(),
             Description = _sourceRequest.Description,
             Headers = Headers.GetAllKv(),
@@ -1525,27 +1519,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _syncingUrl = true;
         try
         {
-            var parsed = QueryStringHelper.ParseQueryParams(value);
-            QueryParams.LoadFrom(parsed);
             var existingPathValues = PathParams.Items
                 .Where(i => !string.IsNullOrWhiteSpace(i.Key))
                 .ToDictionary(i => i.Key, i => i.Value);
             SyncPathParamsWithUrl(value, existingPathValues);
-        }
-        finally
-        {
-            _syncingUrl = false;
-        }
-    }
-
-    private void RebuildUrlFromParams()
-    {
-        if (_syncingUrl || _loading) return;
-        _syncingUrl = true;
-        try
-        {
-            var pairs = QueryParams.GetEnabledPairs().ToList();
-            Url = QueryStringHelper.ApplyQueryParams(Url, pairs);
         }
         finally
         {
@@ -1583,7 +1560,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _syncingUrl = true;
         try
         {
-            Url = QueryStringHelper.ApplyQueryParams(updatedBaseUrl, QueryParams.GetEnabledPairs().ToList());
+            Url = QueryStringHelper.AppendQueryParams(updatedBaseUrl, QueryParams.GetEnabledPairs().ToList());
         }
         finally
         {
