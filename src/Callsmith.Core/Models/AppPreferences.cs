@@ -4,7 +4,7 @@ namespace Callsmith.Core.Models;
 /// Global application-level preferences stored in the user's application data directory.
 /// Unlike <see cref="CollectionPreferences"/>, these are not scoped to a collection.
 /// </summary>
-public sealed class AppPreferences
+public sealed record AppPreferences
 {
     /// <summary>
     /// Whether the history detail pane is displayed in horizontal (side-by-side) mode.

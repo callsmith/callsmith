@@ -24,6 +24,8 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private readonly IHistoryService _historyService;
     private readonly EnvironmentViewModel? _environmentViewModel;
     private readonly IMessenger? _messenger;
+    private readonly IAppPreferencesService? _appPreferencesService;
+    private bool _preferencesLoaded;
     private int _nextPage = 0;
     private long _queryTotalCount = 0;
     private const int InitialChunkSize = 100;
@@ -214,7 +216,18 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     partial void OnIsOpenChanged(bool value)
     {
         if (value)
+        {
             _ = ReloadEntriesAsync();
+            if (!_preferencesLoaded && _appPreferencesService is not null)
+                _ = LoadPreferencesAsync();
+        }
+    }
+
+    private async Task LoadPreferencesAsync()
+    {
+        var prefs = await _appPreferencesService!.LoadAsync().ConfigureAwait(false);
+        _preferencesLoaded = true;
+        IsHorizontalDetailLayout = prefs.IsHorizontalHistoryDetailLayout;
     }
 
     partial void OnPendingDeleteEntryChanged(HistoryEntryRowViewModel? value)
@@ -305,12 +318,14 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     public HistoryPanelViewModel(
         IHistoryService historyService,
         EnvironmentViewModel? environmentViewModel = null,
-        IMessenger? messenger = null)
+        IMessenger? messenger = null,
+        IAppPreferencesService? appPreferencesService = null)
     {
         ArgumentNullException.ThrowIfNull(historyService);
         _historyService = historyService;
         _environmentViewModel = environmentViewModel;
         _messenger = messenger;
+        _appPreferencesService = appPreferencesService;
 
         AdvancedSearch = new AdvancedHistorySearchViewModel();
         AdvancedSearch.Applied += (_, _) =>
@@ -339,7 +354,13 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private void Close() => IsOpen = false;
 
     [RelayCommand]
-    private void ToggleDetailLayout() => IsHorizontalDetailLayout = !IsHorizontalDetailLayout;
+    private void ToggleDetailLayout()
+    {
+        IsHorizontalDetailLayout = !IsHorizontalDetailLayout;
+        var newValue = IsHorizontalDetailLayout;
+        if (_appPreferencesService is not null)
+            _ = _appPreferencesService.UpdateAsync(p => p with { IsHorizontalHistoryDetailLayout = newValue });
+    }
 
     [RelayCommand]
     private void ShowAllHistory()
