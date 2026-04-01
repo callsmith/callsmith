@@ -260,6 +260,59 @@ public sealed class HistoryPanelViewModelTests
     }
 
     [Fact]
+    public void IsRequestScoped_IsFalse_Initially()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var sut = new HistoryPanelViewModel(historyService);
+
+        sut.IsRequestScoped.Should().BeFalse();
+    }
+
+    [Fact]
+    public void OpenForRequest_SetsIsRequestScoped_AndScopedToLabel()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        historyService.QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>(([], 0)));
+
+        var sut = new HistoryPanelViewModel(historyService);
+        sut.OpenForRequest(Guid.NewGuid(), "login");
+
+        sut.IsRequestScoped.Should().BeTrue();
+        sut.ScopedToLabel.Should().Be("Scoped to: login");
+    }
+
+    [Fact]
+    public void OpenForRequest_WithNullName_UsesFallback()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        historyService.QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>(([], 0)));
+
+        var sut = new HistoryPanelViewModel(historyService);
+        sut.OpenForRequest(Guid.NewGuid(), null);
+
+        sut.IsRequestScoped.Should().BeTrue();
+        sut.ScopedToLabel.Should().Be("Scoped to: (unnamed)");
+    }
+
+    [Fact]
+    public void ShowAllHistoryCommand_ClearsScope()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        historyService.QueryAsync(Arg.Any<HistoryFilter>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<(IReadOnlyList<HistoryEntry> Entries, long TotalCount)>(([], 0)));
+
+        var sut = new HistoryPanelViewModel(historyService);
+        sut.OpenForRequest(Guid.NewGuid(), "login");
+
+        sut.ShowAllHistoryCommand.Execute(null);
+
+        sut.IsRequestScoped.Should().BeFalse();
+    }
+
+
+    [Fact]
     public async Task OpenGlobal_LoadsInitialChunk_AndTracksRemainingResults()
     {
         var entries = Enumerable.Range(1, 100).Select(i => CreateEntry(new AuthConfig()) with { Id = i, RequestName = $"Request {i}" }).ToList();

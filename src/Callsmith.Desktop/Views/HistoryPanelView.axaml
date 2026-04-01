@@ -42,23 +42,6 @@
                      FontSize="14"
                      FontWeight="SemiBold"
                      VerticalAlignment="Center"/>
-          <TextBlock Text="{Binding ScopeLabel}"
-                     Foreground="#8aa7bf"
-                     FontSize="11"
-                     FontStyle="Italic"
-                     LineHeight="15"
-                     Padding="0,1,2,0"
-                     Margin="8,1,12,0"
-                     VerticalAlignment="Center"/>
-          <Button Content="Show Global History"
-            Command="{Binding ShowAllHistoryCommand}"
-            IsVisible="{Binding IsRequestScoped}"
-            FontSize="11"
-            Background="Transparent"
-            Foreground="#dcdcaa"
-            BorderBrush="#555"
-            BorderThickness="1"
-            Padding="8,2"/>
           <Border Background="#5a1a1a"
                   CornerRadius="4"
                   Padding="8,3"
@@ -166,6 +149,29 @@
                       Focusable="False"
                       FontSize="12"
                       ToolTip.Tip="Clear all advanced filters"/>
+            </StackPanel>
+          </Border>
+
+          <!-- Scope pill — visible only when scoped to a specific request -->
+          <Border Background="#1a3a5a"
+                  CornerRadius="4"
+                  Padding="6,2,2,2"
+                  IsVisible="{Binding IsRequestScoped}"
+                  VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <TextBlock Text="{Binding ScopedToLabel}"
+                        Foreground="#9cdcfe"
+                        FontSize="11"
+                        VerticalAlignment="Center"/>
+              <Button Content="×"
+                      Command="{Binding ShowAllHistoryCommand}"
+                      Background="Transparent"
+                      Foreground="#9cdcfe"
+                      BorderThickness="0"
+                      Padding="2,0"
+                      Focusable="False"
+                      FontSize="12"
+                      ToolTip.Tip="Clear scope filter"/>
             </StackPanel>
           </Border>
 
