@@ -82,6 +82,61 @@ public sealed class FileSystemCollectionService : ICollectionService
     }
 
     /// <inheritdoc/>
+    public Task<string?> ResolveRequestFilePathAsync(
+        string collectionFolderPath, string requestName, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(collectionFolderPath);
+        ArgumentNullException.ThrowIfNull(requestName);
+        ct.ThrowIfCancellationRequested();
+
+        var parts = requestName.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+            return Task.FromResult<string?>(null);
+
+        if (parts.Length == 1)
+        {
+            // Flat name: search recursively by filename without reading any file contents.
+            var expectedFileName = parts[0] + RequestFileExtension;
+            var found = EnumerateRequestFilesRecursive(collectionFolderPath, expectedFileName)
+                .FirstOrDefault();
+            return Task.FromResult(found);
+        }
+
+        // Path-based: navigate the folder hierarchy by directory name, then find the file.
+        var current = collectionFolderPath;
+        for (var i = 0; i < parts.Length - 1; i++)
+        {
+            var segment = parts[i];
+            var matched = Directory
+                .EnumerateDirectories(current)
+                .FirstOrDefault(d =>
+                    !ShouldExcludeFolder(Path.GetFileName(d)) &&
+                    string.Equals(Path.GetFileName(d), segment, StringComparison.OrdinalIgnoreCase));
+
+            if (matched is null)
+                return Task.FromResult<string?>(null);
+
+            current = matched;
+        }
+
+        var leafPath = Path.Combine(current, parts[^1] + RequestFileExtension);
+        return Task.FromResult(File.Exists(leafPath) ? leafPath : null);
+    }
+
+    private IEnumerable<string> EnumerateRequestFilesRecursive(string folderPath, string fileName)
+    {
+        foreach (var file in Directory.EnumerateFiles(folderPath, fileName, SearchOption.TopDirectoryOnly))
+            yield return file;
+
+        foreach (var dir in Directory.EnumerateDirectories(folderPath))
+        {
+            if (ShouldExcludeFolder(Path.GetFileName(dir))) continue;
+            foreach (var file in EnumerateRequestFilesRecursive(dir, fileName))
+                yield return file;
+        }
+    }
+
+    /// <inheritdoc/>
     public async Task<CollectionRequest> LoadRequestAsync(string filePath, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(filePath);
@@ -502,12 +557,19 @@ public sealed class FileSystemCollectionService : ICollectionService
     private static CollectionRequest DtoToRequest(RequestFileDto dto, string filePath, string? basicAuthPassword = null, string? apiKeyValue = null)
     {
         var rawUrl = dto.Url ?? string.Empty;
-        
+
         IReadOnlyList<RequestKv> queryParams = [];
         if (dto.QueryParamEntries is not null)
         {
             queryParams = dto.QueryParamEntries
                 .Select(e => new RequestKv(e.Name, e.Value, e.Enabled))
+                .ToList();
+        }
+        else if (dto.QueryParams is not null)
+        {
+            // Legacy: dictionary-based query params (no enabled state)
+            queryParams = dto.QueryParams
+                .Select(kv => new RequestKv(kv.Key, kv.Value))
                 .ToList();
         }
 

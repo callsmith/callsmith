@@ -92,4 +92,17 @@ public interface ICollectionService
     /// Passing an empty list removes any existing order file, restoring default (alphabetical) ordering.
     /// </summary>
     Task SaveFolderOrderAsync(string folderPath, IReadOnlyList<string> orderedNames, CancellationToken ct = default);
+
+    /// <summary>
+    /// Resolves the absolute file path for a request identified by its collection-relative
+    /// name or slash-separated folder path (e.g. <c>"get-token"</c> or <c>"Auth/get-token"</c>),
+    /// without loading all requests into memory.
+    /// Returns <c>null</c> when no matching request is found.
+    /// </summary>
+    /// <param name="collectionFolderPath">Absolute path to the root collection folder.</param>
+    /// <param name="requestName">
+    /// Display name or slash-separated folder/name path of the request.
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<string?> ResolveRequestFilePathAsync(string collectionFolderPath, string requestName, CancellationToken ct = default);
 }

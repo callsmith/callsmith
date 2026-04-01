@@ -758,19 +758,19 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task LegacyFile_WithQueryParamsInUrl_ParsedIntoQueryParamsCollection()
+    public async Task LegacyFile_WithQueryParamsInUrl_UrlIsPreservedAsIs()
     {
         var folder = _temp.CreateSubDirectory("col");
-        // Legacy format: full URL including query params, no separate queryParams field
+        // Legacy format: full URL including query params, no separate queryParams field.
+        // The URL is stored verbatim; callers use FullUrl / QueryStringHelper to separate them.
         var json = """{"method": "GET", "url": "https://api.example.com?foo=bar&limit=5"}""";
         var filePath = Path.Combine(folder, "legacy.callsmith");
         await File.WriteAllTextAsync(filePath, json);
 
         var loaded = await _sut.LoadRequestAsync(filePath);
 
-        loaded.Url.Should().Be("https://api.example.com");
-        loaded.QueryParams.Should().Contain(p => p.Key == "foo" && p.Value == "bar");
-        loaded.QueryParams.Should().Contain(p => p.Key == "limit" && p.Value == "5");
+        loaded.Url.Should().Be("https://api.example.com?foo=bar&limit=5");
+        loaded.QueryParams.Should().BeEmpty();
     }
 
     [Fact]

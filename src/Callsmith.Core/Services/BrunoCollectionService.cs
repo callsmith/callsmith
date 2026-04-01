@@ -72,6 +72,98 @@ public sealed class BrunoCollectionService : ICollectionService
         return folder;
     }
 
+    /// <inheritdoc/>
+    public async Task<string?> ResolveRequestFilePathAsync(
+        string collectionFolderPath, string requestName, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(collectionFolderPath);
+        ArgumentNullException.ThrowIfNull(requestName);
+        ct.ThrowIfCancellationRequested();
+
+        var parts = requestName.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+            return null;
+
+        if (parts.Length == 1)
+        {
+            // Flat name: scan directories recursively, reading .bru files until we find a
+            // meta.name match.  We stop at the first match to minimise I/O.
+            return await FindBruRequestRecursiveAsync(collectionFolderPath, parts[0], ct)
+                .ConfigureAwait(false);
+        }
+
+        // Path-based: navigate the folder hierarchy by display name (folder.bru meta.name or
+        // directory name), then find the request by meta.name in the target directory.
+        var current = collectionFolderPath;
+        for (var i = 0; i < parts.Length - 1; i++)
+        {
+            var segment = parts[i];
+            string? matched = null;
+            foreach (var subDir in Directory.EnumerateDirectories(current))
+            {
+                if (ShouldExcludeFolder(Path.GetFileName(subDir))) continue;
+                ct.ThrowIfCancellationRequested();
+                var displayName = GetFolderDisplayName(subDir);
+                if (string.Equals(displayName, segment, StringComparison.OrdinalIgnoreCase))
+                {
+                    matched = subDir;
+                    break;
+                }
+            }
+
+            if (matched is null)
+                return null;
+
+            current = matched;
+        }
+
+        return await FindBruRequestInFolderAsync(current, parts[^1], ct).ConfigureAwait(false);
+    }
+
+    private async Task<string?> FindBruRequestInFolderAsync(
+        string folderPath, string requestName, CancellationToken ct)
+    {
+        foreach (var filePath in Directory.EnumerateFiles(folderPath, "*.bru", SearchOption.TopDirectoryOnly))
+        {
+            var fname = Path.GetFileName(filePath);
+            if (string.Equals(fname, "folder.bru", StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.Equals(fname, "collection.bru", StringComparison.OrdinalIgnoreCase)) continue;
+
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var text = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
+                var doc = BruParser.Parse(text);
+                var name = doc.GetValue("meta", "name");
+                if (string.Equals(name, requestName, StringComparison.OrdinalIgnoreCase))
+                    return filePath;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Skipping unreadable .bru file during request lookup: '{Path}'", filePath);
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<string?> FindBruRequestRecursiveAsync(
+        string folderPath, string requestName, CancellationToken ct)
+    {
+        var found = await FindBruRequestInFolderAsync(folderPath, requestName, ct).ConfigureAwait(false);
+        if (found is not null) return found;
+
+        foreach (var subDir in Directory.EnumerateDirectories(folderPath))
+        {
+            if (ShouldExcludeFolder(Path.GetFileName(subDir))) continue;
+            ct.ThrowIfCancellationRequested();
+            var result = await FindBruRequestRecursiveAsync(subDir, requestName, ct).ConfigureAwait(false);
+            if (result is not null) return result;
+        }
+
+        return null;
+    }
+
     public async Task<CollectionRequest> LoadRequestAsync(string filePath, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(filePath);

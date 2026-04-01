@@ -41,14 +41,6 @@ public sealed class DynamicVariableEvaluatorServiceTests : IDisposable
             RequestId = requestId,
         };
 
-    private static CollectionFolder MakeFolder(CollectionRequest request) =>
-        new()
-        {
-            FolderPath = "/collection",
-            Name = "collection",
-            Requests = [request],
-        };
-
     private static EnvironmentVariable ResponseBodyVar(
         string name,
         string requestName,
@@ -87,11 +79,11 @@ public sealed class DynamicVariableEvaluatorServiceTests : IDisposable
     {
         var requestId = Guid.NewGuid();
         var request = MakeRequest("get-token", requestId);
-        var folder = MakeFolder(request);
         var collectionPath = _temp.CreateSubDirectory("collection");
 
-        _collectionService.OpenFolderAsync(collectionPath, Arg.Any<CancellationToken>())
-            .Returns(folder);
+        _collectionService.ResolveRequestFilePathAsync(
+                collectionPath, "get-token", Arg.Any<CancellationToken>())
+            .Returns(request.FilePath);
         _collectionService.LoadRequestAsync(request.FilePath, Arg.Any<CancellationToken>())
             .Returns(request);
         _transportRegistry.Resolve(Arg.Any<RequestModel>())
@@ -132,11 +124,11 @@ public sealed class DynamicVariableEvaluatorServiceTests : IDisposable
     {
         var requestId = Guid.NewGuid();
         var request = MakeRequest("get-token", requestId);
-        var folder = MakeFolder(request);
         var collectionPath = _temp.CreateSubDirectory("collection2");
 
-        _collectionService.OpenFolderAsync(collectionPath, Arg.Any<CancellationToken>())
-            .Returns(folder);
+        _collectionService.ResolveRequestFilePathAsync(
+                collectionPath, "get-token", Arg.Any<CancellationToken>())
+            .Returns(request.FilePath);
         _collectionService.LoadRequestAsync(request.FilePath, Arg.Any<CancellationToken>())
             .Returns(request);
         _transportRegistry.Resolve(Arg.Any<RequestModel>())

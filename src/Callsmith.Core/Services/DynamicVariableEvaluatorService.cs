@@ -107,17 +107,6 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         var cache = await LoadCacheAsync(collectionFolderPath, ct).ConfigureAwait(false);
         var cacheModified = false;
 
-        CollectionFolder? folder = null;
-        try
-        {
-            folder = await _collectionService.OpenFolderAsync(collectionFolderPath, ct)
-                         .ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Could not open collection folder for dynamic variable evaluation");
-        }
-
         // Two passes so that response-body vars that reference other response-body vars
         // resolve in the right order regardless of declaration order.
         var passes = responseBodyVars.Count > 1 ? 2 : 1;
@@ -129,7 +118,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
                 try
                 {
                     var value = await EvaluateResponseBodyVarAsync(
-                        variable, environmentCacheNamespace, folder, resolvedVars, cache, ct)
+                        variable, environmentCacheNamespace, collectionFolderPath, resolvedVars, cache, ct)
                         .ConfigureAwait(false);
 
                     if (value != null)
@@ -168,18 +157,6 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
             || string.IsNullOrEmpty(variable.ResponsePath))
             return null;
 
-        CollectionFolder? folder = null;
-        try
-        {
-            folder = await _collectionService.OpenFolderAsync(collectionFolderPath, ct)
-                         .ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Could not open collection folder for dynamic variable preview");
-            return null;
-        }
-
         var segment = new DynamicValueSegment
         {
             RequestName = variable.ResponseRequestName,
@@ -189,7 +166,28 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
             ExpiresAfterSeconds = variable.ResponseExpiresAfterSeconds,
         };
 
-        return await ExecuteAndExtractAsync(segment, folder, variables, ct).ConfigureAwait(false);
+        string? filePath;
+        try
+        {
+            filePath = await _collectionService
+                .ResolveRequestFilePathAsync(collectionFolderPath, segment.RequestName, ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not find request for dynamic variable preview");
+            return null;
+        }
+
+        if (filePath is null)
+        {
+            _logger.LogWarning(
+                "Dynamic variable preview: request '{RequestName}' not found in collection",
+                segment.RequestName);
+            return null;
+        }
+
+        return await ExecuteAndExtractAsync(segment, filePath, variables, ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -268,7 +266,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
     private async Task<string?> EvaluateResponseBodyVarAsync(
         EnvironmentVariable variable,
         string environmentCacheNamespace,
-        CollectionFolder? folder,
+        string collectionFolderPath,
         IReadOnlyDictionary<string, string> vars,
         DynCache cache,
         CancellationToken ct)
@@ -282,23 +280,13 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
             ExpiresAfterSeconds = variable.ResponseExpiresAfterSeconds,
         };
 
-        // Resolve the request's stable ID for use as the per-request cache key segment.
-        // Fall back to a deterministic GUID derived from the request name when the ID
-        // is not yet assigned (e.g. the file pre-dates the requestId migration).
-        var stub = folder is not null ? FindRequestByName(folder, segment.RequestName) : null;
-        Guid requestCacheId;
-        if (stub?.RequestId is { } existingId)
-        {
-            requestCacheId = existingId;
-        }
-        else
-        {
-            requestCacheId = DeterministicRequestGuid(segment.RequestName);
-            _logger.LogDebug(
-                "Dynamic variable: no RequestId found for '{RequestName}'; using deterministic GUID {Id} as cache key",
-                segment.RequestName, requestCacheId);
-        }
-        var cacheKey = MakeCacheKey(environmentCacheNamespace, requestCacheId, segment.Path);
+        // Use a deterministic GUID derived from the request name as the cache key.
+        // This avoids loading the entire collection just to obtain a persisted RequestId,
+        // keeping dynamic variable resolution lazy and memory-efficient.
+        var cacheKey = MakeCacheKey(
+            environmentCacheNamespace,
+            DeterministicRequestGuid(segment.RequestName),
+            segment.Path);
 
         var shouldExecute = segment.Frequency switch
         {
@@ -311,15 +299,30 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         if (!shouldExecute && cache.TryGetValue(cacheKey, out var cached))
             return cached.Value;
 
-        if (folder is null)
+        // Lazy lookup: find just this request's file path without loading the whole collection.
+        string? filePath;
+        try
+        {
+            filePath = await _collectionService
+                .ResolveRequestFilePathAsync(collectionFolderPath, segment.RequestName, ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Dynamic variable: failed to locate request '{RequestName}'", segment.RequestName);
+            return cache.TryGetValue(cacheKey, out var fallback) ? fallback.Value : null;
+        }
+
+        if (filePath is null)
         {
             _logger.LogWarning(
-                "Cannot evaluate response-body variable '{Name}': collection folder not loaded",
+                "Dynamic variable: request '{RequestName}' not found in collection",
                 variable.Name);
             return cache.TryGetValue(cacheKey, out var fallback) ? fallback.Value : null;
         }
 
-        var resolved = await ExecuteAndExtractAsync(segment, folder, vars, ct).ConfigureAwait(false);
+        var resolved = await ExecuteAndExtractAsync(segment, filePath, vars, ct).ConfigureAwait(false);
         if (resolved is not null)
             cache[cacheKey] = new CacheEntry(resolved, DateTime.UtcNow);
         return resolved;
@@ -397,33 +400,24 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
 
     private async Task<string?> ExecuteAndExtractAsync(
         DynamicValueSegment segment,
-        CollectionFolder folder,
+        string filePath,
         IReadOnlyDictionary<string, string> vars,
         CancellationToken ct)
     {
-        var stub = FindRequestByName(folder, segment.RequestName);
-        if (stub is null)
-        {
-            _logger.LogWarning(
-                "Dynamic variable: request '{RequestName}' not found in collection",
-                segment.RequestName);
-            return null;
-        }
-
-        // Use LoadRequestAsync so that Basic auth passwords retrieved from secret storage
-        // (never written to the .callsmith file) are included. The folder tree only holds
-        // lightweight stubs that lack the secret-stored password.
+        // Load the full request so that auth secrets (stored outside the file) are included.
         CollectionRequest request;
         try
         {
-            request = await _collectionService.LoadRequestAsync(stub.FilePath, ct)
+            request = await _collectionService.LoadRequestAsync(filePath, ct)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
+            // Without a successfully loaded request we have no URL, method, or auth details
+            // to send, so returning null is the only safe option.
             _logger.LogWarning(ex,
-                "Dynamic variable: could not fully load request '{RequestName}'", segment.RequestName);
-            request = stub;
+                "Dynamic variable: could not load request '{RequestName}'", segment.RequestName);
+            return null;
         }
 
         var requestModel = BuildRequestModel(request, vars);
@@ -574,48 +568,6 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         }
 
         return (null, contentType);
-    }
-
-    // ─── Request lookup ──────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Searches the collection tree for a request whose display name matches
-    /// <paramref name="requestName"/>. Supports slash-separated paths:
-    /// <c>"FolderName/RequestName"</c>.
-    /// </summary>
-    private static CollectionRequest? FindRequestByName(CollectionFolder root, string requestName)
-    {
-        var parts = requestName.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length == 1
-            ? FindRequestInTree(root, parts[0])
-            : FindRequestByPath(root, parts);
-    }
-
-    private static CollectionRequest? FindRequestByPath(CollectionFolder folder, string[] parts)
-    {
-        if (parts.Length == 0) return null;
-        if (parts.Length == 1)
-            return folder.Requests.FirstOrDefault(r =>
-                string.Equals(r.Name, parts[0], StringComparison.OrdinalIgnoreCase));
-
-        // Navigate into sub-folder
-        var sub = folder.SubFolders.FirstOrDefault(f =>
-            string.Equals(f.Name, parts[0], StringComparison.OrdinalIgnoreCase));
-        return sub is null ? null : FindRequestByPath(sub, parts[1..]);
-    }
-
-    private static CollectionRequest? FindRequestInTree(CollectionFolder folder, string name)
-    {
-        var direct = folder.Requests.FirstOrDefault(r =>
-            string.Equals(r.Name, name, StringComparison.OrdinalIgnoreCase));
-        if (direct is not null) return direct;
-
-        foreach (var sub in folder.SubFolders)
-        {
-            var found = FindRequestInTree(sub, name);
-            if (found is not null) return found;
-        }
-        return null;
     }
 
     // ─── Cache helpers ───────────────────────────────────────────────────────

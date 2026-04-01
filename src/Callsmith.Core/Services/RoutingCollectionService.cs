@@ -92,6 +92,10 @@ public sealed class RoutingCollectionService : ICollectionService
     public Task SaveFolderOrderAsync(string folderPath, IReadOnlyList<string> orderedNames, CancellationToken ct = default) =>
         ServiceForFolder(folderPath).SaveFolderOrderAsync(folderPath, orderedNames, ct);
 
+    public Task<string?> ResolveRequestFilePathAsync(
+        string collectionFolderPath, string requestName, CancellationToken ct = default) =>
+        ServiceForFolder(collectionFolderPath).ResolveRequestFilePathAsync(collectionFolderPath, requestName, ct);
+
     // ─────────────────────────────────────────────────────────────────────────
     //  Private helpers
     // ─────────────────────────────────────────────────────────────────────────

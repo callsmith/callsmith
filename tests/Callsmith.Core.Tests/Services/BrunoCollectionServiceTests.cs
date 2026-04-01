@@ -144,7 +144,7 @@ public sealed class BrunoCollectionServiceTests : IDisposable
 
         Assert.Equal("get items", request.Name);
         Assert.Equal(HttpMethod.Get, request.Method);
-        Assert.Equal("https://api.example.com/items", request.Url);
+        Assert.Equal("https://api.example.com/items?filter=active", request.Url);
         Assert.Equal("active", request.QueryParams.First(p => p.Key == "filter").Value);
         Assert.Equal("Bearer {{token}}", request.Headers.Single(h => h.Key == "Authorization").Value);
         Assert.Equal("application/json", request.Headers.Single(h => h.Key == "Accept").Value);
