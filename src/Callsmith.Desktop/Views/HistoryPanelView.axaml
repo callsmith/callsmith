@@ -463,11 +463,32 @@
 
               <!-- Configured request -->
               <StackPanel Spacing="4">
-                <TextBlock Text="CONFIGURED REQUEST"
-                           Foreground="#888"
-                           FontSize="10"
-                           FontWeight="Bold"
-                           LetterSpacing="1"/>
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                  <TextBlock Text="CONFIGURED REQUEST"
+                             Foreground="#888"
+                             FontSize="10"
+                             FontWeight="Bold"
+                             LetterSpacing="1"
+                             VerticalAlignment="Center"/>
+                  <Panel ToolTip.Tip="{Binding OpenRequestTooltip}">
+                    <Button Content="Open Request"
+                            Command="{Binding OpenRequestCommand}"
+                            IsEnabled="{Binding CanOpenRequest}"
+                            FontSize="11"
+                            Background="Transparent"
+                            Foreground="#9cdcfe"
+                            BorderThickness="1"
+                            BorderBrush="#555"
+                            Padding="8,3"
+                            VerticalAlignment="Center">
+                      <Button.Styles>
+                        <Style Selector="Button:disabled">
+                          <Setter Property="Cursor" Value="Help"/>
+                        </Style>
+                      </Button.Styles>
+                    </Button>
+                  </Panel>
+                </StackPanel>
                 <Border Background="#252526"
                         CornerRadius="4"
                         Padding="10">

@@ -25,6 +25,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private readonly EnvironmentViewModel? _environmentViewModel;
     private readonly IMessenger? _messenger;
     private readonly IAppPreferencesService? _appPreferencesService;
+    private readonly CollectionsViewModel? _collectionsViewModel;
     private bool _preferencesLoaded;
     private int _nextPage = 0;
     private long _queryTotalCount = 0;
@@ -134,6 +135,16 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _hasHiddenSecrets;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OpenRequestTooltip))]
+    private bool _canOpenRequest;
+
+    /// <summary>
+    /// Tooltip text shown on the "Open Request" button when it is disabled.
+    /// Returns <see langword="null"/> when the button is enabled (no tooltip needed).
+    /// </summary>
+    public string? OpenRequestTooltip => CanOpenRequest ? null : "Request Not Found";
 
     // -------------------------------------------------------------------------
     // Detail panel layout
@@ -261,6 +272,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     partial void OnSelectedEntryChanged(HistoryEntryRowViewModel? value)
     {
         IsSecretShown = false;
+        CanOpenRequest = ComputeCanOpenRequest(value);
         if (value is not null)
         {
             HasHiddenSecrets = HasMaskedSecrets(value.Entry);
@@ -317,13 +329,15 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         IHistoryService historyService,
         EnvironmentViewModel? environmentViewModel = null,
         IMessenger? messenger = null,
-        IAppPreferencesService? appPreferencesService = null)
+        IAppPreferencesService? appPreferencesService = null,
+        CollectionsViewModel? collectionsViewModel = null)
     {
         ArgumentNullException.ThrowIfNull(historyService);
         _historyService = historyService;
         _environmentViewModel = environmentViewModel;
         _messenger = messenger;
         _appPreferencesService = appPreferencesService;
+        _collectionsViewModel = collectionsViewModel;
 
         AdvancedSearch = new AdvancedHistorySearchViewModel();
         AdvancedSearch.Applied += (_, _) =>
@@ -468,6 +482,32 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void OpenRequest()
+    {
+        if (SelectedEntry?.Entry.RequestId is not { } requestId || _messenger is null) return;
+        var request = _collectionsViewModel?.FindRequestByRequestId(requestId);
+        if (request is null) return;
+        _messenger.Send(new RequestSelectedMessage(request));
+        IsOpen = false;
+    }
+
+    [RelayCommand]
+    private void OpenRequestFromEntry(HistoryEntryRowViewModel? row)
+    {
+        if (row?.Entry.RequestId is not { } requestId || _messenger is null) return;
+        var request = _collectionsViewModel?.FindRequestByRequestId(requestId);
+        if (request is null) return;
+        _messenger.Send(new RequestSelectedMessage(request));
+        IsOpen = false;
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when <paramref name="row"/>'s request can be located
+    /// in the currently loaded in-memory collection tree.
+    /// </summary>
+    public bool CanOpenEntryRequest(HistoryEntryRowViewModel? row) => ComputeCanOpenRequest(row);
+
+    [RelayCommand]
     private void OpenPurgeDialog()
     {
         PurgeDialogErrorMessage = null;
@@ -586,6 +626,13 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     // -------------------------------------------------------------------------
     // Internal
     // -------------------------------------------------------------------------
+
+    private bool ComputeCanOpenRequest(HistoryEntryRowViewModel? row)
+    {
+        if (row?.Entry.RequestId is not { } requestId) return false;
+        if (_collectionsViewModel is null) return false;
+        return _collectionsViewModel.FindRequestByRequestId(requestId) is not null;
+    }
 
     private async Task ReloadEntriesAsync()
     {

@@ -179,6 +179,17 @@ public partial class HistoryPanelView : UserControl
         if (_contextMenuEntry is null)
             return;
 
+        var canOpen = vm.CanOpenEntryRequest(_contextMenuEntry);
+        var openRequestItem = MakeMenuItem("Open Request",
+            () => vm.OpenRequestFromEntryCommand.Execute(_contextMenuEntry));
+        if (!canOpen)
+        {
+            openRequestItem.IsEnabled = false;
+            openRequestItem.Cursor = new Cursor(StandardCursorType.Help);
+            ToolTip.SetTip(openRequestItem, "Request Not Found");
+        }
+        menu.Items.Add(openRequestItem);
+
         if (_contextMenuEntry.Entry.RequestId is not null && !vm.IsRequestScoped)
         {
             menu.Items.Add(MakeMenuItem("Scope to this request", () => vm.ScopeToRequestCommand.Execute(_contextMenuEntry)));
