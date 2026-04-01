@@ -642,6 +642,181 @@ public sealed class HistoryPanelViewModelTests
         await historyService.DidNotReceive().RevealSensitiveFieldsAsync(Arg.Any<HistoryEntry>(), Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public void SelectingEntry_WithFormBody_ShowsFormParamsInConfiguredView()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var sut = new HistoryPanelViewModel(historyService);
+
+        var entry = new HistoryEntry
+        {
+            Id = 1,
+            Method = "POST",
+            ResolvedUrl = "https://api.example.com/token",
+            SentAt = DateTimeOffset.UtcNow,
+            ElapsedMs = 10,
+            ConfiguredSnapshot = new ConfiguredRequestSnapshot
+            {
+                Method = "POST",
+                Url = "https://api.example.com/token",
+                BodyType = CollectionRequest.BodyTypes.Form,
+                FormParams =
+                [
+                    new KeyValuePair<string, string>("grant_type", "client_credentials"),
+                    new KeyValuePair<string, string>("client_id", "{{my-client-id}}"),
+                    new KeyValuePair<string, string>("client_secret", "{{my-secret-key}}"),
+                ],
+                Auth = new AuthConfig(),
+            },
+            VariableBindings = [],
+        };
+
+        sut.SelectedEntry = new HistoryEntryRowViewModel(entry);
+
+        sut.DetailConfigured.Should().Contain("Body:");
+        sut.DetailConfigured.Should().Contain("grant_type=client_credentials&");
+        sut.DetailConfigured.Should().Contain("client_id={{my-client-id}}&");
+        sut.DetailConfigured.Should().Contain("client_secret={{my-secret-key}}");
+        // Last param must NOT have trailing &
+        sut.DetailConfigured.Should().NotContain("client_secret={{my-secret-key}}&");
+    }
+
+    [Fact]
+    public void SelectingEntry_WithFormBody_ShowsFormParamsAsMultiLineInResolvedView()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var sut = new HistoryPanelViewModel(historyService);
+
+        var entry = new HistoryEntry
+        {
+            Id = 1,
+            Method = "POST",
+            ResolvedUrl = "https://api.example.com/token",
+            SentAt = DateTimeOffset.UtcNow,
+            ElapsedMs = 10,
+            ConfiguredSnapshot = new ConfiguredRequestSnapshot
+            {
+                Method = "POST",
+                Url = "https://api.example.com/token",
+                BodyType = CollectionRequest.BodyTypes.Form,
+                FormParams =
+                [
+                    new KeyValuePair<string, string>("a", "b"),
+                    new KeyValuePair<string, string>("c", "d"),
+                    new KeyValuePair<string, string>("e", "f"),
+                ],
+                Auth = new AuthConfig(),
+            },
+            VariableBindings = [],
+        };
+
+        sut.SelectedEntry = new HistoryEntryRowViewModel(entry);
+
+        sut.DetailResolved.Should().Contain("Body:");
+        sut.DetailResolved.Should().Contain("a=b&");
+        sut.DetailResolved.Should().Contain("c=d&");
+        sut.DetailResolved.Should().Contain("e=f");
+        // Last param must NOT have trailing &
+        sut.DetailResolved.Should().NotContain("e=f&");
+        // Must NOT be a single joined line
+        sut.DetailResolved.Should().NotContain("a=b&c=d");
+    }
+
+    [Fact]
+    public void SelectingEntry_WithFormBodyAndSecretVariables_ShowsSecretPlaceholder_WhenNotRevealed()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var sut = new HistoryPanelViewModel(historyService);
+
+        var entry = new HistoryEntry
+        {
+            Id = 1,
+            Method = "POST",
+            ResolvedUrl = "https://api.example.com/token",
+            SentAt = DateTimeOffset.UtcNow,
+            ElapsedMs = 10,
+            ConfiguredSnapshot = new ConfiguredRequestSnapshot
+            {
+                Method = "POST",
+                Url = "https://api.example.com/token",
+                BodyType = CollectionRequest.BodyTypes.Form,
+                FormParams =
+                [
+                    new KeyValuePair<string, string>("grant_type", "client_credentials"),
+                    new KeyValuePair<string, string>("client_id", "{{my-client-id}}"),
+                    new KeyValuePair<string, string>("client_secret", "{{my-secret-key}}"),
+                ],
+                Auth = new AuthConfig(),
+            },
+            VariableBindings =
+            [
+                new VariableBinding("{{my-client-id}}", "myAppId", IsSecret: true),
+                new VariableBinding("{{my-secret-key}}", "s3cr3t", IsSecret: true),
+            ],
+        };
+
+        // Secrets NOT revealed — default state
+        sut.SelectedEntry = new HistoryEntryRowViewModel(entry);
+
+        sut.DetailResolved.Should().Contain("Body:");
+        sut.DetailResolved.Should().Contain("grant_type=client_credentials&");
+        sut.DetailResolved.Should().Contain("client_id=<secret>&");
+        sut.DetailResolved.Should().Contain("client_secret=<secret>");
+        // Must not contain URL-encoded braces or raw secret values
+        sut.DetailResolved.Should().NotContain("%7B%7B");
+        sut.DetailResolved.Should().NotContain("myAppId");
+        sut.DetailResolved.Should().NotContain("s3cr3t");
+    }
+
+    [Fact]
+    public async Task SelectingEntry_WithFormBodyAndSecretVariables_ShowsActualValues_WhenRevealed()
+    {
+        var entry = new HistoryEntry
+        {
+            Id = 1,
+            Method = "POST",
+            ResolvedUrl = "https://api.example.com/token",
+            SentAt = DateTimeOffset.UtcNow,
+            ElapsedMs = 10,
+            ConfiguredSnapshot = new ConfiguredRequestSnapshot
+            {
+                Method = "POST",
+                Url = "https://api.example.com/token",
+                BodyType = CollectionRequest.BodyTypes.Form,
+                FormParams =
+                [
+                    new KeyValuePair<string, string>("grant_type", "client_credentials"),
+                    new KeyValuePair<string, string>("client_id", "{{my-client-id}}"),
+                    new KeyValuePair<string, string>("client_secret", "{{my-secret-key}}"),
+                ],
+                Auth = new AuthConfig(),
+            },
+            VariableBindings =
+            [
+                new VariableBinding("{{my-client-id}}", "myAppId", IsSecret: true),
+                new VariableBinding("{{my-secret-key}}", "s3cr3t", IsSecret: true),
+            ],
+        };
+
+        var historyService = Substitute.For<IHistoryService>();
+        historyService.RevealSensitiveFieldsAsync(Arg.Any<HistoryEntry>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(entry));
+
+        var sut = new HistoryPanelViewModel(historyService);
+        sut.SelectedEntry = new HistoryEntryRowViewModel(entry);
+
+        // Reveal secrets via command
+        await sut.RevealSecretsCommand.ExecuteAsync(null);
+
+        sut.DetailResolved.Should().Contain("Body:");
+        sut.DetailResolved.Should().Contain("grant_type=client_credentials&");
+        sut.DetailResolved.Should().Contain("client_id=myAppId&");
+        sut.DetailResolved.Should().Contain("client_secret=s3cr3t");
+        sut.DetailResolved.Should().NotContain("<secret>");
+        // Last param must NOT have trailing &
+        sut.DetailResolved.Should().NotContain("client_secret=s3cr3t&");
+    }
+
     private static HistoryEntry CreateEntry(AuthConfig auth)
     {
         return new HistoryEntry
