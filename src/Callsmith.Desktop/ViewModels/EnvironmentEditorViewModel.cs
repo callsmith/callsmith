@@ -1525,11 +1525,17 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         var names = new List<string>();
         foreach (var req in folder.Requests)
         {
-            names.Add(string.IsNullOrEmpty(prefix) ? req.Name : $"{prefix}/{req.Name}");
+            // Use the file name (without extension) as the key so that it matches the
+            // file-name-based resolution in BrunoCollectionService.ResolveRequestFilePathAsync.
+            // For Callsmith collections req.Name already equals the file name; for Bruno
+            // collections this replaces the meta.name with the actual filename on disk.
+            var fileName = Path.GetFileNameWithoutExtension(req.FilePath);
+            names.Add(string.IsNullOrEmpty(prefix) ? fileName : $"{prefix}/{fileName}");
         }
         foreach (var sub in folder.SubFolders)
         {
-            var subPrefix = string.IsNullOrEmpty(prefix) ? sub.Name : $"{prefix}/{sub.Name}";
+            var dirName = Path.GetFileName(sub.FolderPath);
+            var subPrefix = string.IsNullOrEmpty(prefix) ? dirName : $"{prefix}/{dirName}";
             names.AddRange(CollectRequestNames(sub, subPrefix));
         }
         return names;
