@@ -13,4 +13,12 @@ public sealed record AppPreferences
     /// Defaults to true (horizontal) when the preference has never been saved.
     /// </summary>
     public bool IsHorizontalHistoryDetailLayout { get; init; } = true;
+
+    /// <summary>
+    /// Whether the request editor is displayed in horizontal (side-by-side) mode.
+    /// True means the request config panel is on the left and the response panel is on the right.
+    /// False means the request config panel is on top and the response panel is below.
+    /// Defaults to true (horizontal) when the preference has never been saved.
+    /// </summary>
+    public bool IsHorizontalRequestEditorLayout { get; init; } = true;
 }
