@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -15,6 +16,7 @@ public partial class HistoryPanelView : UserControl
 {
     private HistoryEntryRowViewModel? _contextMenuEntry;
     private HistoryPanelViewModel? _trackedVm;
+    private ScrollViewer? _historyScrollViewer;
 
     public HistoryPanelView()
     {
@@ -102,27 +104,37 @@ public partial class HistoryPanelView : UserControl
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        _ = Dispatcher.UIThread.InvokeAsync(AttachHistoryEntriesScrollViewer, DispatcherPriority.Loaded);
+        HistoryEntriesList.TemplateApplied += OnHistoryEntriesListTemplateApplied;
+        _ = Dispatcher.UIThread.InvokeAsync(TryAttachHistoryEntriesScrollViewer, DispatcherPriority.Loaded);
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
+        HistoryEntriesList.TemplateApplied -= OnHistoryEntriesListTemplateApplied;
         DetachHistoryEntriesScrollViewer();
     }
 
-    private void AttachHistoryEntriesScrollViewer()
+    private void OnHistoryEntriesListTemplateApplied(object? sender, TemplateAppliedEventArgs e)
     {
-        var scrollViewer = HistoryEntriesList.FindDescendantOfType<ScrollViewer>();
-        if (scrollViewer is not null)
-            scrollViewer.ScrollChanged += OnHistoryEntriesScrollChanged;
+        TryAttachHistoryEntriesScrollViewer();
+    }
+
+    private void TryAttachHistoryEntriesScrollViewer()
+    {
+        DetachHistoryEntriesScrollViewer();
+        _historyScrollViewer = HistoryEntriesList.FindDescendantOfType<ScrollViewer>();
+        if (_historyScrollViewer is not null)
+            _historyScrollViewer.ScrollChanged += OnHistoryEntriesScrollChanged;
     }
 
     private void DetachHistoryEntriesScrollViewer()
     {
-        var scrollViewer = HistoryEntriesList.FindDescendantOfType<ScrollViewer>();
-        if (scrollViewer is not null)
-            scrollViewer.ScrollChanged -= OnHistoryEntriesScrollChanged;
+        if (_historyScrollViewer is not null)
+        {
+            _historyScrollViewer.ScrollChanged -= OnHistoryEntriesScrollChanged;
+            _historyScrollViewer = null;
+        }
     }
 
     private void OnHistoryEntriesScrollChanged(object? sender, ScrollChangedEventArgs e)
