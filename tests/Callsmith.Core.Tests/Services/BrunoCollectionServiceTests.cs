@@ -123,7 +123,7 @@ public sealed class BrunoCollectionServiceTests : IDisposable
             }
 
             get {
-              url: https://api.example.com/items?filter=active
+              url: https://api.example.com/items?api-version=2024
               body: none
               auth: none
             }
@@ -144,8 +144,12 @@ public sealed class BrunoCollectionServiceTests : IDisposable
 
         Assert.Equal("get items", request.Name);
         Assert.Equal(HttpMethod.Get, request.Method);
-        Assert.Equal("https://api.example.com/items", request.Url);
+        // URL is preserved verbatim — embedded query params are not stripped.
+        Assert.Equal("https://api.example.com/items?api-version=2024", request.Url);
+        // params:query entries are parsed into QueryParams independently of the URL.
         Assert.Equal("active", request.QueryParams.First(p => p.Key == "filter").Value);
+        // URL-embedded params are NOT duplicated into the QueryParams collection.
+        Assert.DoesNotContain(request.QueryParams, p => p.Key == "api-version");
         Assert.Equal("Bearer {{token}}", request.Headers.Single(h => h.Key == "Authorization").Value);
         Assert.Equal("application/json", request.Headers.Single(h => h.Key == "Accept").Value);
     }
