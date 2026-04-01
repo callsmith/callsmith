@@ -133,6 +133,13 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     [ObservableProperty]
     private bool _hasHiddenSecrets;
 
+    // -------------------------------------------------------------------------
+    // Detail panel layout
+    // -------------------------------------------------------------------------
+
+    [ObservableProperty]
+    private bool _isHorizontalDetailLayout = true;
+
     [ObservableProperty]
     private bool _isClearHistoryConfirmOpen;
 
@@ -330,6 +337,9 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
 
     [RelayCommand]
     private void Close() => IsOpen = false;
+
+    [RelayCommand]
+    private void ToggleDetailLayout() => IsHorizontalDetailLayout = !IsHorizontalDetailLayout;
 
     [RelayCommand]
     private void ShowAllHistory()

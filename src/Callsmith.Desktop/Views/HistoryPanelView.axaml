@@ -11,6 +11,15 @@
              x:DataType="vm:HistoryPanelViewModel"
              Background="#1e1e1e">
 
+  <UserControl.Styles>
+    <Style Selector="TabControl.detail-response-tabs TabItem">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Padding" Value="10,4"/>
+      <Setter Property="MinHeight" Value="28"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+  </UserControl.Styles>
+
   <UserControl.KeyBindings>
     <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}"/>
   </UserControl.KeyBindings>
@@ -372,32 +381,84 @@
       <Border Grid.Column="1" Background="#333"/>
 
       <!-- ────────────────────────────────────────────────────────────────────
-           Right: detail panel
+           Right: detail panel — split view (request | response)
            ──────────────────────────────────────────────────────────────────── -->
       <Grid Grid.Column="2" RowDefinitions="Auto,*" Background="#1e1e1e">
 
-        <!-- Detail header -->
+        <!-- Detail header: title + timestamp on the left; action buttons + layout toggle on the right -->
         <Border Grid.Row="0"
                 Background="#252526"
                 BorderBrush="#333"
                 BorderThickness="0,0,0,1"
-                Padding="12,8"
+                Padding="8,6"
                 IsVisible="{Binding HasDetail}">
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <TextBlock Text="Entry Detail"
-                       Foreground="#d4d4d4"
-                       FontSize="13"
-                       FontWeight="SemiBold"
-                       VerticalAlignment="Center"/>
-            <TextBlock Text="{Binding DetailSentAtDisplay}"
-                       ToolTip.Tip="{Binding DetailSentAtToolTip}"
-                       Foreground="#888"
-                       FontSize="11"
-                       FontStyle="Italic"
-                       Padding="0,0,5,0"
-                       VerticalAlignment="Center"
-                       IsVisible="{Binding DetailSentAtDisplay, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-          </StackPanel>
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <TextBlock Text="Entry Detail"
+                         Foreground="#d4d4d4"
+                         FontSize="13"
+                         FontWeight="SemiBold"
+                         VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding DetailSentAtDisplay}"
+                         ToolTip.Tip="{Binding DetailSentAtToolTip}"
+                         Foreground="#888"
+                         FontSize="11"
+                         FontStyle="Italic"
+                         Padding="0,0,5,0"
+                         VerticalAlignment="Center"
+                         IsVisible="{Binding DetailSentAtDisplay, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+              <Button Content="Resend Request"
+                      Command="{Binding ResendRequestCommand}"
+                      FontSize="11"
+                      Background="Transparent"
+                      Foreground="#9cdcfe"
+                      BorderThickness="1"
+                      BorderBrush="#555"
+                      Padding="8,3"
+                      VerticalAlignment="Center"/>
+              <Panel IsVisible="{Binding HasHiddenSecrets}">
+                <Button Content="Reveal Secrets"
+                        Command="{Binding RevealSecretsCommand}"
+                        IsVisible="{Binding !IsSecretShown}"
+                        IsEnabled="{Binding !IsRevealingSecrets}"
+                        FontSize="11"
+                        Background="Transparent"
+                        Foreground="#dcdcaa"
+                        BorderThickness="1"
+                        BorderBrush="#555"
+                        Padding="8,3"
+                        VerticalAlignment="Center"/>
+                <Button Content="Hide Secrets"
+                        Command="{Binding HideSecretsCommand}"
+                        IsVisible="{Binding IsSecretShown}"
+                        FontSize="11"
+                        Background="Transparent"
+                        Foreground="#dcdcaa"
+                        BorderThickness="1"
+                        BorderBrush="#555"
+                        Padding="8,3"
+                        VerticalAlignment="Center"/>
+              </Panel>
+              <!-- Layout toggle button -->
+              <Button Command="{Binding ToggleDetailLayoutCommand}"
+                      Background="Transparent" Foreground="#888" BorderThickness="0"
+                      Padding="6,4" Margin="4,0,0,0" VerticalAlignment="Center"
+                      ToolTip.Tip="Toggle layout (horizontal / vertical)">
+                <Grid>
+                  <!-- Stacked-panes icon: shown in vertical mode → click for horizontal -->
+                  <PathIcon Width="14" Height="14" Foreground="#888"
+                            IsVisible="{Binding IsHorizontalDetailLayout, Converter={x:Static BoolConverters.Not}}"
+                            Data="M2,3 L10,3 L10,21 L2,21 Z M14,3 L22,3 L22,21 L14,21 Z"/>
+                  <!-- Side-by-side icon: shown in horizontal mode → click for vertical -->
+                  <PathIcon Width="14" Height="14" Foreground="#888"
+                            IsVisible="{Binding IsHorizontalDetailLayout}"
+                            Data="M2,3 L22,3 L22,10 L2,10 Z M2,14 L22,14 L22,21 L2,21 Z"/>
+                </Grid>
+              </Button>
+            </StackPanel>
+          </Grid>
         </Border>
 
         <!-- Empty state -->
@@ -409,180 +470,165 @@
                    VerticalAlignment="Center"
                    IsVisible="{Binding !HasDetail}"/>
 
-        <!-- Detail content: a single scrollable area. Upper sections flow at natural
-             height; the response body is capped at the viewport height so the editor
-             always has a bounded measure and AvaloniaEdit's line virtualisation stays
-             active. Small response bodies are not stretched — viewport height is the MAX. -->
-        <ScrollViewer x:Name="DetailScrollViewer"
-                      Grid.Row="1"
-                      IsVisible="{Binding HasDetail}"
-                      VerticalScrollBarVisibility="Auto">
-          <StackPanel Margin="12" Spacing="16">
+        <!-- Split panel: request (left/top) + splitter + response (right/bottom).
+             Rearranged by code-behind based on IsHorizontalDetailLayout.
+             Default (horizontal): ColumnDefinitions="0.45*,5,0.55*" -->
+        <Grid x:Name="DetailContentGrid"
+              Grid.Row="1"
+              IsVisible="{Binding HasDetail}"
+              ColumnDefinitions="0.45*,5,0.55*">
 
-            <!-- Configured request -->
-            <StackPanel Spacing="4">
-              <TextBlock Text="CONFIGURED REQUEST"
-                         Foreground="#888"
-                         FontSize="10"
-                         FontWeight="Bold"
-                         LetterSpacing="1"/>
-              <Border Background="#252526"
-                      CornerRadius="4"
-                      Padding="10">
-                <SelectableTextBlock Text="{Binding DetailConfigured}"
-                                     Background="Transparent" 
-                                     Foreground="#d4d4d4"
-                                     FontFamily="Consolas,Cascadia Mono,monospace"
-                                     FontSize="12"
-                                     TextWrapping="Wrap"/>
-              </Border>
-            </StackPanel>
+          <!-- Request panel: scrollable configured + resolved request text -->
+          <ScrollViewer x:Name="DetailRequestPanel"
+                        Grid.Column="0"
+                        VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="12" Spacing="12">
 
-            <!-- Resolved request -->
-            <StackPanel Spacing="4">
-              <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <!-- Configured request -->
+              <StackPanel Spacing="4">
+                <TextBlock Text="CONFIGURED REQUEST"
+                           Foreground="#888"
+                           FontSize="10"
+                           FontWeight="Bold"
+                           LetterSpacing="1"/>
+                <Border Background="#252526"
+                        CornerRadius="4"
+                        Padding="10">
+                  <SelectableTextBlock Text="{Binding DetailConfigured}"
+                                       Background="Transparent"
+                                       Foreground="#d4d4d4"
+                                       FontFamily="Consolas,Cascadia Mono,monospace"
+                                       FontSize="12"
+                                       TextWrapping="Wrap"/>
+                </Border>
+              </StackPanel>
+
+              <!-- Resolved request -->
+              <StackPanel Spacing="4">
                 <TextBlock Text="RESOLVED REQUEST"
                            Foreground="#888"
                            FontSize="10"
                            FontWeight="Bold"
-                           LetterSpacing="1"
-                           VerticalAlignment="Center"/>
-                <Button Content="Resend Request"
-                      Command="{Binding ResendRequestCommand}"
-                      IsVisible="{Binding HasDetail}"
-                      FontSize="11"
-                      Background="Transparent"
-                      Foreground="#9cdcfe"
-                      BorderThickness="1"
-                      BorderBrush="#555"
-                      Padding="8,3"
-                      VerticalAlignment="Center"/>
-                <Panel IsVisible="{Binding HasHiddenSecrets}">
-                  <Button Content="Reveal Secrets"
-                        Command="{Binding RevealSecretsCommand}"
-                        IsVisible="{Binding !IsSecretShown}"
-                        IsEnabled="{Binding !IsRevealingSecrets}"
-                        FontSize="11"
-                        Background="Transparent"
-                        Foreground="#dcdcaa"
-                        BorderThickness="1"
-                        BorderBrush="#555"
-                        Padding="8,3"
-                        VerticalAlignment="Center"/>
-                  <Button Content="Hide Secrets"
-                        Command="{Binding HideSecretsCommand}"
-                        IsVisible="{Binding IsSecretShown}"
-                        FontSize="11"
-                        Background="Transparent"
-                        Foreground="#dcdcaa"
-                        BorderThickness="1"
-                        BorderBrush="#555"
-                        Padding="8,3"
-                        VerticalAlignment="Center"/>
-                </Panel>
-              </StackPanel>
-              <Border Background="#252526"
-                      CornerRadius="4"
-                      Padding="10">
-                <SelectableTextBlock Text="{Binding DetailResolved}"
-                                     Background="Transparent" 
-                                     Foreground="#d4d4d4"
-                                     FontFamily="Consolas,Cascadia Mono,monospace"
-                                     FontSize="12"
-                                     TextWrapping="Wrap"/>
-              </Border>
-            </StackPanel>
-
-            <!-- Response headers -->
-            <StackPanel Spacing="4"
-                        IsVisible="{Binding HasDetailResponseHeaders}">
-              <TextBlock Text="RESPONSE HEADERS"
-                         Foreground="#888"
-                         FontSize="10"
-                         FontWeight="Bold"
-                         LetterSpacing="1"/>
-
-              <StackPanel Spacing="0">
-                <Border Background="#3a3a3a"
-                        CornerRadius="4,4,0,0"
-                        Padding="10,6">
-                  <Grid ColumnDefinitions="220,*">
-                    <TextBlock Text="Header"
-                               Foreground="#c5c5c5"
-                               FontSize="11"
-                               FontWeight="SemiBold"
-                               LetterSpacing="0.4"/>
-                    <TextBlock Grid.Column="1"
-                               Text="Value"
-                               Foreground="#c5c5c5"
-                               FontSize="11"
-                               FontWeight="SemiBold"
-                               LetterSpacing="0.4"/>
-                  </Grid>
+                           LetterSpacing="1"/>
+                <Border Background="#252526"
+                        CornerRadius="4"
+                        Padding="10">
+                  <SelectableTextBlock Text="{Binding DetailResolved}"
+                                       Background="Transparent"
+                                       Foreground="#d4d4d4"
+                                       FontFamily="Consolas,Cascadia Mono,monospace"
+                                       FontSize="12"
+                                       TextWrapping="Wrap"/>
                 </Border>
+              </StackPanel>
 
-                <ItemsControl ItemsSource="{Binding DetailResponseHeaderRows}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:ResponseHeaderRowViewModel">
-                      <Border Background="{Binding RowBackground}"
-                              BorderBrush="#3c3c3c"
-                              BorderThickness="0,0,0,1"
+            </StackPanel>
+          </ScrollViewer>
+
+          <!-- Splitter -->
+          <GridSplitter x:Name="DetailContentSplitter"
+                        Grid.Column="1"
+                        Background="#333"
+                        ResizeDirection="Columns"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"/>
+
+          <!-- Response panel: TabControl with Body + Headers tabs.
+               Body tab uses SyntaxEditor (full height, virtualised).
+               Headers tab uses a scrollable table. -->
+          <Grid x:Name="DetailResponsePanel"
+                Grid.Column="2"
+                Background="#252526">
+            <TabControl Classes="detail-response-tabs" Background="Transparent">
+
+              <TabItem Header="Body">
+                <Grid Margin="10,4,10,10">
+                  <Border Background="#1e1e1e"
+                          CornerRadius="4"
+                          Padding="10"
+                          IsVisible="{Binding DetailHasResponseBody}">
+                    <controls:SyntaxEditor Text="{Binding DetailResponse}"
+                                           Language="{Binding DetailResponseLanguage}"
+                                           IsReadOnly="True"/>
+                  </Border>
+                  <TextBlock Text="No body returned for response"
+                             Foreground="#666"
+                             FontSize="12"
+                             FontStyle="Italic"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center"
+                             IsVisible="{Binding !DetailHasResponseBody}"/>
+                </Grid>
+              </TabItem>
+
+              <TabItem Header="Headers">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              Margin="10,4,10,10">
+                  <StackPanel Spacing="0">
+                    <TextBlock Text="No response headers"
+                               Foreground="#666"
+                               FontSize="12"
+                               FontStyle="Italic"
+                               Padding="4,8"
+                               IsVisible="{Binding !HasDetailResponseHeaders}"/>
+                    <StackPanel Spacing="0"
+                                IsVisible="{Binding HasDetailResponseHeaders}">
+                      <Border Background="#3a3a3a"
+                              CornerRadius="4,4,0,0"
                               Padding="10,6">
                         <Grid ColumnDefinitions="220,*">
-                          <SelectableTextBlock Text="{Binding Name}"
-                                               Background="Transparent"
-                                               Foreground="#d7d7d7"
-                                               FontFamily="Consolas,Cascadia Mono,monospace"
-                                               FontSize="12"
-                                               HorizontalAlignment="Stretch"
-                                               VerticalAlignment="Stretch"
-                                               TextWrapping="Wrap"/>
-                          <SelectableTextBlock Grid.Column="1"
-                                               Text="{Binding Value}"
-                                               Background="Transparent"
-                                               Foreground="#9cdcfe"
-                                               FontFamily="Consolas,Cascadia Mono,monospace"
-                                               FontSize="12"
-                                               HorizontalAlignment="Stretch"
-                                               VerticalAlignment="Stretch"
-                                               TextWrapping="Wrap"/>
+                          <TextBlock Text="Header"
+                                     Foreground="#c5c5c5"
+                                     FontSize="11"
+                                     FontWeight="SemiBold"
+                                     LetterSpacing="0.4"/>
+                          <TextBlock Grid.Column="1"
+                                     Text="Value"
+                                     Foreground="#c5c5c5"
+                                     FontSize="11"
+                                     FontWeight="SemiBold"
+                                     LetterSpacing="0.4"/>
                         </Grid>
                       </Border>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </StackPanel>
-            </StackPanel>
+                      <ItemsControl ItemsSource="{Binding DetailResponseHeaderRows}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:ResponseHeaderRowViewModel">
+                            <Border Background="{Binding RowBackground}"
+                                    BorderBrush="#3c3c3c"
+                                    BorderThickness="0,0,0,1"
+                                    Padding="10,6">
+                              <Grid ColumnDefinitions="220,*">
+                                <SelectableTextBlock Text="{Binding Name}"
+                                                     Background="Transparent"
+                                                     Foreground="#d7d7d7"
+                                                     FontFamily="Consolas,Cascadia Mono,monospace"
+                                                     FontSize="12"
+                                                     HorizontalAlignment="Stretch"
+                                                     VerticalAlignment="Stretch"
+                                                     TextWrapping="Wrap"/>
+                                <SelectableTextBlock Grid.Column="1"
+                                                     Text="{Binding Value}"
+                                                     Background="Transparent"
+                                                     Foreground="#9cdcfe"
+                                                     FontFamily="Consolas,Cascadia Mono,monospace"
+                                                     FontSize="12"
+                                                     HorizontalAlignment="Stretch"
+                                                     VerticalAlignment="Stretch"
+                                                     TextWrapping="Wrap"/>
+                              </Grid>
+                            </Border>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                  </StackPanel>
+                </ScrollViewer>
+              </TabItem>
 
-            <!-- Response body: MaxHeight is bound to the ScrollViewer's own height so the
-                 editor is capped at the viewport size. This gives AvaloniaEdit a concrete
-                 upper bound during Measure, keeping line virtualisation active and
-                 selection fast even for very large bodies. Small bodies are not stretched. -->
-            <StackPanel Spacing="4">
-              <TextBlock Text="RESPONSE BODY"
-                         Foreground="#888"
-                         FontSize="10"
-                         FontWeight="Bold"
-                         LetterSpacing="1"/>
-              <Border Background="#252526"
-                      CornerRadius="4"
-                      Padding="10"
-                      MaxHeight="{Binding Bounds.Height, ElementName=DetailScrollViewer}"
-                      IsVisible="{Binding DetailHasResponseBody}">
-                <controls:SyntaxEditor Text="{Binding DetailResponse}"
-                                       Language="{Binding DetailResponseLanguage}"
-                                       IsReadOnly="True"/>
-              </Border>
-              <TextBlock Text="No body returned for response"
-                         Foreground="#666"
-                         FontSize="12"
-                         FontStyle="Italic"
-                         Padding="4,0"
-                         IsVisible="{Binding !DetailHasResponseBody}"/>
-            </StackPanel>
+            </TabControl>
+          </Grid>
 
-          </StackPanel>
-        </ScrollViewer>
+        </Grid>
 
       </Grid>
 
