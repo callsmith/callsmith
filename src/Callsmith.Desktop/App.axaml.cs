@@ -110,6 +110,9 @@ public partial class App : Application
         services.AddSingleton<IHistoryEncryptionService, AesHistoryEncryptionService>();
         services.AddSingleton<IHistoryService, HistoryRepository>();
 
+        // App preferences
+        services.AddSingleton<IAppPreferencesService, FileSystemAppPreferencesService>();
+
         // ViewModels
         services.AddSingleton<CollectionsViewModel>();
         services.AddSingleton<RequestEditorViewModel>();

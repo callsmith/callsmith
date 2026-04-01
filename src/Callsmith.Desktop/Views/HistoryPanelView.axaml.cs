@@ -2,16 +2,19 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Callsmith.Desktop.ViewModels;
+using System.ComponentModel;
 
 namespace Callsmith.Desktop.Views;
 
 public partial class HistoryPanelView : UserControl
 {
     private HistoryEntryRowViewModel? _contextMenuEntry;
+    private HistoryPanelViewModel? _trackedVm;
 
     public HistoryPanelView()
     {
@@ -22,6 +25,70 @@ public partial class HistoryPanelView : UserControl
 
         if (HistoryEntryContextMenu is { } menu)
             menu.Opening += OnHistoryEntryContextMenuOpening;
+    }
+
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+
+        if (_trackedVm is not null)
+            _trackedVm.PropertyChanged -= OnViewModelPropertyChanged;
+
+        _trackedVm = DataContext as HistoryPanelViewModel;
+
+        if (_trackedVm is not null)
+        {
+            _trackedVm.PropertyChanged += OnViewModelPropertyChanged;
+            ApplyDetailLayout(_trackedVm.IsHorizontalDetailLayout);
+        }
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(HistoryPanelViewModel.IsHorizontalDetailLayout) && _trackedVm is not null)
+            ApplyDetailLayout(_trackedVm.IsHorizontalDetailLayout);
+    }
+
+    /// <summary>
+    /// Rearranges <see cref="DetailContentGrid"/> children between horizontal
+    /// (side-by-side) and vertical (stacked) layout without duplicating AXAML content.
+    /// </summary>
+    private void ApplyDetailLayout(bool isHorizontal)
+    {
+        if (isHorizontal)
+        {
+            DetailContentGrid.RowDefinitions.Clear();
+            DetailContentGrid.ColumnDefinitions = new ColumnDefinitions("0.45*,5,0.55*");
+
+            Grid.SetRow(DetailRequestPanel, 0);
+            Grid.SetColumn(DetailRequestPanel, 0);
+
+            Grid.SetRow(DetailContentSplitter, 0);
+            Grid.SetColumn(DetailContentSplitter, 1);
+            DetailContentSplitter.ResizeDirection = GridResizeDirection.Columns;
+            DetailContentSplitter.HorizontalAlignment = HorizontalAlignment.Stretch;
+            DetailContentSplitter.VerticalAlignment = VerticalAlignment.Stretch;
+
+            Grid.SetRow(DetailResponsePanel, 0);
+            Grid.SetColumn(DetailResponsePanel, 2);
+        }
+        else
+        {
+            DetailContentGrid.ColumnDefinitions.Clear();
+            DetailContentGrid.RowDefinitions = new RowDefinitions("0.45*,5,0.55*");
+
+            Grid.SetRow(DetailRequestPanel, 0);
+            Grid.SetColumn(DetailRequestPanel, 0);
+
+            Grid.SetRow(DetailContentSplitter, 1);
+            Grid.SetColumn(DetailContentSplitter, 0);
+            DetailContentSplitter.ResizeDirection = GridResizeDirection.Rows;
+            DetailContentSplitter.HorizontalAlignment = HorizontalAlignment.Stretch;
+            DetailContentSplitter.VerticalAlignment = VerticalAlignment.Stretch;
+
+            Grid.SetRow(DetailResponsePanel, 2);
+            Grid.SetColumn(DetailResponsePanel, 0);
+        }
     }
     
     private const double LoadMoreTriggerDistance = 240d;

@@ -1,7 +1,9 @@
 using System.Xml;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Data;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using AvaloniaEdit;
 using AvaloniaEdit.Folding;
@@ -105,11 +107,26 @@ public sealed class SyntaxEditor : TextEditor
 
         _foldingManager = FoldingManager.Install(TextArea);
 
+        // Prevent the parent ScrollViewer from jumping when the user clicks or
+        // selects text inside this editor. AvaloniaEdit manages its own internal
+        // scrolling; the RequestBringIntoView event bubbling up to an ancestor
+        // ScrollViewer would cause it to scroll this control into view (back to
+        // the top), which disrupts text selection in long response bodies.
+        AddHandler(RequestBringIntoViewEvent, OnRequestBringIntoView, RoutingStrategies.Bubble);
+
         // Propagate document text changes back to our StyledProperty.
         base.TextChanged += OnEditorTextChanged;
     }
 
     // ── Sync handlers ──────────────────────────────────────────────────────
+
+    private void OnRequestBringIntoView(object? sender, RequestBringIntoViewEventArgs e)
+    {
+        // Stop the event from bubbling to any ancestor ScrollViewer, which
+        // would scroll this editor into view and disrupt the user's position
+        // when clicking or selecting text in a long response body.
+        e.Handled = true;
+    }
 
     private void OnEditorTextChanged(object? sender, EventArgs e)
     {

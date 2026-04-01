@@ -28,6 +28,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private readonly ITransportRegistry _transportRegistry;
     private readonly ICollectionService _collectionService;
     private readonly ICollectionPreferencesService _preferencesService;
+    private readonly IAppPreferencesService? _appPreferencesService;
     private readonly IDynamicVariableEvaluator _dynamicEvaluator;
     private readonly IEnvironmentMergeService _mergeService;
     private readonly IHistoryService? _historyService;
@@ -38,6 +39,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private EnvironmentModel _globalEnvironment = new() { FilePath = string.Empty, Name = "Global", Variables = [], EnvironmentId = Guid.NewGuid() };
     private string _collectionPath = string.Empty;
     private bool _restoringTabs;
+    private bool _appPrefsLoaded;
     private bool _isHorizontalLayout = true;
 
     // -------------------------------------------------------------------------
@@ -94,7 +96,8 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         IMessenger messenger,
         ILogger<RequestEditorViewModel> logger,
         IEnvironmentService? environmentService = null,
-        IHistoryService? historyService = null)
+        IHistoryService? historyService = null,
+        IAppPreferencesService? appPreferencesService = null)
         : base(messenger)
     {
         ArgumentNullException.ThrowIfNull(transportRegistry);
@@ -106,6 +109,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         _transportRegistry = transportRegistry;
         _collectionService = collectionService;
         _preferencesService = preferencesService;
+        _appPreferencesService = appPreferencesService;
         _dynamicEvaluator = dynamicEvaluator;
         _mergeService = mergeService;
         _historyService = historyService;
@@ -488,22 +492,10 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
 
     private async Task PersistLayoutAsync()
     {
-        if (string.IsNullOrEmpty(_collectionPath)) return;
-        try
-        {
-            await _preferencesService.UpdateAsync(_collectionPath, current => new()
-            {
-                LastActiveEnvironmentFile = current.LastActiveEnvironmentFile,
-                OpenTabPaths = current.OpenTabPaths,
-                ActiveTabPath = current.ActiveTabPath,
-                ExpandedFolderPaths = current.ExpandedFolderPaths,
-                IsHorizontalLayout = _isHorizontalLayout,
-            }).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to persist layout preference for '{Path}'", _collectionPath);
-        }
+        if (_appPreferencesService is null) return;
+        var newValue = _isHorizontalLayout;
+        await _appPreferencesService.UpdateAsync(
+            p => p with { IsHorizontalRequestEditorLayout = newValue }).ConfigureAwait(false);
     }
 
     private async Task UpdateAvailableFoldersAsync(string collectionPath)
@@ -560,9 +552,12 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         try
         {
             // Load prefs and all referenced request files off the UI thread.
-            var (prefs, requests) = await Task.Run(async () =>
+            var (prefs, appPrefs, requests) = await Task.Run(async () =>
             {
                 var p = await _preferencesService.LoadAsync(collectionPath).ConfigureAwait(false);
+                var ap = _appPreferencesService is not null
+                    ? await _appPreferencesService.LoadAsync().ConfigureAwait(false)
+                    : null;
                 var reqs = new List<(string relPath, CollectionRequest req)>();
 
                 if (p.OpenTabPaths is { Count: > 0 })
@@ -583,13 +578,18 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
                     }
                 }
 
-                return (p, reqs);
+                return (p, ap, reqs);
             }).ConfigureAwait(true); // resume on UI thread to manipulate Tabs
 
             _restoringTabs = true;
             try
             {
-                _isHorizontalLayout = prefs.IsHorizontalLayout;
+                if (!_appPrefsLoaded)
+                {
+                    _appPrefsLoaded = true;
+                    _isHorizontalLayout = appPrefs?.IsHorizontalRequestEditorLayout ?? true;
+                }
+
                 RequestTabViewModel? tabToActivate = null;
 
                 foreach (var (relPath, request) in requests)
@@ -639,7 +639,6 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
                 OpenTabPaths = tabPaths.Count > 0 ? tabPaths.AsReadOnly() : null,
                 ActiveTabPath = activePath,
                 ExpandedFolderPaths = current.ExpandedFolderPaths,
-                IsHorizontalLayout = _isHorizontalLayout,
             }).ConfigureAwait(false);
         }
         catch (Exception ex)
