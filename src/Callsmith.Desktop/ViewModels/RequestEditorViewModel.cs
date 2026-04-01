@@ -492,29 +492,10 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
 
     private async Task PersistLayoutAsync()
     {
-        if (_appPreferencesService is not null)
-        {
-            var newValue = _isHorizontalLayout;
-            await _appPreferencesService.UpdateAsync(
-                p => p with { IsHorizontalRequestEditorLayout = newValue }).ConfigureAwait(false);
-        }
-        else if (!string.IsNullOrEmpty(_collectionPath))
-        {
-            try
-            {
-                await _preferencesService.UpdateAsync(_collectionPath, current => new()
-                {
-                    LastActiveEnvironmentFile = current.LastActiveEnvironmentFile,
-                    OpenTabPaths = current.OpenTabPaths,
-                    ActiveTabPath = current.ActiveTabPath,
-                    ExpandedFolderPaths = current.ExpandedFolderPaths,
-                }).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to persist layout preference for '{Path}'", _collectionPath);
-            }
-        }
+        if (_appPreferencesService is null) return;
+        var newValue = _isHorizontalLayout;
+        await _appPreferencesService.UpdateAsync(
+            p => p with { IsHorizontalRequestEditorLayout = newValue }).ConfigureAwait(false);
     }
 
     private async Task UpdateAvailableFoldersAsync(string collectionPath)
