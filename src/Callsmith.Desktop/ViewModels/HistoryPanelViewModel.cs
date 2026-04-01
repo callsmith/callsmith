@@ -209,7 +209,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
 
     public bool IsRequestScoped => _scopedRequestId is not null;
 
-    public string ScopedToLabel => $"Scoped to: {(_scopedRequestName ?? "(unnamed)")}";
+    public string ScopedToLabel => IsRequestScoped ? $"Scoped to: {(_scopedRequestName ?? "(unnamed)")}" : string.Empty;
 
     partial void OnIsOpenChanged(bool value)
     {
