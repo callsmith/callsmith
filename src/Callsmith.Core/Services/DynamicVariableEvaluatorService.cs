@@ -187,7 +187,19 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
             return null;
         }
 
-        return await ExecuteAndExtractAsync(segment, filePath, variables, ct).ConfigureAwait(false);
+        CollectionRequest request;
+        try
+        {
+            request = await _collectionService.LoadRequestAsync(filePath, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Dynamic variable preview: could not load request '{RequestName}'", segment.RequestName);
+            return null;
+        }
+
+        return await ExecuteAndExtractAsync(segment, request, variables, ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -280,13 +292,50 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
             ExpiresAfterSeconds = variable.ResponseExpiresAfterSeconds,
         };
 
-        // Use a deterministic GUID derived from the request name as the cache key.
-        // This avoids loading the entire collection just to obtain a persisted RequestId,
-        // keeping dynamic variable resolution lazy and memory-efficient.
-        var cacheKey = MakeCacheKey(
-            environmentCacheNamespace,
-            DeterministicRequestGuid(segment.RequestName),
-            segment.Path);
+        // Resolve the file path first (cheap — directory enumeration / filename match).
+        string? filePath;
+        try
+        {
+            filePath = await _collectionService
+                .ResolveRequestFilePathAsync(collectionFolderPath, segment.RequestName, ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Dynamic variable: failed to locate request '{RequestName}'", segment.RequestName);
+            return null;
+        }
+
+        if (filePath is null)
+        {
+            _logger.LogWarning(
+                "Dynamic variable: request '{RequestName}' not found in collection",
+                variable.Name);
+            return null;
+        }
+
+        // Load the request to obtain its stable RequestId for the cache key.
+        // This single file read lets us use a rename-stable key (the persisted GUID for
+        // .callsmith files) and also means we won't need to load the file a second time
+        // when we go on to execute the request.
+        CollectionRequest request;
+        try
+        {
+            request = await _collectionService.LoadRequestAsync(filePath, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Dynamic variable: could not load request '{RequestName}'", segment.RequestName);
+            return null;
+        }
+
+        // Use the persisted RequestId when available so the cache key survives renames.
+        // Fall back to a deterministic GUID from the request name (e.g. Bruno collections
+        // where the identity is derived from the display path, not a stored GUID).
+        var requestCacheId = request.RequestId ?? DeterministicRequestGuid(segment.RequestName);
+        var cacheKey = MakeCacheKey(environmentCacheNamespace, requestCacheId, segment.Path);
 
         var shouldExecute = segment.Frequency switch
         {
@@ -299,30 +348,8 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         if (!shouldExecute && cache.TryGetValue(cacheKey, out var cached))
             return cached.Value;
 
-        // Lazy lookup: find just this request's file path without loading the whole collection.
-        string? filePath;
-        try
-        {
-            filePath = await _collectionService
-                .ResolveRequestFilePathAsync(collectionFolderPath, segment.RequestName, ct)
-                .ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex,
-                "Dynamic variable: failed to locate request '{RequestName}'", segment.RequestName);
-            return cache.TryGetValue(cacheKey, out var fallback) ? fallback.Value : null;
-        }
-
-        if (filePath is null)
-        {
-            _logger.LogWarning(
-                "Dynamic variable: request '{RequestName}' not found in collection",
-                variable.Name);
-            return cache.TryGetValue(cacheKey, out var fallback) ? fallback.Value : null;
-        }
-
-        var resolved = await ExecuteAndExtractAsync(segment, filePath, vars, ct).ConfigureAwait(false);
+        // Pass the already-loaded request directly — no second file read needed.
+        var resolved = await ExecuteAndExtractAsync(segment, request, vars, ct).ConfigureAwait(false);
         if (resolved is not null)
             cache[cacheKey] = new CacheEntry(resolved, DateTime.UtcNow);
         return resolved;
@@ -400,26 +427,10 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
 
     private async Task<string?> ExecuteAndExtractAsync(
         DynamicValueSegment segment,
-        string filePath,
+        CollectionRequest request,
         IReadOnlyDictionary<string, string> vars,
         CancellationToken ct)
     {
-        // Load the full request so that auth secrets (stored outside the file) are included.
-        CollectionRequest request;
-        try
-        {
-            request = await _collectionService.LoadRequestAsync(filePath, ct)
-                .ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            // Without a successfully loaded request we have no URL, method, or auth details
-            // to send, so returning null is the only safe option.
-            _logger.LogWarning(ex,
-                "Dynamic variable: could not load request '{RequestName}'", segment.RequestName);
-            return null;
-        }
-
         var requestModel = BuildRequestModel(request, vars);
 
         ResponseModel response;
