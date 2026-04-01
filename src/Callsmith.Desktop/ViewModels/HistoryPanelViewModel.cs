@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Helpers;
 using Callsmith.Core.Models;
@@ -955,7 +956,20 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             sb.AppendLine("Body:");
             sb.Append(cfg.Body);
         }
-        
+        if (cfg.BodyType == CollectionRequest.BodyTypes.Form && cfg.FormParams.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Body:");
+            for (var i = 0; i < cfg.FormParams.Count; i++)
+            {
+                var p = cfg.FormParams[i];
+                if (i < cfg.FormParams.Count - 1)
+                    sb.AppendLine($"{p.Key}={p.Value}&");
+                else
+                    sb.Append($"{p.Key}={p.Value}");
+            }
+        }
+
         DetailConfigured = TrimTrailingBlankLines(sb.ToString());
 
         // Resolved tab — rebuild wire-level view via HistorySentViewBuilder
@@ -980,7 +994,30 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                     rb.AppendLine($"  {kv.Key}: {displayValue}");
                 }
             }
-            if (!string.IsNullOrEmpty(resolvedRequest.Body))
+            if (cfg.BodyType == CollectionRequest.BodyTypes.Form && cfg.FormParams.Count > 0)
+            {
+                var vars = HistorySentViewBuilder.BuildVariableMap(bindings);
+                // Re-use BuildVariableMap on the secret-only subset so token normalisation
+                // is consistent with the rest of the code and not duplicated here.
+                var secretTokenNames = HistorySentViewBuilder
+                    .BuildVariableMap(entry.VariableBindings.Where(b => b.IsSecret).ToList())
+                    .Keys
+                    .ToHashSet(StringComparer.Ordinal);
+                rb.AppendLine();
+                rb.AppendLine("Body:");
+                var formParams = cfg.FormParams;
+                for (var i = 0; i < formParams.Count; i++)
+                {
+                    var p = formParams[i];
+                    var displayKey = FormatFormParamPart(p.Key, vars, secretTokenNames);
+                    var displayValue = FormatFormParamPart(p.Value, vars, secretTokenNames);
+                    if (i < formParams.Count - 1)
+                        rb.AppendLine($"{displayKey}={displayValue}&");
+                    else
+                        rb.Append($"{displayKey}={displayValue}");
+                }
+            }
+            else if (!string.IsNullOrEmpty(resolvedRequest.Body))
             {
                 rb.AppendLine();
                 rb.AppendLine("Body:");
@@ -1098,11 +1135,38 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         }
 
         // Use regex to find and mask the API key query parameter
-        var paramName = System.Text.RegularExpressions.Regex.Escape(auth.ApiKeyName);
-        return System.Text.RegularExpressions.Regex.Replace(
+        var paramName = Regex.Escape(auth.ApiKeyName);
+        return Regex.Replace(
             url,
             $@"([?&]){paramName}=[^&]*",
             $"$1{auth.ApiKeyName}=<key>");
+    }
+
+    [GeneratedRegex(@"\{\{([^}]+)\}\}")]
+    private static partial Regex FormTokenPattern();
+
+    /// <summary>
+    /// Substitutes <c>{{variable}}</c> tokens in a single form parameter key or value for display.
+    /// Known non-secret tokens are replaced with their resolved value.
+    /// Known secret tokens that were not resolved (because secrets are hidden) are shown as
+    /// <c>&lt;secret&gt;</c>. Unrecognised tokens are left unchanged.
+    /// </summary>
+    private static string FormatFormParamPart(
+        string template,
+        IReadOnlyDictionary<string, string> vars,
+        IReadOnlySet<string> secretTokenNames)
+    {
+        if (string.IsNullOrEmpty(template)) return template;
+
+        return FormTokenPattern().Replace(template, match =>
+        {
+            var key = match.Groups[1].Value.Trim();
+            if (vars.TryGetValue(key, out var value))
+                return value;
+            if (secretTokenNames.Contains(key))
+                return "<secret>";
+            return match.Value;
+        });
     }
 }
 
