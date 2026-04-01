@@ -84,13 +84,6 @@ public sealed class BrunoCollectionService : ICollectionService
         if (parts.Length == 0)
             return null;
 
-        // Primary: file-name-based lookup — navigate directories by name, find {name}.bru
-        // directly. No file reads required so this is O(n) directory enumeration.
-        var byFileName = TryResolveByFileName(collectionFolderPath, parts, ct);
-        if (byFileName is not null)
-            return byFileName;
-
-        // Fallback: meta.name-based lookup for entries stored before this change.
         if (parts.Length == 1)
         {
             // Flat name: scan directories recursively, reading .bru files until we find a
@@ -125,63 +118,6 @@ public sealed class BrunoCollectionService : ICollectionService
         }
 
         return await FindBruRequestInFolderAsync(current, parts[^1], ct).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Tries to resolve a request path purely by file and directory names, without reading any
-    /// file contents. For a flat name ("login") the collection tree is scanned recursively for
-    /// a file named "login.bru". For a path-qualified name ("auth/login") each segment is
-    /// matched against directory names and the leaf against the .bru file name.
-    /// Returns <see langword="null"/> if no matching file is found.
-    /// </summary>
-    private static string? TryResolveByFileName(
-        string collectionFolderPath, string[] parts, CancellationToken ct)
-    {
-        if (parts.Length == 1)
-        {
-            // Flat name: recursively scan for "{name}.bru" without opening any file.
-            return FindBruFileRecursive(collectionFolderPath, parts[0] + ".bru", ct);
-        }
-
-        // Path-based: navigate by directory name, then check file existence.
-        var current = collectionFolderPath;
-        for (var i = 0; i < parts.Length - 1; i++)
-        {
-            ct.ThrowIfCancellationRequested();
-            var segment = parts[i];
-            var matched = Directory
-                .EnumerateDirectories(current)
-                .FirstOrDefault(d =>
-                    !ShouldExcludeFolder(Path.GetFileName(d)) &&
-                    string.Equals(Path.GetFileName(d), segment, StringComparison.OrdinalIgnoreCase));
-
-            if (matched is null)
-                return null;
-
-            current = matched;
-        }
-
-        var leafPath = Path.Combine(current, parts[^1] + ".bru");
-        return File.Exists(leafPath) ? leafPath : null;
-    }
-
-    private static string? FindBruFileRecursive(string folderPath, string fileName, CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
-
-        var candidate = Path.Combine(folderPath, fileName);
-        if (File.Exists(candidate))
-            return candidate;
-
-        foreach (var subDir in Directory.EnumerateDirectories(folderPath))
-        {
-            if (ShouldExcludeFolder(Path.GetFileName(subDir))) continue;
-            var result = FindBruFileRecursive(subDir, fileName, ct);
-            if (result is not null)
-                return result;
-        }
-
-        return null;
     }
 
     private async Task<string?> FindBruRequestInFolderAsync(
