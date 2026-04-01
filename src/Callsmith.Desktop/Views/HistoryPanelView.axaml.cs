@@ -46,7 +46,13 @@ public partial class HistoryPanelView : UserControl
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(HistoryPanelViewModel.IsHorizontalDetailLayout) && _trackedVm is not null)
-            ApplyDetailLayout(_trackedVm.IsHorizontalDetailLayout);
+        {
+            // Preferences are loaded asynchronously with ConfigureAwait(false), so
+            // this event may arrive on a thread-pool thread. Grid manipulation must
+            // happen on the UI thread, so always dispatch there.
+            var isHorizontal = _trackedVm.IsHorizontalDetailLayout;
+            Dispatcher.UIThread.Post(() => ApplyDetailLayout(isHorizontal));
+        }
     }
 
     /// <summary>

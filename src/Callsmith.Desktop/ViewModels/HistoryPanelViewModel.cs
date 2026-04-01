@@ -209,9 +209,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
 
     public bool IsRequestScoped => _scopedRequestId is not null;
 
-    public string ScopeLabel => IsRequestScoped
-        ? $"Scoped to request: {(_scopedRequestName ?? "(unnamed)")}" 
-        : "Global history";
+    public string ScopedToLabel => IsRequestScoped ? $"Scoped to: {(_scopedRequestName ?? "(unnamed)")}" : string.Empty;
 
     partial void OnIsOpenChanged(bool value)
     {
@@ -368,7 +366,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         _scopedRequestId = null;
         _scopedRequestName = null;
         OnPropertyChanged(nameof(IsRequestScoped));
-        OnPropertyChanged(nameof(ScopeLabel));
+        OnPropertyChanged(nameof(ScopedToLabel));
         _nextPage = 0;
         _ = ReloadEntriesAsync();
     }
@@ -753,7 +751,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         _scopedRequestId = null;
         _scopedRequestName = null;
         OnPropertyChanged(nameof(IsRequestScoped));
-        OnPropertyChanged(nameof(ScopeLabel));
+        OnPropertyChanged(nameof(ScopedToLabel));
         IsOpen = true;
         if (wasOpen)
             _ = ReloadEntriesAsync();
@@ -765,7 +763,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         _scopedRequestId = requestId;
         _scopedRequestName = requestName;
         OnPropertyChanged(nameof(IsRequestScoped));
-        OnPropertyChanged(nameof(ScopeLabel));
+        OnPropertyChanged(nameof(ScopedToLabel));
         IsOpen = true;
         if (wasOpen)
             _ = ReloadEntriesAsync();
