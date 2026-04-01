@@ -551,7 +551,7 @@ public sealed class HistoryPanelViewModelTests
     }
 
     [Fact]
-    public void SelectingEntry_WithDisabledHeaders_ExcludesThemFromConfiguredView()
+    public async Task SelectingEntry_WithDisabledHeaders_ExcludesThemFromConfiguredView()
     {
         var historyService = Substitute.For<IHistoryService>();
         var sut = new HistoryPanelViewModel(historyService);
@@ -579,7 +579,7 @@ public sealed class HistoryPanelViewModelTests
 
         sut.SelectedEntry = new HistoryEntryRowViewModel(entry);
 
-        sut.DetailConfigured.Should().Contain("X-Enabled");
+        await AssertEventuallyAsync(() => sut.DetailConfigured.Contains("X-Enabled"));
         sut.DetailConfigured.Should().NotContain("X-Disabled");
     }
 
@@ -643,7 +643,7 @@ public sealed class HistoryPanelViewModelTests
     }
 
     [Fact]
-    public void SelectingEntry_WithFormBody_ShowsFormParamsInConfiguredView()
+    public async Task SelectingEntry_WithFormBody_ShowsFormParamsInConfiguredView()
     {
         var historyService = Substitute.For<IHistoryService>();
         var sut = new HistoryPanelViewModel(historyService);
@@ -673,7 +673,7 @@ public sealed class HistoryPanelViewModelTests
 
         sut.SelectedEntry = new HistoryEntryRowViewModel(entry);
 
-        sut.DetailConfigured.Should().Contain("Body:");
+        await AssertEventuallyAsync(() => sut.DetailConfigured.Contains("Body:"));
         sut.DetailConfigured.Should().Contain("grant_type=client_credentials&");
         sut.DetailConfigured.Should().Contain("client_id={{my-client-id}}&");
         sut.DetailConfigured.Should().Contain("client_secret={{my-secret-key}}");
@@ -682,7 +682,7 @@ public sealed class HistoryPanelViewModelTests
     }
 
     [Fact]
-    public void SelectingEntry_WithFormBody_ShowsFormParamsAsMultiLineInResolvedView()
+    public async Task SelectingEntry_WithFormBody_ShowsFormParamsAsMultiLineInResolvedView()
     {
         var historyService = Substitute.For<IHistoryService>();
         var sut = new HistoryPanelViewModel(historyService);
@@ -712,7 +712,7 @@ public sealed class HistoryPanelViewModelTests
 
         sut.SelectedEntry = new HistoryEntryRowViewModel(entry);
 
-        sut.DetailResolved.Should().Contain("Body:");
+        await AssertEventuallyAsync(() => sut.DetailResolved.Contains("Body:"));
         sut.DetailResolved.Should().Contain("a=b&");
         sut.DetailResolved.Should().Contain("c=d&");
         sut.DetailResolved.Should().Contain("e=f");
@@ -723,7 +723,7 @@ public sealed class HistoryPanelViewModelTests
     }
 
     [Fact]
-    public void SelectingEntry_WithFormBodyAndSecretVariables_ShowsSecretPlaceholder_WhenNotRevealed()
+    public async Task SelectingEntry_WithFormBodyAndSecretVariables_ShowsSecretPlaceholder_WhenNotRevealed()
     {
         var historyService = Substitute.For<IHistoryService>();
         var sut = new HistoryPanelViewModel(historyService);
@@ -758,7 +758,7 @@ public sealed class HistoryPanelViewModelTests
         // Secrets NOT revealed — default state
         sut.SelectedEntry = new HistoryEntryRowViewModel(entry);
 
-        sut.DetailResolved.Should().Contain("Body:");
+        await AssertEventuallyAsync(() => sut.DetailResolved.Contains("Body:"));
         sut.DetailResolved.Should().Contain("grant_type=client_credentials&");
         sut.DetailResolved.Should().Contain("client_id=<secret>&");
         sut.DetailResolved.Should().Contain("client_secret=<secret>");

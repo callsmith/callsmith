@@ -403,8 +403,9 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         {
             var revealed = await _historyService.RevealSensitiveFieldsAsync(
                 SelectedEntry.Entry, CancellationToken.None);
+            var values = await Task.Run(() => ComputeDetail(revealed, resolved: true));
             IsSecretShown = true;
-            PopulateDetail(revealed, resolved: true);
+            ApplyDetail(values);
         }
         catch
         {
@@ -888,21 +889,63 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         HasDetail = false;
         try
         {
-            PopulateDetail(entry, resolved: false);
+            // Run all CPU-heavy work (string building, JSON/XML formatting) on a
+            // background thread so the UI stays responsive while loading.
+            var values = await Task.Run(() => ComputeDetail(entry, resolved: false));
+            ApplyDetail(values);
             HasDetail = true;
         }
         catch
         {
             // non-critical
         }
-        await Task.CompletedTask;
     }
 
-    private void PopulateDetail(HistoryEntry entry, bool resolved)
+    /// <summary>
+    /// Holds the precomputed string values and row models for the detail panel.
+    /// Computed on a background thread in <see cref="ComputeDetail"/> and applied
+    /// to observable properties on the UI thread in <see cref="ApplyDetail"/>.
+    /// </summary>
+    private sealed record DetailValues(
+        string SentAtDisplay,
+        string SentAtToolTip,
+        string Configured,
+        string Resolved,
+        string ResponseLanguage,
+        string Response,
+        bool HasResponseBody,
+        string ResponseHeaders,
+        IReadOnlyList<ResponseHeaderRowViewModel> ResponseHeaderRows);
+
+    /// <summary>
+    /// Applies a precomputed <see cref="DetailValues"/> to the observable properties.
+    /// Language is set before text so AvaloniaEdit tokenises the document once with
+    /// the correct highlighting instead of twice (once with stale highlighting when
+    /// the text changes, then again when the language changes).
+    /// Must be called on the UI thread.
+    /// </summary>
+    private void ApplyDetail(DetailValues values)
+    {
+        DetailSentAtDisplay = values.SentAtDisplay;
+        DetailSentAtToolTip = values.SentAtToolTip;
+        DetailConfigured = values.Configured;
+        DetailResolved = values.Resolved;
+        DetailResponseLanguage = values.ResponseLanguage;
+        DetailResponse = values.Response;
+        DetailHasResponseBody = values.HasResponseBody;
+        DetailResponseHeaders = values.ResponseHeaders;
+        DetailResponseHeaderRows = values.ResponseHeaderRows;
+    }
+
+    /// <summary>
+    /// Pure computation: builds all display strings and row models from a history entry.
+    /// Safe to run on a background thread — no Avalonia or UI calls are made here.
+    /// </summary>
+    private static DetailValues ComputeDetail(HistoryEntry entry, bool resolved)
     {
         // Date/time of the entry
-        DetailSentAtDisplay = entry.SentAt.LocalDateTime.ToString("G");
-        DetailSentAtToolTip = entry.SentAt.LocalDateTime.ToString("F");
+        var sentAtDisplay = entry.SentAt.LocalDateTime.ToString("G");
+        var sentAtToolTip = entry.SentAt.LocalDateTime.ToString("F");
 
         // Configured tab — the raw template as the user wrote it
         var cfg = entry.ConfiguredSnapshot;
@@ -970,9 +1013,10 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             }
         }
 
-        DetailConfigured = TrimTrailingBlankLines(sb.ToString());
+        var configured = TrimTrailingBlankLines(sb.ToString());
 
         // Resolved tab — rebuild wire-level view via HistorySentViewBuilder
+        string resolvedText;
         try
         {
             var bindings = resolved
@@ -1023,21 +1067,26 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                 rb.AppendLine("Body:");
                 rb.Append(resolvedRequest.Body);
             }
-            DetailResolved = TrimTrailingBlankLines(rb.ToString());
+            resolvedText = TrimTrailingBlankLines(rb.ToString());
         }
         catch
         {
-            DetailResolved = DetailConfigured;
+            resolvedText = configured;
         }
 
         // Response tab
         var snap = entry.ResponseSnapshot;
+        string responseLanguage;
+        string responseBody;
+        bool hasResponseBody;
+        string responseHeaders;
+        IReadOnlyList<ResponseHeaderRowViewModel> responseHeaderRows;
         if (snap is not null)
         {
             var contentType = TryGetContentType(snap.Headers);
-            DetailResponse = ResponseFormatter.FormatBody(snap.Body, contentType);
-            DetailResponseLanguage = GetResponseLanguage(contentType);
-            DetailHasResponseBody = !string.IsNullOrWhiteSpace(snap.Body);
+            responseLanguage = GetResponseLanguage(contentType);
+            responseBody = ResponseFormatter.FormatBody(snap.Body, contentType);
+            hasResponseBody = !string.IsNullOrWhiteSpace(snap.Body);
             var rh = new StringBuilder();
             var rows = new List<ResponseHeaderRowViewModel>(snap.Headers.Count);
             var rowIndex = 0;
@@ -1046,17 +1095,28 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                 rh.AppendLine($"{kv.Key}: {kv.Value}");
                 rows.Add(new ResponseHeaderRowViewModel(kv.Key, kv.Value, rowIndex++));
             }
-            DetailResponseHeaders = TrimTrailingBlankLines(rh.ToString());
-            DetailResponseHeaderRows = rows;
+            responseHeaders = TrimTrailingBlankLines(rh.ToString());
+            responseHeaderRows = rows;
         }
         else
         {
-            DetailResponse = "(no response recorded)";
-            DetailResponseLanguage = string.Empty;
-            DetailHasResponseBody = false;
-            DetailResponseHeaders = string.Empty;
-            DetailResponseHeaderRows = [];
+            responseLanguage = string.Empty;
+            responseBody = "(no response recorded)";
+            hasResponseBody = false;
+            responseHeaders = string.Empty;
+            responseHeaderRows = [];
         }
+
+        return new DetailValues(
+            SentAtDisplay: sentAtDisplay,
+            SentAtToolTip: sentAtToolTip,
+            Configured: configured,
+            Resolved: resolvedText,
+            ResponseLanguage: responseLanguage,
+            Response: responseBody,
+            HasResponseBody: hasResponseBody,
+            ResponseHeaders: responseHeaders,
+            ResponseHeaderRows: responseHeaderRows);
     }
 
     private static string? TryGetContentType(IReadOnlyDictionary<string, string> headers)
