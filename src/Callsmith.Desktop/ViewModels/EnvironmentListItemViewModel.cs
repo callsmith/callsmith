@@ -589,6 +589,20 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Clears loading and error states for all response-body variables without starting
+    /// new resolution timers. Called when a refresh is cancelled so that a stuck
+    /// "Resolving…" indicator does not linger on screen.
+    /// </summary>
+    internal void ClearDynamicPreviewsLoading()
+    {
+        foreach (var v in Variables)
+        {
+            if (v.IsResponseBody)
+                v.ClearDynamicPreviewState();
+        }
+    }
+
+    /// <summary>
     /// Marks conflict values as loading for variables whose names match
     /// <paramref name="dynamicVarNames"/>. Called after the initial synchronous conflict-label push
     /// when the corresponding global variables require async resolution.

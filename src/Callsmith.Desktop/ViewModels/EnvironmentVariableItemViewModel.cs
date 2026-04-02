@@ -327,6 +327,8 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     {
         _dynamicLoadingDelayCts?.Cancel();
         _dynamicLoadingDelayCts?.Dispose();
+        // Reset both flags so a stale loading=true from a cancelled refresh doesn't persist.
+        IsDynamicPreviewLoading = false;
         IsDynamicPreviewError = false;
         var cts = new CancellationTokenSource();
         _dynamicLoadingDelayCts = cts;

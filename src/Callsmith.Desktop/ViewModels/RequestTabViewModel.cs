@@ -682,7 +682,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(StatusDisplay) or nameof(ElapsedDisplay) or nameof(SizeDisplay) or
                 nameof(StatusBadgeColor) or nameof(MethodColor) or
                 nameof(ShowBodyEditor) or nameof(ShowTextBodyEditor) or nameof(ShowFormBodyEditor) or
-                nameof(PreviewUrl) or
+                nameof(PreviewUrl) or nameof(IsPreviewUrlLoading) or nameof(IsPreviewUrlError) or nameof(IsPreviewUrlResolved) or
                 nameof(HasUnresolvedPathParams) or nameof(PreviewUrlForeground) or
                 nameof(IsAuthBearer) or nameof(IsAuthBasic) or nameof(IsAuthApiKey) or
                 nameof(ShowAuthPassword) or nameof(ShowAuthApiKeyValue) or

@@ -825,7 +825,9 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         // Re-run the full dynamic preview whenever the global env's variables change (e.g.
         // the force-override checkbox is toggled). That change alters the effective merge for
         // every concrete env, so the preview values must be recalculated.
-        if (changed.IsGlobal)
+        // Also refresh when the selected concrete env's own variables change (e.g. a new
+        // response-body variable was added) so the PREVIEW and conflict columns appear.
+        if (changed.IsGlobal || ReferenceEquals(changed, SelectedEnvironment))
         {
             _dynPreviewCts?.Cancel();
             _dynPreviewCts = new CancellationTokenSource();
@@ -936,7 +938,13 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
                 PushConflictInfo(env);
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException)
+            {
+                // Environment selection changed while global dynamic vars were resolving.
+                // Clear any loading indicators that the debounce timer may have already set
+                // so that a stale "Resolving…" does not linger until the next selection.
+                env.ClearDynamicPreviewsLoading();
+            }
             catch (Exception ex)
             {
                 _logger.LogDebug(ex,
@@ -994,8 +1002,6 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         // the preview is honest: if the env is misconfigured (e.g. wrong base URL), the
         // global dynamic vars that depend on it correctly show blank rather than leaking
         // a resolved value from a different, working environment.
-        IReadOnlySet<string> globalFailedVars = new HashSet<string>();
-
         if (globalHasResponseBody)
         {
             try
@@ -1025,7 +1031,6 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 ct.ThrowIfCancellationRequested();
 
                 pureGlobalContextVars = BuildPureGlobalPreviewVars(globalModel, globalResolvedForConflicts.Variables);
-                globalFailedVars = globalResolvedForConflicts.FailedVariables;
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
@@ -1074,11 +1079,6 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         // "OVERRIDDEN BY" on concrete vars shows the global env's resolved value.
         PushConflictInfoForConcreteEnv(env, pureGlobalContextVars);
 
-        // Mark any global response-body vars that failed resolution so the conflict row
-        // shows "Unable to resolve value" instead of a blank.
-        if (globalFailedVars.Count > 0)
-            env.MarkConflictValuesErrorForVars(globalFailedVars);
-
         if (!hasDynamic) return; // No dynamic vars in this env — global context above is sufficient.
 
         env.MarkDynamicPreviewsLoading();
@@ -1118,7 +1118,8 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         }
         catch (OperationCanceledException)
         {
-            // Environment selection changed — preview refresh superseded.
+            // Environment selection changed — clear any stuck loading indicator.
+            env.ClearDynamicPreviewsLoading();
         }
         catch (Exception ex)
         {
