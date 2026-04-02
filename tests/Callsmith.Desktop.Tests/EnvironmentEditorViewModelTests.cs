@@ -1208,6 +1208,96 @@ public sealed class EnvironmentEditorViewModelTests
         authHeaderVar.PreviewValue.Should().Be($"Key {resolvedKey}");
     }
 
+    /// <summary>
+    /// When a concrete env has two response-body vars where the second references the first
+    /// (e.g. a profile request uses a token fetched by a login request), both vars must show
+    /// a resolved preview — not just the first one.
+    /// </summary>
+    [Fact]
+    public async Task Preview_ConcreteEnv_ResponseBodyVarReferencingOtherResponseBodyVar_BothResolve()
+    {
+        const string resolvedToken = "tok-abc123";
+        const string resolvedUsername = "alice";
+
+        var devModel = new EnvironmentModel
+        {
+            Name = "dev",
+            FilePath = @"C:\collections\my-api\environment\dev.env.callsmith",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "token",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                    ResponseRequestName = "Auth/login",
+                    ResponsePath = "$.token",
+                },
+                new EnvironmentVariable
+                {
+                    Name = "username",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                    ResponseRequestName = "Profile/me",
+                    ResponsePath = "$.username",
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        };
+
+        var service = Substitute.For<IEnvironmentService>();
+        service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+               .Returns(new EnvironmentModel { FilePath = GlobalEnvPath, Name = "Global", Variables = [], EnvironmentId = Guid.NewGuid() });
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([devModel]);
+
+        // The evaluator is called once with ALL response-body vars; it returns both resolved values
+        // (simulating the two-pass mechanism where username depends on token).
+        var evaluator = Substitute.For<IDynamicVariableEvaluator>();
+        evaluator.ResolveAsync(
+                CollectionPath, devModel.EnvironmentId.ToString("N"),
+                Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
+                Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new ResolvedEnvironment
+            {
+                Variables = new Dictionary<string, string>
+                {
+                    ["token"]    = resolvedToken,
+                    ["username"] = resolvedUsername,
+                },
+                MockGenerators = new Dictionary<string, MockDataEntry>(),
+            });
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger, dynamicEvaluator: evaluator);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(300);
+
+        sut.SelectedEnvironment = sut.Environments.First(e => !e.IsGlobal);
+        await Task.Delay(300);
+
+        var devEnv   = sut.Environments.First(e => !e.IsGlobal);
+        var tokenVar    = devEnv.Variables.First(v => v.Name == "token");
+        var usernameVar = devEnv.Variables.First(v => v.Name == "username");
+
+        // Both variables must resolve — not just the first one.
+        tokenVar.PreviewValue.Should().Be(resolvedToken,
+            "the token response-body var should resolve in the preview");
+        usernameVar.PreviewValue.Should().Be(resolvedUsername,
+            "the username response-body var (which depends on token) should also resolve in the preview");
+
+        // Verify a single batched call was made (not one call per variable).
+        await evaluator.Received(1).ResolveAsync(
+            Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
+            Arg.Any<IReadOnlyDictionary<string, string>>(),
+            Arg.Any<bool>(),
+            Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task Preview_ConcreteEnv_ForceOverrideGlobalMockData_ShowsGeneratedConflictValue()
     {
