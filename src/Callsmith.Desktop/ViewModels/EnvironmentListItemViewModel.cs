@@ -539,6 +539,79 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Applies resolved mock-data preview values for all mock-data variables in a single
+    /// synchronous pass. Updates the internal resolved-vars cache so static variables that
+    /// reference mock tokens pick up the newly generated values.
+    /// Called when mock-data values are available before any HTTP resolutions start.
+    /// </summary>
+    internal void ApplyMockDataPreviews(IReadOnlyDictionary<string, MockDataEntry> generators)
+    {
+        _mockGenerators = generators;
+        foreach (var v in Variables)
+        {
+            if (v.IsMockData)
+            {
+                var key = NormalizeVariableName(v.Name);
+                if (generators.TryGetValue(key, out var entry) || generators.TryGetValue(v.Name, out entry))
+                {
+                    var generatedValue = Callsmith.Core.MockData.MockDataCatalog.Generate(entry.Category, entry.Field);
+                    v.DynamicPreviewValue = generatedValue;
+                    _resolvedDynVars[key] = generatedValue;
+                }
+                else
+                {
+                    v.DynamicPreviewValue = null;
+                }
+                v.ClearDynamicPreviewState();
+            }
+            v.NotifyPreviewChanged();
+        }
+    }
+
+    /// <summary>
+    /// Updates the preview state for a single response-body variable after its async
+    /// resolution completes, then refreshes all other variable previews so that static
+    /// variables referencing this dynamic variable reflect the new value immediately.
+    /// </summary>
+    /// <param name="varName">Variable name to update (trimmed for lookup).</param>
+    /// <param name="resolvedValue">
+    /// The resolved value, or <see langword="null"/> if resolution failed or was not attempted.
+    /// </param>
+    /// <param name="failed">
+    /// <see langword="true"/> when resolution was attempted but returned no usable value
+    /// (HTTP failure, timeout, or path-extraction mismatch). Shows the error indicator.
+    /// </param>
+    internal void ApplySingleResponseBodyPreview(string varName, string? resolvedValue, bool failed)
+    {
+        var key = NormalizeVariableName(varName);
+        var varVm = Variables.FirstOrDefault(v => NormalizeVariableName(v.Name) == key && v.IsResponseBody);
+        if (varVm is null) return;
+
+        if (resolvedValue is not null)
+        {
+            varVm.DynamicPreviewValue = resolvedValue;
+            _resolvedDynVars[key] = resolvedValue;
+            varVm.ClearDynamicPreviewState();
+        }
+        else if (failed)
+        {
+            // Set error before clearing value so HasPreview stays true throughout.
+            varVm.MarkDynamicPreviewError();
+            varVm.DynamicPreviewValue = null;
+            _resolvedDynVars.Remove(key);
+        }
+        else
+        {
+            varVm.DynamicPreviewValue = null;
+            varVm.ClearDynamicPreviewState();
+        }
+
+        // Refresh ALL variable previews so static vars that reference this dynamic var update.
+        foreach (var v in Variables)
+            v.NotifyPreviewChanged();
+    }
+
+    /// <summary>
     /// Marks all dynamic (response-body) variable items as loading so the UI can show a
     /// "Resolving…" indicator while async resolution is in progress.
     /// </summary>

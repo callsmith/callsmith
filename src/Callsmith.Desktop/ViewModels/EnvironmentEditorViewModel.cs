@@ -52,6 +52,13 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     private bool _loadingEnvironments;
     private const string MaskedSecretValue = "\u2022\u2022\u2022\u2022\u2022";
 
+    /// <summary>
+    /// Per-variable timeout for editor preview HTTP calls.  Keeps the "Resolving…" indicator
+    /// short-lived so that network errors surface in a reasonable time rather than waiting for
+    /// the default <see cref="System.Net.Http.HttpClient"/> 100-second timeout.
+    /// </summary>
+    private static readonly TimeSpan PreviewRequestTimeout = TimeSpan.FromSeconds(10);
+
     // ─── Observable state ────────────────────────────────────────────────────
 
     /// <summary>All environments found in the open collection.</summary>
@@ -903,14 +910,58 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         // ── Push override flags synchronously (no HTTP needed) ────────────────────────
         PushOverrideFlags(env);
 
-        var hasDynamic = model.Variables.Any(v =>
-            v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
-            || v.VariableType == EnvironmentVariable.VariableTypes.MockData
-            || v.VariableType == EnvironmentVariable.VariableTypes.Dynamic);
+        // ── Categorise dynamic variables ──────────────────────────────────────────────
+        var mockGenerators = new Dictionary<string, MockDataEntry>(StringComparer.Ordinal);
+        var responseBodyVars = new List<EnvironmentVariable>();
 
-        if (!hasDynamic) return;
+        foreach (var v in model.Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
+        {
+            if (v.VariableType == EnvironmentVariable.VariableTypes.MockData)
+            {
+                var entry = v.GetMockEntry();
+                if (entry is not null) mockGenerators[v.Name.Trim()] = entry;
+            }
+            else if (v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
+                     && !string.IsNullOrEmpty(v.ResponseRequestName))
+            {
+                responseBodyVars.Add(v);
+            }
+        }
 
-        env.MarkDynamicPreviewsLoading();
+        if (mockGenerators.Count == 0 && responseBodyVars.Count == 0) return;
+
+        // ── Apply mock-data previews immediately (synchronous — no HTTP needed) ──────
+        if (mockGenerators.Count > 0)
+            env.ApplyMockDataPreviews(mockGenerators);
+
+        // ── Launch one independent task per response-body variable ───────────────────
+        // Each variable resolves independently so fast ones update the UI before slow ones,
+        // and a 10-second per-variable timeout ensures network errors surface promptly.
+        foreach (var variable in responseBodyVars)
+        {
+            var key = variable.Name.Trim();
+            var varVm = env.Variables.FirstOrDefault(v => v.Name.Trim() == key && v.IsResponseBody);
+            varVm?.MarkDynamicPreviewLoading();
+            _ = ResolveResponseBodyVarPreviewAsync(env, variable, staticContext, cacheNamespace, ct);
+        }
+    }
+
+    /// <summary>
+    /// Resolves a single response-body variable for the editor preview and updates the UI when
+    /// complete. A 10-second timeout is applied so that network errors surface promptly instead
+    /// of waiting for the full <see cref="System.Net.Http.HttpClient"/> default timeout.
+    /// </summary>
+    private async Task ResolveResponseBodyVarPreviewAsync(
+        EnvironmentListItemViewModel env,
+        EnvironmentVariable variable,
+        IReadOnlyDictionary<string, string> staticContext,
+        string cacheNamespace,
+        CancellationToken ct)
+    {
+        if (_collectionFolderPath is null) return;
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(PreviewRequestTimeout);
 
         try
         {
@@ -918,48 +969,38 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 .ResolveAsync(
                     _collectionFolderPath,
                     cacheNamespace,
-                    model.Variables,
+                    [variable],
                     staticContext,
                     allowStaleCache: true,
-                    ct)
+                    timeoutCts.Token)
                 .ConfigureAwait(true);
+
             ct.ThrowIfCancellationRequested();
 
-            // Only expose the env's own dynamic var values to the preview rows —
-            // static vars that resolved as part of the context dict are excluded.
-            var dynVarNames = model.Variables
-                .Where(v => v.VariableType != EnvironmentVariable.VariableTypes.Static
-                         && !string.IsNullOrWhiteSpace(v.Name))
-                .Select(v => v.Name.Trim())
-                .ToHashSet(StringComparer.Ordinal);
+            var key = variable.Name.Trim();
+            var resolvedValue = resolved.Variables.TryGetValue(key, out var val)
+                                || resolved.Variables.TryGetValue(variable.Name, out val) ? val : null;
 
-            var dynVars = resolved.Variables
-                .Where(kv => dynVarNames.Contains(kv.Key))
-                .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
-
-            env.SetDynamicPreviewValues(dynVars, resolved.MockGenerators, resolved.FailedVariables);
-
-            // For the global env: update the preview baseline with resolved dynamic values so
-            // that {{token}}-style references in static var previews show the resolved value.
-            if (env.IsGlobal)
-            {
-                var mergedWithDynamic = new Dictionary<string, string>(
-                    (IReadOnlyDictionary<string, string>)staticContext, StringComparer.Ordinal);
-                foreach (var kv in resolved.Variables)
-                    mergedWithDynamic[kv.Key] = kv.Value;
-                env.SetGlobalPreviewValues(mergedWithDynamic, resolved.MockGenerators);
-            }
+            env.ApplySingleResponseBodyPreview(variable.Name, resolvedValue, failed: resolvedValue is null);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Outer token cancelled (env selection changed) — clear the loading indicator.
+            var key = variable.Name.Trim();
+            var varVm = env.Variables.FirstOrDefault(v => v.Name.Trim() == key && v.IsResponseBody);
+            varVm?.ClearDynamicPreviewState();
+            varVm?.NotifyPreviewChanged();
         }
         catch (OperationCanceledException)
         {
-            // Environment selection changed — clear any stuck loading indicator.
-            env.ClearDynamicPreviewsLoading();
+            // Only the preview timeout fired — surface the error promptly.
+            env.ApplySingleResponseBodyPreview(variable.Name, null, failed: true);
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex,
-                "Could not refresh dynamic variable previews for environment '{Name}'", env.Name);
-            env.MarkDynamicPreviewsError();
+                "Dynamic variable preview failed for '{Name}'", variable.Name);
+            env.ApplySingleResponseBodyPreview(variable.Name, null, failed: true);
         }
     }
 
