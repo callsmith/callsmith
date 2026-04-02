@@ -1049,7 +1049,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     {
         try
         {
-            var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, ct: ct)
+            var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, allowStaleCache: true, ct: ct)
                 .ConfigureAwait(false);
 
             Dispatcher.UIThread.Post(() =>
