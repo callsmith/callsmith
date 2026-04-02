@@ -927,25 +927,29 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         if (mockGenerators.Count > 0)
             env.ApplyMockDataPreviews(mockGenerators);
 
-        // ── Launch one independent task per response-body variable ───────────────────
-        // Each variable resolves independently so fast ones update the UI before slow ones,
-        // and a 10-second per-variable timeout ensures network errors surface promptly.
+        // ── Resolve all response-body variables together ────────────────────────────
+        // All variables are resolved in a single ResolveAsync call so that the two-pass
+        // mechanism can handle vars whose values reference other response-body vars.
         foreach (var variable in responseBodyVars)
         {
             var key = variable.Name.Trim();
             var varVm = env.Variables.FirstOrDefault(v => v.Name.Trim() == key && v.IsResponseBody);
             varVm?.MarkDynamicPreviewLoading();
-            _ = ResolveResponseBodyVarPreviewAsync(env, variable, staticContext, cacheNamespace, ct);
         }
+
+        _ = ResolveAllResponseBodyVarPreviewsAsync(env, responseBodyVars, staticContext, cacheNamespace, ct);
     }
 
     /// <summary>
-    /// Resolves a single response-body variable for the editor preview and updates the UI when
-    /// complete. Falls back silently to the error indicator on failure.
+    /// Resolves all response-body variables for the editor preview in a single
+    /// <see cref="IDynamicVariableEvaluator.ResolveAsync"/> call so that the two-pass mechanism
+    /// can correctly resolve variables whose values reference other response-body variables.
+    /// Updates the UI for each variable when complete.
+    /// Falls back silently to the error indicator on failure.
     /// </summary>
-    private async Task ResolveResponseBodyVarPreviewAsync(
+    private async Task ResolveAllResponseBodyVarPreviewsAsync(
         EnvironmentListItemViewModel env,
-        EnvironmentVariable variable,
+        IReadOnlyList<EnvironmentVariable> variables,
         IReadOnlyDictionary<string, string> staticContext,
         string cacheNamespace,
         CancellationToken ct)
@@ -958,7 +962,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 .ResolveAsync(
                     _collectionFolderPath,
                     cacheNamespace,
-                    [variable],
+                    variables,
                     staticContext,
                     allowStaleCache: true,
                     ct)
@@ -966,30 +970,36 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
             ct.ThrowIfCancellationRequested();
 
-            var key = variable.Name.Trim();
-
-            string? resolvedValue = null;
-            if (!resolved.FailedVariables.Contains(key) && !resolved.FailedVariables.Contains(variable.Name))
+            foreach (var variable in variables)
             {
-                resolvedValue = resolved.Variables.TryGetValue(key, out var val)
-                                || resolved.Variables.TryGetValue(variable.Name, out val) ? val : null;
-            }
+                var key = variable.Name.Trim();
 
-            env.ApplySingleResponseBodyPreview(variable.Name, resolvedValue, failed: resolvedValue is null);
+                string? resolvedValue = null;
+                if (!resolved.FailedVariables.Contains(key) && !resolved.FailedVariables.Contains(variable.Name))
+                {
+                    resolvedValue = resolved.Variables.TryGetValue(key, out var val)
+                                    || resolved.Variables.TryGetValue(variable.Name, out val) ? val : null;
+                }
+
+                env.ApplySingleResponseBodyPreview(variable.Name, resolvedValue, failed: resolvedValue is null);
+            }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             // Env selection changed — clear the loading indicator without showing an error.
-            var key = variable.Name.Trim();
-            var varVm = env.Variables.FirstOrDefault(v => v.Name.Trim() == key && v.IsResponseBody);
-            varVm?.ClearDynamicPreviewState();
-            varVm?.NotifyPreviewChanged();
+            foreach (var variable in variables)
+            {
+                var key = variable.Name.Trim();
+                var varVm = env.Variables.FirstOrDefault(v => v.Name.Trim() == key && v.IsResponseBody);
+                varVm?.ClearDynamicPreviewState();
+                varVm?.NotifyPreviewChanged();
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex,
-                "Dynamic variable preview failed for '{Name}'", variable.Name);
-            env.ApplySingleResponseBodyPreview(variable.Name, null, failed: true);
+            _logger.LogDebug(ex, "Dynamic variable preview failed");
+            foreach (var variable in variables)
+                env.ApplySingleResponseBodyPreview(variable.Name, null, failed: true);
         }
     }
 
