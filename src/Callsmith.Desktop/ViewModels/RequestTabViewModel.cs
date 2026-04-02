@@ -39,13 +39,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private EnvironmentModel? _activeEnvironment;
     private EnvironmentModel _globalEnvironment = new() { FilePath = string.Empty, Name = "Global", Variables = [], EnvironmentId = Guid.NewGuid() };
 
-    /// <summary>
-    /// Cached result of the last full environment merge (including dynamic variables).
-    /// Updated asynchronously by <see cref="RefreshPreviewEnvAsync"/> and read
-    /// synchronously by <see cref="PreviewUrl"/>.
-    /// </summary>
-    private ResolvedEnvironment _previewEnv = new();
-
     private bool _loading;
     private bool _saving;
     private bool _syncingUrl;
@@ -448,17 +441,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     public string PreviewUrlForeground => HasUnresolvedPathParams ? "#c07a20" : "#888888";
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsPreviewUrlResolved))]
-    private bool _isPreviewUrlLoading;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsPreviewUrlResolved))]
-    private bool _isPreviewUrlError;
-
-    /// <summary>True when the resolved URL TextBlock should be visible (not loading or error).</summary>
-    public bool IsPreviewUrlResolved => !IsPreviewUrlLoading && !IsPreviewUrlError;
-
     public string PreviewUrl
     {
         get
@@ -466,28 +448,45 @@ public sealed partial class RequestTabViewModel : ObservableObject
             if (string.IsNullOrWhiteSpace(Url))
                 return string.Empty;
 
-            // Use the cached fully-resolved environment (including dynamic variables such
-            // as ResponseBody and MockData).  Updated asynchronously by RefreshPreviewEnvAsync.
-            var env = _previewEnv;
+            // Build variable values from the static merge only.  Dynamic vars (ResponseBody,
+            // MockData, etc.) resolve to an empty string in BuildStaticMerge; filtering them
+            // out causes VariableSubstitutionService to leave their {{tokens}} untouched and
+            // un-urlencoded in the final URL, which is the desired preview behaviour.
+            var staticVars = _mergeService.BuildStaticMerge(_globalEnvironment, _activeEnvironment);
+            var nonEmptyVars = staticVars
+                .Where(kv => !string.IsNullOrEmpty(kv.Value))
+                .ToDictionary(kv => kv.Key, kv => kv.Value);
 
             // Substitute {{tokens}} in path param values BEFORE URL-encoding.
+            // Skip any path param whose value still contains an unresolved {{token}} so
+            // the braces are not percent-encoded into the preview URL.
             var pathParamValues = PathParams.GetEnabledPairs()
                 .Where(p => !string.IsNullOrWhiteSpace(p.Value))
-                .ToDictionary(
-                    p => p.Key,
-                    p => VariableSubstitutionService.Substitute(p.Value, env) ?? p.Value);
+                .Select(p => (p.Key, Substituted: VariableSubstitutionService.Substitute(p.Value, nonEmptyVars) ?? p.Value))
+                .Where(t => !t.Substituted.Contains("{{", StringComparison.Ordinal))
+                .ToDictionary(t => t.Key, t => t.Substituted);
 
             var resolved = PathTemplateHelper.ApplyPathParams(Url, pathParamValues);
 
-            var substitutedQueryParams = QueryParams.GetEnabledPairs()
-                .Select(p => new KeyValuePair<string, string>(
-                    VariableSubstitutionService.Substitute(p.Key, env) ?? p.Key,
-                    VariableSubstitutionService.Substitute(p.Value, env) ?? p.Value))
+            // Build query string manually so unresolved {{tokens}} in keys/values are not
+            // percent-encoded — they should appear as-is in the preview URL.
+            var queryParts = QueryParams.GetEnabledPairs()
+                .Select(p => (
+                    Key: VariableSubstitutionService.Substitute(p.Key,   nonEmptyVars) ?? p.Key,
+                    Val: VariableSubstitutionService.Substitute(p.Value, nonEmptyVars) ?? p.Value))
+                .Select(t => (
+                    EncodedKey: t.Key.Contains("{{", StringComparison.Ordinal) ? t.Key : Uri.EscapeDataString(t.Key),
+                    EncodedVal: t.Val.Contains("{{", StringComparison.Ordinal) ? t.Val : Uri.EscapeDataString(t.Val)))
                 .ToList();
 
-            resolved = QueryStringHelper.AppendQueryParams(resolved, substitutedQueryParams);
+            if (queryParts.Count > 0)
+            {
+                var qIdx = resolved.IndexOf('?');
+                var baseUrl = qIdx >= 0 ? resolved[..qIdx] : resolved;
+                resolved = baseUrl + "?" + string.Join("&", queryParts.Select(t => $"{t.EncodedKey}={t.EncodedVal}"));
+            }
 
-            return VariableSubstitutionService.Substitute(resolved, env) ?? resolved;
+            return VariableSubstitutionService.Substitute(resolved, nonEmptyVars) ?? resolved;
         }
     }
 
@@ -682,8 +681,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(StatusDisplay) or nameof(ElapsedDisplay) or nameof(SizeDisplay) or
                 nameof(StatusBadgeColor) or nameof(MethodColor) or
                 nameof(ShowBodyEditor) or nameof(ShowTextBodyEditor) or nameof(ShowFormBodyEditor) or
-                nameof(PreviewUrl) or nameof(IsPreviewUrlLoading) or nameof(IsPreviewUrlError) or nameof(IsPreviewUrlResolved) or
-                nameof(HasUnresolvedPathParams) or nameof(PreviewUrlForeground) or
+                nameof(PreviewUrl) or nameof(HasUnresolvedPathParams) or nameof(PreviewUrlForeground) or
                 nameof(IsAuthBearer) or nameof(IsAuthBasic) or nameof(IsAuthApiKey) or
                 nameof(ShowAuthPassword) or nameof(ShowAuthApiKeyValue) or
                 nameof(EnvVarNames) or
@@ -956,7 +954,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _activeEnvironment = environment;
         UpdateEnvSuggestions();
         QueueHistoryResponseRefresh();
-        _ = RefreshPreviewEnvAsync();
+        OnPropertyChanged(nameof(PreviewUrl));
     }
 
     /// <summary>Updates the global environment variables used as the baseline for substitution.</summary>
@@ -964,7 +962,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     {
         _globalEnvironment = environment;
         UpdateEnvSuggestions();
-        _ = RefreshPreviewEnvAsync();
+        OnPropertyChanged(nameof(PreviewUrl));
     }
 
     /// <summary>
@@ -1049,60 +1047,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
         FormParams.SetSuggestions(suggestions);
 
         OnPropertyChanged(nameof(PreviewUrl));
-    }
-
-    /// <summary>
-    /// Asynchronously resolves the full environment (including dynamic variables such as
-    /// ResponseBody and MockData) and updates <see cref="_previewEnv"/>.
-    /// Raises a <see cref="PreviewUrl"/> property-change notification on the UI thread
-    /// once the resolved environment is ready so bindings pick up the new value.
-    /// </summary>
-    private async Task RefreshPreviewEnvAsync(CancellationToken ct = default)
-    {
-        // Show "Resolving…" only if resolution takes longer than 200 ms — avoids a flash
-        // on fast responses (cached envs, static-only envs, etc.).
-        using var loadingDelayCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var loadingDelayToken = loadingDelayCts.Token;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(200, loadingDelayToken).ConfigureAwait(false);
-                Dispatcher.UIThread.Post(() =>
-                {
-                    IsPreviewUrlLoading = true;
-                    IsPreviewUrlError = false;
-                });
-            }
-            catch (OperationCanceledException) { }
-        });
-
-        try
-        {
-            var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, allowStaleCache: true, ct: ct)
-                .ConfigureAwait(false);
-
-            loadingDelayCts.Cancel();
-            Dispatcher.UIThread.Post(() =>
-            {
-                _previewEnv = env;
-                IsPreviewUrlLoading = false;
-                OnPropertyChanged(nameof(PreviewUrl));
-            });
-        }
-        catch (OperationCanceledException)
-        {
-            loadingDelayCts.Cancel();
-        }
-        catch
-        {
-            loadingDelayCts.Cancel();
-            Dispatcher.UIThread.Post(() =>
-            {
-                IsPreviewUrlLoading = false;
-                IsPreviewUrlError = true;
-            });
-        }
     }
 
     // -------------------------------------------------------------------------
