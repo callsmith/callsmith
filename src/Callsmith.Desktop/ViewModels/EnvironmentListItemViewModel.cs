@@ -532,6 +532,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
                 {
                     v.DynamicPreviewValue = null;
                 }
+                v.ClearDynamicPreviewState();
             }
             else if (v.IsResponseBody)
             {
@@ -545,8 +546,64 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
                 {
                     v.DynamicPreviewValue = null;
                 }
+                v.ClearDynamicPreviewState();
             }
             v.NotifyPreviewChanged();
+        }
+    }
+
+    /// <summary>
+    /// Marks all dynamic (response-body) variable items as loading so the UI can show a
+    /// "Resolving…" indicator while async resolution is in progress.
+    /// </summary>
+    internal void MarkDynamicPreviewsLoading()
+    {
+        foreach (var v in Variables)
+        {
+            if (v.IsResponseBody)
+                v.MarkDynamicPreviewLoading();
+        }
+    }
+
+    /// <summary>
+    /// Marks all dynamic (response-body) variable items as failed so the UI can show an
+    /// error indicator when resolution throws an unexpected exception.
+    /// </summary>
+    internal void MarkDynamicPreviewsError()
+    {
+        foreach (var v in Variables)
+        {
+            if (v.IsResponseBody)
+                v.MarkDynamicPreviewError();
+        }
+    }
+
+    /// <summary>
+    /// Marks conflict values as loading for variables whose names match
+    /// <paramref name="dynamicVarNames"/>. Called after the initial synchronous conflict-label push
+    /// when the corresponding global variables require async resolution.
+    /// </summary>
+    internal void MarkConflictValuesLoadingForVars(IEnumerable<string> dynamicVarNames)
+    {
+        var dynamicSet = new HashSet<string>(dynamicVarNames, StringComparer.Ordinal);
+        foreach (var v in Variables)
+        {
+            var key = v.Name.Trim();
+            if (v.ConflictLabel is not null && dynamicSet.Contains(key))
+                v.MarkConflictValueLoading();
+        }
+    }
+
+    /// <summary>
+    /// Marks all variables that currently have a conflict label as having a conflict value error.
+    /// Called when global dynamic variable resolution fails.
+    /// </summary>
+    internal void MarkConflictValuesError()
+    {
+        foreach (var v in Variables)
+        {
+            if (v.ConflictLabel is not null)
+                v.MarkConflictValueError();
         }
     }
 

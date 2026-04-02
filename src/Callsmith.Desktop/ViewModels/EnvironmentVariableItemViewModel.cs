@@ -61,8 +61,22 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasConflict))]
     private string? _conflictToolTip;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasConflict))]
+    [NotifyPropertyChangedFor(nameof(IsConflictValueVisible))]
+    private bool _isConflictValueLoading;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasConflict))]
+    [NotifyPropertyChangedFor(nameof(IsConflictValueVisible))]
+    private bool _isConflictValueError;
+
     /// <summary>True when this variable has a conflict with the preview environment that should be shown.</summary>
-    public bool HasConflict => ConflictLabel is not null && ConflictValue is not null;
+    public bool HasConflict => ConflictLabel is not null
+        && (ConflictValue is not null || IsConflictValueLoading || IsConflictValueError);
+
+    /// <summary>True when the resolved conflict value TextBlock should be visible (not loading or error).</summary>
+    public bool IsConflictValueVisible => !IsConflictValueLoading && !IsConflictValueError;
 
     /// <summary>Updates the conflict label and value shown in the override/overridden-by preview row.</summary>
     internal void SetConflictInfo(string? label, string? value, string? toolTip)
@@ -70,6 +84,22 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
         ConflictLabel = label;
         ConflictValue = value;
         ConflictToolTip = toolTip;
+        IsConflictValueLoading = false;
+        IsConflictValueError = false;
+    }
+
+    /// <summary>Marks the conflict value as loading (resolution in progress).</summary>
+    internal void MarkConflictValueLoading()
+    {
+        IsConflictValueLoading = true;
+        IsConflictValueError = false;
+    }
+
+    /// <summary>Marks the conflict value as failed to resolve.</summary>
+    internal void MarkConflictValueError()
+    {
+        IsConflictValueLoading = false;
+        IsConflictValueError = true;
     }
 
     [ObservableProperty]
@@ -94,7 +124,18 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PreviewValue))]
     [NotifyPropertyChangedFor(nameof(HasPreview))]
+    [NotifyPropertyChangedFor(nameof(IsPreviewValueVisible))]
     private string? _dynamicPreviewValue;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPreview))]
+    [NotifyPropertyChangedFor(nameof(IsPreviewValueVisible))]
+    private bool _isDynamicPreviewLoading;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPreview))]
+    [NotifyPropertyChangedFor(nameof(IsPreviewValueVisible))]
+    private bool _isDynamicPreviewError;
 
     // ── Mock-data properties ─────────────────────────────────────────────────
 
@@ -253,7 +294,31 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
 
     public bool HasPreview => !IsSecret && 
         ((IsStatic && TokenPattern().IsMatch(Value)) ||
-         ((IsMockData || IsResponseBody) && DynamicPreviewValue != null));
+         ((IsMockData || IsResponseBody) && (DynamicPreviewValue != null || IsDynamicPreviewLoading || IsDynamicPreviewError)));
+
+    /// <summary>True when the resolved preview value TextBlock should be visible (not loading or error).</summary>
+    public bool IsPreviewValueVisible => !IsDynamicPreviewLoading && !IsDynamicPreviewError;
+
+    /// <summary>Marks the dynamic preview value as currently loading.</summary>
+    internal void MarkDynamicPreviewLoading()
+    {
+        IsDynamicPreviewLoading = true;
+        IsDynamicPreviewError = false;
+    }
+
+    /// <summary>Marks the dynamic preview value as failed to resolve.</summary>
+    internal void MarkDynamicPreviewError()
+    {
+        IsDynamicPreviewLoading = false;
+        IsDynamicPreviewError = true;
+    }
+
+    /// <summary>Clears loading and error states (called when a resolved value arrives).</summary>
+    internal void ClearDynamicPreviewState()
+    {
+        IsDynamicPreviewLoading = false;
+        IsDynamicPreviewError = false;
+    }
 
     [System.Text.RegularExpressions.GeneratedRegex(@"\{\{[^}]+\}\}")]
     private static partial System.Text.RegularExpressions.Regex TokenPattern();

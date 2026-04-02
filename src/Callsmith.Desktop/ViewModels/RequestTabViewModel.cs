@@ -448,6 +448,17 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     public string PreviewUrlForeground => HasUnresolvedPathParams ? "#c07a20" : "#888888";
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPreviewUrlResolved))]
+    private bool _isPreviewUrlLoading;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPreviewUrlResolved))]
+    private bool _isPreviewUrlError;
+
+    /// <summary>True when the resolved URL TextBlock should be visible (not loading or error).</summary>
+    public bool IsPreviewUrlResolved => !IsPreviewUrlLoading && !IsPreviewUrlError;
+
     public string PreviewUrl
     {
         get
@@ -1047,6 +1058,11 @@ public sealed partial class RequestTabViewModel : ObservableObject
     /// </summary>
     private async Task RefreshPreviewEnvAsync(CancellationToken ct = default)
     {
+        Dispatcher.UIThread.Post(() =>
+        {
+            IsPreviewUrlLoading = true;
+            IsPreviewUrlError = false;
+        });
         try
         {
             var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, allowStaleCache: true, ct: ct)
@@ -1055,11 +1071,19 @@ public sealed partial class RequestTabViewModel : ObservableObject
             Dispatcher.UIThread.Post(() =>
             {
                 _previewEnv = env;
+                IsPreviewUrlLoading = false;
                 OnPropertyChanged(nameof(PreviewUrl));
             });
         }
         catch (OperationCanceledException) { }
-        catch { /* preview refresh is best-effort */ }
+        catch
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                IsPreviewUrlLoading = false;
+                IsPreviewUrlError = true;
+            });
+        }
     }
 
     // -------------------------------------------------------------------------

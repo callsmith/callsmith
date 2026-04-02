@@ -710,13 +710,24 @@
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center"
                                    Margin="8,0,8,0"/>
-                        <TextBlock Grid.Column="1"
-                                   Text="{Binding PreviewValue}"
-                                   Foreground="#888"
-                                   FontSize="12"
-                                   FontFamily="Consolas,Menlo,monospace"
-                                   VerticalAlignment="Center"
-                                   TextTrimming="CharacterEllipsis"/>
+                        <Panel Grid.Column="1" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding PreviewValue}"
+                                     Foreground="#888"
+                                     FontSize="12"
+                                     FontFamily="Consolas,Menlo,monospace"
+                                     TextTrimming="CharacterEllipsis"
+                                     IsVisible="{Binding IsPreviewValueVisible}"/>
+                          <TextBlock Text="Resolving…"
+                                     Foreground="#4b9cd3"
+                                     FontSize="12"
+                                     FontStyle="Italic"
+                                     IsVisible="{Binding IsDynamicPreviewLoading}"/>
+                          <TextBlock Text="Unable to resolve value"
+                                     Foreground="#f44747"
+                                     FontSize="12"
+                                     FontStyle="Italic"
+                                     IsVisible="{Binding IsDynamicPreviewError}"/>
+                        </Panel>
                       </Grid>
                     </Border>
 
@@ -738,13 +749,24 @@
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center"
                                    Margin="8,0,8,0"/>
-                        <TextBlock Grid.Column="1"
-                                   Text="{Binding ConflictValue}"
-                                   Foreground="#888"
-                                   FontSize="12"
-                                   FontFamily="Consolas,Menlo,monospace"
-                                   VerticalAlignment="Center"
-                                   TextTrimming="CharacterEllipsis"/>
+                        <Panel Grid.Column="1" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding ConflictValue}"
+                                     Foreground="#888"
+                                     FontSize="12"
+                                     FontFamily="Consolas,Menlo,monospace"
+                                     TextTrimming="CharacterEllipsis"
+                                     IsVisible="{Binding IsConflictValueVisible}"/>
+                          <TextBlock Text="Resolving…"
+                                     Foreground="#4b9cd3"
+                                     FontSize="12"
+                                     FontStyle="Italic"
+                                     IsVisible="{Binding IsConflictValueLoading}"/>
+                          <TextBlock Text="Unable to resolve value"
+                                     Foreground="#f44747"
+                                     FontSize="12"
+                                     FontStyle="Italic"
+                                     IsVisible="{Binding IsConflictValueError}"/>
+                        </Panel>
                       </Grid>
                     </Border>
 

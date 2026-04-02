@@ -900,6 +900,8 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 return;
             }
 
+            env.MarkDynamicPreviewsLoading();
+
             try
             {
                 // Resolve the global env's own dynamic vars against the preview context, but keep
@@ -939,6 +941,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             {
                 _logger.LogDebug(ex,
                     "Could not refresh dynamic variable previews for environment '{Name}'", env.Name);
+                env.MarkDynamicPreviewsError();
                 PushConflictInfo(env);
             }
             return;
@@ -972,6 +975,19 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         // variable name and IsForceGlobalOverride flag, both of which are known synchronously.
         // Values for dynamic global vars will be empty until async resolution completes below.
         PushConflictInfoForConcreteEnv(env, env.GetResolvedGlobalPreviewVars());
+
+        // If the global env has response-body variables, their resolved values are not yet
+        // available — mark the corresponding conflict rows as loading so the UI shows
+        // "Resolving…" instead of a blank value.
+        if (globalHasResponseBody)
+        {
+            var globalDynVarNames = globalModel.Variables
+                .Where(v => (v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
+                          || v.VariableType == EnvironmentVariable.VariableTypes.Dynamic)
+                         && !string.IsNullOrWhiteSpace(v.Name))
+                .Select(v => v.Name.Trim());
+            env.MarkConflictValuesLoadingForVars(globalDynVarNames);
+        }
 
         // Resolve global response-body vars whenever the global env has them.
         // Use only the concrete env being viewed as the resolution context — this ensures
@@ -1013,6 +1029,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             {
                 _logger.LogDebug(ex,
                     "Could not resolve global dynamic vars for concrete env '{Name}'", env.Name);
+                env.MarkConflictValuesError();
             }
 
             // Re-apply active env's own statics at the end to maintain override precedence.
@@ -1056,6 +1073,8 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
         if (!hasDynamic) return; // No dynamic vars in this env — global context above is sufficient.
 
+        env.MarkDynamicPreviewsLoading();
+
         // Step 2: Resolve this env's own dynamic vars from the pre-final-override context so
         // PREVIEW reflects concrete-env evaluation, while the conflict row communicates when
         // a force-override global var wins at send time.
@@ -1097,6 +1116,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         {
             _logger.LogDebug(ex,
                 "Could not refresh dynamic variable previews for environment '{Name}'", env.Name);
+            env.MarkDynamicPreviewsError();
         }
     }
 
