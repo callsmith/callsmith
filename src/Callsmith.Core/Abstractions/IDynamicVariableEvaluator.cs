@@ -28,12 +28,20 @@ public interface IDynamicVariableEvaluator
     /// <param name="staticVariables">
     /// Already-resolved static variables used when substituting into linked requests.
     /// </param>
+    /// <param name="allowStaleCache">
+    /// When <see langword="true"/>, any existing cache entry is returned immediately regardless
+    /// of its age or the variable's <see cref="DynamicFrequency"/> setting. An HTTP request is
+    /// only made when no cache entry exists at all. Use <see langword="true"/> for editor preview
+    /// calls where slightly stale values are acceptable; use <see langword="false"/> (the default)
+    /// for the actual request send pipeline where freshness matters.
+    /// </param>
     /// <param name="ct">Cancellation token.</param>
     Task<ResolvedEnvironment> ResolveAsync(
         string collectionFolderPath,
         string environmentCacheNamespace,
         IReadOnlyList<EnvironmentVariable> variables,
         IReadOnlyDictionary<string, string> staticVariables,
+        bool allowStaleCache = false,
         CancellationToken ct = default);
 
     /// <summary>

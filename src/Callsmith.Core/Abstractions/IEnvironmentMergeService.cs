@@ -40,10 +40,17 @@ public interface IEnvironmentMergeService
     /// <param name="activeEnv">
     /// The active (or preview) environment, or <see langword="null"/> when there is none.
     /// </param>
+    /// <param name="allowStaleCache">
+    /// When <see langword="true"/>, any existing cache entry is returned immediately regardless
+    /// of its age or the variable's <see cref="DynamicFrequency"/> setting. An HTTP request is
+    /// only made when no cache entry exists at all. Pass <see langword="true"/> for editor preview
+    /// calls; use <see langword="false"/> (the default) for the request send pipeline.
+    /// </param>
     /// <param name="ct">Cancellation token.</param>
     Task<ResolvedEnvironment> MergeAsync(
         string collectionFolderPath,
         EnvironmentModel globalEnv,
         EnvironmentModel? activeEnv,
+        bool allowStaleCache = false,
         CancellationToken ct = default);
 }

@@ -67,6 +67,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         string environmentCacheNamespace,
         IReadOnlyList<EnvironmentVariable> variables,
         IReadOnlyDictionary<string, string> staticVariables,
+        bool allowStaleCache = false,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(collectionFolderPath);
@@ -129,7 +130,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
                 try
                 {
                     var value = await EvaluateResponseBodyVarAsync(
-                        variable, environmentCacheNamespace, folder, resolvedVars, cache, ct)
+                        variable, environmentCacheNamespace, folder, resolvedVars, cache, allowStaleCache, ct)
                         .ConfigureAwait(false);
 
                     if (value != null)
@@ -271,6 +272,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         CollectionFolder? folder,
         IReadOnlyDictionary<string, string> vars,
         DynCache cache,
+        bool allowStaleCache,
         CancellationToken ct)
     {
         var segment = new DynamicValueSegment
@@ -300,13 +302,15 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         }
         var cacheKey = MakeCacheKey(environmentCacheNamespace, requestCacheId, segment.Path);
 
-        var shouldExecute = segment.Frequency switch
-        {
-            DynamicFrequency.Always => true,
-            DynamicFrequency.Never => !cache.ContainsKey(cacheKey),
-            DynamicFrequency.IfExpired => ShouldRefresh(cache, cacheKey, segment.ExpiresAfterSeconds ?? 900),
-            _ => true,
-        };
+        var shouldExecute = allowStaleCache
+            ? !cache.ContainsKey(cacheKey)  // When stale values are acceptable, only fetch if no cache entry exists at all.
+            : segment.Frequency switch
+            {
+                DynamicFrequency.Always => true,
+                DynamicFrequency.Never => !cache.ContainsKey(cacheKey),
+                DynamicFrequency.IfExpired => ShouldRefresh(cache, cacheKey, segment.ExpiresAfterSeconds ?? 900),
+                _ => true,
+            };
 
         if (!shouldExecute && cache.TryGetValue(cacheKey, out var cached))
             return cached.Value;

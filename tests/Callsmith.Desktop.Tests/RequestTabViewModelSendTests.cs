@@ -181,6 +181,7 @@ public sealed class RequestTabViewModelSendTests
                 Arg.Any<string>(),
                 Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<bool>(),
                 Arg.Any<CancellationToken>())
             .Returns(new ResolvedEnvironment
             {

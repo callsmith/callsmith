@@ -40,6 +40,7 @@ public sealed class EnvironmentMergeService : IEnvironmentMergeService
         string collectionFolderPath,
         EnvironmentModel globalEnv,
         EnvironmentModel? activeEnv,
+        bool allowStaleCache = false,
         CancellationToken ct = default)
     {
         var merged = BuildStaticMerge(globalEnv, activeEnv);
@@ -84,6 +85,7 @@ public sealed class EnvironmentMergeService : IEnvironmentMergeService
                     globalCacheNamespace,
                     globalVars,
                     merged,
+                    allowStaleCache,
                     ct).ConfigureAwait(false);
 
                 foreach (var kv in globalResolved.Variables)
@@ -117,6 +119,7 @@ public sealed class EnvironmentMergeService : IEnvironmentMergeService
                     activeEnv.EnvironmentId.ToString("N"),
                     activeEnv.Variables,
                     merged,
+                    allowStaleCache,
                     ct).ConfigureAwait(false);
 
                 foreach (var kv in activeResolved.Variables)

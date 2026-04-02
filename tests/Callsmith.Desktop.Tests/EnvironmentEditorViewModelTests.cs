@@ -918,6 +918,7 @@ public sealed class EnvironmentEditorViewModelTests
                     vars.Any(v => v.Name == "access-token"
                                && v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody)),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<bool>(),
                 Arg.Any<CancellationToken>())
             .Returns(new ResolvedEnvironment
             {
@@ -1072,6 +1073,7 @@ public sealed class EnvironmentEditorViewModelTests
             Arg.Any<string>(), Arg.Any<string>(),
             Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
             Arg.Any<IReadOnlyDictionary<string, string>>(),
+            Arg.Any<bool>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -1180,6 +1182,7 @@ public sealed class EnvironmentEditorViewModelTests
                 CollectionPath, devModel.EnvironmentId.ToString("N"),
                 Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<bool>(),
                 Arg.Any<CancellationToken>())
             .Returns(new ResolvedEnvironment
             {
@@ -1371,6 +1374,7 @@ public sealed class EnvironmentEditorViewModelTests
                 Arg.Any<string>(),
                 Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<bool>(),
                 Arg.Any<CancellationToken>())
             .Returns(new ResolvedEnvironment
             {
@@ -1448,6 +1452,7 @@ public sealed class EnvironmentEditorViewModelTests
                     vars.Any(v => v.Name == "jwt-token"
                                && v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody)),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<bool>(),
                 Arg.Any<CancellationToken>())
             .Returns(new ResolvedEnvironment
             {
@@ -1531,6 +1536,7 @@ public sealed class EnvironmentEditorViewModelTests
                 Arg.Any<string>(),
                 Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<bool>(),
                 Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {
@@ -1618,6 +1624,7 @@ public sealed class EnvironmentEditorViewModelTests
                 Arg.Any<string>(),
                 Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<bool>(),
                 Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {

@@ -861,6 +861,11 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         // ── Global env path ──────────────────────────────────────────────────
         if (env.IsGlobal)
         {
+            // Immediately push conflict labels before any async work so the UI is
+            // responsive — labels only depend on variable names and IsForceGlobalOverride,
+            // both of which are known synchronously.
+            PushConflictInfo(env);
+
             // Use the env-level preview selection when set; otherwise fall back to the first
             // concrete environment. This matches the send-time cache namespace so cached tokens
             // from recent request sends are reused without an extra HTTP call.
@@ -907,6 +912,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                         BuildGlobalCacheNamespace(model, contextEnvModel),
                         model.Variables,
                         globalStaticVars,
+                        allowStaleCache: true,
                         ct)
                     .ConfigureAwait(true);
                 ct.ThrowIfCancellationRequested();
@@ -961,6 +967,12 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
             || v.VariableType == EnvironmentVariable.VariableTypes.Dynamic);
 
+        // Immediately push conflict labels using whatever global context is already cached
+        // from a previous selection. Labels (OVERRIDES/OVERRIDDEN WITH) only require the
+        // variable name and IsForceGlobalOverride flag, both of which are known synchronously.
+        // Values for dynamic global vars will be empty until async resolution completes below.
+        PushConflictInfoForConcreteEnv(env, env.GetResolvedGlobalPreviewVars());
+
         // Resolve global response-body vars whenever the global env has them.
         // Use only the concrete env being viewed as the resolution context — this ensures
         // the preview is honest: if the env is misconfigured (e.g. wrong base URL), the
@@ -971,7 +983,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             try
             {
                 var candidateMerge = await _mergeService
-                    .MergeAsync(_collectionFolderPath, globalModel, model, ct)
+                    .MergeAsync(_collectionFolderPath, globalModel, model, allowStaleCache: true, ct)
                     .ConfigureAwait(true);
                 ct.ThrowIfCancellationRequested();
 
@@ -989,6 +1001,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                         BuildGlobalCacheNamespace(globalModel, model),
                         globalModel.Variables,
                         globalStaticContext,
+                        allowStaleCache: true,
                         ct)
                     .ConfigureAwait(true);
                 ct.ThrowIfCancellationRequested();
@@ -1058,6 +1071,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                     model.EnvironmentId.ToString("N"),
                     model.Variables,
                     activeResolveContext,
+                    allowStaleCache: true,
                     ct)
                 .ConfigureAwait(true);
             ct.ThrowIfCancellationRequested();
@@ -1222,9 +1236,8 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                     continue;
                 }
 
-                if (resolvedGlobalVars.TryGetValue(key, out var globalValue))
-                    conflicts[key] = (label, globalValue, "Overridden with this value by a global variable");
-
+                var globalValue = resolvedGlobalVars.TryGetValue(key, out var gv) ? gv : string.Empty;
+                conflicts[key] = (label, globalValue, "Overridden with this value by a global variable");
                 continue;
             }
 
@@ -1234,8 +1247,8 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 continue;
             }
 
-            if (resolvedGlobalVars.TryGetValue(key, out var globalPreviewValue))
-                conflicts[key] = (label, globalPreviewValue, "Overrides this global variable value");
+            var globalPreviewValue = resolvedGlobalVars.TryGetValue(key, out var gpv) ? gpv : string.Empty;
+            conflicts[key] = (label, globalPreviewValue, "Overrides this global variable value");
         }
 
         env.SetConflictValues(conflicts);

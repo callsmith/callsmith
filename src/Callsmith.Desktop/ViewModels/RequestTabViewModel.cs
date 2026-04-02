@@ -1049,7 +1049,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     {
         try
         {
-            var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, ct)
+            var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, ct: ct)
                 .ConfigureAwait(false);
 
             Dispatcher.UIThread.Post(() =>
@@ -1100,7 +1100,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(Url)) return;
 
-        var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, ct);
+        var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, ct: ct);
 
         // Resolve path params
         var pathParamValues = PathParams.GetEnabledPairs()
@@ -1187,7 +1187,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
         try
         {
-            var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, ct);
+            var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, ct: ct);
             var secretNames = BuildSecretVarNames();
             var sentBindings = new List<VariableBinding>();
 

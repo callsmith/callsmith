@@ -170,7 +170,7 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
                     ? $"{_globalEnvironmentCacheNamespace}[env:{_environmentCacheNamespace}]"
                     : _environmentCacheNamespace;
                 var globalResolved = await _evaluator
-                    .ResolveAsync(_collectionFolderPath, globalCacheNamespace, _globalVariables, baseStaticVars, ct)
+                    .ResolveAsync(_collectionFolderPath, globalCacheNamespace, _globalVariables, baseStaticVars, ct: ct)
                     .ConfigureAwait(true);
                 var merged = new Dictionary<string, string>(baseStaticVars, StringComparer.Ordinal);
                 foreach (var kv in globalResolved.Variables)
@@ -184,7 +184,7 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
                 || v.VariableType == EnvironmentVariable.VariableTypes.Dynamic))
             {
                 var resolved = await _evaluator
-                    .ResolveAsync(_collectionFolderPath, _environmentCacheNamespace, _allVariables, resolvedVars, ct)
+                    .ResolveAsync(_collectionFolderPath, _environmentCacheNamespace, _allVariables, resolvedVars, ct: ct)
                     .ConfigureAwait(true);
                 resolvedVars = resolved.Variables;
             }
