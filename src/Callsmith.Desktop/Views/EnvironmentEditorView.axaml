@@ -504,7 +504,7 @@
                 <DataTemplate x:DataType="vm:EnvironmentVariableItemViewModel">
                   <!-- Columns: Drag(24) | Type(170) | Name(320) | Value(*) | Secret(58) | Override(Auto=72/0) | Delete(28) -->
                   <Grid ColumnDefinitions="24,170,320,*,58,Auto,28"
-                        RowDefinitions="Auto,Auto,Auto"
+                        RowDefinitions="Auto,Auto"
                         Margin="0,2">
 
                     <!-- Drag handle -->
@@ -530,18 +530,31 @@
                                 VerticalAlignment="Center"/>
                     </Border>
 
-                    <!-- Name -->
-                    <TextBox Grid.Row="0" Grid.Column="2"
-                             Text="{Binding Name}"
-                             Watermark="name"
-                             FontSize="12"
-                             Foreground="#d4d4d4"
-                             Background="#2d2d30"
-                             BorderBrush="#444"
-                             Padding="6,4"
-                             Margin="0,0,6,0"
-                             VerticalContentAlignment="Center"
-                             FontFamily="Consolas,Menlo,monospace"/>
+                    <!-- Name + override warning icon -->
+                    <Grid Grid.Row="0" Grid.Column="2"
+                          ColumnDefinitions="*,Auto"
+                          Margin="0,0,6,0">
+                      <TextBox Grid.Column="0"
+                               Text="{Binding Name}"
+                               Watermark="name"
+                               FontSize="12"
+                               Foreground="#d4d4d4"
+                               Background="#2d2d30"
+                               BorderBrush="#444"
+                               Padding="6,4"
+                               VerticalContentAlignment="Center"
+                               FontFamily="Consolas,Menlo,monospace"/>
+                      <!-- Warning icon shown when this variable name collides with another env tier -->
+                      <TextBlock Grid.Column="1"
+                                 Text="⚠"
+                                 IsVisible="{Binding IsOverridden}"
+                                 ToolTip.Tip="{Binding OverrideTooltip}"
+                                 Foreground="#e9b800"
+                                 FontSize="13"
+                                 Margin="4,0,2,0"
+                                 VerticalAlignment="Center"
+                                 Cursor="Help"/>
+                    </Grid>
 
                     <!-- Value: static plain — text input (lock is in the SECRET column) -->
                     <Grid Grid.Row="0" Grid.Column="3"
@@ -710,41 +723,24 @@
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center"
                                    Margin="8,0,8,0"/>
-                        <TextBlock Grid.Column="1"
-                                   Text="{Binding PreviewValue}"
-                                   Foreground="#888"
-                                   FontSize="12"
-                                   FontFamily="Consolas,Menlo,monospace"
-                                   VerticalAlignment="Center"
-                                   TextTrimming="CharacterEllipsis"/>
-                      </Grid>
-                    </Border>
-
-                    <!-- Conflict row — OVERRIDES or OVERRIDDEN BY -->
-                    <Border Grid.Row="2" Grid.Column="3"
-                            IsVisible="{Binding HasConflict}"
-                            ToolTip.Tip="{Binding ConflictToolTip}"
-                            Cursor="Help"
-                            Background="#1e1e1e"
-                            BorderBrush="#3a3a3a"
-                            BorderThickness="0,1,0,0"
-                            Padding="0,3"
-                            Margin="0,0,0,4">
-                      <Grid ColumnDefinitions="Auto,*">
-                        <TextBlock Grid.Column="0"
-                                   Text="{Binding ConflictLabel}"
-                                   Foreground="#5a5a5a"
-                                   FontSize="10"
-                                   FontWeight="SemiBold"
-                                   VerticalAlignment="Center"
-                                   Margin="8,0,8,0"/>
-                        <TextBlock Grid.Column="1"
-                                   Text="{Binding ConflictValue}"
-                                   Foreground="#888"
-                                   FontSize="12"
-                                   FontFamily="Consolas,Menlo,monospace"
-                                   VerticalAlignment="Center"
-                                   TextTrimming="CharacterEllipsis"/>
+                        <Panel Grid.Column="1" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding PreviewValue}"
+                                     Foreground="#888"
+                                     FontSize="12"
+                                     FontFamily="Consolas,Menlo,monospace"
+                                     TextTrimming="CharacterEllipsis"
+                                     IsVisible="{Binding IsPreviewValueVisible}"/>
+                          <TextBlock Text="Resolving…"
+                                     Foreground="#4b9cd3"
+                                     FontSize="12"
+                                     FontStyle="Italic"
+                                     IsVisible="{Binding IsDynamicPreviewLoading}"/>
+                          <TextBlock Text="Unable to resolve value"
+                                     Foreground="#f44747"
+                                     FontSize="12"
+                                     FontStyle="Italic"
+                                     IsVisible="{Binding IsDynamicPreviewError}"/>
+                        </Panel>
                       </Grid>
                     </Border>
 

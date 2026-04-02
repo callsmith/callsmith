@@ -117,16 +117,24 @@
           <Border Grid.Column="0"
                   Background="#1e1e1e" BorderBrush="#3a3a3a" BorderThickness="0,1,0,0"
                   Padding="0,5,0,5">
-            <Grid ColumnDefinitions="Auto,*,Auto">
+          <Grid ColumnDefinitions="Auto,*,Auto">
               <TextBlock Grid.Column="0"
                          Text="PREVIEW" Foreground="#5a5a5a" FontSize="10" FontWeight="SemiBold"
                          VerticalAlignment="Center" Margin="8,0,8,0"/>
-              <TextBlock Grid.Column="1"
-                         x:Name="PreviewUrlText"
-                         Text="{Binding PreviewUrl}"
-                         Foreground="{Binding PreviewUrlForeground, Converter={x:Static conv:HexColorToBrushConverter.Instance}}"
-                         FontFamily="Consolas,Menlo,monospace" FontSize="12"
-                         VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+              <Panel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock x:Name="PreviewUrlText"
+                           Text="{Binding PreviewUrl}"
+                           Foreground="{Binding PreviewUrlForeground, Converter={x:Static conv:HexColorToBrushConverter.Instance}}"
+                           FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                           IsVisible="{Binding IsPreviewUrlResolved}"/>
+                <TextBlock Text="Resolving…"
+                           Foreground="#4b9cd3" FontSize="12" FontStyle="Italic"
+                           IsVisible="{Binding IsPreviewUrlLoading}"/>
+                <TextBlock Text="Unable to resolve URL"
+                           Foreground="#f44747" FontSize="12" FontStyle="Italic"
+                           IsVisible="{Binding IsPreviewUrlError}"/>
+              </Panel>
               <Button Grid.Column="2"
                       x:Name="CopyPreviewUrlButton"
                       Content="&#x2398;" ToolTip.Tip="Copy URL to clipboard"

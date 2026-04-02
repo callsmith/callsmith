@@ -448,6 +448,17 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     public string PreviewUrlForeground => HasUnresolvedPathParams ? "#c07a20" : "#888888";
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPreviewUrlResolved))]
+    private bool _isPreviewUrlLoading;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPreviewUrlResolved))]
+    private bool _isPreviewUrlError;
+
+    /// <summary>True when the resolved URL TextBlock should be visible (not loading or error).</summary>
+    public bool IsPreviewUrlResolved => !IsPreviewUrlLoading && !IsPreviewUrlError;
+
     public string PreviewUrl
     {
         get
@@ -671,7 +682,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(StatusDisplay) or nameof(ElapsedDisplay) or nameof(SizeDisplay) or
                 nameof(StatusBadgeColor) or nameof(MethodColor) or
                 nameof(ShowBodyEditor) or nameof(ShowTextBodyEditor) or nameof(ShowFormBodyEditor) or
-                nameof(PreviewUrl) or
+                nameof(PreviewUrl) or nameof(IsPreviewUrlLoading) or nameof(IsPreviewUrlError) or nameof(IsPreviewUrlResolved) or
                 nameof(HasUnresolvedPathParams) or nameof(PreviewUrlForeground) or
                 nameof(IsAuthBearer) or nameof(IsAuthBasic) or nameof(IsAuthApiKey) or
                 nameof(ShowAuthPassword) or nameof(ShowAuthApiKeyValue) or
@@ -973,9 +984,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
         var globalVars = _globalEnvironment.Variables;
 
-        // Global env: use the same env-scoped cache namespace as BuildMergedVarsAsync.
+        // Global env: use the active environment's ID as the cache namespace (unified namespace)
+        // so that cache entries are shared with the editor preview and the merge service.
         var globalCacheNamespace = _activeEnvironment is not null
-            ? $"{_globalEnvironment.EnvironmentId:N}[env:{_activeEnvironment.EnvironmentId:N}]"
+            ? _activeEnvironment.EnvironmentId.ToString("N")
             : _globalEnvironment.EnvironmentId.ToString("N");
 
         try
@@ -1047,19 +1059,50 @@ public sealed partial class RequestTabViewModel : ObservableObject
     /// </summary>
     private async Task RefreshPreviewEnvAsync(CancellationToken ct = default)
     {
+        // Show "Resolving…" only if resolution takes longer than 200 ms — avoids a flash
+        // on fast responses (cached envs, static-only envs, etc.).
+        using var loadingDelayCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var loadingDelayToken = loadingDelayCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(200, loadingDelayToken).ConfigureAwait(false);
+                Dispatcher.UIThread.Post(() =>
+                {
+                    IsPreviewUrlLoading = true;
+                    IsPreviewUrlError = false;
+                });
+            }
+            catch (OperationCanceledException) { }
+        });
+
         try
         {
-            var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, ct)
+            var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, allowStaleCache: true, ct: ct)
                 .ConfigureAwait(false);
 
+            loadingDelayCts.Cancel();
             Dispatcher.UIThread.Post(() =>
             {
                 _previewEnv = env;
+                IsPreviewUrlLoading = false;
                 OnPropertyChanged(nameof(PreviewUrl));
             });
         }
-        catch (OperationCanceledException) { }
-        catch { /* preview refresh is best-effort */ }
+        catch (OperationCanceledException)
+        {
+            loadingDelayCts.Cancel();
+        }
+        catch
+        {
+            loadingDelayCts.Cancel();
+            Dispatcher.UIThread.Post(() =>
+            {
+                IsPreviewUrlLoading = false;
+                IsPreviewUrlError = true;
+            });
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -1100,7 +1143,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(Url)) return;
 
-        var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, ct);
+        var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, ct: ct);
 
         // Resolve path params
         var pathParamValues = PathParams.GetEnabledPairs()
@@ -1187,7 +1230,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
         try
         {
-            var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, ct);
+            var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, ct: ct);
             var secretNames = BuildSecretVarNames();
             var sentBindings = new List<VariableBinding>();
 
@@ -1261,9 +1304,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 && !string.IsNullOrEmpty(Response?.Body))
             {
                 await UpdateDynamicCacheFromResponseAsync(Response!.Body, ct).ConfigureAwait(false);
-
-                // Refresh the URL preview so it reflects the newly-cached dynamic variable values.
-                _ = RefreshPreviewEnvAsync();
+                // Do NOT re-resolve the URL preview here — after a send, the environment has not
+                // changed, so the preview URL will never need to re-resolve.
             }
         }
         catch (OperationCanceledException)

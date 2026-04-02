@@ -635,19 +635,18 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         }
 
         // Compute the cache namespace for the config VM.
-        // For global env vars, use the same env-scoped namespace as the passive preview and
-        // send-time evaluation (globalId[env:previewId]) so that token cache entries written
-        // by "Send" are found by the "Test" button and vice versa.
-        // Switching the preview env therefore correctly invalidates any stale token.
+        // For global env vars, use the preview environment's ID so that cache entries written
+        // by "Send" are found by the "Test" button and vice versa (unified cache namespace).
         string configCacheNamespace;
-        if (isGlobal && SelectedGlobalPreviewEnvironment is { } previewChoice && envItem is not null)
-            configCacheNamespace = $"{envItem.EnvironmentId:N}[env:{previewChoice.EnvironmentId:N}]";
+        if (isGlobal && SelectedGlobalPreviewEnvironment is { } previewChoice)
+            configCacheNamespace = previewChoice.EnvironmentId.ToString("N");
         else
             configCacheNamespace = envItem?.EnvironmentId.ToString("N") ?? string.Empty;
 
         // For non-global envs, supply the global env's variables so that PreviewAsync
         // can pre-resolve global dynamic vars (e.g. `token`) before applying the
         // active env's own dynamic vars — same two-phase logic as send time.
+        // Use the active env's own cache namespace for global vars (unified namespace).
         IReadOnlyList<EnvironmentVariable>? globalVars = null;
         string? globalEnvCacheNamespace = null;
         if (!isGlobal)
@@ -656,7 +655,9 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             if (globalItem is not null)
             {
                 globalVars = globalItem.BuildModel().Variables;
-                globalEnvCacheNamespace = globalItem.EnvironmentId.ToString("N");
+                // Use the active env's namespace so the global resolution shares the same
+                // cache as send-time and the editor preview (unified cache namespace).
+                globalEnvCacheNamespace = envItem?.EnvironmentId.ToString("N");
             }
         }
 
@@ -817,15 +818,12 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             || (!SelectedEnvironment.IsGlobal && changed.IsGlobal))
             RefreshSelectedEnvironmentSuggestions();
 
-        // Re-push conflict info whenever the selected env's own vars change OR when global
-        // vars change (e.g. user toggles the override checkbox) regardless of which env is selected.
-        if (ReferenceEquals(changed, SelectedEnvironment) || changed.IsGlobal)
-            PushConflictInfo(SelectedEnvironment);
-
         // Re-run the full dynamic preview whenever the global env's variables change (e.g.
         // the force-override checkbox is toggled). That change alters the effective merge for
         // every concrete env, so the preview values must be recalculated.
-        if (changed.IsGlobal)
+        // Also refresh when the selected concrete env's own variables change (e.g. a new
+        // response-body variable was added) so the PREVIEW column appears.
+        if (changed.IsGlobal || ReferenceEquals(changed, SelectedEnvironment))
         {
             _dynPreviewCts?.Cancel();
             _dynPreviewCts = new CancellationTokenSource();
@@ -836,9 +834,9 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     /// <summary>
     /// Resolves all dynamic variables for <paramref name="env"/> and stores the results in it
     /// so that variable substitution previews include response-body and mock-data values.
-    /// For non-global environments, also resolves and pushes the global environment context
-    /// so that tokens like {{base-url}} and {{token}} resolve in the preview column even when
-    /// they live in the global env. Falls back silently on failure.
+    /// Uses a unified cache namespace: for global env, the preview environment's ID is used,
+    /// so cached values are shared with the send pipeline when that env is active.
+    /// Falls back silently on failure.
     /// </summary>
     private async Task RefreshDynamicPreviewsAsync(
         EnvironmentListItemViewModel env, CancellationToken ct)
@@ -847,172 +845,46 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
         var model = env.BuildModel();
 
-        var hasDynamic = model.Variables.Any(v =>
-            v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
-            || v.VariableType == EnvironmentVariable.VariableTypes.MockData
-            || v.VariableType == EnvironmentVariable.VariableTypes.Dynamic);
+        var globalItem = Environments.FirstOrDefault(e => e.IsGlobal);
+        if (globalItem is null) return; // Collection always has a global env; guard against edge cases.
+        var globalModel = globalItem.BuildModel();
 
-        // Whether this env has variables that actually require HTTP to compute.
-        // MockData vars are generated client-side and never need a network call.
-        var hasResponseBodyVars = model.Variables.Any(v =>
-            v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
-            || v.VariableType == EnvironmentVariable.VariableTypes.Dynamic);
+        // ── Determine cache namespace, static context, and global preview baseline ──
+        string cacheNamespace;
+        IReadOnlyDictionary<string, string> staticContext;
+        IReadOnlyDictionary<string, string> globalContextForPreview;
+        IReadOnlyDictionary<string, MockDataEntry> globalMockGenerators;
 
-        // ── Global env path ──────────────────────────────────────────────────
         if (env.IsGlobal)
         {
-            // Use the env-level preview selection when set; otherwise fall back to the first
-            // concrete environment. This matches the send-time cache namespace so cached tokens
-            // from recent request sends are reused without an extra HTTP call.
+            // Use the selected preview env's ID as the cache namespace so that cache entries
+            // written here are found (and reused) by the send pipeline when that env is active.
             var contextEnv = SelectedGlobalPreviewEnvironment ?? Environments.FirstOrDefault(e => !e.IsGlobal);
             var contextEnvModel = contextEnv?.BuildModel();
+            cacheNamespace = contextEnvModel is not null
+                ? contextEnvModel.EnvironmentId.ToString("N")
+                : globalModel.EnvironmentId.ToString("N");
 
-            // Build the static-only merged context for SetGlobalPreviewValues. The service uses
-            // the same three-layer precedence as the send pipeline:
-            //   (1) global statics → (2) context-env statics → (3) force-override global statics.
-            var globalStaticVars = _mergeService.BuildStaticMerge(model, contextEnvModel);
-
-            // Track which keys are the global env's OWN static vars so the dynVars filter
-            // below only excludes them — not same-named statics from the concrete context env.
-            var globalOwnStaticKeys = model.Variables
-                .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.Static
-                         && !string.IsNullOrWhiteSpace(v.Name))
-                .Select(v => v.Name.Trim())
-                .ToHashSet(StringComparer.Ordinal);
-
-            if (!hasDynamic)
-            {
-                // No dynamic vars — still push merged static context so that {{token}}-style
-                // references in static var values resolve correctly in the preview column.
-                env.SetGlobalPreviewValues(globalStaticVars, new Dictionary<string, MockDataEntry>());
-
-                // Keep global conflict rows honest by refreshing the preview env first so
-                // its response-body values are available for OVERRIDES / OVERRIDDEN WITH.
-                if (contextEnv is not null)
-                    await RefreshDynamicPreviewsAsync(contextEnv, ct).ConfigureAwait(true);
-
-                PushConflictInfo(env);
-                return;
-            }
-
-            try
-            {
-                // Resolve the global env's own dynamic vars against the preview context, but keep
-                // the row preview tied to the global variable's own resolved value rather than the
-                // final post-override merged value. The conflict row separately communicates when a
-                // concrete env value wins.
-                var globalResolved = await _dynamicEvaluator
-                    .ResolveAsync(
-                        _collectionFolderPath,
-                        BuildGlobalCacheNamespace(model, contextEnvModel),
-                        model.Variables,
-                        globalStaticVars,
-                        ct)
-                    .ConfigureAwait(true);
-                ct.ThrowIfCancellationRequested();
-
-                // Only exclude the global env's OWN static keys — not same-named statics from
-                // the preview context env (those must not suppress response-body preview values).
-                var dynVars = globalResolved.Variables
-                    .Where(kv => !globalOwnStaticKeys.Contains(kv.Key))
-                    .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
-                env.SetDynamicPreviewValues(dynVars, globalResolved.MockGenerators);
-                // Also push the merged static context so that {{token}}-style references in
-                // static var values resolve against the effective (preview-env-aware) merged dict.
-                env.SetGlobalPreviewValues(globalStaticVars, globalResolved.MockGenerators);
-
-                // Keep global conflict rows honest by refreshing the preview env first so
-                // its response-body values are available for OVERRIDES / OVERRIDDEN WITH.
-                if (contextEnv is not null)
-                    await RefreshDynamicPreviewsAsync(contextEnv, ct).ConfigureAwait(true);
-
-                PushConflictInfo(env);
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex,
-                    "Could not refresh dynamic variable previews for environment '{Name}'", env.Name);
-                PushConflictInfo(env);
-            }
-            return;
-        }
-
-        // ── Concrete env path ────────────────────────────────────────────────
-        // Step 1: Build global context vars (global statics + Phase 1 global dynamics) and
-        // push them to this env's preview system. This enables {{base-url}}, {{token}}, etc.
-        // in the preview column regardless of whether this env has its own dynamic vars.
-        var activeStaticVars = model.Variables
-            .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.Static
-                     && !string.IsNullOrWhiteSpace(v.Name))
-            .ToDictionary(v => v.Name.Trim(), v => v.Value, StringComparer.Ordinal);
-
-        var globalContextVars = new Dictionary<string, string>(StringComparer.Ordinal);
-        IReadOnlyDictionary<string, MockDataEntry> globalMockGenerators
-            = new Dictionary<string, MockDataEntry>();
-        // Global-only resolved values (no concrete-env statics re-applied on top).
-        // Used for conflict info so "OVERRIDDEN BY" shows the global var's own value.
-        Dictionary<string, string> pureGlobalContextVars = globalContextVars;
-        var globalItem = Environments.FirstOrDefault(e => e.IsGlobal);
-        var globalModel = globalItem?.BuildModel()
-            ?? new EnvironmentModel { FilePath = string.Empty, Name = "Global", Variables = [], EnvironmentId = Guid.Empty };
-
-        var globalHasResponseBody = globalModel.Variables.Any(v =>
-            v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
-            || v.VariableType == EnvironmentVariable.VariableTypes.Dynamic);
-
-        // Resolve global response-body vars whenever the global env has them.
-        // Use only the concrete env being viewed as the resolution context — this ensures
-        // the preview is honest: if the env is misconfigured (e.g. wrong base URL), the
-        // global dynamic vars that depend on it correctly show blank rather than leaking
-        // a resolved value from a different, working environment.
-        if (globalHasResponseBody)
-        {
-            try
-            {
-                var candidateMerge = await _mergeService
-                    .MergeAsync(_collectionFolderPath, globalModel, model, ct)
-                    .ConfigureAwait(true);
-                ct.ThrowIfCancellationRequested();
-
-                foreach (var kv in candidateMerge.Variables)
-                    globalContextVars[kv.Key] = kv.Value;
-                globalMockGenerators = candidateMerge.MockGenerators;
-
-                // Build conflict values from a global-only dynamic resolve. The merged
-                // candidate includes active-env static re-application, which can overwrite
-                // same-name global dynamic vars and cause an incorrect OVERRIDES preview.
-                var globalStaticContext = _mergeService.BuildStaticMerge(globalModel, model);
-                var globalResolvedForConflicts = await _dynamicEvaluator
-                    .ResolveAsync(
-                        _collectionFolderPath,
-                        BuildGlobalCacheNamespace(globalModel, model),
-                        globalModel.Variables,
-                        globalStaticContext,
-                        ct)
-                    .ConfigureAwait(true);
-                ct.ThrowIfCancellationRequested();
-
-                pureGlobalContextVars = BuildPureGlobalPreviewVars(globalModel, globalResolvedForConflicts.Variables);
-            }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex,
-                    "Could not resolve global dynamic vars for concrete env '{Name}'", env.Name);
-            }
-
-            // Re-apply active env's own statics at the end to maintain override precedence.
-            foreach (var kv in activeStaticVars)
-                globalContextVars[kv.Key] = kv.Value;
+            // For global env, the merged context (global + preview-env statics) is used both as
+            // the resolution context and as the baseline for the preview column so that
+            // {{base-url}} references from the preview env resolve in global static var previews.
+            staticContext = _mergeService.BuildStaticMerge(globalModel, contextEnvModel);
+            globalContextForPreview = staticContext;
+            globalMockGenerators = new Dictionary<string, MockDataEntry>();
         }
         else
         {
-            // No HTTP needed — still collect global mock-data generators so that
-            // {{faker-*}} tokens from the global env resolve in the preview column.
-            var globalStaticBase = _mergeService.BuildStaticMerge(globalModel, null);
-            foreach (var kv in globalStaticBase) globalContextVars[kv.Key] = kv.Value;
+            // Concrete env: use the env's own ID as the cache namespace.
+            cacheNamespace = model.EnvironmentId.ToString("N");
 
+            // For resolution, use the full merged context (global + concrete statics).
+            staticContext = _mergeService.BuildStaticMerge(globalModel, model);
+
+            // For the preview baseline, expose only global statics so that the concrete env's
+            // own statics can still override them in BuildResolvedEnvironment.
+            globalContextForPreview = _mergeService.BuildStaticMerge(globalModel, null);
+
+            // Global mock generators so that {{faker-*}} tokens from the global env resolve.
             var mockGens = new Dictionary<string, MockDataEntry>(StringComparer.Ordinal);
             foreach (var v in globalModel.Variables
                 .Where(v => v.VariableType == EnvironmentVariable.VariableTypes.MockData
@@ -1022,223 +894,158 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 if (entry is not null)
                     mockGens[v.Name] = entry;
             }
-            if (mockGens.Count > 0)
-                globalMockGenerators = mockGens;
-
-            // No activeStaticVars overlay in this branch — but still build pureGlobalContextVars
-            // explicitly from the global model's static values rather than reusing the
-            // globalContextVars reference, so that any future modification cannot contaminate it.
-            pureGlobalContextVars = BuildPureGlobalPreviewVars(globalModel, globalContextVars);
+            globalMockGenerators = mockGens;
         }
 
-        // Push global context: {{base-url}}, {{token}}, {{faker-*}}, etc. now resolve
-        // in the preview column regardless of whether this env has its own dynamic vars.
-        env.SetGlobalPreviewValues(globalContextVars, globalMockGenerators);
-        // Store pure global values (before concrete-env statics overlay) for conflict display.
-        env.SetPureGlobalPreviewVars(pureGlobalContextVars);
+        // ── Push global context so {{token}}-style refs resolve in the preview column ──
+        env.SetGlobalPreviewValues(globalContextForPreview, globalMockGenerators);
 
-        // Push conflict info using the pure global context vars so that
-        // "OVERRIDDEN BY" on concrete vars shows the global env's resolved value.
-        PushConflictInfoForConcreteEnv(env, pureGlobalContextVars);
+        // ── Push override flags synchronously (no HTTP needed) ────────────────────────
+        PushOverrideFlags(env);
 
-        if (!hasDynamic) return; // No dynamic vars in this env — global context above is sufficient.
+        // ── Categorise dynamic variables ──────────────────────────────────────────────
+        var mockGenerators = new Dictionary<string, MockDataEntry>(StringComparer.Ordinal);
+        var responseBodyVars = new List<EnvironmentVariable>();
 
-        // Step 2: Resolve this env's own dynamic vars from the pre-final-override context so
-        // PREVIEW reflects concrete-env evaluation, while the conflict row communicates when
-        // a force-override global var wins at send time.
+        foreach (var v in model.Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
+        {
+            if (v.VariableType == EnvironmentVariable.VariableTypes.MockData)
+            {
+                var entry = v.GetMockEntry();
+                if (entry is not null) mockGenerators[v.Name.Trim()] = entry;
+            }
+            else if (v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
+                     && !string.IsNullOrEmpty(v.ResponseRequestName))
+            {
+                responseBodyVars.Add(v);
+            }
+        }
+
+        if (mockGenerators.Count == 0 && responseBodyVars.Count == 0) return;
+
+        // ── Apply mock-data previews immediately (synchronous — no HTTP needed) ──────
+        if (mockGenerators.Count > 0)
+            env.ApplyMockDataPreviews(mockGenerators);
+
+        // ── Launch one independent task per response-body variable ───────────────────
+        // Each variable resolves independently so fast ones update the UI before slow ones,
+        // and a 10-second per-variable timeout ensures network errors surface promptly.
+        foreach (var variable in responseBodyVars)
+        {
+            var key = variable.Name.Trim();
+            var varVm = env.Variables.FirstOrDefault(v => v.Name.Trim() == key && v.IsResponseBody);
+            varVm?.MarkDynamicPreviewLoading();
+            _ = ResolveResponseBodyVarPreviewAsync(env, variable, staticContext, cacheNamespace, ct);
+        }
+    }
+
+    /// <summary>
+    /// Resolves a single response-body variable for the editor preview and updates the UI when
+    /// complete. Falls back silently to the error indicator on failure.
+    /// </summary>
+    private async Task ResolveResponseBodyVarPreviewAsync(
+        EnvironmentListItemViewModel env,
+        EnvironmentVariable variable,
+        IReadOnlyDictionary<string, string> staticContext,
+        string cacheNamespace,
+        CancellationToken ct)
+    {
+        if (_collectionFolderPath is null) return;
+
         try
         {
-            var activeResolveContext = new Dictionary<string, string>(pureGlobalContextVars, StringComparer.Ordinal);
-            foreach (var kv in activeStaticVars)
-                activeResolveContext[kv.Key] = kv.Value;
-
-            var activeResolved = await _dynamicEvaluator
+            var resolved = await _dynamicEvaluator
                 .ResolveAsync(
                     _collectionFolderPath,
-                    model.EnvironmentId.ToString("N"),
-                    model.Variables,
-                    activeResolveContext,
+                    cacheNamespace,
+                    [variable],
+                    staticContext,
+                    allowStaleCache: true,
                     ct)
                 .ConfigureAwait(true);
+
             ct.ThrowIfCancellationRequested();
 
-            // Extract only the active env's own dynamic var values.
-            var activeDynVarNames = model.Variables
-                .Where(v => v.VariableType != EnvironmentVariable.VariableTypes.Static
-                         && !string.IsNullOrWhiteSpace(v.Name))
-                .Select(v => v.Name.Trim())
-                .ToHashSet(StringComparer.Ordinal);
+            var key = variable.Name.Trim();
 
-            var dynVars = activeResolved.Variables
-                .Where(kv => activeDynVarNames.Contains(kv.Key))
-                .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+            string? resolvedValue = null;
+            if (!resolved.FailedVariables.Contains(key) && !resolved.FailedVariables.Contains(variable.Name))
+            {
+                resolvedValue = resolved.Variables.TryGetValue(key, out var val)
+                                || resolved.Variables.TryGetValue(variable.Name, out val) ? val : null;
+            }
 
-            env.SetDynamicPreviewValues(dynVars, activeResolved.MockGenerators);
+            env.ApplySingleResponseBodyPreview(variable.Name, resolvedValue, failed: resolvedValue is null);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Environment selection changed — preview refresh superseded.
+            // Env selection changed — clear the loading indicator without showing an error.
+            var key = variable.Name.Trim();
+            var varVm = env.Variables.FirstOrDefault(v => v.Name.Trim() == key && v.IsResponseBody);
+            varVm?.ClearDynamicPreviewState();
+            varVm?.NotifyPreviewChanged();
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex,
-                "Could not refresh dynamic variable previews for environment '{Name}'", env.Name);
+                "Dynamic variable preview failed for '{Name}'", variable.Name);
+            env.ApplySingleResponseBodyPreview(variable.Name, null, failed: true);
         }
-    }
-
-    private static Dictionary<string, string> BuildPureGlobalPreviewVars(
-        EnvironmentModel globalModel,
-        IReadOnlyDictionary<string, string> resolvedGlobalVars)
-    {
-        var pureGlobalContextVars = new Dictionary<string, string>(StringComparer.Ordinal);
-
-        foreach (var globalVariable in globalModel.Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
-        {
-            var key = globalVariable.Name.Trim();
-
-            if (globalVariable.VariableType == EnvironmentVariable.VariableTypes.Static)
-            {
-                pureGlobalContextVars[key] = globalVariable.Value;
-                continue;
-            }
-
-            if (globalVariable.VariableType == EnvironmentVariable.VariableTypes.MockData)
-            {
-                var entry = globalVariable.GetMockEntry();
-                if (entry is not null)
-                    pureGlobalContextVars[key] = MockDataCatalog.Generate(entry.Category, entry.Field);
-
-                continue;
-            }
-
-            if (resolvedGlobalVars.TryGetValue(key, out var resolvedValue))
-                pureGlobalContextVars[key] = resolvedValue;
-        }
-
-        return pureGlobalContextVars;
-    }
-
-    private static string BuildGlobalCacheNamespace(EnvironmentModel globalEnv, EnvironmentModel? contextEnv)
-    {
-        return contextEnv is not null
-            ? $"{globalEnv.EnvironmentId:N}[env:{contextEnv.EnvironmentId:N}]"
-            : globalEnv.EnvironmentId.ToString("N");
     }
 
     /// <summary>
-    /// Pushes conflict info (OVERRIDES / OVERRIDDEN BY) to each variable row in <paramref name="env"/>.
+    /// Pushes a simple override warning flag to each variable row in <paramref name="env"/>.
+    /// <list type="bullet">
+    ///   <item>
+    ///     Global env: flag is set when a same-named variable exists in the preview environment
+    ///     AND the global var does not have force-override set (i.e., it loses to the concrete var).
+    ///   </item>
+    ///   <item>
+    ///     Concrete env: flag is set only when a same-named global variable has
+    ///     <see cref="EnvironmentVariableItemViewModel.IsForceGlobalOverride"/> set to
+    ///     <see langword="true"/>, meaning the concrete variable will actually be overridden at runtime.
+    ///   </item>
+    /// </list>
+    /// No network calls are needed — only variable names and IsForceGlobalOverride are consulted.
     /// </summary>
-    private void PushConflictInfo(EnvironmentListItemViewModel env)
+    private void PushOverrideFlags(EnvironmentListItemViewModel env)
     {
         if (env.IsGlobal)
         {
-            // For global env: compare each var against the "preview against" concrete env.
             var previewEnv = SelectedGlobalPreviewEnvironment ?? Environments.FirstOrDefault(e => !e.IsGlobal);
-            if (previewEnv is null)
-            {
-                env.SetConflictValues(new Dictionary<string, (string, string, string)>());
-                return;
-            }
+            var previewVarNames = previewEnv is not null
+                ? previewEnv.BuildModel().Variables
+                    .Where(v => !string.IsNullOrWhiteSpace(v.Name))
+                    .Select(v => v.Name.Trim())
+                    .ToHashSet(StringComparer.Ordinal)
+                : (IReadOnlySet<string>)new HashSet<string>(StringComparer.Ordinal);
 
-            var concreteVars = previewEnv.BuildModel().Variables
-                .Where(v => !string.IsNullOrWhiteSpace(v.Name))
-                .ToDictionary(
-                    v => v.Name.Trim(),
-                    v =>
-                    {
-                        var key = v.Name.Trim();
-                        var value = previewEnv.TryGetResolvedPreviewValue(key, out var resolvedPreview)
-                            ? resolvedPreview
-                            : v.Value;
-                        return (value, v.IsSecret, v.VariableType);
-                    },
-                    StringComparer.Ordinal);
+            var overriddenSet = env.BuildModel().Variables
+                .Where(v => !string.IsNullOrWhiteSpace(v.Name)
+                         && !v.IsForceGlobalOverride
+                         && previewVarNames.Contains(v.Name.Trim()))
+                .Select(v => v.Name.Trim())
+                .ToHashSet(StringComparer.Ordinal);
 
-            var conflicts = new Dictionary<string, (string label, string value, string toolTip)>(StringComparer.Ordinal);
-            foreach (var v in env.BuildModel().Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
-            {
-                var key = v.Name.Trim();
-                if (concreteVars.TryGetValue(key, out var concreteVar))
-                {
-                    var label = v.IsForceGlobalOverride ? "OVERRIDES" : "OVERRIDDEN WITH";
-                    var toolTip = v.IsForceGlobalOverride
-                        ? "Overrides this value when used in requests in the previewed environment"
-                        : "Overridden with this value when used in requests in the previewed environment";
-                    conflicts[key] = ($"{label}{ConflictLabelSuffix(concreteVar.VariableType)}", concreteVar.IsSecret ? MaskedSecretValue : concreteVar.value, toolTip);
-                }
-            }
-
-            env.SetConflictValues(conflicts);
+            var previewEnvName = previewEnv?.Name ?? "the preview environment";
+            env.SetOverrideFlags(overriddenSet,
+                _ => $"Overridden by a same-named variable in {previewEnvName}");
         }
         else
         {
-            // For concrete env: use the pre-resolved global preview vars (already cached on the env).
-            PushConflictInfoForConcreteEnv(env, env.GetResolvedGlobalPreviewVars());
+            // Only flag concrete vars that are actually overridden — i.e. a same-named global var
+            // has IsForceGlobalOverride = true so the global value wins at runtime.
+            var globalItem = Environments.FirstOrDefault(e => e.IsGlobal);
+            var overridingGlobalNames = globalItem is not null
+                ? globalItem.BuildModel().Variables
+                    .Where(v => !string.IsNullOrWhiteSpace(v.Name) && v.IsForceGlobalOverride)
+                    .Select(v => v.Name.Trim())
+                    .ToHashSet(StringComparer.Ordinal)
+                : (IReadOnlySet<string>)new HashSet<string>(StringComparer.Ordinal);
+
+            env.SetOverrideFlags(overridingGlobalNames,
+                _ => "Overridden by a global variable");
         }
-    }
-
-    /// <summary>
-    /// Pushes conflict info to a concrete env's variable rows, using
-    /// <paramref name="resolvedGlobalVars"/> as the source of the global env's resolved values.
-    /// Matching vars show either "OVERRIDDEN WITH" (global Override enabled) or
-    /// "OVERRIDES" (global Override disabled).
-    /// </summary>
-    private void PushConflictInfoForConcreteEnv(
-        EnvironmentListItemViewModel env,
-        IReadOnlyDictionary<string, string> resolvedGlobalVars)
-    {
-        var globalItem = Environments.FirstOrDefault(e => e.IsGlobal);
-        if (globalItem is null)
-        {
-            env.SetConflictValues(new Dictionary<string, (string, string, string)>());
-            return;
-        }
-
-        var globalVarsByName = globalItem.BuildModel().Variables
-            .Where(v => !string.IsNullOrWhiteSpace(v.Name))
-            .ToDictionary(v => v.Name.Trim(), v => v, StringComparer.Ordinal);
-
-        if (globalVarsByName.Count == 0)
-        {
-            env.SetConflictValues(new Dictionary<string, (string, string, string)>());
-            return;
-        }
-
-        var conflicts = new Dictionary<string, (string label, string value, string toolTip)>(StringComparer.Ordinal);
-        foreach (var v in env.BuildModel().Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
-        {
-            var key = v.Name.Trim();
-            if (!globalVarsByName.TryGetValue(key, out var globalVar))
-                continue;
-
-            var shortLabel = globalVar.IsForceGlobalOverride ? "OVERRIDDEN WITH" : "OVERRIDES";
-            var label = $"{shortLabel}{ConflictLabelSuffix(globalVar.VariableType)}";
-
-            if (globalVar.IsForceGlobalOverride)
-            {
-                if (globalVar.IsSecret)
-                {
-                    conflicts[key] = (label, MaskedSecretValue, "Overridden by a secret global variable");
-                    continue;
-                }
-
-                if (resolvedGlobalVars.TryGetValue(key, out var globalValue))
-                    conflicts[key] = (label, globalValue, "Overridden with this value by a global variable");
-
-                continue;
-            }
-
-            if (globalVar.IsSecret)
-            {
-                conflicts[key] = (label, MaskedSecretValue, "Overrides a secret global variable");
-                continue;
-            }
-
-            if (resolvedGlobalVars.TryGetValue(key, out var globalPreviewValue))
-                conflicts[key] = (label, globalPreviewValue, "Overrides this global variable value");
-        }
-
-        env.SetConflictValues(conflicts);
     }
 
     /// <summary>
@@ -1535,11 +1342,4 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         return names;
     }
 
-    private static string ConflictLabelSuffix(string variableType) => variableType switch
-    {
-        EnvironmentVariable.VariableTypes.ResponseBody or
-        EnvironmentVariable.VariableTypes.Dynamic => " (DYNAMIC DATA)",
-        EnvironmentVariable.VariableTypes.MockData => " (MOCK DATA)",
-        _ => ""
-    };
 }

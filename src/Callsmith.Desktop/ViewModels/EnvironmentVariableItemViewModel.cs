@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
 using Callsmith.Desktop.Controls;
@@ -20,6 +21,9 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     private readonly Func<ResolvedEnvironment> _getResolvedEnv;
     private readonly Func<EnvironmentVariable?, Task<EnvironmentVariable?>> _editMockData;
     private readonly Func<EnvironmentVariable?, Task<EnvironmentVariable?>> _editResponseBody;
+
+    // Debounce CTS — prevent "Resolving…" from flashing on fast resolution.
+    private CancellationTokenSource? _dynamicLoadingDelayCts;
 
     /// <summary>
     /// True if this variable belongs to a concrete (non-global) Bruno environment.
@@ -49,28 +53,13 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _isForceGlobalOverride;
 
+    /// <summary>True when this variable has a name collision with a variable in the other environment tier.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasConflict))]
-    private string? _conflictLabel;
+    private bool _isOverridden;
 
+    /// <summary>Tooltip text explaining the override/collision when <see cref="IsOverridden"/> is true.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasConflict))]
-    private string? _conflictValue;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasConflict))]
-    private string? _conflictToolTip;
-
-    /// <summary>True when this variable has a conflict with the preview environment that should be shown.</summary>
-    public bool HasConflict => ConflictLabel is not null && ConflictValue is not null;
-
-    /// <summary>Updates the conflict label and value shown in the override/overridden-by preview row.</summary>
-    internal void SetConflictInfo(string? label, string? value, string? toolTip)
-    {
-        ConflictLabel = label;
-        ConflictValue = value;
-        ConflictToolTip = toolTip;
-    }
+    private string? _overrideTooltip;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsStatic))]
@@ -94,7 +83,18 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PreviewValue))]
     [NotifyPropertyChangedFor(nameof(HasPreview))]
+    [NotifyPropertyChangedFor(nameof(IsPreviewValueVisible))]
     private string? _dynamicPreviewValue;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPreview))]
+    [NotifyPropertyChangedFor(nameof(IsPreviewValueVisible))]
+    private bool _isDynamicPreviewLoading;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPreview))]
+    [NotifyPropertyChangedFor(nameof(IsPreviewValueVisible))]
+    private bool _isDynamicPreviewError;
 
     // ── Mock-data properties ─────────────────────────────────────────────────
 
@@ -252,8 +252,56 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     }
 
     public bool HasPreview => !IsSecret && 
-        ((IsStatic && TokenPattern().IsMatch(Value)) ||
-         ((IsMockData || IsResponseBody) && DynamicPreviewValue != null));
+        ((IsStatic && TokenPattern().IsMatch(Value)) || IsMockData || IsResponseBody);
+
+    /// <summary>True when the resolved preview value TextBlock should be visible (not loading or error).</summary>
+    public bool IsPreviewValueVisible => !IsDynamicPreviewLoading && !IsDynamicPreviewError;
+
+    /// <summary>Marks the dynamic preview value as currently loading.</summary>
+    internal void MarkDynamicPreviewLoading()
+    {
+        _dynamicLoadingDelayCts?.Cancel();
+        _dynamicLoadingDelayCts?.Dispose();
+        // Reset both flags so a stale loading=true from a cancelled refresh doesn't persist.
+        IsDynamicPreviewLoading = false;
+        IsDynamicPreviewError = false;
+        var cts = new CancellationTokenSource();
+        _dynamicLoadingDelayCts = cts;
+        _ = Task.Delay(200, cts.Token).ContinueWith(
+            _ => Dispatcher.UIThread.Post(() =>
+            {
+                if (!cts.IsCancellationRequested)
+                    IsDynamicPreviewLoading = true;
+            }),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnRanToCompletion,
+            TaskScheduler.Default);
+    }
+
+    /// <summary>Marks the dynamic preview value as failed to resolve.</summary>
+    internal void MarkDynamicPreviewError()
+    {
+        _dynamicLoadingDelayCts?.Cancel();
+        _dynamicLoadingDelayCts?.Dispose();
+        _dynamicLoadingDelayCts = null;
+        // Set error BEFORE clearing loading so HasPreview stays true throughout the transition.
+        // If loading=false is set first, HasPreview briefly becomes false (when DynamicPreviewValue
+        // is also null), which collapses the preview Border in Avalonia. When the Border then
+        // tries to re-expand for the error state, child bindings may not update correctly,
+        // resulting in a blank preview instead of "Unable to resolve value".
+        IsDynamicPreviewError = true;
+        IsDynamicPreviewLoading = false;
+    }
+
+    /// <summary>Clears loading and error states (called when a resolved value arrives).</summary>
+    internal void ClearDynamicPreviewState()
+    {
+        _dynamicLoadingDelayCts?.Cancel();
+        _dynamicLoadingDelayCts?.Dispose();
+        _dynamicLoadingDelayCts = null;
+        IsDynamicPreviewLoading = false;
+        IsDynamicPreviewError = false;
+    }
 
     [System.Text.RegularExpressions.GeneratedRegex(@"\{\{[^}]+\}\}")]
     private static partial System.Text.RegularExpressions.Regex TokenPattern();

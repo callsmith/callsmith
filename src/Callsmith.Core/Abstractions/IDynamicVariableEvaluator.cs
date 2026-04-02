@@ -20,13 +20,21 @@ public interface IDynamicVariableEvaluator
     /// <param name="collectionFolderPath">Root folder of the collection (used to locate requests).</param>
     /// <param name="environmentCacheNamespace">
     /// Stable string that namespaces cache entries for this environment context.
-    /// Pass <c>environmentId.ToString("N")</c> for a concrete environment; for the global
-    /// environment scoped to a specific active environment, pass a compound string such as
-    /// <c>$"{globalEnvId:N}[env:{activeEnvId:N}]"</c>.
+    /// Pass <c>environmentId.ToString("N")</c> for a concrete environment. For the global
+    /// environment scoped to a specific active environment, also pass the active environment's
+    /// ID so that all cache entries — from the editor preview, the send pipeline, and the
+    /// response-body config dialog — share the same namespace.
     /// </param>
     /// <param name="variables">All variables in the active environment.</param>
     /// <param name="staticVariables">
     /// Already-resolved static variables used when substituting into linked requests.
+    /// </param>
+    /// <param name="allowStaleCache">
+    /// When <see langword="true"/>, any existing cache entry is returned immediately regardless
+    /// of its age or the variable's <see cref="DynamicFrequency"/> setting. An HTTP request is
+    /// only made when no cache entry exists at all. Use <see langword="true"/> for editor preview
+    /// calls where slightly stale values are acceptable; use <see langword="false"/> (the default)
+    /// for the actual request send pipeline where freshness matters.
     /// </param>
     /// <param name="ct">Cancellation token.</param>
     Task<ResolvedEnvironment> ResolveAsync(
@@ -34,6 +42,7 @@ public interface IDynamicVariableEvaluator
         string environmentCacheNamespace,
         IReadOnlyList<EnvironmentVariable> variables,
         IReadOnlyDictionary<string, string> staticVariables,
+        bool allowStaleCache = false,
         CancellationToken ct = default);
 
     /// <summary>

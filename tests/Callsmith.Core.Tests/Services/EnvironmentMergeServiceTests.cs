@@ -122,6 +122,7 @@ public sealed class EnvironmentMergeServiceTests
                 Arg.Any<string>(),
                 Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<bool>(),
                 Arg.Any<CancellationToken>())
             .Returns(new ResolvedEnvironment
             {
@@ -140,10 +141,10 @@ public sealed class EnvironmentMergeServiceTests
     }
 
     [Fact]
-    public async Task MergeAsync_GlobalCacheNamespace_IncludesActiveEnvId_WhenActivePresent()
+    public async Task MergeAsync_GlobalCacheNamespace_UsesActiveEnvId_WhenActivePresent()
     {
         var evaluator = Substitute.For<IDynamicVariableEvaluator>();
-        evaluator.ResolveAsync(default!, default!, default!, default!, default)
+        evaluator.ResolveAsync(default!, default!, default!, default!, default, default)
             .ReturnsForAnyArgs(new ResolvedEnvironment { Variables = new Dictionary<string, string>() });
 
         var sut = new EnvironmentMergeService(evaluator);
@@ -152,12 +153,14 @@ public sealed class EnvironmentMergeServiceTests
 
         await sut.MergeAsync("C:/col", global, active);
 
-        // The global resolve call must use the env-scoped cache namespace.
+        // The global resolve call must use the active env's ID as the cache namespace
+        // (unified namespace — same as the concrete env's own cache key).
         await evaluator.Received().ResolveAsync(
             Arg.Any<string>(),
-            Arg.Is<string>(ns => ns == $"{global.EnvironmentId:N}[env:{active.EnvironmentId:N}]"),
+            Arg.Is<string>(ns => ns == active.EnvironmentId.ToString("N")),
             Arg.Is<IReadOnlyList<EnvironmentVariable>>(v => v == global.Variables),
             Arg.Any<IReadOnlyDictionary<string, string>>(),
+            Arg.Any<bool>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -165,7 +168,7 @@ public sealed class EnvironmentMergeServiceTests
     public async Task MergeAsync_GlobalCacheNamespace_IsGlobalIdOnly_WhenNoActiveEnv()
     {
         var evaluator = Substitute.For<IDynamicVariableEvaluator>();
-        evaluator.ResolveAsync(default!, default!, default!, default!, default)
+        evaluator.ResolveAsync(default!, default!, default!, default!, default, default)
             .ReturnsForAnyArgs(new ResolvedEnvironment { Variables = new Dictionary<string, string>() });
 
         var sut = new EnvironmentMergeService(evaluator);
@@ -178,6 +181,7 @@ public sealed class EnvironmentMergeServiceTests
             Arg.Is<string>(ns => ns == global.EnvironmentId.ToString("N")),
             Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
             Arg.Any<IReadOnlyDictionary<string, string>>(),
+            Arg.Any<bool>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -193,6 +197,7 @@ public sealed class EnvironmentMergeServiceTests
                 Arg.Any<string>(),
                 Arg.Is<IReadOnlyList<EnvironmentVariable>>(v => v.Any(x => x.Name == "base-url")),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<bool>(),
                 Arg.Any<CancellationToken>())
             .Returns(new ResolvedEnvironment
             {
@@ -204,6 +209,7 @@ public sealed class EnvironmentMergeServiceTests
                 Arg.Any<string>(),
                 Arg.Is<IReadOnlyList<EnvironmentVariable>>(v => !v.Any(x => x.Name == "base-url")),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<bool>(),
                 Arg.Any<CancellationToken>())
             .Returns(new ResolvedEnvironment { Variables = new Dictionary<string, string>() });
 
@@ -226,23 +232,27 @@ public sealed class EnvironmentMergeServiceTests
         var globalId = Guid.NewGuid();
         var activeId = Guid.NewGuid();
         var evaluator = Substitute.For<IDynamicVariableEvaluator>();
-        // Global resolution call.
-        evaluator.ResolveAsync(
-                Arg.Any<string>(),
-                Arg.Is<string>(ns => ns.StartsWith(globalId.ToString("N"))),
-                Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
-                Arg.Any<IReadOnlyDictionary<string, string>>(),
-                Arg.Any<CancellationToken>())
-            .Returns(new ResolvedEnvironment
-            {
-                Variables = new Dictionary<string, string> { ["token"] = "Bearer-global" },
-            });
-        // Active resolution call.
+        // Global resolution call — now uses the active env's ID as the namespace (unified cache).
         evaluator.ResolveAsync(
                 Arg.Any<string>(),
                 Arg.Is<string>(ns => ns == activeId.ToString("N")),
                 Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new ResolvedEnvironment
+            {
+                Variables = new Dictionary<string, string> { ["token"] = "Bearer-global" },
+            });
+        // Active resolution call — also uses the active env's ID but with the active env's own variables.
+        // Since both namespaces are the same, NSubstitute will use the first matching mock for both.
+        // We suppress the active call by returning empty for that variable list specifically.
+        evaluator.ResolveAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Is<IReadOnlyList<EnvironmentVariable>>(v => v.Any(x => x.Name == "token" && x.VariableType == EnvironmentVariable.VariableTypes.Static)),
+                Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<bool>(),
                 Arg.Any<CancellationToken>())
             .Returns(new ResolvedEnvironment { Variables = new Dictionary<string, string>() });
 
@@ -284,6 +294,7 @@ public sealed class EnvironmentMergeServiceTests
                 Arg.Any<string>(),
                 Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<bool>(),
                 Arg.Any<CancellationToken>())
             .Returns(new ResolvedEnvironment
             {
@@ -303,7 +314,7 @@ public sealed class EnvironmentMergeServiceTests
     public async Task MergeAsync_ActiveDynamicCacheNamespace_IsActiveEnvId()
     {
         var evaluator = Substitute.For<IDynamicVariableEvaluator>();
-        evaluator.ResolveAsync(default!, default!, default!, default!, default)
+        evaluator.ResolveAsync(default!, default!, default!, default!, default, default)
             .ReturnsForAnyArgs(new ResolvedEnvironment { Variables = new Dictionary<string, string>() });
 
         var sut = new EnvironmentMergeService(evaluator);
@@ -317,6 +328,7 @@ public sealed class EnvironmentMergeServiceTests
             Arg.Is<string>(ns => ns == active.EnvironmentId.ToString("N")),
             Arg.Is<IReadOnlyList<EnvironmentVariable>>(v => v == active.Variables),
             Arg.Any<IReadOnlyDictionary<string, string>>(),
+            Arg.Any<bool>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -325,7 +337,7 @@ public sealed class EnvironmentMergeServiceTests
     {
         var mockEntry = MockDataCatalog.All.First(e => e.Category == "Internet" && e.Field == "Email");
         var evaluator = Substitute.For<IDynamicVariableEvaluator>();
-        evaluator.ResolveAsync(default!, default!, default!, default!, default)
+        evaluator.ResolveAsync(default!, default!, default!, default!, default, default)
             .ReturnsForAnyArgs(new ResolvedEnvironment
             {
                 Variables = new Dictionary<string, string>(),
@@ -350,6 +362,7 @@ public sealed class EnvironmentMergeServiceTests
                 Arg.Any<string>(), Arg.Any<string>(),
                 Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<bool>(),
                 Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("network error"));
 
@@ -375,13 +388,14 @@ public sealed class EnvironmentMergeServiceTests
                 Arg.Any<string>(), Arg.Any<string>(),
                 Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<bool>(),
                 Arg.Any<CancellationToken>())
             .ThrowsAsync(new OperationCanceledException());
 
         var sut = new EnvironmentMergeService(evaluator);
         var global = GlobalEnv(ResponseBodyVar("token"));
 
-        await sut.Invoking(s => s.MergeAsync("C:/col", global, null, cts.Token))
+        await sut.Invoking(s => s.MergeAsync("C:/col", global, null, ct: cts.Token))
             .Should().ThrowAsync<OperationCanceledException>();
     }
 
@@ -422,6 +436,7 @@ public sealed class EnvironmentMergeServiceTests
                 Arg.Any<string>(),
                 Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
                 Arg.Do<IReadOnlyDictionary<string, string>>(ctx => capturedContext = ctx),
+                Arg.Any<bool>(),
                 Arg.Any<CancellationToken>())
             .Returns(new ResolvedEnvironment { Variables = new Dictionary<string, string>() });
 
@@ -432,5 +447,29 @@ public sealed class EnvironmentMergeServiceTests
         await sut.MergeAsync("C:/col", global, active);
 
         capturedContext.Should().ContainKey("base-url").WhoseValue.Should().Be("https://api.dev.com");
+    }
+
+    // ─── allowStaleCache propagation ─────────────────────────────────────────
+
+    [Fact]
+    public async Task MergeAsync_AllowStaleCache_IsForwardedToEvaluator()
+    {
+        bool? capturedAllowStale = null;
+        var evaluator = Substitute.For<IDynamicVariableEvaluator>();
+        evaluator.ResolveAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
+                Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Do<bool>(v => capturedAllowStale = v),
+                Arg.Any<CancellationToken>())
+            .Returns(new ResolvedEnvironment { Variables = new Dictionary<string, string>() });
+
+        var sut = new EnvironmentMergeService(evaluator);
+        var global = GlobalEnv(ResponseBodyVar("token"));
+
+        await sut.MergeAsync("C:/col", global, null, allowStaleCache: true);
+
+        capturedAllowStale.Should().BeTrue("allowStaleCache = true must be forwarded to the evaluator");
     }
 }

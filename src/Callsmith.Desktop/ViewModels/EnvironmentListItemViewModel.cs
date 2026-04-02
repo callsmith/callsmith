@@ -30,15 +30,10 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     private IReadOnlyDictionary<string, MockDataEntry> _mockGenerators
         = new Dictionary<string, MockDataEntry>();
 
-    // Pre-resolved global environment vars (global statics + global dynamics resolved for this
-    // env's context). Used as baseline in BuildResolvedEnvironment so that tokens like
+    // Pre-resolved global environment vars (global statics resolved for this env's context).
+    // Used as baseline in BuildResolvedEnvironment so that tokens like
     // {{base-url}} and {{token}} that live in the global env resolve in the preview column.
     private Dictionary<string, string> _globalPreviewVars = new(StringComparer.Ordinal);
-
-    // Global-only resolved values (no concrete-env statics overlaid). Used for conflict
-    // info display ("OVERRIDDEN BY") so that the value shown is the global var's own value
-    // rather than the concrete env's value that was re-applied as context for token expansion.
-    private Dictionary<string, string> _pureGlobalPreviewVars = new(StringComparer.Ordinal);
 
     // Mock-data generators from the global environment so that {{faker-internet-example-email}}
     // and similar global mock vars resolve in the preview column of concrete environments.
@@ -442,24 +437,6 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Stores global-only resolved values (without any concrete-env statics overlaid on top).
-    /// Used by <see cref="EnvironmentEditorViewModel"/> to populate the "OVERRIDDEN BY" conflict
-    /// row: the value shown must be the global var's own resolved value, not the concrete env's.
-    /// Must be called <em>before</em> active-env statics are re-applied to the context dict.
-    /// </summary>
-    internal void SetPureGlobalPreviewVars(IReadOnlyDictionary<string, string> pureGlobalVars)
-    {
-        _pureGlobalPreviewVars = new Dictionary<string, string>(pureGlobalVars, StringComparer.Ordinal);
-    }
-
-    /// <summary>
-    /// Returns a snapshot of the resolved global preview variables stored on this environment.
-    /// Used by <see cref="EnvironmentEditorViewModel"/> to populate the "OVERRIDDEN BY" conflict
-    /// row on concrete-env variables when a force-override global var wins.
-    /// </summary>
-    internal IReadOnlyDictionary<string, string> GetResolvedGlobalPreviewVars() => _pureGlobalPreviewVars;
-
-    /// <summary>
     /// Returns the currently resolved preview value for <paramref name="variableName"/>, if any.
     /// This uses the same merged preview context as the PREVIEW column.
     /// </summary>
@@ -476,18 +453,17 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Updates the conflict label/value for each variable row based on a pre-built conflict map.
-    /// Variables not present in <paramref name="conflicts"/> have their conflict info cleared.
+    /// Sets the <see cref="EnvironmentVariableItemViewModel.IsOverridden"/> flag and tooltip on each
+    /// variable row whose name is in <paramref name="overriddenVarNames"/>.
+    /// Variables not in the set have their flag cleared.
     /// </summary>
-    internal void SetConflictValues(IReadOnlyDictionary<string, (string label, string value, string toolTip)> conflicts)
+    internal void SetOverrideFlags(IReadOnlySet<string> overriddenVarNames, Func<string, string?> getTooltip)
     {
         foreach (var v in Variables)
         {
             var key = v.Name.Trim();
-            if (!string.IsNullOrWhiteSpace(key) && conflicts.TryGetValue(key, out var info))
-                v.SetConflictInfo(info.label, info.value, info.toolTip);
-            else
-                v.SetConflictInfo(null, null, null);
+            v.IsOverridden = !string.IsNullOrWhiteSpace(key) && overriddenVarNames.Contains(key);
+            v.OverrideTooltip = v.IsOverridden ? getTooltip(key) : null;
         }
     }
 
@@ -504,7 +480,8 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     /// </summary>
     internal void SetDynamicPreviewValues(
         IReadOnlyDictionary<string, string> dynVars,
-        IReadOnlyDictionary<string, MockDataEntry> generators)
+        IReadOnlyDictionary<string, MockDataEntry> generators,
+        IReadOnlySet<string>? failedVars = null)
     {
         _resolvedDynVars = new Dictionary<string, string>(dynVars, StringComparer.Ordinal);
         _mockGenerators = generators;
@@ -532,6 +509,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
                 {
                     v.DynamicPreviewValue = null;
                 }
+                v.ClearDynamicPreviewState();
             }
             else if (v.IsResponseBody)
             {
@@ -540,13 +518,136 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
                     || dynVars.TryGetValue(v.Name, out previewValue))
                 {
                     v.DynamicPreviewValue = previewValue;
+                    v.ClearDynamicPreviewState();
+                }
+                else if (failedVars != null
+                    && (failedVars.Contains(key) || failedVars.Contains(v.Name)))
+                {
+                    // Variable was attempted but the API or path extraction returned nothing.
+                    v.DynamicPreviewValue = null;
+                    v.MarkDynamicPreviewError();
+                }
+                else
+                {
+                    // Not yet configured or no stale cache available — leave blank.
+                    v.DynamicPreviewValue = null;
+                    v.ClearDynamicPreviewState();
+                }
+            }
+            v.NotifyPreviewChanged();
+        }
+    }
+
+    /// <summary>
+    /// Applies resolved mock-data preview values for all mock-data variables in a single
+    /// synchronous pass. Updates the internal resolved-vars cache so static variables that
+    /// reference mock tokens pick up the newly generated values.
+    /// Called when mock-data values are available before any HTTP resolutions start.
+    /// </summary>
+    internal void ApplyMockDataPreviews(IReadOnlyDictionary<string, MockDataEntry> generators)
+    {
+        _mockGenerators = generators;
+        foreach (var v in Variables)
+        {
+            if (v.IsMockData)
+            {
+                var key = NormalizeVariableName(v.Name);
+                if (generators.TryGetValue(key, out var entry) || generators.TryGetValue(v.Name, out entry))
+                {
+                    var generatedValue = Callsmith.Core.MockData.MockDataCatalog.Generate(entry.Category, entry.Field);
+                    v.DynamicPreviewValue = generatedValue;
+                    _resolvedDynVars[key] = generatedValue;
                 }
                 else
                 {
                     v.DynamicPreviewValue = null;
                 }
+                v.ClearDynamicPreviewState();
             }
             v.NotifyPreviewChanged();
+        }
+    }
+
+    /// <summary>
+    /// Updates the preview state for a single response-body variable after its async
+    /// resolution completes, then refreshes all other variable previews so that static
+    /// variables referencing this dynamic variable reflect the new value immediately.
+    /// </summary>
+    /// <param name="varName">Variable name to update (trimmed for lookup).</param>
+    /// <param name="resolvedValue">
+    /// The resolved value, or <see langword="null"/> if resolution failed or was not attempted.
+    /// </param>
+    /// <param name="failed">
+    /// <see langword="true"/> when resolution was attempted but returned no usable value
+    /// (HTTP failure, timeout, or path-extraction mismatch). Shows the error indicator.
+    /// </param>
+    internal void ApplySingleResponseBodyPreview(string varName, string? resolvedValue, bool failed)
+    {
+        var key = NormalizeVariableName(varName);
+        var varVm = Variables.FirstOrDefault(v => NormalizeVariableName(v.Name) == key && v.IsResponseBody);
+        if (varVm is null) return;
+
+        if (resolvedValue is not null)
+        {
+            varVm.DynamicPreviewValue = resolvedValue;
+            _resolvedDynVars[key] = resolvedValue;
+            varVm.ClearDynamicPreviewState();
+        }
+        else if (failed)
+        {
+            // Set error before clearing value so HasPreview stays true throughout.
+            varVm.MarkDynamicPreviewError();
+            varVm.DynamicPreviewValue = null;
+            _resolvedDynVars.Remove(key);
+        }
+        else
+        {
+            varVm.DynamicPreviewValue = null;
+            varVm.ClearDynamicPreviewState();
+        }
+
+        // Refresh ALL variable previews so static vars that reference this dynamic var update.
+        foreach (var v in Variables)
+            v.NotifyPreviewChanged();
+    }
+
+    /// <summary>
+    /// Marks all dynamic (response-body) variable items as loading so the UI can show a
+    /// "Resolving…" indicator while async resolution is in progress.
+    /// </summary>
+    internal void MarkDynamicPreviewsLoading()
+    {
+        foreach (var v in Variables)
+        {
+            if (v.IsResponseBody)
+                v.MarkDynamicPreviewLoading();
+        }
+    }
+
+    /// <summary>
+    /// Marks all dynamic (response-body) variable items as failed so the UI can show an
+    /// error indicator when resolution throws an unexpected exception.
+    /// </summary>
+    internal void MarkDynamicPreviewsError()
+    {
+        foreach (var v in Variables)
+        {
+            if (v.IsResponseBody)
+                v.MarkDynamicPreviewError();
+        }
+    }
+
+    /// <summary>
+    /// Clears loading and error states for all response-body variables without starting
+    /// new resolution timers. Called when a refresh is cancelled so that a stuck
+    /// "Resolving…" indicator does not linger on screen.
+    /// </summary>
+    internal void ClearDynamicPreviewsLoading()
+    {
+        foreach (var v in Variables)
+        {
+            if (v.IsResponseBody)
+                v.ClearDynamicPreviewState();
         }
     }
 

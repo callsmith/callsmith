@@ -62,7 +62,7 @@ public sealed class RequestTabViewModelPreviewUrlTests
             .BuildStaticMerge(Arg.Any<EnvironmentModel>(), Arg.Any<EnvironmentModel?>())
             .Returns(new Dictionary<string, string> { ["me"] = string.Empty });
         mergeService
-            .MergeAsync(Arg.Any<string>(), Arg.Any<EnvironmentModel>(), Arg.Any<EnvironmentModel?>(), Arg.Any<CancellationToken>())
+            .MergeAsync(Arg.Any<string>(), Arg.Any<EnvironmentModel>(), Arg.Any<EnvironmentModel?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new ResolvedEnvironment
             {
                 Variables = new Dictionary<string, string> { ["me"] = resolvedUsername },
@@ -119,7 +119,7 @@ public sealed class RequestTabViewModelPreviewUrlTests
             .BuildStaticMerge(Arg.Any<EnvironmentModel>(), Arg.Any<EnvironmentModel?>())
             .Returns(new Dictionary<string, string>());
         mergeService
-            .MergeAsync(Arg.Any<string>(), Arg.Any<EnvironmentModel>(), Arg.Any<EnvironmentModel?>(), Arg.Any<CancellationToken>())
+            .MergeAsync(Arg.Any<string>(), Arg.Any<EnvironmentModel>(), Arg.Any<EnvironmentModel?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new ResolvedEnvironment
             {
                 Variables = new Dictionary<string, string> { ["token"] = resolvedToken },

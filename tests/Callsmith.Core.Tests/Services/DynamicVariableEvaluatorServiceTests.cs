@@ -124,16 +124,17 @@ public sealed class DynamicVariableEvaluatorServiceTests : IDisposable
     }
 
     /// <summary>
-    /// When the extraction path does not match anything in the response body,
-    /// <c>null</c> is returned from the extractor and must not be cached as an empty string.
+    /// When <c>allowStaleCache = true</c> is passed, a cached value is returned even if the
+    /// variable's frequency is <see cref="DynamicFrequency.Always"/> (which would normally
+    /// force a fresh HTTP request). No HTTP call should be made.
     /// </summary>
     [Fact]
-    public async Task ResolveAsync_WhenExtractionYieldsNull_DoesNotCacheEmptyValue()
+    public async Task ResolveAsync_AllowStaleCache_ReturnsCachedValue_WithoutHttpCall()
     {
         var requestId = Guid.NewGuid();
         var request = MakeRequest("get-token", requestId);
         var folder = MakeFolder(request);
-        var collectionPath = _temp.CreateSubDirectory("collection2");
+        var collectionPath = _temp.CreateSubDirectory("stale-collection");
 
         _collectionService.OpenFolderAsync(collectionPath, Arg.Any<CancellationToken>())
             .Returns(folder);
@@ -141,30 +142,59 @@ public sealed class DynamicVariableEvaluatorServiceTests : IDisposable
             .Returns(request);
         _transportRegistry.Resolve(Arg.Any<RequestModel>())
             .Returns(_transport);
-
-        // First call: response body does not contain the expected field
         _transport.SendAsync(Arg.Any<RequestModel>(), Arg.Any<CancellationToken>())
-            .Returns(OkResponse("""{"wrong_field":"value"}"""));
+            .Returns(OkResponse("""{"token":"initial-token"}"""));
 
-        var variable = ResponseBodyVar("token", "get-token", DynamicFrequency.Never);
+        // Always-frequency variable — would normally always re-execute.
+        var variable = ResponseBodyVar("token", "get-token", DynamicFrequency.Always);
         var sut = Sut();
 
-        var firstResult = await sut.ResolveAsync(
-            collectionPath, "ns", [variable], new Dictionary<string, string>());
+        // First call (no stale cache flag) — executes HTTP to populate the cache.
+        await sut.ResolveAsync(collectionPath, "ns", [variable], new Dictionary<string, string>());
+        await _transport.Received(1).SendAsync(Arg.Any<RequestModel>(), Arg.Any<CancellationToken>());
 
-        firstResult.Variables.Should().NotContainKey("token",
-            "an extraction miss must not add the variable to resolved vars");
+        // Second call with allowStaleCache = true — must return the cached value, no HTTP.
+        _transport.ClearReceivedCalls();
+        var result = await sut.ResolveAsync(
+            collectionPath, "ns", [variable], new Dictionary<string, string>(), allowStaleCache: true);
 
-        // Second call: response body now contains the expected field;
-        // if cache was poisoned with "" the second call would skip re-execution and return "".
+        result.Variables.Should().ContainKey("token")
+            .WhoseValue.Should().Be("initial-token",
+                "stale cache should return the previously cached value without making an HTTP call");
+        await _transport.DidNotReceive().SendAsync(Arg.Any<RequestModel>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// When <c>allowStaleCache = true</c> and no cache entry exists at all, the variable
+    /// is still evaluated via HTTP (because we have no value to return).
+    /// </summary>
+    [Fact]
+    public async Task ResolveAsync_AllowStaleCache_ExecutesHttp_WhenNoCacheEntryExists()
+    {
+        var requestId = Guid.NewGuid();
+        var request = MakeRequest("get-token", requestId);
+        var folder = MakeFolder(request);
+        var collectionPath = _temp.CreateSubDirectory("no-cache-collection");
+
+        _collectionService.OpenFolderAsync(collectionPath, Arg.Any<CancellationToken>())
+            .Returns(folder);
+        _collectionService.LoadRequestAsync(request.FilePath, Arg.Any<CancellationToken>())
+            .Returns(request);
+        _transportRegistry.Resolve(Arg.Any<RequestModel>())
+            .Returns(_transport);
         _transport.SendAsync(Arg.Any<RequestModel>(), Arg.Any<CancellationToken>())
-            .Returns(OkResponse("""{"token":"abc123"}"""));
+            .Returns(OkResponse("""{"token":"fresh-token"}"""));
 
-        var secondResult = await sut.ResolveAsync(
-            collectionPath, "ns", [variable], new Dictionary<string, string>());
+        var variable = ResponseBodyVar("token", "get-token", DynamicFrequency.IfExpired);
+        var sut = Sut();
 
-        secondResult.Variables.Should().ContainKey("token")
-            .WhoseValue.Should().Be("abc123",
-                "the corrected response should yield a value when the cache was not poisoned");
+        // No prior cache — allowStaleCache = true must still execute HTTP.
+        var result = await sut.ResolveAsync(
+            collectionPath, "ns2", [variable], new Dictionary<string, string>(), allowStaleCache: true);
+
+        result.Variables.Should().ContainKey("token")
+            .WhoseValue.Should().Be("fresh-token",
+                "when there is no cache entry at all, HTTP must still be executed even with allowStaleCache");
+        await _transport.Received(1).SendAsync(Arg.Any<RequestModel>(), Arg.Any<CancellationToken>());
     }
 }

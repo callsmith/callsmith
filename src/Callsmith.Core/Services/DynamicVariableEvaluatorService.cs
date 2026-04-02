@@ -67,6 +67,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         string environmentCacheNamespace,
         IReadOnlyList<EnvironmentVariable> variables,
         IReadOnlyDictionary<string, string> staticVariables,
+        bool allowStaleCache = false,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(collectionFolderPath);
@@ -118,6 +119,11 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
             _logger.LogWarning(ex, "Could not open collection folder for dynamic variable evaluation");
         }
 
+        // Track which response-body vars fail to produce a value across all passes.
+        // Initialise with all attempted vars; remove each one when it resolves successfully.
+        var failedVars = new HashSet<string>(
+            responseBodyVars.Select(v => v.Name), StringComparer.Ordinal);
+
         // Two passes so that response-body vars that reference other response-body vars
         // resolve in the right order regardless of declaration order.
         var passes = responseBodyVars.Count > 1 ? 2 : 1;
@@ -129,12 +135,13 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
                 try
                 {
                     var value = await EvaluateResponseBodyVarAsync(
-                        variable, environmentCacheNamespace, folder, resolvedVars, cache, ct)
+                        variable, environmentCacheNamespace, folder, resolvedVars, cache, allowStaleCache, ct)
                         .ConfigureAwait(false);
 
                     if (value != null)
                     {
                         resolvedVars[variable.Name] = value;
+                        failedVars.Remove(variable.Name);
                         cacheModified = true;
                     }
                 }
@@ -149,7 +156,12 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         if (cacheModified)
             await SaveCacheAsync(collectionFolderPath, cache, ct).ConfigureAwait(false);
 
-        return new ResolvedEnvironment { Variables = resolvedVars, MockGenerators = mockGenerators };
+        return new ResolvedEnvironment
+        {
+            Variables = resolvedVars,
+            MockGenerators = mockGenerators,
+            FailedVariables = failedVars,
+        };
     }
 
     /// <inheritdoc/>
@@ -271,6 +283,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         CollectionFolder? folder,
         IReadOnlyDictionary<string, string> vars,
         DynCache cache,
+        bool allowStaleCache,
         CancellationToken ct)
     {
         var segment = new DynamicValueSegment
@@ -300,13 +313,15 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         }
         var cacheKey = MakeCacheKey(environmentCacheNamespace, requestCacheId, segment.Path);
 
-        var shouldExecute = segment.Frequency switch
-        {
-            DynamicFrequency.Always => true,
-            DynamicFrequency.Never => !cache.ContainsKey(cacheKey),
-            DynamicFrequency.IfExpired => ShouldRefresh(cache, cacheKey, segment.ExpiresAfterSeconds ?? 900),
-            _ => true,
-        };
+        var shouldExecute = allowStaleCache
+            ? !cache.ContainsKey(cacheKey)  // When stale values are acceptable, only fetch if no cache entry exists at all.
+            : segment.Frequency switch
+            {
+                DynamicFrequency.Always => true,
+                DynamicFrequency.Never => !cache.ContainsKey(cacheKey),
+                DynamicFrequency.IfExpired => ShouldRefresh(cache, cacheKey, segment.ExpiresAfterSeconds ?? 900),
+                _ => true,
+            };
 
         if (!shouldExecute && cache.TryGetValue(cacheKey, out var cached))
             return cached.Value;

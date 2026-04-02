@@ -166,11 +166,13 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
                 v.VariableType == EnvironmentVariable.VariableTypes.ResponseBody
                 || v.VariableType == EnvironmentVariable.VariableTypes.Dynamic))
             {
+                // Use the active env's namespace for global vars (unified cache namespace) so that
+                // cache entries from "Send" are reused here and vice versa.
                 var globalCacheNamespace = !string.IsNullOrEmpty(_globalEnvironmentCacheNamespace)
-                    ? $"{_globalEnvironmentCacheNamespace}[env:{_environmentCacheNamespace}]"
+                    ? _globalEnvironmentCacheNamespace
                     : _environmentCacheNamespace;
                 var globalResolved = await _evaluator
-                    .ResolveAsync(_collectionFolderPath, globalCacheNamespace, _globalVariables, baseStaticVars, ct)
+                    .ResolveAsync(_collectionFolderPath, globalCacheNamespace, _globalVariables, baseStaticVars, ct: ct)
                     .ConfigureAwait(true);
                 var merged = new Dictionary<string, string>(baseStaticVars, StringComparer.Ordinal);
                 foreach (var kv in globalResolved.Variables)
@@ -184,7 +186,7 @@ public sealed partial class DynamicValueConfigViewModel : ObservableObject
                 || v.VariableType == EnvironmentVariable.VariableTypes.Dynamic))
             {
                 var resolved = await _evaluator
-                    .ResolveAsync(_collectionFolderPath, _environmentCacheNamespace, _allVariables, resolvedVars, ct)
+                    .ResolveAsync(_collectionFolderPath, _environmentCacheNamespace, _allVariables, resolvedVars, ct: ct)
                     .ConfigureAwait(true);
                 resolvedVars = resolved.Variables;
             }

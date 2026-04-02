@@ -18,13 +18,21 @@ public sealed class ResolvedEnvironment
         = new Dictionary<string, string>();
 
     /// <summary>
-    /// Mock-data generators: name \u2192 catalog entry.
+    /// Mock-data generators: name → catalog entry.
     /// Each token reference to a key in this map will call <c>MockDataCatalog.Generate</c> freshly
     /// so that two occurrences of <c>{{mock-email}}</c> in the same request template yield
     /// two different generated values.
     /// </summary>
     public IReadOnlyDictionary<string, MockDataEntry> MockGenerators { get; init; }
         = new Dictionary<string, MockDataEntry>();
+
+    /// <summary>
+    /// Names of response-body variables that were attempted but failed to produce a value
+    /// (API unreachable, path/regex did not match, or evaluation threw an exception).
+    /// Variables absent because they are not yet configured are not included.
+    /// </summary>
+    public IReadOnlySet<string> FailedVariables { get; init; }
+        = new HashSet<string>();
 
     public static readonly ResolvedEnvironment Empty = new();
 }
