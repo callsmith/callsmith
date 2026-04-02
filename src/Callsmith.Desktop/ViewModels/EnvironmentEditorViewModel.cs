@@ -967,8 +967,13 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             ct.ThrowIfCancellationRequested();
 
             var key = variable.Name.Trim();
-            var resolvedValue = resolved.Variables.TryGetValue(key, out var val)
+
+            string? resolvedValue = null;
+            if (!resolved.FailedVariables.Contains(key) && !resolved.FailedVariables.Contains(variable.Name))
+            {
+                resolvedValue = resolved.Variables.TryGetValue(key, out var val)
                                 || resolved.Variables.TryGetValue(variable.Name, out val) ? val : null;
+            }
 
             env.ApplySingleResponseBodyPreview(variable.Name, resolvedValue, failed: resolvedValue is null);
         }
