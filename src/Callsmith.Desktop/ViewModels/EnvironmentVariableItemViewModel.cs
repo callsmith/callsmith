@@ -252,8 +252,7 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     }
 
     public bool HasPreview => !IsSecret && 
-        ((IsStatic && TokenPattern().IsMatch(Value)) ||
-         ((IsMockData || IsResponseBody) && (DynamicPreviewValue != null || IsDynamicPreviewLoading || IsDynamicPreviewError)));
+        ((IsStatic && TokenPattern().IsMatch(Value)) || IsMockData || IsResponseBody);
 
     /// <summary>True when the resolved preview value TextBlock should be visible (not loading or error).</summary>
     public bool IsPreviewValueVisible => !IsDynamicPreviewLoading && !IsDynamicPreviewError;
