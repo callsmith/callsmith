@@ -285,8 +285,13 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
         _dynamicLoadingDelayCts?.Cancel();
         _dynamicLoadingDelayCts?.Dispose();
         _dynamicLoadingDelayCts = null;
-        IsDynamicPreviewLoading = false;
+        // Set error BEFORE clearing loading so HasPreview stays true throughout the transition.
+        // If loading=false is set first, HasPreview briefly becomes false (when DynamicPreviewValue
+        // is also null), which collapses the preview Border in Avalonia. When the Border then
+        // tries to re-expand for the error state, child bindings may not update correctly,
+        // resulting in a blank preview instead of "Unable to resolve value".
         IsDynamicPreviewError = true;
+        IsDynamicPreviewLoading = false;
     }
 
     /// <summary>Clears loading and error states (called when a resolved value arrives).</summary>

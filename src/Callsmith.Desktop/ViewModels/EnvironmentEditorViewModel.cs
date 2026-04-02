@@ -52,13 +52,6 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     private bool _loadingEnvironments;
     private const string MaskedSecretValue = "\u2022\u2022\u2022\u2022\u2022";
 
-    /// <summary>
-    /// Per-variable timeout for editor preview HTTP calls.  Keeps the "Resolving…" indicator
-    /// short-lived so that network errors surface in a reasonable time rather than waiting for
-    /// the default <see cref="System.Net.Http.HttpClient"/> 100-second timeout.
-    /// </summary>
-    private static readonly TimeSpan PreviewRequestTimeout = TimeSpan.FromSeconds(10);
-
     // ─── Observable state ────────────────────────────────────────────────────
 
     /// <summary>All environments found in the open collection.</summary>
@@ -948,8 +941,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
     /// <summary>
     /// Resolves a single response-body variable for the editor preview and updates the UI when
-    /// complete. A 10-second timeout is applied so that network errors surface promptly instead
-    /// of waiting for the full <see cref="System.Net.Http.HttpClient"/> default timeout.
+    /// complete. Falls back silently to the error indicator on failure.
     /// </summary>
     private async Task ResolveResponseBodyVarPreviewAsync(
         EnvironmentListItemViewModel env,
@@ -960,9 +952,6 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     {
         if (_collectionFolderPath is null) return;
 
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(PreviewRequestTimeout);
-
         try
         {
             var resolved = await _dynamicEvaluator
@@ -972,7 +961,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                     [variable],
                     staticContext,
                     allowStaleCache: true,
-                    timeoutCts.Token)
+                    ct)
                 .ConfigureAwait(true);
 
             ct.ThrowIfCancellationRequested();
@@ -985,16 +974,11 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Outer token cancelled (env selection changed) — clear the loading indicator.
+            // Env selection changed — clear the loading indicator without showing an error.
             var key = variable.Name.Trim();
             var varVm = env.Variables.FirstOrDefault(v => v.Name.Trim() == key && v.IsResponseBody);
             varVm?.ClearDynamicPreviewState();
             varVm?.NotifyPreviewChanged();
-        }
-        catch (OperationCanceledException)
-        {
-            // Only the preview timeout fired — surface the error promptly.
-            env.ApplySingleResponseBodyPreview(variable.Name, null, failed: true);
         }
         catch (Exception ex)
         {
