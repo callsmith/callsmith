@@ -1269,7 +1269,7 @@ public sealed class EnvironmentEditorViewModelTests
     }
 
     [Fact]
-    public async Task Preview_ConcreteEnv_WhenGlobalOverrideDisabled_ShowsOverridesConflictValue()
+    public async Task Preview_ConcreteEnv_WhenGlobalOverrideDisabled_ConcreteVarIsNotOverridden()
     {
         var globalModel = new EnvironmentModel
         {
@@ -1322,12 +1322,12 @@ public sealed class EnvironmentEditorViewModelTests
         var devEnv = sut.Environments.First(e => !e.IsGlobal);
         var jwtTokenVar = devEnv.Variables.First(v => v.Name == "jwt-token");
 
-        jwtTokenVar.IsOverridden.Should().BeTrue();
-        jwtTokenVar.OverrideTooltip.Should().NotBeNullOrWhiteSpace();
+        // With IsForceGlobalOverride = false the concrete var wins, so no warning is needed.
+        jwtTokenVar.IsOverridden.Should().BeFalse();
     }
 
     [Fact]
-    public async Task Preview_ConcreteEnv_WhenGlobalDynamicOverrideDisabled_ShowsGlobalDynamicConflictValue()
+    public async Task Preview_ConcreteEnv_WhenGlobalDynamicOverrideDisabled_ConcreteVarIsNotOverridden()
     {
         var globalModel = new EnvironmentModel
         {
@@ -1396,8 +1396,8 @@ public sealed class EnvironmentEditorViewModelTests
         var devEnv = sut.Environments.First(e => !e.IsGlobal);
         var jwtTokenVar = devEnv.Variables.First(v => v.Name == "jwt-token");
 
-        jwtTokenVar.IsOverridden.Should().BeTrue();
-        jwtTokenVar.OverrideTooltip.Should().NotBeNullOrWhiteSpace();
+        // Global var has IsForceGlobalOverride = false → concrete var is NOT overridden.
+        jwtTokenVar.IsOverridden.Should().BeFalse();
     }
 
     [Fact]
@@ -1811,5 +1811,124 @@ public sealed class EnvironmentEditorViewModelTests
         var globalEnv = sut.Environments.First(e => e.IsGlobal);
         globalEnv.IsDirty.Should().BeFalse(
             "restoring GlobalPreviewEnvironmentName from saved state must not mark the global env dirty");
+    }
+
+    // ─── Error display when dynamic variable resolution fails ─────────────────
+
+    [Fact]
+    public async Task Preview_ConcreteEnv_WhenResponseBodyVarFails_ShowsDynamicPreviewError()
+    {
+        var devModel = new EnvironmentModel
+        {
+            Name = "dev",
+            FilePath = @"C:\collections\my-api\environment\dev.env.callsmith",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "api-key",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                    ResponseRequestName = "GetKey",
+                    ResponsePath = "$.key",
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        };
+
+        var service = Substitute.For<IEnvironmentService>();
+        service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+               .Returns(new EnvironmentModel { FilePath = GlobalEnvPath, Name = "Global", Variables = [], EnvironmentId = Guid.NewGuid() });
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([devModel]);
+
+        var evaluator = Substitute.For<IDynamicVariableEvaluator>();
+        evaluator.ResolveAsync(
+                CollectionPath, devModel.EnvironmentId.ToString("N"),
+                Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
+                Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new ResolvedEnvironment
+            {
+                Variables = new Dictionary<string, string>(),
+                MockGenerators = new Dictionary<string, MockDataEntry>(),
+                FailedVariables = new HashSet<string> { "api-key" },
+            });
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger, dynamicEvaluator: evaluator);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(300);
+
+        sut.SelectedEnvironment = sut.Environments.First(e => !e.IsGlobal);
+        await Task.Delay(300);
+
+        var devEnv = sut.Environments.First(e => !e.IsGlobal);
+        var apiKeyVar = devEnv.Variables.First(v => v.Name == "api-key");
+
+        apiKeyVar.IsDynamicPreviewError.Should().BeTrue("the evaluator returned api-key in FailedVariables");
+        apiKeyVar.HasPreview.Should().BeTrue("the preview row must be visible to display the error");
+    }
+
+    [Fact]
+    public async Task Preview_GlobalEnv_WhenResponseBodyVarFails_ShowsDynamicPreviewError()
+    {
+        var previewEnvId = Guid.NewGuid();
+        var globalModel = new EnvironmentModel
+        {
+            FilePath = GlobalEnvPath,
+            Name = "Global",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "access-token",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                    ResponseRequestName = "Auth/login",
+                    ResponsePath = "$.token",
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        };
+
+        var service = Substitute.For<IEnvironmentService>();
+        service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+               .Returns(globalModel);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([new EnvironmentModel { Name = "dev", FilePath = @"C:\collections\my-api\environment\dev.env.callsmith", Variables = [], EnvironmentId = previewEnvId }]);
+
+        var evaluator = Substitute.For<IDynamicVariableEvaluator>();
+        evaluator.ResolveAsync(
+                CollectionPath,
+                Arg.Any<string>(),
+                Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
+                Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<bool>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new ResolvedEnvironment
+            {
+                Variables = new Dictionary<string, string>(),
+                MockGenerators = new Dictionary<string, MockDataEntry>(),
+                FailedVariables = new HashSet<string> { "access-token" },
+            });
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger, dynamicEvaluator: evaluator);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(300);
+
+        // Select the global env to trigger its preview refresh.
+        sut.SelectedEnvironment = sut.Environments.First(e => e.IsGlobal);
+        await Task.Delay(300);
+
+        var globalEnv = sut.Environments.First(e => e.IsGlobal);
+        var accessTokenVar = globalEnv.Variables.First(v => v.Name == "access-token");
+
+        accessTokenVar.IsDynamicPreviewError.Should().BeTrue("the evaluator returned access-token in FailedVariables");
+        accessTokenVar.HasPreview.Should().BeTrue("the preview row must be visible to display the error");
     }
 }

@@ -971,7 +971,9 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     ///     AND the global var does not have force-override set (i.e., it loses to the concrete var).
     ///   </item>
     ///   <item>
-    ///     Concrete env: flag is set whenever a same-named global variable exists (collision).
+    ///     Concrete env: flag is set only when a same-named global variable has
+    ///     <see cref="EnvironmentVariableItemViewModel.IsForceGlobalOverride"/> set to
+    ///     <see langword="true"/>, meaning the concrete variable will actually be overridden at runtime.
     ///   </item>
     /// </list>
     /// No network calls are needed — only variable names and IsForceGlobalOverride are consulted.
@@ -1001,16 +1003,18 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         }
         else
         {
+            // Only flag concrete vars that are actually overridden — i.e. a same-named global var
+            // has IsForceGlobalOverride = true so the global value wins at runtime.
             var globalItem = Environments.FirstOrDefault(e => e.IsGlobal);
-            var globalVarNames = globalItem is not null
+            var overridingGlobalNames = globalItem is not null
                 ? globalItem.BuildModel().Variables
-                    .Where(v => !string.IsNullOrWhiteSpace(v.Name))
+                    .Where(v => !string.IsNullOrWhiteSpace(v.Name) && v.IsForceGlobalOverride)
                     .Select(v => v.Name.Trim())
                     .ToHashSet(StringComparer.Ordinal)
                 : (IReadOnlySet<string>)new HashSet<string>(StringComparer.Ordinal);
 
-            env.SetOverrideFlags(globalVarNames,
-                _ => "A global variable with this name also exists");
+            env.SetOverrideFlags(overridingGlobalNames,
+                _ => "Overridden by a global variable");
         }
     }
 
