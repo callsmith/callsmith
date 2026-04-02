@@ -984,9 +984,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
         var globalVars = _globalEnvironment.Variables;
 
-        // Global env: use the same env-scoped cache namespace as BuildMergedVarsAsync.
+        // Global env: use the active environment's ID as the cache namespace (unified namespace)
+        // so that cache entries are shared with the editor preview and the merge service.
         var globalCacheNamespace = _activeEnvironment is not null
-            ? $"{_globalEnvironment.EnvironmentId:N}[env:{_activeEnvironment.EnvironmentId:N}]"
+            ? _activeEnvironment.EnvironmentId.ToString("N")
             : _globalEnvironment.EnvironmentId.ToString("N");
 
         try
@@ -1303,9 +1304,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 && !string.IsNullOrEmpty(Response?.Body))
             {
                 await UpdateDynamicCacheFromResponseAsync(Response!.Body, ct).ConfigureAwait(false);
-
-                // Refresh the URL preview so it reflects the newly-cached dynamic variable values.
-                _ = RefreshPreviewEnvAsync();
+                // Do NOT re-resolve the URL preview here — after a send, the environment has not
+                // changed, so the preview URL will never need to re-resolve.
             }
         }
         catch (OperationCanceledException)

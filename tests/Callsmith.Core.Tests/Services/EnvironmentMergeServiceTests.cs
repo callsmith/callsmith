@@ -141,7 +141,7 @@ public sealed class EnvironmentMergeServiceTests
     }
 
     [Fact]
-    public async Task MergeAsync_GlobalCacheNamespace_IncludesActiveEnvId_WhenActivePresent()
+    public async Task MergeAsync_GlobalCacheNamespace_UsesActiveEnvId_WhenActivePresent()
     {
         var evaluator = Substitute.For<IDynamicVariableEvaluator>();
         evaluator.ResolveAsync(default!, default!, default!, default!, default, default)
@@ -153,10 +153,11 @@ public sealed class EnvironmentMergeServiceTests
 
         await sut.MergeAsync("C:/col", global, active);
 
-        // The global resolve call must use the env-scoped cache namespace.
+        // The global resolve call must use the active env's ID as the cache namespace
+        // (unified namespace — same as the concrete env's own cache key).
         await evaluator.Received().ResolveAsync(
             Arg.Any<string>(),
-            Arg.Is<string>(ns => ns == $"{global.EnvironmentId:N}[env:{active.EnvironmentId:N}]"),
+            Arg.Is<string>(ns => ns == active.EnvironmentId.ToString("N")),
             Arg.Is<IReadOnlyList<EnvironmentVariable>>(v => v == global.Variables),
             Arg.Any<IReadOnlyDictionary<string, string>>(),
             Arg.Any<bool>(),
@@ -231,10 +232,10 @@ public sealed class EnvironmentMergeServiceTests
         var globalId = Guid.NewGuid();
         var activeId = Guid.NewGuid();
         var evaluator = Substitute.For<IDynamicVariableEvaluator>();
-        // Global resolution call.
+        // Global resolution call — now uses the active env's ID as the namespace (unified cache).
         evaluator.ResolveAsync(
                 Arg.Any<string>(),
-                Arg.Is<string>(ns => ns.StartsWith(globalId.ToString("N"))),
+                Arg.Is<string>(ns => ns == activeId.ToString("N")),
                 Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
                 Arg.Any<bool>(),
@@ -243,11 +244,13 @@ public sealed class EnvironmentMergeServiceTests
             {
                 Variables = new Dictionary<string, string> { ["token"] = "Bearer-global" },
             });
-        // Active resolution call.
+        // Active resolution call — also uses the active env's ID but with the active env's own variables.
+        // Since both namespaces are the same, NSubstitute will use the first matching mock for both.
+        // We suppress the active call by returning empty for that variable list specifically.
         evaluator.ResolveAsync(
                 Arg.Any<string>(),
-                Arg.Is<string>(ns => ns == activeId.ToString("N")),
-                Arg.Any<IReadOnlyList<EnvironmentVariable>>(),
+                Arg.Any<string>(),
+                Arg.Is<IReadOnlyList<EnvironmentVariable>>(v => v.Any(x => x.Name == "token" && x.VariableType == EnvironmentVariable.VariableTypes.Static)),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
                 Arg.Any<bool>(),
                 Arg.Any<CancellationToken>())

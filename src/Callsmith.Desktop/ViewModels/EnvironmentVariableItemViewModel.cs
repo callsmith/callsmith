@@ -22,9 +22,8 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     private readonly Func<EnvironmentVariable?, Task<EnvironmentVariable?>> _editMockData;
     private readonly Func<EnvironmentVariable?, Task<EnvironmentVariable?>> _editResponseBody;
 
-    // Debounce CTSes — prevent "Resolving…" from flashing on fast resolution.
+    // Debounce CTS — prevent "Resolving…" from flashing on fast resolution.
     private CancellationTokenSource? _dynamicLoadingDelayCts;
-    private CancellationTokenSource? _conflictLoadingDelayCts;
 
     /// <summary>
     /// True if this variable belongs to a concrete (non-global) Bruno environment.
@@ -54,76 +53,13 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _isForceGlobalOverride;
 
+    /// <summary>True when this variable has a name collision with a variable in the other environment tier.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasConflict))]
-    private string? _conflictLabel;
+    private bool _isOverridden;
 
+    /// <summary>Tooltip text explaining the override/collision when <see cref="IsOverridden"/> is true.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasConflict))]
-    private string? _conflictValue;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasConflict))]
-    private string? _conflictToolTip;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasConflict))]
-    [NotifyPropertyChangedFor(nameof(IsConflictValueVisible))]
-    private bool _isConflictValueLoading;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasConflict))]
-    [NotifyPropertyChangedFor(nameof(IsConflictValueVisible))]
-    private bool _isConflictValueError;
-
-    /// <summary>True when this variable has a conflict with the preview environment that should be shown.</summary>
-    public bool HasConflict => ConflictLabel is not null
-        && (ConflictValue is not null || IsConflictValueLoading || IsConflictValueError);
-
-    /// <summary>True when the resolved conflict value TextBlock should be visible (not loading or error).</summary>
-    public bool IsConflictValueVisible => !IsConflictValueLoading && !IsConflictValueError;
-
-    /// <summary>Updates the conflict label and value shown in the override/overridden-by preview row.</summary>
-    internal void SetConflictInfo(string? label, string? value, string? toolTip)
-    {
-        _conflictLoadingDelayCts?.Cancel();
-        _conflictLoadingDelayCts?.Dispose();
-        _conflictLoadingDelayCts = null;
-        ConflictLabel = label;
-        ConflictValue = value;
-        ConflictToolTip = toolTip;
-        IsConflictValueLoading = false;
-        IsConflictValueError = false;
-    }
-
-    /// <summary>Marks the conflict value as loading (resolution in progress).</summary>
-    internal void MarkConflictValueLoading()
-    {
-        _conflictLoadingDelayCts?.Cancel();
-        _conflictLoadingDelayCts?.Dispose();
-        IsConflictValueError = false;
-        var cts = new CancellationTokenSource();
-        _conflictLoadingDelayCts = cts;
-        _ = Task.Delay(200, cts.Token).ContinueWith(
-            _ => Dispatcher.UIThread.Post(() =>
-            {
-                if (!cts.IsCancellationRequested)
-                    IsConflictValueLoading = true;
-            }),
-            CancellationToken.None,
-            TaskContinuationOptions.OnlyOnRanToCompletion,
-            TaskScheduler.Default);
-    }
-
-    /// <summary>Marks the conflict value as failed to resolve.</summary>
-    internal void MarkConflictValueError()
-    {
-        _conflictLoadingDelayCts?.Cancel();
-        _conflictLoadingDelayCts?.Dispose();
-        _conflictLoadingDelayCts = null;
-        IsConflictValueLoading = false;
-        IsConflictValueError = true;
-    }
+    private string? _overrideTooltip;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsStatic))]

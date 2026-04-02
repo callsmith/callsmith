@@ -74,10 +74,12 @@ public sealed class EnvironmentMergeService : IEnvironmentMergeService
             //    global requests can use active-env vars (e.g. baseUrl) when they need them.
             if (globalHasDynamic)
             {
-                // Scope the global var cache per active environment — a global token request
-                // uses the active env's credentials/baseUrl, so each env gets its own token.
+                // Use the active environment's ID as the cache namespace for global var resolution.
+                // This matches the send-time namespace used by RequestTabViewModel and the editor
+                // preview namespace, so a cached value written by any one of the three is reusable
+                // by the other two without an extra HTTP call.
                 var globalCacheNamespace = activeEnv is not null
-                    ? $"{globalEnv.EnvironmentId:N}[env:{activeEnv.EnvironmentId:N}]"
+                    ? activeEnv.EnvironmentId.ToString("N")
                     : globalEnv.EnvironmentId.ToString("N");
 
                 var globalResolved = await _evaluator.ResolveAsync(

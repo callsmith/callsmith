@@ -20,9 +20,10 @@ public interface IDynamicVariableEvaluator
     /// <param name="collectionFolderPath">Root folder of the collection (used to locate requests).</param>
     /// <param name="environmentCacheNamespace">
     /// Stable string that namespaces cache entries for this environment context.
-    /// Pass <c>environmentId.ToString("N")</c> for a concrete environment; for the global
-    /// environment scoped to a specific active environment, pass a compound string such as
-    /// <c>$"{globalEnvId:N}[env:{activeEnvId:N}]"</c>.
+    /// Pass <c>environmentId.ToString("N")</c> for a concrete environment. For the global
+    /// environment scoped to a specific active environment, also pass the active environment's
+    /// ID so that all cache entries — from the editor preview, the send pipeline, and the
+    /// response-body config dialog — share the same namespace.
     /// </param>
     /// <param name="variables">All variables in the active environment.</param>
     /// <param name="staticVariables">

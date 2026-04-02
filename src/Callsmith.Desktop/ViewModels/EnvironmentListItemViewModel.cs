@@ -30,15 +30,10 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     private IReadOnlyDictionary<string, MockDataEntry> _mockGenerators
         = new Dictionary<string, MockDataEntry>();
 
-    // Pre-resolved global environment vars (global statics + global dynamics resolved for this
-    // env's context). Used as baseline in BuildResolvedEnvironment so that tokens like
+    // Pre-resolved global environment vars (global statics resolved for this env's context).
+    // Used as baseline in BuildResolvedEnvironment so that tokens like
     // {{base-url}} and {{token}} that live in the global env resolve in the preview column.
     private Dictionary<string, string> _globalPreviewVars = new(StringComparer.Ordinal);
-
-    // Global-only resolved values (no concrete-env statics overlaid). Used for conflict
-    // info display ("OVERRIDDEN BY") so that the value shown is the global var's own value
-    // rather than the concrete env's value that was re-applied as context for token expansion.
-    private Dictionary<string, string> _pureGlobalPreviewVars = new(StringComparer.Ordinal);
 
     // Mock-data generators from the global environment so that {{faker-internet-example-email}}
     // and similar global mock vars resolve in the preview column of concrete environments.
@@ -442,24 +437,6 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Stores global-only resolved values (without any concrete-env statics overlaid on top).
-    /// Used by <see cref="EnvironmentEditorViewModel"/> to populate the "OVERRIDDEN BY" conflict
-    /// row: the value shown must be the global var's own resolved value, not the concrete env's.
-    /// Must be called <em>before</em> active-env statics are re-applied to the context dict.
-    /// </summary>
-    internal void SetPureGlobalPreviewVars(IReadOnlyDictionary<string, string> pureGlobalVars)
-    {
-        _pureGlobalPreviewVars = new Dictionary<string, string>(pureGlobalVars, StringComparer.Ordinal);
-    }
-
-    /// <summary>
-    /// Returns a snapshot of the resolved global preview variables stored on this environment.
-    /// Used by <see cref="EnvironmentEditorViewModel"/> to populate the "OVERRIDDEN BY" conflict
-    /// row on concrete-env variables when a force-override global var wins.
-    /// </summary>
-    internal IReadOnlyDictionary<string, string> GetResolvedGlobalPreviewVars() => _pureGlobalPreviewVars;
-
-    /// <summary>
     /// Returns the currently resolved preview value for <paramref name="variableName"/>, if any.
     /// This uses the same merged preview context as the PREVIEW column.
     /// </summary>
@@ -476,18 +453,17 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Updates the conflict label/value for each variable row based on a pre-built conflict map.
-    /// Variables not present in <paramref name="conflicts"/> have their conflict info cleared.
+    /// Sets the <see cref="EnvironmentVariableItemViewModel.IsOverridden"/> flag and tooltip on each
+    /// variable row whose name is in <paramref name="overriddenVarNames"/>.
+    /// Variables not in the set have their flag cleared.
     /// </summary>
-    internal void SetConflictValues(IReadOnlyDictionary<string, (string label, string value, string toolTip)> conflicts)
+    internal void SetOverrideFlags(IReadOnlySet<string> overriddenVarNames, Func<string, string?> getTooltip)
     {
         foreach (var v in Variables)
         {
             var key = v.Name.Trim();
-            if (!string.IsNullOrWhiteSpace(key) && conflicts.TryGetValue(key, out var info))
-                v.SetConflictInfo(info.label, info.value, info.toolTip);
-            else
-                v.SetConflictInfo(null, null, null);
+            v.IsOverridden = !string.IsNullOrWhiteSpace(key) && overriddenVarNames.Contains(key);
+            v.OverrideTooltip = v.IsOverridden ? getTooltip(key) : null;
         }
     }
 
@@ -599,50 +575,6 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         {
             if (v.IsResponseBody)
                 v.ClearDynamicPreviewState();
-        }
-    }
-
-    /// <summary>
-    /// Marks conflict values as loading for variables whose names match
-    /// <paramref name="dynamicVarNames"/>. Called after the initial synchronous conflict-label push
-    /// when the corresponding global variables require async resolution.
-    /// </summary>
-    internal void MarkConflictValuesLoadingForVars(IEnumerable<string> dynamicVarNames)
-    {
-        var dynamicSet = new HashSet<string>(dynamicVarNames, StringComparer.Ordinal);
-        foreach (var v in Variables)
-        {
-            var key = v.Name.Trim();
-            if (v.ConflictLabel is not null && dynamicSet.Contains(key))
-                v.MarkConflictValueLoading();
-        }
-    }
-
-    /// <summary>
-    /// Marks all variables that currently have a conflict label as having a conflict value error.
-    /// Called when global dynamic variable resolution fails.
-    /// </summary>
-    internal void MarkConflictValuesError()
-    {
-        foreach (var v in Variables)
-        {
-            if (v.ConflictLabel is not null)
-                v.MarkConflictValueError();
-        }
-    }
-
-    /// <summary>
-    /// Marks conflict values as error for variables whose names match
-    /// <paramref name="failedVarNames"/>. Called after global dynamic resolution when specific
-    /// variables failed to produce a value (API unreachable, bad path, etc.).
-    /// </summary>
-    internal void MarkConflictValuesErrorForVars(IReadOnlySet<string> failedVarNames)
-    {
-        foreach (var v in Variables)
-        {
-            var key = v.Name.Trim();
-            if (v.ConflictLabel is not null && failedVarNames.Contains(key))
-                v.MarkConflictValueError();
         }
     }
 
