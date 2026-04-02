@@ -1,5 +1,4 @@
 using System.Net.Http;
-using Avalonia.Threading;
 using Callsmith.Core;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
@@ -11,165 +10,21 @@ using NSubstitute;
 namespace Callsmith.Desktop.Tests;
 
 /// <summary>
-/// Verifies that <see cref="RequestTabViewModel.PreviewUrl"/> resolves dynamic
-/// environment variables (ResponseBody, MockData) — not just static ones — so that
-/// the URL preview matches what is actually sent.
+/// Verifies that <see cref="RequestTabViewModel.PreviewUrl"/> uses
+/// <see cref="IEnvironmentMergeService.BuildStaticMerge"/> synchronously, substitutes
+/// static variables (including those with empty values) normally, and leaves dynamic-typed
+/// variable <c>{{tokens}}</c> in the URL unmodified and un-urlencoded.
 /// </summary>
 public sealed class RequestTabViewModelPreviewUrlTests
 {
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
-
-    private const int MaxPollAttempts = 300;
-    private const int PollDelayMs     = 10;
-
-    /// <summary>
-    /// Pumps the Avalonia UI-thread dispatcher until <paramref name="condition"/>
-    /// returns true or the timeout is reached.
-    /// </summary>
-    private static async Task AssertEventuallyAsync(Func<bool> condition)
-    {
-        for (var attempt = 0; attempt < MaxPollAttempts; attempt++)
-        {
-            if (Dispatcher.UIThread.CheckAccess())
-                Dispatcher.UIThread.RunJobs();
-            else
-                await Dispatcher.UIThread.InvokeAsync(static () => Dispatcher.UIThread.RunJobs());
-
-            if (condition())
-                return;
-
-            await Task.Delay(PollDelayMs);
-        }
-
-        condition().Should().BeTrue();
-    }
-
     // -------------------------------------------------------------------------
     // Tests
     // -------------------------------------------------------------------------
 
     [Fact]
-    public async Task SetGlobalEnvironment_WithDynamicResolvedVar_ReflectsValueInPreviewUrl()
+    public void PreviewUrl_WithStaticVar_ResolvesImmediately()
     {
-        // Arrange – set up a merge service that returns a dynamic-resolved variable value
-        // (simulating a ResponseBody var whose cached value is already known).
-        const string resolvedUsername = "johndoe";
-
-        var mergeService = Substitute.For<IEnvironmentMergeService>();
-        mergeService
-            .BuildStaticMerge(Arg.Any<EnvironmentModel>(), Arg.Any<EnvironmentModel?>())
-            .Returns(new Dictionary<string, string> { ["me"] = string.Empty });
-        mergeService
-            .MergeAsync(Arg.Any<string>(), Arg.Any<EnvironmentModel>(), Arg.Any<EnvironmentModel?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new ResolvedEnvironment
-            {
-                Variables = new Dictionary<string, string> { ["me"] = resolvedUsername },
-            }));
-
-        var sut = new RequestTabViewModel(
-            new TransportRegistry(),
-            Substitute.For<ICollectionService>(),
-            new WeakReferenceMessenger(),
-            _ => { },
-            mergeService: mergeService);
-
-        sut.LoadRequest(new CollectionRequest
-        {
-            FilePath = "c:/tmp/preview.callsmith",
-            Name = "preview",
-            Method = HttpMethod.Get,
-            Url = "https://example.com/{username}",
-            PathParams = new Dictionary<string, string> { ["username"] = "{{me}}" },
-        });
-
-        // Trigger the async preview environment refresh.
-        sut.SetGlobalEnvironment(new EnvironmentModel
-        {
-            FilePath = "global.env.callsmith",
-            Name = "Global",
-            Variables =
-            [
-                new EnvironmentVariable
-                {
-                    Name = "me",
-                    Value = string.Empty,
-                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
-                },
-            ],
-            EnvironmentId = Guid.NewGuid(),
-        });
-
-        // Wait for RefreshPreviewEnvAsync to complete and post the UI update.
-        await AssertEventuallyAsync(() =>
-            sut.PreviewUrl == $"https://example.com/{resolvedUsername}");
-
-        sut.PreviewUrl.Should().Be($"https://example.com/{resolvedUsername}");
-    }
-
-    [Fact]
-    public async Task SetEnvironment_WithDynamicResolvedVar_ReflectsValueInQueryParamPreview()
-    {
-        // Arrange – simulate a dynamic var used as a query param value.
-        const string resolvedToken = "secret-token-123";
-
-        var mergeService = Substitute.For<IEnvironmentMergeService>();
-        mergeService
-            .BuildStaticMerge(Arg.Any<EnvironmentModel>(), Arg.Any<EnvironmentModel?>())
-            .Returns(new Dictionary<string, string>());
-        mergeService
-            .MergeAsync(Arg.Any<string>(), Arg.Any<EnvironmentModel>(), Arg.Any<EnvironmentModel?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new ResolvedEnvironment
-            {
-                Variables = new Dictionary<string, string> { ["token"] = resolvedToken },
-            }));
-
-        var sut = new RequestTabViewModel(
-            new TransportRegistry(),
-            Substitute.For<ICollectionService>(),
-            new WeakReferenceMessenger(),
-            _ => { },
-            mergeService: mergeService);
-
-        sut.LoadRequest(new CollectionRequest
-        {
-            FilePath = "c:/tmp/preview.callsmith",
-            Name = "preview",
-            Method = HttpMethod.Get,
-            Url = "https://api.example.com/data",
-            QueryParams = [new RequestKv("auth", "{{token}}")],
-        });
-
-        // Trigger the async preview environment refresh.
-        sut.SetEnvironment(new EnvironmentModel
-        {
-            FilePath = "active.env.callsmith",
-            Name = "dev",
-            Variables =
-            [
-                new EnvironmentVariable
-                {
-                    Name = "token",
-                    Value = string.Empty,
-                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
-                },
-            ],
-            EnvironmentId = Guid.NewGuid(),
-        });
-
-        // Wait for RefreshPreviewEnvAsync to complete and post the UI update.
-        await AssertEventuallyAsync(() =>
-            sut.PreviewUrl.Contains(resolvedToken));
-
-        sut.PreviewUrl.Should().Contain($"auth={resolvedToken}");
-    }
-
-    [Fact]
-    public async Task PreviewUrl_WithStaticVars_StillResolvesAfterEnvRefresh()
-    {
-        // Static vars should resolve once the async preview refresh completes.
-        // This test verifies the basic (non-dynamic) case is not regressed.
+        // Static vars are resolved synchronously from BuildStaticMerge.
         var sut = new RequestTabViewModel(
             new TransportRegistry(),
             Substitute.For<ICollectionService>(),
@@ -194,10 +49,281 @@ public sealed class RequestTabViewModelPreviewUrlTests
             EnvironmentId = Guid.NewGuid(),
         });
 
-        // After an async refresh, the static var should be resolved in the preview.
-        await AssertEventuallyAsync(() =>
-            sut.PreviewUrl == "https://api.example.com/users");
-
         sut.PreviewUrl.Should().Be("https://api.example.com/users");
+    }
+
+    [Fact]
+    public void PreviewUrl_WithEmptyStaticVar_SubstitutesEmptyString()
+    {
+        // A static var with an empty value should still be substituted (resulting in an
+        // empty string in the URL) — only dynamic-typed vars leave their {{token}} intact.
+        var sut = new RequestTabViewModel(
+            new TransportRegistry(),
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/empty-static.callsmith",
+            Name = "empty-static",
+            Method = HttpMethod.Get,
+            Url = "https://example.com/users/{{username}}",
+            QueryParams = [],
+            PathParams = new Dictionary<string, string>(),
+        });
+
+        sut.SetGlobalEnvironment(new EnvironmentModel
+        {
+            FilePath = "global.env.callsmith",
+            Name = "Global",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "username",
+                    Value = string.Empty,                    // static type, but empty value
+                    VariableType = EnvironmentVariable.VariableTypes.Static,
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        });
+
+        // Static var with empty value → token IS replaced, result has no username segment.
+        sut.PreviewUrl.Should().Be("https://example.com/users/");
+    }
+
+    [Fact]
+    public void PreviewUrl_WithDynamicVarDirectlyInUrl_LeavesTokenUnmodified()
+    {
+        // Dynamic vars (ResponseBody, MockData) are excluded from substitution so their
+        // {{token}} remains verbatim — not replaced with an empty string or URL-encoded.
+        var sut = new RequestTabViewModel(
+            new TransportRegistry(),
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/dynamic.callsmith",
+            Name = "dynamic",
+            Method = HttpMethod.Get,
+            Url = "https://example.com/users/{{username}}",
+            QueryParams = [],
+            PathParams = new Dictionary<string, string>(),
+        });
+
+        sut.SetGlobalEnvironment(new EnvironmentModel
+        {
+            FilePath = "global.env.callsmith",
+            Name = "Global",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "username",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        });
+
+        // Token must appear verbatim — not empty and not URL-encoded.
+        sut.PreviewUrl.Should().Be("https://example.com/users/{{username}}");
+    }
+
+    [Fact]
+    public void PreviewUrl_WithDynamicVarInPathParam_LeavesPathPlaceholderUnresolved()
+    {
+        // When the path-param value is a dynamic {{token}}, the path placeholder {id}
+        // stays in the URL rather than being replaced with URL-encoded braces.
+        var sut = new RequestTabViewModel(
+            new TransportRegistry(),
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/preview.callsmith",
+            Name = "preview",
+            Method = HttpMethod.Get,
+            Url = "https://example.com/{username}",
+            PathParams = new Dictionary<string, string> { ["username"] = "{{me}}" },
+        });
+
+        sut.SetGlobalEnvironment(new EnvironmentModel
+        {
+            FilePath = "global.env.callsmith",
+            Name = "Global",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "me",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        });
+
+        // Path param is not applied because its value is unresolved; {username} stays.
+        sut.PreviewUrl.Should().Be("https://example.com/{username}");
+    }
+
+    [Fact]
+    public void PreviewUrl_WithDynamicVarInQueryParam_LeavesTokenUnencoded()
+    {
+        // Query-param values that reference dynamic {{tokens}} must not be URL-encoded.
+        var sut = new RequestTabViewModel(
+            new TransportRegistry(),
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/preview.callsmith",
+            Name = "preview",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com/data",
+            QueryParams = [new RequestKv("auth", "{{token}}")],
+        });
+
+        sut.SetEnvironment(new EnvironmentModel
+        {
+            FilePath = "active.env.callsmith",
+            Name = "dev",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "token",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        });
+
+        sut.PreviewUrl.Should().Be("https://api.example.com/data?auth={{token}}");
+    }
+
+    [Fact]
+    public void PreviewUrl_ActiveEnvDynamicVarOverridesGlobalStaticVar_LeavesTokenUnmodified()
+    {
+        // If the active env defines a dynamic var with the same name as a global static var,
+        // the active env wins (three-pass precedence) and the token should remain unmodified.
+        var sut = new RequestTabViewModel(
+            new TransportRegistry(),
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/override.callsmith",
+            Name = "override",
+            Method = HttpMethod.Get,
+            Url = "https://example.com/users/{{username}}",
+            QueryParams = [],
+            PathParams = new Dictionary<string, string>(),
+        });
+
+        sut.SetGlobalEnvironment(new EnvironmentModel
+        {
+            FilePath = "global.env.callsmith",
+            Name = "Global",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "username",
+                    Value = "global-user",
+                    VariableType = EnvironmentVariable.VariableTypes.Static,
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        });
+
+        sut.SetEnvironment(new EnvironmentModel
+        {
+            FilePath = "active.env.callsmith",
+            Name = "dev",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "username",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,  // dynamic wins
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        });
+
+        // Active env's ResponseBody type wins → token is left intact.
+        sut.PreviewUrl.Should().Be("https://example.com/users/{{username}}");
+    }
+
+    [Fact]
+    public void PreviewUrl_ForceOverrideGlobalStaticVar_WinsOverActiveEnvDynamicVar()
+    {
+        // A force-override global static var takes final priority over an active-env
+        // dynamic var with the same name — it should be substituted normally.
+        var sut = new RequestTabViewModel(
+            new TransportRegistry(),
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/force-override.callsmith",
+            Name = "force-override",
+            Method = HttpMethod.Get,
+            Url = "https://example.com/users/{{username}}",
+            QueryParams = [],
+            PathParams = new Dictionary<string, string>(),
+        });
+
+        sut.SetGlobalEnvironment(new EnvironmentModel
+        {
+            FilePath = "global.env.callsmith",
+            Name = "Global",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "username",
+                    Value = "forced-user",
+                    VariableType = EnvironmentVariable.VariableTypes.Static,
+                    IsForceGlobalOverride = true,
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        });
+
+        sut.SetEnvironment(new EnvironmentModel
+        {
+            FilePath = "active.env.callsmith",
+            Name = "dev",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "username",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        });
+
+        // Force-override static global wins → token is substituted.
+        sut.PreviewUrl.Should().Be("https://example.com/users/forced-user");
     }
 }

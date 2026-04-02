@@ -126,14 +126,7 @@
                            Text="{Binding PreviewUrl}"
                            Foreground="{Binding PreviewUrlForeground, Converter={x:Static conv:HexColorToBrushConverter.Instance}}"
                            FontFamily="Consolas,Menlo,monospace" FontSize="12"
-                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                           IsVisible="{Binding IsPreviewUrlResolved}"/>
-                <TextBlock Text="Resolving…"
-                           Foreground="#4b9cd3" FontSize="12" FontStyle="Italic"
-                           IsVisible="{Binding IsPreviewUrlLoading}"/>
-                <TextBlock Text="Unable to resolve URL"
-                           Foreground="#f44747" FontSize="12" FontStyle="Italic"
-                           IsVisible="{Binding IsPreviewUrlError}"/>
+                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
               </Panel>
               <Button Grid.Column="2"
                       x:Name="CopyPreviewUrlButton"
