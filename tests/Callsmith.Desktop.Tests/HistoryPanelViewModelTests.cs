@@ -1051,7 +1051,7 @@ public sealed class HistoryPanelViewModelTests
         sut.SelectedEntry = new HistoryEntryRowViewModel(
             CreateEntry(new AuthConfig()) with { RequestId = requestId });
 
-        sut.OpenRequestTooltip.Should().BeNull();
+        sut.OpenRequestTooltip.Should().Be("Open this request in the request editor");
     }
 
     [Fact]
@@ -1060,7 +1060,7 @@ public sealed class HistoryPanelViewModelTests
         var historyService = Substitute.For<IHistoryService>();
         var sut = new HistoryPanelViewModel(historyService);
 
-        sut.OpenRequestTooltip.Should().Be("Request Not Found");
+        sut.OpenRequestTooltip.Should().Be("Request not found");
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
