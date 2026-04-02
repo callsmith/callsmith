@@ -448,21 +448,18 @@ public sealed partial class RequestTabViewModel : ObservableObject
             if (string.IsNullOrWhiteSpace(Url))
                 return string.Empty;
 
-            // Build variable values from the static merge only.  Dynamic vars (ResponseBody,
-            // MockData, etc.) resolve to an empty string in BuildStaticMerge; filtering them
-            // out causes VariableSubstitutionService to leave their {{tokens}} untouched and
-            // un-urlencoded in the final URL, which is the desired preview behaviour.
-            var staticVars = _mergeService.BuildStaticMerge(_globalEnvironment, _activeEnvironment);
-            var nonEmptyVars = staticVars
-                .Where(kv => !string.IsNullOrEmpty(kv.Value))
-                .ToDictionary(kv => kv.Key, kv => kv.Value);
+            // Build variable values for preview: uses BuildStaticMerge for values but removes
+            // any variable whose winning definition in the three-pass precedence order is a
+            // non-static (dynamic) type.  This lets static vars with empty values substitute
+            // normally while dynamic vars leave their {{tokens}} unmodified and un-urlencoded.
+            var previewVars = BuildPreviewVars();
 
             // Substitute {{tokens}} in path param values BEFORE URL-encoding.
-            // Skip any path param whose value still contains an unresolved {{token}} so
-            // the braces are not percent-encoded into the preview URL.
+            // Skip any path param whose substituted value still contains an unresolved {{token}}
+            // so the braces are not percent-encoded into the preview URL.
             var pathParamValues = PathParams.GetEnabledPairs()
                 .Where(p => !string.IsNullOrWhiteSpace(p.Value))
-                .Select(p => (p.Key, Substituted: VariableSubstitutionService.Substitute(p.Value, nonEmptyVars) ?? p.Value))
+                .Select(p => (p.Key, Substituted: VariableSubstitutionService.Substitute(p.Value, previewVars) ?? p.Value))
                 .Where(t => !t.Substituted.Contains("{{", StringComparison.Ordinal))
                 .ToDictionary(t => t.Key, t => t.Substituted);
 
@@ -472,8 +469,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
             // percent-encoded — they should appear as-is in the preview URL.
             var queryParts = QueryParams.GetEnabledPairs()
                 .Select(p => (
-                    Key: VariableSubstitutionService.Substitute(p.Key,   nonEmptyVars) ?? p.Key,
-                    Val: VariableSubstitutionService.Substitute(p.Value, nonEmptyVars) ?? p.Value))
+                    Key: VariableSubstitutionService.Substitute(p.Key,   previewVars) ?? p.Key,
+                    Val: VariableSubstitutionService.Substitute(p.Value, previewVars) ?? p.Value))
                 .Select(t => (
                     EncodedKey: t.Key.Contains("{{", StringComparison.Ordinal) ? t.Key : Uri.EscapeDataString(t.Key),
                     EncodedVal: t.Val.Contains("{{", StringComparison.Ordinal) ? t.Val : Uri.EscapeDataString(t.Val)))
@@ -486,7 +483,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 resolved = baseUrl + "?" + string.Join("&", queryParts.Select(t => $"{t.EncodedKey}={t.EncodedVal}"));
             }
 
-            return VariableSubstitutionService.Substitute(resolved, nonEmptyVars) ?? resolved;
+            return VariableSubstitutionService.Substitute(resolved, previewVars) ?? resolved;
         }
     }
 
@@ -1589,6 +1586,51 @@ public sealed partial class RequestTabViewModel : ObservableObject
             _syncingUrl = false;
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Preview URL helpers
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Builds the variable dictionary used by <see cref="PreviewUrl"/>.
+    /// Calls <see cref="IEnvironmentMergeService.BuildStaticMerge"/> for values then removes
+    /// any entry whose "winning" variable definition — determined by the same three-pass
+    /// precedence as <c>BuildStaticMerge</c> (non-override globals → active env → force-override
+    /// globals) — is a non-static type (ResponseBody, MockData, Dynamic, Script, or Chained).
+    /// This means static variables with an empty value are still substituted (resulting in an
+    /// empty string in the URL), while dynamic variables leave their <c>{{token}}</c> intact.
+    /// </summary>
+    private Dictionary<string, string> BuildPreviewVars()
+    {
+        var merged = _mergeService.BuildStaticMerge(_globalEnvironment, _activeEnvironment);
+
+        // Track the "winning" isDynamic flag for each name using the same three-pass
+        // precedence order as BuildStaticMerge.
+        var dynamicNames = new Dictionary<string, bool>(StringComparer.Ordinal);
+
+        foreach (var variable in _globalEnvironment.Variables.Where(ev => !ev.IsForceGlobalOverride))
+            dynamicNames[variable.Name] = IsNonStaticVariableType(variable.VariableType);
+
+        if (_activeEnvironment is not null)
+            foreach (var variable in _activeEnvironment.Variables)
+                dynamicNames[variable.Name] = IsNonStaticVariableType(variable.VariableType);
+
+        foreach (var variable in _globalEnvironment.Variables.Where(ev => ev.IsForceGlobalOverride && !string.IsNullOrWhiteSpace(ev.Name)))
+            dynamicNames[variable.Name] = IsNonStaticVariableType(variable.VariableType);
+
+        // Remove dynamic vars so their {{tokens}} are left untouched by VariableSubstitutionService.
+        foreach (var name in dynamicNames.Where(kv => kv.Value).Select(kv => kv.Key))
+            merged.Remove(name);
+
+        return merged;
+    }
+
+    private static bool IsNonStaticVariableType(string variableType) =>
+        variableType is EnvironmentVariable.VariableTypes.Dynamic
+            or EnvironmentVariable.VariableTypes.ResponseBody
+            or EnvironmentVariable.VariableTypes.MockData
+            or EnvironmentVariable.VariableTypes.Script
+            or EnvironmentVariable.VariableTypes.Chained;
 
     // -------------------------------------------------------------------------
     // Auth helpers
