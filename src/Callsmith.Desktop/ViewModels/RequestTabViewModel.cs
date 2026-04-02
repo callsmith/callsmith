@@ -38,6 +38,14 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     private EnvironmentModel? _activeEnvironment;
     private EnvironmentModel _globalEnvironment = new() { FilePath = string.Empty, Name = "Global", Variables = [], EnvironmentId = Guid.NewGuid() };
+
+    /// <summary>
+    /// Cached result of the last full environment merge (including dynamic variables).
+    /// Updated asynchronously by <see cref="RefreshPreviewEnvAsync"/> and read
+    /// synchronously by <see cref="PreviewUrl"/>.
+    /// </summary>
+    private ResolvedEnvironment _previewEnv = new();
+
     private bool _loading;
     private bool _saving;
     private bool _syncingUrl;
@@ -447,26 +455,28 @@ public sealed partial class RequestTabViewModel : ObservableObject
             if (string.IsNullOrWhiteSpace(Url))
                 return string.Empty;
 
-            var vars = _mergeService.BuildStaticMerge(_globalEnvironment, _activeEnvironment);
+            // Use the cached fully-resolved environment (including dynamic variables such
+            // as ResponseBody and MockData).  Updated asynchronously by RefreshPreviewEnvAsync.
+            var env = _previewEnv;
 
             // Substitute {{tokens}} in path param values BEFORE URL-encoding.
             var pathParamValues = PathParams.GetEnabledPairs()
                 .Where(p => !string.IsNullOrWhiteSpace(p.Value))
                 .ToDictionary(
                     p => p.Key,
-                    p => VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value);
+                    p => VariableSubstitutionService.Substitute(p.Value, env) ?? p.Value);
 
             var resolved = PathTemplateHelper.ApplyPathParams(Url, pathParamValues);
 
             var substitutedQueryParams = QueryParams.GetEnabledPairs()
                 .Select(p => new KeyValuePair<string, string>(
-                    VariableSubstitutionService.Substitute(p.Key, vars) ?? p.Key,
-                    VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value))
+                    VariableSubstitutionService.Substitute(p.Key, env) ?? p.Key,
+                    VariableSubstitutionService.Substitute(p.Value, env) ?? p.Value))
                 .ToList();
 
             resolved = QueryStringHelper.AppendQueryParams(resolved, substitutedQueryParams);
 
-            return VariableSubstitutionService.Substitute(resolved, vars) ?? resolved;
+            return VariableSubstitutionService.Substitute(resolved, env) ?? resolved;
         }
     }
 
@@ -935,6 +945,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _activeEnvironment = environment;
         UpdateEnvSuggestions();
         QueueHistoryResponseRefresh();
+        _ = RefreshPreviewEnvAsync();
     }
 
     /// <summary>Updates the global environment variables used as the baseline for substitution.</summary>
@@ -942,6 +953,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     {
         _globalEnvironment = environment;
         UpdateEnvSuggestions();
+        _ = RefreshPreviewEnvAsync();
     }
 
     /// <summary>
@@ -1025,6 +1037,29 @@ public sealed partial class RequestTabViewModel : ObservableObject
         FormParams.SetSuggestions(suggestions);
 
         OnPropertyChanged(nameof(PreviewUrl));
+    }
+
+    /// <summary>
+    /// Asynchronously resolves the full environment (including dynamic variables such as
+    /// ResponseBody and MockData) and updates <see cref="_previewEnv"/>.
+    /// Raises a <see cref="PreviewUrl"/> property-change notification on the UI thread
+    /// once the resolved environment is ready so bindings pick up the new value.
+    /// </summary>
+    private async Task RefreshPreviewEnvAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, ct)
+                .ConfigureAwait(false);
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                _previewEnv = env;
+                OnPropertyChanged(nameof(PreviewUrl));
+            });
+        }
+        catch (OperationCanceledException) { }
+        catch { /* preview refresh is best-effort */ }
     }
 
     // -------------------------------------------------------------------------
@@ -1226,6 +1261,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 && !string.IsNullOrEmpty(Response?.Body))
             {
                 await UpdateDynamicCacheFromResponseAsync(Response!.Body, ct).ConfigureAwait(false);
+
+                // Refresh the URL preview so it reflects the newly-cached dynamic variable values.
+                _ = RefreshPreviewEnvAsync();
             }
         }
         catch (OperationCanceledException)
