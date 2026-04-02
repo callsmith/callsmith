@@ -5,6 +5,7 @@ using Callsmith.Desktop.ViewModels;
 using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
 namespace Callsmith.Desktop.Tests;
@@ -868,6 +869,245 @@ public sealed class HistoryPanelViewModelTests
         sut.DetailResolved.Should().NotContain("<secret>");
         // Last param must NOT have trailing &
         sut.DetailResolved.Should().NotContain("client_secret=s3cr3t&");
+    }
+
+    [Fact]
+    public void CanOpenRequest_IsFalse_Initially()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var sut = new HistoryPanelViewModel(historyService);
+
+        sut.CanOpenRequest.Should().BeFalse();
+    }
+
+    [Fact]
+    public void CanOpenRequest_IsFalse_WhenEntryHasNoRequestId()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var collectionsVm = BuildCollectionsVm();
+        var sut = new HistoryPanelViewModel(historyService, collectionsViewModel: collectionsVm);
+
+        sut.SelectedEntry = new HistoryEntryRowViewModel(CreateEntry(new AuthConfig()));
+
+        sut.CanOpenRequest.Should().BeFalse();
+    }
+
+    [Fact]
+    public void CanOpenRequest_IsFalse_WhenNoCollectionIsOpen()
+    {
+        var requestId = Guid.NewGuid();
+        var historyService = Substitute.For<IHistoryService>();
+        // No collectionsVm injected — simulates app without open collection
+        var sut = new HistoryPanelViewModel(historyService);
+
+        sut.SelectedEntry = new HistoryEntryRowViewModel(
+            CreateEntry(new AuthConfig()) with { RequestId = requestId });
+
+        sut.CanOpenRequest.Should().BeFalse();
+    }
+
+    [Fact]
+    public void CanOpenRequest_IsFalse_WhenRequestNotFoundInCollection()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var collectionsVm = BuildCollectionsVm();
+        collectionsVm.TreeRoots = [BuildRootNode(Guid.NewGuid())];
+
+        var sut = new HistoryPanelViewModel(historyService, collectionsViewModel: collectionsVm);
+
+        // Entry references a different requestId that is not in the tree
+        sut.SelectedEntry = new HistoryEntryRowViewModel(
+            CreateEntry(new AuthConfig()) with { RequestId = Guid.NewGuid() });
+
+        sut.CanOpenRequest.Should().BeFalse();
+    }
+
+    [Fact]
+    public void CanOpenRequest_IsTrue_WhenRequestFoundInCollection()
+    {
+        var requestId = Guid.NewGuid();
+        var historyService = Substitute.For<IHistoryService>();
+        var collectionsVm = BuildCollectionsVm();
+        collectionsVm.TreeRoots = [BuildRootNode(requestId)];
+
+        var sut = new HistoryPanelViewModel(historyService, collectionsViewModel: collectionsVm);
+
+        sut.SelectedEntry = new HistoryEntryRowViewModel(
+            CreateEntry(new AuthConfig()) with { RequestId = requestId });
+
+        sut.CanOpenRequest.Should().BeTrue();
+    }
+
+    [Fact]
+    public void CanOpenRequest_IsFalse_AfterSelectingEntryWithNoRequestId_WhenPreviousWasTrue()
+    {
+        var requestId = Guid.NewGuid();
+        var historyService = Substitute.For<IHistoryService>();
+        var collectionsVm = BuildCollectionsVm();
+        collectionsVm.TreeRoots = [BuildRootNode(requestId)];
+
+        var sut = new HistoryPanelViewModel(historyService, collectionsViewModel: collectionsVm);
+
+        sut.SelectedEntry = new HistoryEntryRowViewModel(
+            CreateEntry(new AuthConfig()) with { RequestId = requestId });
+        sut.CanOpenRequest.Should().BeTrue();
+
+        sut.SelectedEntry = new HistoryEntryRowViewModel(CreateEntry(new AuthConfig()));
+        sut.CanOpenRequest.Should().BeFalse();
+    }
+
+    [Fact]
+    public void OpenRequestCommand_SendsRequestSelectedMessage_AndClosesPanel()
+    {
+        var requestId = Guid.NewGuid();
+        var historyService = Substitute.For<IHistoryService>();
+        var messenger = new WeakReferenceMessenger();
+        var collectionsVm = BuildCollectionsVm();
+        collectionsVm.TreeRoots = [BuildRootNode(requestId)];
+
+        RequestSelectedMessage? received = null;
+        messenger.Register<RequestSelectedMessage>(this, (_, msg) => received = msg);
+
+        var sut = new HistoryPanelViewModel(historyService, messenger: messenger,
+            collectionsViewModel: collectionsVm);
+        sut.SelectedEntry = new HistoryEntryRowViewModel(
+            CreateEntry(new AuthConfig()) with { RequestId = requestId });
+
+        sut.OpenRequestCommand.Execute(null);
+
+        received.Should().NotBeNull();
+        received!.Value.RequestId.Should().Be(requestId);
+        sut.IsOpen.Should().BeFalse();
+    }
+
+    [Fact]
+    public void OpenRequestCommand_DoesNothing_WhenRequestNotFound()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var messenger = new WeakReferenceMessenger();
+        var collectionsVm = BuildCollectionsVm();
+        collectionsVm.TreeRoots = [BuildRootNode(Guid.NewGuid())];
+
+        RequestSelectedMessage? received = null;
+        messenger.Register<RequestSelectedMessage>(this, (_, msg) => received = msg);
+
+        var sut = new HistoryPanelViewModel(historyService, messenger: messenger,
+            collectionsViewModel: collectionsVm);
+        sut.SelectedEntry = new HistoryEntryRowViewModel(
+            CreateEntry(new AuthConfig()) with { RequestId = Guid.NewGuid() });
+
+        sut.OpenRequestCommand.Execute(null);
+
+        received.Should().BeNull();
+    }
+
+    [Fact]
+    public void CanOpenEntryRequest_ReturnsTrue_WhenRequestFoundInCollection()
+    {
+        var requestId = Guid.NewGuid();
+        var historyService = Substitute.For<IHistoryService>();
+        var collectionsVm = BuildCollectionsVm();
+        collectionsVm.TreeRoots = [BuildRootNode(requestId)];
+
+        var sut = new HistoryPanelViewModel(historyService, collectionsViewModel: collectionsVm);
+        var row = new HistoryEntryRowViewModel(
+            CreateEntry(new AuthConfig()) with { RequestId = requestId });
+
+        sut.CanOpenEntryRequest(row).Should().BeTrue();
+    }
+
+    [Fact]
+    public void CanOpenEntryRequest_ReturnsFalse_WhenRequestNotFound()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var collectionsVm = BuildCollectionsVm();
+        collectionsVm.TreeRoots = [BuildRootNode(Guid.NewGuid())];
+
+        var sut = new HistoryPanelViewModel(historyService, collectionsViewModel: collectionsVm);
+        var row = new HistoryEntryRowViewModel(
+            CreateEntry(new AuthConfig()) with { RequestId = Guid.NewGuid() });
+
+        sut.CanOpenEntryRequest(row).Should().BeFalse();
+    }
+
+    [Fact]
+    public void CanOpenEntryRequest_ReturnsFalse_ForNullRow()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var sut = new HistoryPanelViewModel(historyService);
+
+        sut.CanOpenEntryRequest(null).Should().BeFalse();
+    }
+
+    [Fact]
+    public void OpenRequestTooltip_IsNull_WhenCanOpenRequestIsTrue()
+    {
+        var requestId = Guid.NewGuid();
+        var historyService = Substitute.For<IHistoryService>();
+        var collectionsVm = BuildCollectionsVm();
+        collectionsVm.TreeRoots = [BuildRootNode(requestId)];
+
+        var sut = new HistoryPanelViewModel(historyService, collectionsViewModel: collectionsVm);
+        sut.SelectedEntry = new HistoryEntryRowViewModel(
+            CreateEntry(new AuthConfig()) with { RequestId = requestId });
+
+        sut.OpenRequestTooltip.Should().Be("Open this request in the request editor");
+    }
+
+    [Fact]
+    public void OpenRequestTooltip_IsRequestNotFound_WhenCanOpenRequestIsFalse()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var sut = new HistoryPanelViewModel(historyService);
+
+        sut.OpenRequestTooltip.Should().Be("Request not found");
+    }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    private static CollectionsViewModel BuildCollectionsVm()
+    {
+        var cs = Substitute.For<ICollectionService>();
+        cs.OpenFolderAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+          .Returns(new CollectionFolder { Name = "root", FolderPath = @"C:\test", Requests = [], SubFolders = [] });
+
+        var recent = Substitute.For<IRecentCollectionsService>();
+        recent.LoadAsync(Arg.Any<CancellationToken>()).Returns([]);
+
+        var prefs = Substitute.For<ICollectionPreferencesService>();
+        prefs.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+             .Returns(new CollectionPreferences { ExpandedFolderPaths = [] });
+
+        return new CollectionsViewModel(
+            cs,
+            recent,
+            Substitute.For<ICollectionImportService>(),
+            prefs,
+            Substitute.For<IHistoryService>(),
+            new WeakReferenceMessenger(),
+            NullLogger<CollectionsViewModel>.Instance);
+    }
+
+    private static CollectionTreeItemViewModel BuildRootNode(Guid requestId)
+    {
+        var folder = new CollectionFolder
+        {
+            Name = "root",
+            FolderPath = @"C:\test",
+            Requests =
+            [
+                new CollectionRequest
+                {
+                    RequestId = requestId,
+                    FilePath = @"C:\test\request.callsmith",
+                    Name = "request",
+                    Method = System.Net.Http.HttpMethod.Get,
+                    Url = "https://example.com",
+                },
+            ],
+            SubFolders = [],
+        };
+        return CollectionTreeItemViewModel.FromFolder(folder, parent: null, isRoot: true);
     }
 
     private static HistoryEntry CreateEntry(AuthConfig auth)
