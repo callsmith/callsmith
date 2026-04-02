@@ -818,6 +818,30 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         return null;
     }
 
+    /// <summary>
+    /// Searches the in-memory collection tree for a request by its stable <see cref="CollectionRequest.RequestId"/>.
+    /// Returns <see langword="null"/> when no collection is open or the request is not found.
+    /// </summary>
+    public CollectionRequest? FindRequestByRequestId(Guid requestId)
+    {
+        if (TreeRoots is not [var root]) return null;
+        return FindRequestByRequestId(root, requestId);
+    }
+
+    private static CollectionRequest? FindRequestByRequestId(CollectionTreeItemViewModel node, Guid requestId)
+    {
+        if (!node.IsFolder && node.Request?.RequestId == requestId)
+            return node.Request;
+
+        foreach (var child in node.Children)
+        {
+            var found = FindRequestByRequestId(child, requestId);
+            if (found is not null) return found;
+        }
+
+        return null;
+    }
+
     // -------------------------------------------------------------------------
     // Expansion state persistence
     // -------------------------------------------------------------------------
