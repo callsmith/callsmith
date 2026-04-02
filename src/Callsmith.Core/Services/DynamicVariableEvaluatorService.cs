@@ -119,6 +119,11 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
             _logger.LogWarning(ex, "Could not open collection folder for dynamic variable evaluation");
         }
 
+        // Track which response-body vars fail to produce a value across all passes.
+        // Initialise with all attempted vars; remove each one when it resolves successfully.
+        var failedVars = new HashSet<string>(
+            responseBodyVars.Select(v => v.Name), StringComparer.Ordinal);
+
         // Two passes so that response-body vars that reference other response-body vars
         // resolve in the right order regardless of declaration order.
         var passes = responseBodyVars.Count > 1 ? 2 : 1;
@@ -136,6 +141,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
                     if (value != null)
                     {
                         resolvedVars[variable.Name] = value;
+                        failedVars.Remove(variable.Name);
                         cacheModified = true;
                     }
                 }
@@ -150,7 +156,12 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         if (cacheModified)
             await SaveCacheAsync(collectionFolderPath, cache, ct).ConfigureAwait(false);
 
-        return new ResolvedEnvironment { Variables = resolvedVars, MockGenerators = mockGenerators };
+        return new ResolvedEnvironment
+        {
+            Variables = resolvedVars,
+            MockGenerators = mockGenerators,
+            FailedVariables = failedVars,
+        };
     }
 
     /// <inheritdoc/>

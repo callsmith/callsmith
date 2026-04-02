@@ -924,7 +924,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 var dynVars = globalResolved.Variables
                     .Where(kv => !globalOwnStaticKeys.Contains(kv.Key))
                     .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
-                env.SetDynamicPreviewValues(dynVars, globalResolved.MockGenerators);
+                env.SetDynamicPreviewValues(dynVars, globalResolved.MockGenerators, globalResolved.FailedVariables);
                 // Also push the merged static context so that {{token}}-style references in
                 // static var values resolve against the effective (preview-env-aware) merged dict.
                 env.SetGlobalPreviewValues(globalStaticVars, globalResolved.MockGenerators);
@@ -994,6 +994,8 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         // the preview is honest: if the env is misconfigured (e.g. wrong base URL), the
         // global dynamic vars that depend on it correctly show blank rather than leaking
         // a resolved value from a different, working environment.
+        IReadOnlySet<string> globalFailedVars = new HashSet<string>();
+
         if (globalHasResponseBody)
         {
             try
@@ -1023,6 +1025,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 ct.ThrowIfCancellationRequested();
 
                 pureGlobalContextVars = BuildPureGlobalPreviewVars(globalModel, globalResolvedForConflicts.Variables);
+                globalFailedVars = globalResolvedForConflicts.FailedVariables;
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
@@ -1071,6 +1074,11 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         // "OVERRIDDEN BY" on concrete vars shows the global env's resolved value.
         PushConflictInfoForConcreteEnv(env, pureGlobalContextVars);
 
+        // Mark any global response-body vars that failed resolution so the conflict row
+        // shows "Unable to resolve value" instead of a blank.
+        if (globalFailedVars.Count > 0)
+            env.MarkConflictValuesErrorForVars(globalFailedVars);
+
         if (!hasDynamic) return; // No dynamic vars in this env — global context above is sufficient.
 
         env.MarkDynamicPreviewsLoading();
@@ -1106,7 +1114,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 .Where(kv => activeDynVarNames.Contains(kv.Key))
                 .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
 
-            env.SetDynamicPreviewValues(dynVars, activeResolved.MockGenerators);
+            env.SetDynamicPreviewValues(dynVars, activeResolved.MockGenerators, activeResolved.FailedVariables);
         }
         catch (OperationCanceledException)
         {

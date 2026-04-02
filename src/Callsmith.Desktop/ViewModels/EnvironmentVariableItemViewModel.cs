@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
 using Callsmith.Desktop.Controls;
@@ -20,6 +21,10 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     private readonly Func<ResolvedEnvironment> _getResolvedEnv;
     private readonly Func<EnvironmentVariable?, Task<EnvironmentVariable?>> _editMockData;
     private readonly Func<EnvironmentVariable?, Task<EnvironmentVariable?>> _editResponseBody;
+
+    // Debounce CTSes — prevent "Resolving…" from flashing on fast resolution.
+    private CancellationTokenSource? _dynamicLoadingDelayCts;
+    private CancellationTokenSource? _conflictLoadingDelayCts;
 
     /// <summary>
     /// True if this variable belongs to a concrete (non-global) Bruno environment.
@@ -81,6 +86,9 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     /// <summary>Updates the conflict label and value shown in the override/overridden-by preview row.</summary>
     internal void SetConflictInfo(string? label, string? value, string? toolTip)
     {
+        _conflictLoadingDelayCts?.Cancel();
+        _conflictLoadingDelayCts?.Dispose();
+        _conflictLoadingDelayCts = null;
         ConflictLabel = label;
         ConflictValue = value;
         ConflictToolTip = toolTip;
@@ -91,13 +99,28 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     /// <summary>Marks the conflict value as loading (resolution in progress).</summary>
     internal void MarkConflictValueLoading()
     {
-        IsConflictValueLoading = true;
+        _conflictLoadingDelayCts?.Cancel();
+        _conflictLoadingDelayCts?.Dispose();
         IsConflictValueError = false;
+        var cts = new CancellationTokenSource();
+        _conflictLoadingDelayCts = cts;
+        _ = Task.Delay(200, cts.Token).ContinueWith(
+            _ => Dispatcher.UIThread.Post(() =>
+            {
+                if (!cts.IsCancellationRequested)
+                    IsConflictValueLoading = true;
+            }),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnRanToCompletion,
+            TaskScheduler.Default);
     }
 
     /// <summary>Marks the conflict value as failed to resolve.</summary>
     internal void MarkConflictValueError()
     {
+        _conflictLoadingDelayCts?.Cancel();
+        _conflictLoadingDelayCts?.Dispose();
+        _conflictLoadingDelayCts = null;
         IsConflictValueLoading = false;
         IsConflictValueError = true;
     }
@@ -302,13 +325,28 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     /// <summary>Marks the dynamic preview value as currently loading.</summary>
     internal void MarkDynamicPreviewLoading()
     {
-        IsDynamicPreviewLoading = true;
+        _dynamicLoadingDelayCts?.Cancel();
+        _dynamicLoadingDelayCts?.Dispose();
         IsDynamicPreviewError = false;
+        var cts = new CancellationTokenSource();
+        _dynamicLoadingDelayCts = cts;
+        _ = Task.Delay(200, cts.Token).ContinueWith(
+            _ => Dispatcher.UIThread.Post(() =>
+            {
+                if (!cts.IsCancellationRequested)
+                    IsDynamicPreviewLoading = true;
+            }),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnRanToCompletion,
+            TaskScheduler.Default);
     }
 
     /// <summary>Marks the dynamic preview value as failed to resolve.</summary>
     internal void MarkDynamicPreviewError()
     {
+        _dynamicLoadingDelayCts?.Cancel();
+        _dynamicLoadingDelayCts?.Dispose();
+        _dynamicLoadingDelayCts = null;
         IsDynamicPreviewLoading = false;
         IsDynamicPreviewError = true;
     }
@@ -316,6 +354,9 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
     /// <summary>Clears loading and error states (called when a resolved value arrives).</summary>
     internal void ClearDynamicPreviewState()
     {
+        _dynamicLoadingDelayCts?.Cancel();
+        _dynamicLoadingDelayCts?.Dispose();
+        _dynamicLoadingDelayCts = null;
         IsDynamicPreviewLoading = false;
         IsDynamicPreviewError = false;
     }

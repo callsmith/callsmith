@@ -1058,16 +1058,30 @@ public sealed partial class RequestTabViewModel : ObservableObject
     /// </summary>
     private async Task RefreshPreviewEnvAsync(CancellationToken ct = default)
     {
-        Dispatcher.UIThread.Post(() =>
+        // Show "Resolving…" only if resolution takes longer than 200 ms — avoids a flash
+        // on fast responses (cached envs, static-only envs, etc.).
+        using var loadingDelayCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var loadingDelayToken = loadingDelayCts.Token;
+        _ = Task.Run(async () =>
         {
-            IsPreviewUrlLoading = true;
-            IsPreviewUrlError = false;
+            try
+            {
+                await Task.Delay(200, loadingDelayToken).ConfigureAwait(false);
+                Dispatcher.UIThread.Post(() =>
+                {
+                    IsPreviewUrlLoading = true;
+                    IsPreviewUrlError = false;
+                });
+            }
+            catch (OperationCanceledException) { }
         });
+
         try
         {
             var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, allowStaleCache: true, ct: ct)
                 .ConfigureAwait(false);
 
+            loadingDelayCts.Cancel();
             Dispatcher.UIThread.Post(() =>
             {
                 _previewEnv = env;
@@ -1075,9 +1089,13 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 OnPropertyChanged(nameof(PreviewUrl));
             });
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            loadingDelayCts.Cancel();
+        }
         catch
         {
+            loadingDelayCts.Cancel();
             Dispatcher.UIThread.Post(() =>
             {
                 IsPreviewUrlLoading = false;

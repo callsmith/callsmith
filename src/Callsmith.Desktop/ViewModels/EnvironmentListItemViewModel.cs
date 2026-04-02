@@ -504,7 +504,8 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     /// </summary>
     internal void SetDynamicPreviewValues(
         IReadOnlyDictionary<string, string> dynVars,
-        IReadOnlyDictionary<string, MockDataEntry> generators)
+        IReadOnlyDictionary<string, MockDataEntry> generators,
+        IReadOnlySet<string>? failedVars = null)
     {
         _resolvedDynVars = new Dictionary<string, string>(dynVars, StringComparer.Ordinal);
         _mockGenerators = generators;
@@ -541,12 +542,21 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
                     || dynVars.TryGetValue(v.Name, out previewValue))
                 {
                     v.DynamicPreviewValue = previewValue;
+                    v.ClearDynamicPreviewState();
+                }
+                else if (failedVars != null
+                    && (failedVars.Contains(key) || failedVars.Contains(v.Name)))
+                {
+                    // Variable was attempted but the API or path extraction returned nothing.
+                    v.DynamicPreviewValue = null;
+                    v.MarkDynamicPreviewError();
                 }
                 else
                 {
+                    // Not yet configured or no stale cache available — leave blank.
                     v.DynamicPreviewValue = null;
+                    v.ClearDynamicPreviewState();
                 }
-                v.ClearDynamicPreviewState();
             }
             v.NotifyPreviewChanged();
         }
@@ -603,6 +613,21 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         foreach (var v in Variables)
         {
             if (v.ConflictLabel is not null)
+                v.MarkConflictValueError();
+        }
+    }
+
+    /// <summary>
+    /// Marks conflict values as error for variables whose names match
+    /// <paramref name="failedVarNames"/>. Called after global dynamic resolution when specific
+    /// variables failed to produce a value (API unreachable, bad path, etc.).
+    /// </summary>
+    internal void MarkConflictValuesErrorForVars(IReadOnlySet<string> failedVarNames)
+    {
+        foreach (var v in Variables)
+        {
+            var key = v.Name.Trim();
+            if (v.ConflictLabel is not null && failedVarNames.Contains(key))
                 v.MarkConflictValueError();
         }
     }
