@@ -144,7 +144,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     /// Tooltip text shown on the "Open Request" button when it is disabled.
     /// Returns <see langword="null"/> when the button is enabled (no tooltip needed).
     /// </summary>
-    public string? OpenRequestTooltip => CanOpenRequest ? null : "Request Not Found";
+    public string? OpenRequestTooltip => CanOpenRequest ? "Open this request in the request editor" : "Request not found";
 
     // -------------------------------------------------------------------------
     // Detail panel layout

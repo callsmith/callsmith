@@ -180,13 +180,13 @@ public partial class HistoryPanelView : UserControl
             return;
 
         var canOpen = vm.CanOpenEntryRequest(_contextMenuEntry);
-        var openRequestItem = MakeMenuItem("Open Request",
+        var openRequestItem = MakeMenuItem("Go to request",
             () => vm.OpenRequestFromEntryCommand.Execute(_contextMenuEntry));
         if (!canOpen)
         {
             openRequestItem.IsEnabled = false;
             openRequestItem.Cursor = new Cursor(StandardCursorType.Help);
-            ToolTip.SetTip(openRequestItem, "Request Not Found");
+            ToolTip.SetTip(openRequestItem, "Request not found");
         }
         menu.Items.Add(openRequestItem);
 

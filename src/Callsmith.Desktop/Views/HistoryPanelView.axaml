@@ -471,7 +471,7 @@
                              LetterSpacing="1"
                              VerticalAlignment="Center"/>
                   <Panel ToolTip.Tip="{Binding OpenRequestTooltip}">
-                    <Button Content="Open Request"
+                    <Button Content="Go to request"
                             Command="{Binding OpenRequestCommand}"
                             IsEnabled="{Binding CanOpenRequest}"
                             FontSize="11"
@@ -510,8 +510,9 @@
                              FontWeight="Bold"
                              LetterSpacing="1"
                              VerticalAlignment="Center"/>
-                  <Button Content="Resend Request"
+                  <Button Content="Resend"
                           Command="{Binding ResendRequestCommand}"
+                          ToolTip.Tip="Open a New Request in the request editor using these exact values"
                           FontSize="11"
                           Background="Transparent"
                           Foreground="#9cdcfe"
@@ -522,6 +523,7 @@
                   <Panel IsVisible="{Binding HasHiddenSecrets}">
                     <Button Content="Reveal Secrets"
                             Command="{Binding RevealSecretsCommand}"
+                            ToolTip.Tip="Reveal masked values in the resolved request"
                             IsVisible="{Binding !IsSecretShown}"
                             IsEnabled="{Binding !IsRevealingSecrets}"
                             FontSize="11"
