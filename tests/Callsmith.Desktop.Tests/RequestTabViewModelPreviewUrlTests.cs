@@ -326,4 +326,98 @@ public sealed class RequestTabViewModelPreviewUrlTests
         // Force-override static global wins → token is substituted.
         sut.PreviewUrl.Should().Be("https://example.com/users/forced-user");
     }
+
+    // -------------------------------------------------------------------------
+    // PreviewUrlTooltip tests
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void PreviewUrlTooltip_WhenPreviewUrlContainsDynamicToken_ReturnsUnresolvedMessage()
+    {
+        var sut = new RequestTabViewModel(
+            new TransportRegistry(),
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/tooltip-dynamic.callsmith",
+            Name = "tooltip-dynamic",
+            Method = HttpMethod.Get,
+            Url = "https://example.com/users/{{username}}",
+            QueryParams = [],
+            PathParams = new Dictionary<string, string>(),
+        });
+
+        sut.SetGlobalEnvironment(new EnvironmentModel
+        {
+            FilePath = "global.env.callsmith",
+            Name = "Global",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "username",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        });
+
+        sut.PreviewUrlTooltip.Should().Be("Preview URL contains dynamic variables that will be resolved when sent");
+    }
+
+    [Fact]
+    public void PreviewUrlTooltip_WhenPreviewUrlFullyResolved_ReturnsResolvedMessage()
+    {
+        var sut = new RequestTabViewModel(
+            new TransportRegistry(),
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/tooltip-resolved.callsmith",
+            Name = "tooltip-resolved",
+            Method = HttpMethod.Get,
+            Url = "https://{{host}}/users",
+            QueryParams = [],
+            PathParams = new Dictionary<string, string>(),
+        });
+
+        sut.SetGlobalEnvironment(new EnvironmentModel
+        {
+            FilePath = "global.env.callsmith",
+            Name = "Global",
+            Variables = [new EnvironmentVariable { Name = "host", Value = "api.example.com" }],
+            EnvironmentId = Guid.NewGuid(),
+        });
+
+        sut.PreviewUrlTooltip.Should().Be("Fully resolved preview URL");
+    }
+
+    [Fact]
+    public void PreviewUrlTooltip_WhenUrlIsEmpty_ReturnsResolvedMessage()
+    {
+        var sut = new RequestTabViewModel(
+            new TransportRegistry(),
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/tooltip-empty.callsmith",
+            Name = "tooltip-empty",
+            Method = HttpMethod.Get,
+            Url = string.Empty,
+            QueryParams = [],
+            PathParams = new Dictionary<string, string>(),
+        });
+
+        sut.PreviewUrlTooltip.Should().Be("Fully resolved preview URL");
+    }
 }

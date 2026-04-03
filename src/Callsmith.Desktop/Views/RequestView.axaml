@@ -135,7 +135,8 @@
                            Text="{Binding PreviewUrl}"
                            Foreground="{Binding PreviewUrlForeground, Converter={x:Static conv:HexColorToBrushConverter.Instance}}"
                            FontFamily="Consolas,Menlo,monospace" FontSize="12"
-                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                           ToolTip.Tip="{Binding PreviewUrlTooltip}"/>
               </Panel>
               <Button Grid.Column="2"
                       x:Name="CopyPreviewUrlButton"
