@@ -57,6 +57,6 @@ public sealed partial class HistoryEntryRowViewModel : ObservableObject
         if (delta.TotalMinutes < 60) return $"{(int)delta.TotalMinutes}m ago";
         if (delta.TotalHours < 24) return $"{(int)delta.TotalHours}h ago";
         if (delta.TotalDays < 7) return $"{(int)delta.TotalDays}d ago";
-        return dt.LocalDateTime.ToString("yyyy-MM-dd HH:mm");
+        return dt.LocalDateTime.ToString("d");
     }
 }
