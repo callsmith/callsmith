@@ -151,7 +151,7 @@ public sealed class RequestTabViewModelPreviewUrlTests
             Name = "preview",
             Method = HttpMethod.Get,
             Url = "https://example.com/{username}",
-            PathParams = new Dictionary<string, string> { ["username"] = "{{me}}" },
+            PathParams = new Dictionary<string, string> { ["username"] = "i-am-{{me}}" },
         });
 
         sut.SetGlobalEnvironment(new EnvironmentModel
@@ -170,8 +170,8 @@ public sealed class RequestTabViewModelPreviewUrlTests
             EnvironmentId = Guid.NewGuid(),
         });
 
-        // Path param is not applied because its value is unresolved; {username} stays.
-        sut.PreviewUrl.Should().Be("https://example.com/{username}");
+        // Path param is applied, but with the dynamic part unresolved
+        sut.PreviewUrl.Should().Be("https://example.com/i-am-{{me}}");
     }
 
     [Fact]
