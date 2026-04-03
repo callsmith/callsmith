@@ -64,6 +64,9 @@ public static partial class PathTemplateHelper
             if (!values.TryGetValue(key, out var value))
                 return match.Value;
 
+            if (value.Contains("{{", StringComparison.Ordinal))
+                return value;
+
             return Uri.EscapeDataString(value);
         });
 

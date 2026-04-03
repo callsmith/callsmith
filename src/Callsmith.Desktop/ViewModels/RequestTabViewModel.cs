@@ -460,7 +460,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
             var pathParamValues = PathParams.GetEnabledPairs()
                 .Where(p => !string.IsNullOrWhiteSpace(p.Value))
                 .Select(p => (p.Key, Substituted: VariableSubstitutionService.Substitute(p.Value, previewVars) ?? p.Value))
-                .Where(t => !t.Substituted.Contains("{{", StringComparison.Ordinal))
                 .ToDictionary(t => t.Key, t => t.Substituted);
 
             var resolved = PathTemplateHelper.ApplyPathParams(Url, pathParamValues);
