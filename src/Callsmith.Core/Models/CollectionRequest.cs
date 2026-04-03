@@ -105,5 +105,22 @@ public sealed class CollectionRequest
         public const string Xml = "xml";
         public const string Form = "form";
         public const string Multipart = "multipart";
+
+        // MIME content-type values that map to each body type token.
+        public const string JsonContentType = "application/json";
+        public const string TextContentType = "text/plain";
+        public const string XmlContentType  = "application/xml";
+
+        /// <summary>
+        /// Returns the MIME content type for the given body type token,
+        /// or <see langword="null"/> when no content-type should be set.
+        /// </summary>
+        public static string? ToContentType(string? bodyType) => bodyType switch
+        {
+            Json => JsonContentType,
+            Text => TextContentType,
+            Xml  => XmlContentType,
+            _    => null,
+        };
     }
 }

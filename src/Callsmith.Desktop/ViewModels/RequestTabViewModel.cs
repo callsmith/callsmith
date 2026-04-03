@@ -1856,9 +1856,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     private string? GetContentType() => SelectedBodyType switch
     {
-        CollectionRequest.BodyTypes.Json => "application/json",
-        CollectionRequest.BodyTypes.Text => "text/plain",
-        CollectionRequest.BodyTypes.Xml  => "application/xml",
+        CollectionRequest.BodyTypes.Json => CollectionRequest.BodyTypes.JsonContentType,
+        CollectionRequest.BodyTypes.Text => CollectionRequest.BodyTypes.TextContentType,
+        CollectionRequest.BodyTypes.Xml  => CollectionRequest.BodyTypes.XmlContentType,
         CollectionRequest.BodyTypes.Form => "application/x-www-form-urlencoded",
         CollectionRequest.BodyTypes.Multipart => "multipart/form-data",
         _ => null,

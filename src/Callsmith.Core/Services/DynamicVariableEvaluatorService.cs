@@ -554,9 +554,9 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
     {
         var contentType = req.BodyType switch
         {
-            CollectionRequest.BodyTypes.Json => "application/json",
-            CollectionRequest.BodyTypes.Text => "text/plain",
-            CollectionRequest.BodyTypes.Xml => "application/xml",
+            CollectionRequest.BodyTypes.Json => CollectionRequest.BodyTypes.JsonContentType,
+            CollectionRequest.BodyTypes.Text => CollectionRequest.BodyTypes.TextContentType,
+            CollectionRequest.BodyTypes.Xml => CollectionRequest.BodyTypes.XmlContentType,
             CollectionRequest.BodyTypes.Form => "application/x-www-form-urlencoded",
             _ => null,
         };

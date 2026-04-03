@@ -147,7 +147,7 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
 
         return new ImportedRequest
         {
-            Name = string.IsNullOrWhiteSpace(item.Name) ? "Unnamed Request" : item.Name,
+            Name = string.IsNullOrWhiteSpace(item.Name) ? ImporterConstants.UnnamedRequest : item.Name,
             Method = method,
             Url = url,
             Description = item.Meta?.Description,
@@ -189,7 +189,7 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
 
         return new ImportedFolder
         {
-            Name = string.IsNullOrWhiteSpace(item.Name) ? "Unnamed Folder" : item.Name,
+            Name = string.IsNullOrWhiteSpace(item.Name) ? ImporterConstants.UnnamedFolder : item.Name,
             Requests = requests,
             SubFolders = subFolders,
             ItemOrder = order,
@@ -397,9 +397,9 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
 
         var type = body.MimeType switch
         {
-            "application/json" => BodyTypes.Json,
-            "text/plain" => BodyTypes.Text,
-            "application/xml" or "text/xml" => BodyTypes.Xml,
+            BodyTypes.JsonContentType => BodyTypes.Json,
+            BodyTypes.TextContentType => BodyTypes.Text,
+            BodyTypes.XmlContentType or "text/xml" => BodyTypes.Xml,
             "multipart/form-data" => BodyTypes.Multipart,
             _ => string.IsNullOrWhiteSpace(body.Text) ? BodyTypes.None : BodyTypes.Text,
         };
