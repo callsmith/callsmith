@@ -71,6 +71,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(TabTitle))]
     [NotifyPropertyChangedFor(nameof(SaveButtonLabel))]
+    [NotifyPropertyChangedFor(nameof(ShowRevertButton))]
+    [NotifyCanExecuteChangedFor(nameof(RevertCommand))]
     private bool _isNew;
 
     /// <summary>File path of the loaded request, or empty string if the tab is new.</summary>
@@ -90,6 +92,11 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     /// <summary>Label for the Save button: "Save" for existing requests, "Save As…" for new tabs.</summary>
     public string SaveButtonLabel => IsNew ? "Save As…" : "Save";
+
+    /// <summary>
+    /// True when the Revert button should be shown: an existing (non-new) tab with unsaved changes.
+    /// </summary>
+    public bool ShowRevertButton => HasUnsavedChanges && !IsNew;
 
     // -------------------------------------------------------------------------
     // Request editor state
@@ -157,6 +164,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(TabIsDirty))]
+    [NotifyPropertyChangedFor(nameof(ShowRevertButton))]
+    [NotifyCanExecuteChangedFor(nameof(RevertCommand))]
     private bool _hasUnsavedChanges;
 
     // -------------------------------------------------------------------------
@@ -668,7 +677,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             if (_loading || _saving || _sourceRequest is null) return;
             if (e.PropertyName is
                 nameof(HasUnsavedChanges) or nameof(IsNew) or nameof(IsActive) or nameof(TabTitle) or
-                nameof(TabIsDirty) or nameof(SaveButtonLabel) or
+                nameof(TabIsDirty) or nameof(SaveButtonLabel) or nameof(ShowRevertButton) or
                 nameof(SourceFilePath) or
                 nameof(ShowSaveAsPanel) or nameof(SaveAsName) or nameof(SaveAsFolderPath) or
                 nameof(SaveAsError) or nameof(PendingClose) or
@@ -1282,7 +1291,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     }
 
     // -------------------------------------------------------------------------
-    // Commands — Save
+    // Commands — Save / Revert
     // -------------------------------------------------------------------------
 
     /// <summary>
@@ -1388,6 +1397,19 @@ public sealed partial class RequestTabViewModel : ObservableObject
         ShowSaveAsPanel = false;
         SaveAsError = null;
     }
+
+    /// <summary>
+    /// Reverts all unsaved changes by reloading the last-saved state from <see cref="_sourceRequest"/>.
+    /// Only available for existing (non-new) tabs that have unsaved changes.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanRevert))]
+    private void Revert()
+    {
+        if (_sourceRequest is null) return;
+        LoadRequest(_sourceRequest);
+    }
+
+    private bool CanRevert() => HasUnsavedChanges && !IsNew;
 
     // -------------------------------------------------------------------------
     // Commands — Close + close guard

@@ -38,8 +38,8 @@
     <Border DockPanel.Dock="Top" Background="#252526" Padding="12,10">
       <Grid RowDefinitions="Auto,Auto">
 
-        <!-- Row 0: Method + URL + Send/Cancel + Save -->
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,8,*,8,Auto,Auto">
+        <!-- Row 0: Method + URL + Send/Cancel + Save + Revert -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,8,*,8,Auto,Auto,Auto">
           <ComboBox Grid.Column="0"
                     ItemsSource="{Binding HttpMethods}"
                     SelectedItem="{Binding SelectedMethod}"
@@ -108,6 +108,15 @@
                   Padding="16,6" CornerRadius="4"
                   Margin="8,0,0,0"
                   ToolTip.Tip="Save changes (Ctrl+S)"/>
+          <!-- Revert button — visible for existing requests with unsaved changes -->
+          <Button Grid.Column="6"
+                  Content="Revert"
+                  Command="{Binding RevertCommand}"
+                  IsVisible="{Binding ShowRevertButton}"
+                  Background="#5a3e1b" Foreground="White" FontWeight="SemiBold"
+                  Padding="16,6" CornerRadius="4"
+                  Margin="4,0,0,0"
+                  ToolTip.Tip="Discard unsaved changes and revert to last saved state"/>
 
         </Grid>
 
