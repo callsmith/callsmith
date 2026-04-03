@@ -136,22 +136,23 @@ public sealed class CollectionImportService : ICollectionImportService
     {
         _logger.LogInformation("Fetching OpenAPI spec from '{Url}'", specUrl);
 
-        string content;
+        HttpResponseMessage response;
         try
         {
-            content = await _httpClient.GetStringAsync(specUrl, ct).ConfigureAwait(false);
+            response = await _httpClient.GetAsync(specUrl, ct).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             throw new InvalidOperationException(
                 $"Failed to download spec from '{specUrl}': {ex.Message}", ex);
         }
 
-        // Determine a file extension for the temp file so importers can detect format.
-        var ext = specUrl.Contains(".yaml", StringComparison.OrdinalIgnoreCase)
-               || specUrl.Contains(".yml",  StringComparison.OrdinalIgnoreCase)
-                   ? ".yaml"
-                   : ".json";
+        var content = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+
+        // Determine file extension for the temp file by checking the Content-Type header
+        // first, then falling back to URL extension heuristics.
+        var ext = DetectSpecExtension(response, specUrl);
 
         var tempFile = Path.Combine(Path.GetTempPath(), $"callsmith-import-{Guid.NewGuid():N}{ext}");
         try
@@ -161,8 +162,42 @@ public sealed class CollectionImportService : ICollectionImportService
         }
         finally
         {
-            try { File.Delete(tempFile); } catch { /* best-effort cleanup */ }
+            try
+            {
+                File.Delete(tempFile);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to delete temp import file '{TempFile}'", tempFile);
+            }
         }
+    }
+
+    /// <summary>
+    /// Determines whether the downloaded spec is YAML or JSON by inspecting the
+    /// Content-Type response header, then falling back to URL extension heuristics.
+    /// </summary>
+    private static string DetectSpecExtension(HttpResponseMessage response, string specUrl)
+    {
+        var contentType = response.Content.Headers.ContentType?.MediaType;
+        if (contentType is not null)
+        {
+            if (contentType.Contains("yaml", StringComparison.OrdinalIgnoreCase) ||
+                contentType.Contains("yml",  StringComparison.OrdinalIgnoreCase))
+            {
+                return ".yaml";
+            }
+            if (contentType.Contains("json", StringComparison.OrdinalIgnoreCase))
+            {
+                return ".json";
+            }
+        }
+
+        // Fall back to URL extension heuristics.
+        return specUrl.Contains(".yaml", StringComparison.OrdinalIgnoreCase)
+            || specUrl.Contains(".yml",  StringComparison.OrdinalIgnoreCase)
+                ? ".yaml"
+                : ".json";
     }
 
     // ─────────────────────────────────────────────────────────────────────────

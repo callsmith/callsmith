@@ -103,11 +103,14 @@ public partial class App : Application
         services.AddSingleton<ICollectionImporter, InsomniaCollectionImporter>();
         services.AddSingleton<ICollectionImporter, PostmanCollectionImporter>();
         services.AddSingleton<ICollectionImporter, OpenApiCollectionImporter>();
+        // The HttpClient instance is intentionally shared for the entire app lifetime to
+        // avoid socket exhaustion — it is only used for one-off spec URL fetches.
+        services.AddSingleton(new HttpClient());
         services.AddSingleton<ICollectionImportService>(sp => new CollectionImportService(
             sp.GetServices<ICollectionImporter>(),
             sp.GetRequiredService<FileSystemCollectionService>(),
             sp.GetRequiredService<FileSystemEnvironmentService>(),
-            new HttpClient(),
+            sp.GetRequiredService<HttpClient>(),
             sp.GetRequiredService<ILogger<CollectionImportService>>()));
 
         // History

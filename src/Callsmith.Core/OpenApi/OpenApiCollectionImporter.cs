@@ -26,6 +26,9 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
 {
     private const string BaseUrlVar = "baseUrl";
 
+    /// <summary>Maximum number of lines scanned when detecting the spec format in <see cref="CanImportAsync"/>.</summary>
+    private const int MaxLinesToScan = 20;
+
     // Standard HTTP method keys present in a Path Item object.
     private static readonly IReadOnlyList<string> HttpMethods =
         ["get", "post", "put", "patch", "delete", "head", "options", "trace"];
@@ -68,7 +71,7 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
         try
         {
             using var reader = new StreamReader(filePath);
-            for (var i = 0; i < 20; i++)
+            for (var i = 0; i < MaxLinesToScan; i++)
             {
                 var line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
                 if (line is null) break;
@@ -686,6 +689,7 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
         "DELETE"  => HttpMethod.Delete,
         "HEAD"    => HttpMethod.Head,
         "OPTIONS" => HttpMethod.Options,
+        "TRACE"   => HttpMethod.Trace,
         _         => new HttpMethod(method),
     };
 }
