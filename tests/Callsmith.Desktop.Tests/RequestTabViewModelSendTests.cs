@@ -305,6 +305,192 @@ public sealed class RequestTabViewModelSendTests
     }
 
     [Fact]
+    public void LoadFromHistorySnapshot_ExcludesDisabledHeaders()
+    {
+        var registry = new TransportRegistry();
+        var collectionService = Substitute.For<ICollectionService>();
+        var sut = new RequestTabViewModel(registry, collectionService, new WeakReferenceMessenger(), _ => { });
+
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "GET",
+            Url = "https://api.example.com/test",
+            Headers =
+            [
+                new RequestKv("X-Enabled", "yes", IsEnabled: true),
+                new RequestKv("X-Disabled", "no", IsEnabled: false),
+            ],
+            Auth = new AuthConfig(),
+        };
+
+        sut.LoadFromHistorySnapshot(snapshot, []);
+
+        var headers = sut.Headers.GetAllKv();
+        headers.Should().Contain(h => h.Key == "X-Enabled" && h.Value == "yes");
+        headers.Should().NotContain(h => h.Key == "X-Disabled");
+    }
+
+    [Fact]
+    public void LoadFromHistorySnapshot_ExcludesDisabledQueryParams()
+    {
+        var registry = new TransportRegistry();
+        var collectionService = Substitute.For<ICollectionService>();
+        var sut = new RequestTabViewModel(registry, collectionService, new WeakReferenceMessenger(), _ => { });
+
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "GET",
+            Url = "https://api.example.com/test",
+            QueryParams =
+            [
+                new RequestKv("active", "1", IsEnabled: true),
+                new RequestKv("inactive", "0", IsEnabled: false),
+            ],
+            Auth = new AuthConfig(),
+        };
+
+        sut.LoadFromHistorySnapshot(snapshot, []);
+
+        var qp = sut.QueryParams.GetAllKv();
+        qp.Should().Contain(p => p.Key == "active" && p.Value == "1");
+        qp.Should().NotContain(p => p.Key == "inactive");
+        sut.Url.Should().Contain("active=1");
+        sut.Url.Should().NotContain("inactive");
+    }
+
+    [Fact]
+    public void LoadFromHistorySnapshot_BearerAuth_ConvertsToAuthorizationHeader()
+    {
+        var registry = new TransportRegistry();
+        var collectionService = Substitute.For<ICollectionService>();
+        var sut = new RequestTabViewModel(registry, collectionService, new WeakReferenceMessenger(), _ => { });
+
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "GET",
+            Url = "https://api.example.com/test",
+            Auth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.Bearer,
+                Token = "my-token",
+            },
+        };
+
+        sut.LoadFromHistorySnapshot(snapshot, []);
+
+        sut.AuthType.Should().Be(AuthConfig.AuthTypes.None);
+        sut.Headers.GetAllKv().Should().Contain(h => h.Key == "Authorization" && h.Value == "Bearer my-token");
+    }
+
+    [Fact]
+    public void LoadFromHistorySnapshot_BasicAuth_ConvertsToAuthorizationHeader()
+    {
+        var registry = new TransportRegistry();
+        var collectionService = Substitute.For<ICollectionService>();
+        var sut = new RequestTabViewModel(registry, collectionService, new WeakReferenceMessenger(), _ => { });
+
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "GET",
+            Url = "https://api.example.com/test",
+            Auth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.Basic,
+                Username = "user",
+                Password = "pass",
+            },
+        };
+
+        sut.LoadFromHistorySnapshot(snapshot, []);
+
+        sut.AuthType.Should().Be(AuthConfig.AuthTypes.None);
+        var expectedEncoded = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("user:pass"));
+        sut.Headers.GetAllKv().Should().Contain(h => h.Key == "Authorization" && h.Value == $"Basic {expectedEncoded}");
+    }
+
+    [Fact]
+    public void LoadFromHistorySnapshot_ApiKeyHeaderAuth_ConvertsToHeader()
+    {
+        var registry = new TransportRegistry();
+        var collectionService = Substitute.For<ICollectionService>();
+        var sut = new RequestTabViewModel(registry, collectionService, new WeakReferenceMessenger(), _ => { });
+
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "GET",
+            Url = "https://api.example.com/test",
+            Auth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.ApiKey,
+                ApiKeyName = "X-API-Key",
+                ApiKeyValue = "secret123",
+                ApiKeyIn = AuthConfig.ApiKeyLocations.Header,
+            },
+        };
+
+        sut.LoadFromHistorySnapshot(snapshot, []);
+
+        sut.AuthType.Should().Be(AuthConfig.AuthTypes.None);
+        sut.Headers.GetAllKv().Should().Contain(h => h.Key == "X-API-Key" && h.Value == "secret123");
+    }
+
+    [Fact]
+    public void LoadFromHistorySnapshot_ApiKeyQueryAuth_ConvertsToQueryParam()
+    {
+        var registry = new TransportRegistry();
+        var collectionService = Substitute.For<ICollectionService>();
+        var sut = new RequestTabViewModel(registry, collectionService, new WeakReferenceMessenger(), _ => { });
+
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "GET",
+            Url = "https://api.example.com/test",
+            Auth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.ApiKey,
+                ApiKeyName = "apikey",
+                ApiKeyValue = "secret123",
+                ApiKeyIn = AuthConfig.ApiKeyLocations.Query,
+            },
+        };
+
+        sut.LoadFromHistorySnapshot(snapshot, []);
+
+        sut.AuthType.Should().Be(AuthConfig.AuthTypes.None);
+        sut.QueryParams.GetAllKv().Should().Contain(p => p.Key == "apikey" && p.Value == "secret123");
+        sut.Url.Should().Contain("apikey=secret123");
+    }
+
+    [Fact]
+    public void LoadFromHistorySnapshot_BearerAuth_ResolvesVariableTokenInToken()
+    {
+        var registry = new TransportRegistry();
+        var collectionService = Substitute.For<ICollectionService>();
+        var sut = new RequestTabViewModel(registry, collectionService, new WeakReferenceMessenger(), _ => { });
+
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "GET",
+            Url = "https://api.example.com/test",
+            Auth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.Bearer,
+                Token = "{{secret}}",
+            },
+        };
+
+        var bindings = new List<VariableBinding>
+        {
+            new("{{secret}}", "actual-token", IsSecret: true),
+        };
+
+        sut.LoadFromHistorySnapshot(snapshot, bindings);
+
+        sut.AuthType.Should().Be(AuthConfig.AuthTypes.None);
+        sut.Headers.GetAllKv().Should().Contain(h => h.Key == "Authorization" && h.Value == "Bearer actual-token");
+    }
+
+    [Fact]
     public async Task Send_ConcreteEnvVar_OverridesGlobalVar_ByDefault()
     {
         var transport = new CapturingTransport();

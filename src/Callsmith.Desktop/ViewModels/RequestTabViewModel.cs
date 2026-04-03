@@ -823,33 +823,53 @@ public sealed partial class RequestTabViewModel : ObservableObject
         // Substitute any remaining {{variable}} tokens in the URL (e.g. {{baseUrl}}/api/users).
         resolvedUrl = VariableSubstitutionService.Substitute(resolvedUrl, vars) ?? resolvedUrl;
 
-        // Resolve query params.
+        // Resolve query params — only include enabled entries.
         var resolvedQueryParams = snapshot.QueryParams
+            .Where(p => p.IsEnabled)
             .Select(p => new RequestKv(
                 VariableSubstitutionService.Substitute(p.Key, vars) ?? p.Key,
                 VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value,
-                p.IsEnabled))
+                IsEnabled: true))
             .ToList<RequestKv>();
 
         // Resolve headers (user-authored only; auto-applied headers are not part of the editor).
+        // Only include enabled entries — disabled headers are not carried over on resend.
         var resolvedHeaders = snapshot.Headers
+            .Where(h => h.IsEnabled)
             .Select(h => new RequestKv(
                 VariableSubstitutionService.Substitute(h.Key, vars) ?? h.Key,
                 VariableSubstitutionService.Substitute(h.Value, vars) ?? h.Value,
-                h.IsEnabled))
+                IsEnabled: true))
             .ToList<RequestKv>();
 
-        // Resolve auth fields.
-        var resolvedAuth = new AuthConfig
+        // Auth mode is NOT preserved on resend. Instead, auth is materialised as explicit
+        // headers or query params so the new tab shows only literal, active values.
+        var auth = snapshot.Auth;
+        switch (auth.AuthType)
         {
-            AuthType = snapshot.Auth.AuthType,
-            Token = VariableSubstitutionService.Substitute(snapshot.Auth.Token, vars),
-            Username = VariableSubstitutionService.Substitute(snapshot.Auth.Username, vars),
-            Password = VariableSubstitutionService.Substitute(snapshot.Auth.Password, vars),
-            ApiKeyName = VariableSubstitutionService.Substitute(snapshot.Auth.ApiKeyName, vars),
-            ApiKeyValue = VariableSubstitutionService.Substitute(snapshot.Auth.ApiKeyValue, vars),
-            ApiKeyIn = snapshot.Auth.ApiKeyIn,
-        };
+            case AuthConfig.AuthTypes.Bearer when !string.IsNullOrEmpty(auth.Token):
+                var bearerToken = VariableSubstitutionService.Substitute(auth.Token, vars) ?? auth.Token;
+                resolvedHeaders.Add(new RequestKv("Authorization", $"Bearer {bearerToken}", IsEnabled: true));
+                break;
+            case AuthConfig.AuthTypes.Basic when !string.IsNullOrEmpty(auth.Username):
+                var username = VariableSubstitutionService.Substitute(auth.Username, vars) ?? auth.Username;
+                var password = VariableSubstitutionService.Substitute(auth.Password, vars) ?? string.Empty;
+                var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
+                resolvedHeaders.Add(new RequestKv("Authorization", $"Basic {encoded}", IsEnabled: true));
+                break;
+            case AuthConfig.AuthTypes.ApiKey when !string.IsNullOrEmpty(auth.ApiKeyName)
+                                               && !string.IsNullOrEmpty(auth.ApiKeyValue):
+                var keyName = VariableSubstitutionService.Substitute(auth.ApiKeyName, vars) ?? auth.ApiKeyName;
+                var keyValue = VariableSubstitutionService.Substitute(auth.ApiKeyValue, vars) ?? auth.ApiKeyValue;
+                if (!string.IsNullOrWhiteSpace(keyName))
+                {
+                    if (auth.ApiKeyIn == AuthConfig.ApiKeyLocations.Header)
+                        resolvedHeaders.Add(new RequestKv(keyName, keyValue, IsEnabled: true));
+                    else
+                        resolvedQueryParams.Add(new RequestKv(keyName, keyValue, IsEnabled: true));
+                }
+                break;
+        }
 
         // Resolve form params.
         var resolvedFormParams = snapshot.FormParams
@@ -875,7 +895,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
             try
             {
                 var enabledParams = resolvedQueryParams
-                    .Where(p => p.IsEnabled)
                     .Select(p => new KeyValuePair<string, string>(p.Key, p.Value))
                     .ToList();
                 Url = enabledParams.Count > 0
@@ -894,18 +913,18 @@ public sealed partial class RequestTabViewModel : ObservableObject
             SelectedBodyType = snapshot.BodyType;
             Body = resolvedBody ?? string.Empty;
             FormParams.LoadFrom(resolvedFormParams);
-            AuthType = resolvedAuth.AuthType;
-            AuthToken = resolvedAuth.Token ?? string.Empty;
+            AuthType = AuthConfig.AuthTypes.None;
+            AuthToken = string.Empty;
             AuthTokenField.LoadFromText(AuthToken);
-            AuthUsername = resolvedAuth.Username ?? string.Empty;
+            AuthUsername = string.Empty;
             AuthUsernameField.LoadFromText(AuthUsername);
-            AuthPassword = resolvedAuth.Password ?? string.Empty;
+            AuthPassword = string.Empty;
             AuthPasswordField.LoadFromText(AuthPassword);
-            AuthApiKeyName = resolvedAuth.ApiKeyName ?? string.Empty;
+            AuthApiKeyName = string.Empty;
             AuthApiKeyNameField.LoadFromText(AuthApiKeyName);
-            AuthApiKeyValue = resolvedAuth.ApiKeyValue ?? string.Empty;
+            AuthApiKeyValue = string.Empty;
             AuthApiKeyValueField.LoadFromText(AuthApiKeyValue);
-            AuthApiKeyIn = resolvedAuth.ApiKeyIn;
+            AuthApiKeyIn = AuthConfig.ApiKeyLocations.Header;
             Response = null;
             IsResponseFromHistory = false;
             HistoryResponseDate = null;
