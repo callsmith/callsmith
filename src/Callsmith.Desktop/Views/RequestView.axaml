@@ -752,10 +752,10 @@
       <!-- RESPONSE VIEWER -->
       <Grid x:Name="ResponsePanel" Grid.Column="2" RowDefinitions="Auto,*">
 
-      <Border Grid.Row="0" Background="#2d2d30" Padding="16,8"
-              IsVisible="{Binding Response, Converter={x:Static conv:NotNullConverter.Instance}}">
+      <Border Grid.Row="0" Background="#2d2d30" Padding="16,8">
         <Grid ColumnDefinitions="*,Auto">
-          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16"
+                      IsVisible="{Binding Response, Converter={x:Static conv:NotNullConverter.Instance}}">
             <Border CornerRadius="3" Padding="8,3"
                     Background="{Binding StatusBadgeColor, Converter={x:Static conv:HexColorToBrushConverter.Instance}}">
               <TextBlock Text="{Binding StatusDisplay}" Foreground="White" FontWeight="SemiBold" FontSize="12"/>
