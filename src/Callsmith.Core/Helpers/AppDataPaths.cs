@@ -1,5 +1,3 @@
-using System.Runtime.InteropServices;
-
 namespace Callsmith.Core.Helpers;
 
 /// <summary>
@@ -18,10 +16,7 @@ public static class AppDataPaths
     /// </summary>
     public static string GetCallsmithAppDataDirectory()
     {
-        var appData = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-            ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
-            : Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var dir = Path.Combine(appData, "Callsmith");
         Directory.CreateDirectory(dir);
         return dir;
