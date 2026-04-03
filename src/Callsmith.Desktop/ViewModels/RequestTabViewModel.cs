@@ -111,6 +111,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(PreviewUrl))]
     [NotifyPropertyChangedFor(nameof(HasUnresolvedPathParams))]
     [NotifyPropertyChangedFor(nameof(PreviewUrlForeground))]
+    [NotifyPropertyChangedFor(nameof(PreviewUrlTooltip))]
     private string _url = string.Empty;
 
     [ObservableProperty]
@@ -450,6 +451,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     public string PreviewUrlForeground => HasUnresolvedPathParams ? "#c07a20" : "#888888";
 
+    public string PreviewUrlTooltip => PreviewUrl.Contains("{{", StringComparison.Ordinal) && PreviewUrl.Contains("}}", StringComparison.Ordinal)
+        ? "Preview URL contains dynamic variables that will be resolved when sent"
+        : "Fully resolved preview URL";
+
     public string PreviewUrl
     {
         get
@@ -686,7 +691,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(StatusDisplay) or nameof(ElapsedDisplay) or nameof(SizeDisplay) or
                 nameof(StatusBadgeColor) or nameof(MethodColor) or
                 nameof(ShowBodyEditor) or nameof(ShowTextBodyEditor) or nameof(ShowFormBodyEditor) or
-                nameof(PreviewUrl) or nameof(HasUnresolvedPathParams) or nameof(PreviewUrlForeground) or
+                nameof(PreviewUrl) or nameof(HasUnresolvedPathParams) or nameof(PreviewUrlForeground) or nameof(PreviewUrlTooltip) or
                 nameof(IsAuthBearer) or nameof(IsAuthBasic) or nameof(IsAuthApiKey) or
                 nameof(ShowAuthPassword) or nameof(ShowAuthApiKeyValue) or
                 nameof(EnvVarNames) or
@@ -709,6 +714,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         {
             if (!_loading && !_saving && _sourceRequest is not null) HasUnsavedChanges = true;
             OnPropertyChanged(nameof(PreviewUrl));
+            OnPropertyChanged(nameof(PreviewUrlTooltip));
         };
 
         PathParams.Changed += (_, _) =>
@@ -718,6 +724,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             OnPropertyChanged(nameof(PreviewUrl));
             OnPropertyChanged(nameof(HasUnresolvedPathParams));
             OnPropertyChanged(nameof(PreviewUrlForeground));
+            OnPropertyChanged(nameof(PreviewUrlTooltip));
         };
 
         FormParams.Changed += (_, _) =>
@@ -979,6 +986,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         UpdateEnvSuggestions();
         QueueHistoryResponseRefresh();
         OnPropertyChanged(nameof(PreviewUrl));
+        OnPropertyChanged(nameof(PreviewUrlTooltip));
     }
 
     /// <summary>Updates the global environment variables used as the baseline for substitution.</summary>
@@ -987,6 +995,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _globalEnvironment = environment;
         UpdateEnvSuggestions();
         OnPropertyChanged(nameof(PreviewUrl));
+        OnPropertyChanged(nameof(PreviewUrlTooltip));
     }
 
     /// <summary>
@@ -1071,6 +1080,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         FormParams.SetSuggestions(suggestions);
 
         OnPropertyChanged(nameof(PreviewUrl));
+        OnPropertyChanged(nameof(PreviewUrlTooltip));
     }
 
     // -------------------------------------------------------------------------
