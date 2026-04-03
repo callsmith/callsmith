@@ -631,6 +631,80 @@ public sealed class RequestTabViewModelSaveTests
             .GetLatestForRequestInEnvironmentAsync(requestId, prodEnvId, Arg.Any<CancellationToken>());
     }
 
+    // -------------------------------------------------------------------------
+    // Revert clears dirty state
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Revert_AfterUrlChange_RestoresOriginalUrlAndClearsDirty()
+    {
+        var sut = BuildSut();
+        sut.LoadRequest(SampleRequest(url: "https://api.example.com/users"));
+        sut.Url = "https://api.example.com/posts";
+        sut.HasUnsavedChanges.Should().BeTrue();
+
+        sut.RevertCommand.Execute(null);
+
+        sut.Url.Should().Be("https://api.example.com/users");
+        sut.HasUnsavedChanges.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Revert_AfterMethodChange_RestoresOriginalMethodAndClearsDirty()
+    {
+        var sut = BuildSut();
+        sut.LoadRequest(SampleRequest());
+        sut.SelectedMethod = "POST";
+        sut.HasUnsavedChanges.Should().BeTrue();
+
+        sut.RevertCommand.Execute(null);
+
+        sut.SelectedMethod.Should().Be("GET");
+        sut.HasUnsavedChanges.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Revert_IsNotAvailableForNewTab()
+    {
+        var sut = BuildSut();
+        // New tab — no request loaded, IsNew is true
+        sut.RevertCommand.CanExecute(null).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Revert_IsNotAvailableWhenTabIsClean()
+    {
+        var sut = BuildSut();
+        sut.LoadRequest(SampleRequest());
+        sut.HasUnsavedChanges.Should().BeFalse();
+
+        sut.RevertCommand.CanExecute(null).Should().BeFalse();
+    }
+
+    [Fact]
+    public void ShowRevertButton_IsFalseForNewTab()
+    {
+        var sut = BuildSut();
+        sut.ShowRevertButton.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ShowRevertButton_IsFalseWhenClean()
+    {
+        var sut = BuildSut();
+        sut.LoadRequest(SampleRequest());
+        sut.ShowRevertButton.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ShowRevertButton_IsTrueWhenExistingRequestHasUnsavedChanges()
+    {
+        var sut = BuildSut();
+        sut.LoadRequest(SampleRequest());
+        sut.Url = "https://api.example.com/posts";
+        sut.ShowRevertButton.Should().BeTrue();
+    }
+
     private static async Task AssertEventuallyAsync(Func<bool> condition)
     {
         for (var attempt = 0; attempt < 300; attempt++)
