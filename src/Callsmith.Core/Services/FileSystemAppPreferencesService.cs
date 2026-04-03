@@ -1,6 +1,6 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.Helpers;
 using Callsmith.Core.Models;
 using Microsoft.Extensions.Logging;
 
@@ -12,13 +12,6 @@ namespace Callsmith.Core.Services;
 /// </summary>
 public sealed class FileSystemAppPreferencesService : IAppPreferencesService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-
     private readonly SemaphoreSlim _lock = new(1, 1);
     private readonly string _storePath;
     private readonly ILogger<FileSystemAppPreferencesService> _logger;
@@ -42,11 +35,8 @@ public sealed class FileSystemAppPreferencesService : IAppPreferencesService
         _storePath = Path.Combine(storeDirectory, "app-prefs.json");
     }
 
-    private static string GetDefaultStoreDirectory()
-    {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        return Path.Combine(appData, "Callsmith");
-    }
+    private static string GetDefaultStoreDirectory() =>
+        AppDataPaths.GetCallsmithAppDataDirectory();
 
     /// <inheritdoc/>
     public async Task<AppPreferences> LoadAsync(CancellationToken ct = default)
@@ -57,7 +47,7 @@ public sealed class FileSystemAppPreferencesService : IAppPreferencesService
         try
         {
             var json = await File.ReadAllTextAsync(_storePath, ct).ConfigureAwait(false);
-            return JsonSerializer.Deserialize<AppPreferences>(json, JsonOptions)
+            return JsonSerializer.Deserialize<AppPreferences>(json, CallsmithJsonOptions.Default)
                    ?? new AppPreferences();
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
@@ -77,7 +67,7 @@ public sealed class FileSystemAppPreferencesService : IAppPreferencesService
         {
             var current = await LoadAsync(ct).ConfigureAwait(false);
             var updated = update(current);
-            var json = JsonSerializer.Serialize(updated, JsonOptions);
+            var json = JsonSerializer.Serialize(updated, CallsmithJsonOptions.Default);
             await File.WriteAllTextAsync(_storePath, json, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)

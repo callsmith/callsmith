@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.Helpers;
 using Microsoft.Extensions.Logging;
 
 namespace Callsmith.Core.Services;
@@ -219,12 +220,6 @@ public sealed class FileSystemSecretStorageService : ISecretStorageService
         }
     }
 
-    private string GetFilePath(string collectionFolderPath)
-    {
-        var normalised = Path.GetFullPath(collectionFolderPath)
-            .ToLowerInvariant()
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalised));
-        return Path.Combine(_storeDirectory, Convert.ToHexString(hash) + ".json");
-    }
+    private string GetFilePath(string collectionFolderPath) =>
+        Path.Combine(_storeDirectory, FileSystemHelper.HashCollectionPath(collectionFolderPath) + ".json");
 }

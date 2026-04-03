@@ -37,16 +37,6 @@ public sealed class FileSystemCollectionService : ICollectionService
         ".git", ".svn", ".hg", ".bzr",
     };
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-
-    /// <summary>Reserved namespace used inside <see cref="ISecretStorageService"/> for Basic auth passwords.</summary>
-    private const string AuthSecretsNamespace = "__auth__";
-
     private readonly ISecretStorageService _secrets;
     private readonly ILogger<FileSystemCollectionService> _logger;
 
@@ -90,13 +80,13 @@ public sealed class FileSystemCollectionService : ICollectionService
             throw new FileNotFoundException($"Request file not found: '{filePath}'", filePath);
 
         var json = await File.ReadAllTextAsync(filePath, ct);
-        var dto = JsonSerializer.Deserialize<RequestFileDto>(json, JsonOptions)
+        var dto = JsonSerializer.Deserialize<RequestFileDto>(json, CallsmithJsonOptions.Default)
             ?? throw new InvalidOperationException($"Failed to deserialise request file: '{filePath}'");
 
         if (dto.RequestId is null)
         {
             dto.RequestId = Guid.NewGuid();
-            var updatedJson = JsonSerializer.Serialize(dto, JsonOptions);
+            var updatedJson = JsonSerializer.Serialize(dto, CallsmithJsonOptions.Default);
             await File.WriteAllTextAsync(filePath, updatedJson, ct);
         }
 
@@ -112,7 +102,7 @@ public sealed class FileSystemCollectionService : ICollectionService
         {
             // Prefer the secret-stored value; fall back to whatever is in the file (migration path).
             var stored = await _secrets
-                .GetSecretAsync(_currentRoot, AuthSecretsNamespace, requestKey, ct)
+                .GetSecretAsync(_currentRoot, ISecretStorageService.AuthNamespace, requestKey, ct)
                 .ConfigureAwait(false);
             basicAuthPassword = stored ?? dto.AuthPassword;
         }
@@ -123,7 +113,7 @@ public sealed class FileSystemCollectionService : ICollectionService
         {
             // Prefer the secret-stored value; fall back to whatever is in the file (migration path).
             var stored = await _secrets
-                .GetSecretAsync(_currentRoot, AuthSecretsNamespace, requestKey, ct)
+                .GetSecretAsync(_currentRoot, ISecretStorageService.AuthNamespace, requestKey, ct)
                 .ConfigureAwait(false);
             apiKeyValue = stored ?? dto.AuthApiKeyValue;
         }
@@ -153,7 +143,7 @@ public sealed class FileSystemCollectionService : ICollectionService
             await _secrets
                 .SetSecretAsync(
                     _currentRoot,
-                    AuthSecretsNamespace,
+                    ISecretStorageService.AuthNamespace,
                     requestKey,
                     request.Auth.Password ?? string.Empty,
                     ct)
@@ -166,7 +156,7 @@ public sealed class FileSystemCollectionService : ICollectionService
             await _secrets
                 .SetSecretAsync(
                     _currentRoot,
-                    AuthSecretsNamespace,
+                    ISecretStorageService.AuthNamespace,
                     requestKey,
                     request.Auth.ApiKeyValue ?? string.Empty,
                     ct)
@@ -174,7 +164,7 @@ public sealed class FileSystemCollectionService : ICollectionService
         }
 
         var dto = RequestToDto(request, requestId);
-        var json = JsonSerializer.Serialize(dto, JsonOptions);
+        var json = JsonSerializer.Serialize(dto, CallsmithJsonOptions.Default);
 
         await File.WriteAllTextAsync(request.FilePath, json, ct);
 
@@ -417,7 +407,7 @@ public sealed class FileSystemCollectionService : ICollectionService
                 try
                 {
                     var json = File.ReadAllText(filePath);
-                    var dto = JsonSerializer.Deserialize<RequestFileDto>(json, JsonOptions);
+                    var dto = JsonSerializer.Deserialize<RequestFileDto>(json, CallsmithJsonOptions.Default);
                     return dto is null ? null : DtoToRequest(dto, filePath);
                 }
                 catch (Exception ex)
@@ -490,7 +480,7 @@ public sealed class FileSystemCollectionService : ICollectionService
             return;
         }
 
-        var json = JsonSerializer.Serialize(orderedNames, JsonOptions);
+        var json = JsonSerializer.Serialize(orderedNames, CallsmithJsonOptions.Default);
         await File.WriteAllTextAsync(orderFilePath, json, ct);
         _logger.LogDebug("Saved folder order for '{FolderPath}'", folderPath);
     }

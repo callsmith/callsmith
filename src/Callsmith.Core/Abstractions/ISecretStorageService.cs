@@ -9,6 +9,11 @@ namespace Callsmith.Core.Abstractions;
 public interface ISecretStorageService
 {
     /// <summary>
+    /// Namespace used for storing Basic auth and Bearer token credentials.
+    /// </summary>
+    public const string AuthNamespace = "__auth__";
+
+    /// <summary>
     /// Returns the stored secret value for <paramref name="variableName"/> in the specified
     /// environment, or <see langword="null"/> if no value has been saved yet.
     /// </summary>

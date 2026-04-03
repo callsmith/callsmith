@@ -36,9 +36,6 @@ public sealed class BrunoCollectionService : ICollectionService
     private static readonly string[] _httpVerbs =
         ["get", "post", "put", "delete", "patch", "head", "options"];
 
-    /// <summary>Reserved namespace used inside <see cref="ISecretStorageService"/> for Basic auth passwords.</summary>
-    private const string AuthSecretsNamespace = "__auth__";
-
     private readonly ISecretStorageService _secrets;
     private readonly ILogger<BrunoCollectionService> _logger;
 
@@ -89,7 +86,7 @@ public sealed class BrunoCollectionService : ICollectionService
             // Secret is keyed by file path relative to the collection root so renames and moves
             // can migrate keys without touching the .bru file.
             var stored = await _secrets
-                .GetSecretAsync(_currentRoot, AuthSecretsNamespace, GetAuthSecretKey(filePath), ct)
+                .GetSecretAsync(_currentRoot, ISecretStorageService.AuthNamespace, GetAuthSecretKey(filePath), ct)
                 .ConfigureAwait(false);
             if (stored is not null || request.Auth.Password is not null)
             {
@@ -135,7 +132,7 @@ public sealed class BrunoCollectionService : ICollectionService
             await _secrets
                 .SetSecretAsync(
                     _currentRoot,
-                    AuthSecretsNamespace,
+                    ISecretStorageService.AuthNamespace,
                     GetAuthSecretKey(request.FilePath),
                     request.Auth.Password ?? string.Empty,
                     ct)
@@ -1126,10 +1123,10 @@ public sealed class BrunoCollectionService : ICollectionService
         var oldKey = GetAuthSecretKey(oldFilePath);
         var newKey = GetAuthSecretKey(newFilePath);
         if (string.Equals(oldKey, newKey, StringComparison.Ordinal)) return;
-        var secret = await _secrets.GetSecretAsync(_currentRoot, AuthSecretsNamespace, oldKey, ct).ConfigureAwait(false);
+        var secret = await _secrets.GetSecretAsync(_currentRoot, ISecretStorageService.AuthNamespace, oldKey, ct).ConfigureAwait(false);
         if (secret is null) return;
-        await _secrets.SetSecretAsync(_currentRoot, AuthSecretsNamespace, newKey, secret, ct).ConfigureAwait(false);
-        await _secrets.DeleteSecretAsync(_currentRoot, AuthSecretsNamespace, oldKey, ct).ConfigureAwait(false);
+        await _secrets.SetSecretAsync(_currentRoot, ISecretStorageService.AuthNamespace, newKey, secret, ct).ConfigureAwait(false);
+        await _secrets.DeleteSecretAsync(_currentRoot, ISecretStorageService.AuthNamespace, oldKey, ct).ConfigureAwait(false);
     }
 
     private static string SanitizeFileName(string name)
