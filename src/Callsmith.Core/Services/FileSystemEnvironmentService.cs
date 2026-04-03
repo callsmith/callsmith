@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.Helpers;
 using Callsmith.Core.Models;
 using Microsoft.Extensions.Logging;
 using static Callsmith.Core.Models.EnvironmentVariable;
@@ -24,15 +25,6 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
     /// stored alongside the <c>.env.callsmith</c> files in the <c>environment/</c> folder.
     /// </summary>
     public const string OrderFileName = "_order.json";
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        // Required for JSON polymorphism on ValueSegment hierarchy.
-        // System.Text.Json handles [JsonPolymorphic] / [JsonDerivedType] automatically.
-    };
 
     private readonly ISecretStorageService _secrets;
     private readonly ILogger<FileSystemEnvironmentService> _logger;
@@ -120,7 +112,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
             throw new FileNotFoundException($"Environment file not found: '{filePath}'", filePath);
 
         await using var stream = File.OpenRead(filePath);
-        var dto = await JsonSerializer.DeserializeAsync<EnvironmentDto>(stream, JsonOptions, ct)
+        var dto = await JsonSerializer.DeserializeAsync<EnvironmentDto>(stream, CallsmithJsonOptions.Default, ct)
                       .ConfigureAwait(false)
                   ?? throw new InvalidDataException($"Environment file is empty or null: '{filePath}'");
 
@@ -144,7 +136,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         var dto = ModelToDto(environment);
 
         await using var stream = File.Open(environment.FilePath, FileMode.Create, FileAccess.Write);
-        await JsonSerializer.SerializeAsync(stream, dto, JsonOptions, ct).ConfigureAwait(false);
+        await JsonSerializer.SerializeAsync(stream, dto, CallsmithJsonOptions.Default, ct).ConfigureAwait(false);
 
         _logger.LogDebug("Saved environment '{Name}' → {Path}", environment.Name, environment.FilePath);
     }
@@ -282,7 +274,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         }
 
         Directory.CreateDirectory(envFolder);
-        var json = JsonSerializer.Serialize(orderedNames, JsonOptions);
+        var json = JsonSerializer.Serialize(orderedNames, CallsmithJsonOptions.Default);
         await File.WriteAllTextAsync(orderFilePath, json, ct).ConfigureAwait(false);
         _logger.LogDebug("Saved environment order for '{Path}'", collectionFolderPath);
     }

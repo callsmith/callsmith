@@ -1197,7 +1197,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
 
     private static string? TryGetContentType(IReadOnlyDictionary<string, string> headers)
     {
-        return headers.TryGetValue("Content-Type", out var value)
+        return headers.TryGetValue(WellKnownHeaders.ContentType, out var value)
             ? value
             : null;
     }
@@ -1220,7 +1220,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         if (entry.VariableBindings.Any(b => b.IsSecret))
             return true;
 
-        if (entry.ConfiguredSnapshot.Headers.FirstOrDefault(x => x.Key == "Authorization") != null)
+        if (entry.ConfiguredSnapshot.Headers.FirstOrDefault(x => x.Key == WellKnownHeaders.Authorization) != null)
             return true;
 
         var auth = entry.ConfiguredSnapshot.Auth;
@@ -1241,7 +1241,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private static string MaskAuthHeaderValue(string headerName, string headerValue, AuthConfig auth)
     {
         // Mask Authorization header — preserve scheme, replace value
-        if (headerName.Equals("Authorization", StringComparison.OrdinalIgnoreCase))
+        if (headerName.Equals(WellKnownHeaders.Authorization, StringComparison.OrdinalIgnoreCase))
         {
             var spaceIdx = headerValue.IndexOf(' ');
             return spaceIdx < 0 ? "<token>" : $"{headerValue[..spaceIdx]} <token>";

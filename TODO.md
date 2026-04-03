@@ -287,7 +287,7 @@
   - Parses Insomnia v5 YAML (schema_version 5.x): requests, nested folders, environments + sub-environments
   - Normalises Insomnia Nunjucks variable syntax (`{{ _['var'] }}`) to Callsmith `{{var}}` format
   - Script-valued env vars (`{% response … %}`) are skipped on import (unsupported)
-  - Ready for Postman support: add a new `ICollectionImporter` implementation and register it in DI
+- [x] Postman collection import (`PostmanCollectionImporter`) — parses Postman v2.1 JSON collections, maps requests, folders, and environments to Callsmith format
 - [ ] OpenAPI / Swagger file import — generates request files on disk from a spec
 - [x] Request chaining in collections — define a sequence of requests, pass values between them
 

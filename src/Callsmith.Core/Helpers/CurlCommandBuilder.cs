@@ -71,7 +71,7 @@ public static class CurlCommandBuilder
         // Content-Type injection
         if (request.ContentType is not null &&
             !request.Headers.Keys.Any(k =>
-                k.Equals("Content-Type", StringComparison.OrdinalIgnoreCase)))
+                k.Equals(WellKnownHeaders.ContentType, StringComparison.OrdinalIgnoreCase)))
         {
             sb.Append($" \\\n  -H \"Content-Type: {EscapeHeaderValue(request.ContentType)}\"");
         }
@@ -87,7 +87,7 @@ public static class CurlCommandBuilder
     // e.g. "Bearer abc123" → "Bearer <token>", "SSWS xyz" → "SSWS <token>"
     private static string MaskHeaderValue(string key, string value, CurlAuthMaskInfo? info)
     {
-        if (key.Equals("Authorization", StringComparison.OrdinalIgnoreCase))
+        if (key.Equals(WellKnownHeaders.Authorization, StringComparison.OrdinalIgnoreCase))
         {
             var spaceIdx = value.IndexOf(' ');
             return spaceIdx < 0 ? "<token>" : $"{value[..spaceIdx]} <token>";

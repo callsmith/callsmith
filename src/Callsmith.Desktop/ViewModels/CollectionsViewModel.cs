@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Bruno;
 using Callsmith.Core.Models;
+using Callsmith.Core.Services;
 using Callsmith.Desktop.Messages;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -227,7 +228,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     /// <summary>
     /// Opens the import-collection modal dialog.
     /// The view observes <see cref="PendingImportDialog"/> and shows the window.
-    /// Call <see cref="OnImportDialogClosed"/> when the dialog window closes.
+    /// Call <see cref="OnImportDialogClosedAsync"/> when the dialog window closes.
     /// </summary>
     [RelayCommand]
     public void OpenImportDialog()
@@ -239,7 +240,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     /// Called by the view after the import dialog window is closed.
     /// If the user confirmed a successful import, loads the imported collection.
     /// </summary>
-    public async Task OnImportDialogClosed()
+    public async Task OnImportDialogClosedAsync()
     {
         var dialog = PendingImportDialog;
         PendingImportDialog = null;
@@ -273,7 +274,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
 
     /// <summary>Opens a request node â€” called directly from the sidebar on every click.</summary>
     [RelayCommand]
-    public async Task OpenRequest(CollectionTreeItemViewModel node)
+    public async Task OpenRequestAsync(CollectionTreeItemViewModel node)
     {
         if (node.Request is not CollectionRequest treeRequest) return;
         try
@@ -985,10 +986,10 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         var ext = Path.GetExtension(e.FullPath);
         var isDirectory = string.IsNullOrEmpty(ext);
         var isCallsmithRequest = !isDirectory
-            && e.FullPath.EndsWith(".callsmith", StringComparison.OrdinalIgnoreCase)
-            && !e.FullPath.EndsWith(".env.callsmith", StringComparison.OrdinalIgnoreCase);
+            && e.FullPath.EndsWith(FileSystemCollectionService.RequestFileExtension, StringComparison.OrdinalIgnoreCase)
+            && !e.FullPath.EndsWith(FileSystemEnvironmentService.EnvironmentFileExtension, StringComparison.OrdinalIgnoreCase);
         var isBrunoRequest = !isDirectory
-            && e.FullPath.EndsWith(".bru", StringComparison.OrdinalIgnoreCase)
+            && e.FullPath.EndsWith(BrunoCollectionService.RequestFileExtension, StringComparison.OrdinalIgnoreCase)
             && !IsUnderBrunoEnvironmentsFolder(e.FullPath);
 
         if (!isDirectory && !isCallsmithRequest && !isBrunoRequest)
@@ -1021,10 +1022,10 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     /// </summary>
     private static bool IsUnderBrunoEnvironmentsFolder(string filePath) =>
         filePath.Contains(
-            Path.DirectorySeparatorChar + "environments" + Path.DirectorySeparatorChar,
+            Path.DirectorySeparatorChar + BrunoCollectionService.EnvironmentFolderName + Path.DirectorySeparatorChar,
             StringComparison.OrdinalIgnoreCase)
         || filePath.Contains(
-            Path.AltDirectorySeparatorChar + "environments" + Path.AltDirectorySeparatorChar,
+            Path.AltDirectorySeparatorChar + BrunoCollectionService.EnvironmentFolderName + Path.AltDirectorySeparatorChar,
             StringComparison.OrdinalIgnoreCase);
 }
 

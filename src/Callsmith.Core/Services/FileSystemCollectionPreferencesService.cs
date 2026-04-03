@@ -1,9 +1,7 @@
 using System.Collections.Concurrent;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.Helpers;
 using Callsmith.Core.Models;
 using Microsoft.Extensions.Logging;
 
@@ -18,13 +16,6 @@ namespace Callsmith.Core.Services;
 /// </summary>
 public sealed class FileSystemCollectionPreferencesService : ICollectionPreferencesService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-
     // One semaphore per prefs file path so concurrent writers for different collections
     // do not block each other, but concurrent writers for the same collection queue up.
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new(StringComparer.OrdinalIgnoreCase);
@@ -52,11 +43,8 @@ public sealed class FileSystemCollectionPreferencesService : ICollectionPreferen
         _storeDirectory = storeDirectory;
     }
 
-    private static string GetDefaultStoreDirectory()
-    {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        return Path.Combine(appData, "Callsmith", "collection-prefs");
-    }
+    private static string GetDefaultStoreDirectory() =>
+        Path.Combine(AppDataPaths.GetCallsmithAppDataDirectory(), "collection-prefs");
 
     private SemaphoreSlim GetFileLock(string prefsFilePath) =>
         _locks.GetOrAdd(prefsFilePath, _ => new SemaphoreSlim(1, 1));
@@ -139,7 +127,7 @@ public sealed class FileSystemCollectionPreferencesService : ICollectionPreferen
         {
             await using var stream = File.OpenRead(path);
             return await JsonSerializer
-                       .DeserializeAsync<CollectionPreferences>(stream, JsonOptions, ct)
+                       .DeserializeAsync<CollectionPreferences>(stream, CallsmithJsonOptions.Default, ct)
                        .ConfigureAwait(false)
                    ?? new CollectionPreferences();
         }
@@ -156,7 +144,7 @@ public sealed class FileSystemCollectionPreferencesService : ICollectionPreferen
         {
             await using var stream = File.Open(path, FileMode.Create, FileAccess.Write);
             await JsonSerializer
-                .SerializeAsync(stream, preferences, JsonOptions, ct)
+                .SerializeAsync(stream, preferences, CallsmithJsonOptions.Default, ct)
                 .ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -171,11 +159,7 @@ public sealed class FileSystemCollectionPreferencesService : ICollectionPreferen
     /// </summary>
     private string GetPrefsFilePath(string collectionFolderPath)
     {
-        var normalised = Path.GetFullPath(collectionFolderPath)
-                             .ToLowerInvariant()
-                             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalised));
-        var fileName = Convert.ToHexString(hash) + ".json";
+        var fileName = FileSystemHelper.HashCollectionPath(collectionFolderPath) + ".json";
         return Path.Combine(_storeDirectory, fileName);
     }
 }

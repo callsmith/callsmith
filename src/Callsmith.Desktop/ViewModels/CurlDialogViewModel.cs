@@ -36,7 +36,7 @@ public sealed partial class CurlDialogViewModel : ObservableObject
         _authMaskInfo = authMaskInfo;
 
         HasAuthentication =
-            request.Headers.ContainsKey("Authorization") ||
+            request.Headers.ContainsKey(WellKnownHeaders.Authorization) ||
             authMaskInfo is not null;
 
         // Build initial text — mask auth by default when auth is present.

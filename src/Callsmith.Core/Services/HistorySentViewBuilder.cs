@@ -107,9 +107,9 @@ public static class HistorySentViewBuilder
         // 8. Determine Content-Type from the snapshot body type.
         var contentType = snapshot.BodyType switch
         {
-            CollectionRequest.BodyTypes.Json => "application/json",
-            CollectionRequest.BodyTypes.Text => "text/plain",
-            CollectionRequest.BodyTypes.Xml => "application/xml",
+            CollectionRequest.BodyTypes.Json => CollectionRequest.BodyTypes.JsonContentType,
+            CollectionRequest.BodyTypes.Text => CollectionRequest.BodyTypes.TextContentType,
+            CollectionRequest.BodyTypes.Xml => CollectionRequest.BodyTypes.XmlContentType,
             CollectionRequest.BodyTypes.Form => "application/x-www-form-urlencoded",
             CollectionRequest.BodyTypes.Multipart => "multipart/form-data",
             _ => null,
@@ -167,7 +167,7 @@ public static class HistorySentViewBuilder
         {
             case AuthConfig.AuthTypes.Bearer when !string.IsNullOrEmpty(auth.Token):
                 var token = Substitute(auth.Token, vars) ?? auth.Token;
-                headers["Authorization"] = $"Bearer {token}";
+                headers[WellKnownHeaders.Authorization] = $"Bearer {token}";
                 break;
 
             case AuthConfig.AuthTypes.Basic when !string.IsNullOrEmpty(auth.Username):
@@ -175,7 +175,7 @@ public static class HistorySentViewBuilder
                 var password = Substitute(auth.Password ?? string.Empty, vars) ?? string.Empty;
                 var encoded = Convert.ToBase64String(
                     Encoding.UTF8.GetBytes($"{username}:{password}"));
-                headers["Authorization"] = $"Basic {encoded}";
+                headers[WellKnownHeaders.Authorization] = $"Basic {encoded}";
                 break;
 
             case AuthConfig.AuthTypes.ApiKey

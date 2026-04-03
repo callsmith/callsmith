@@ -519,7 +519,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         get
         {
             if (Response is null) return string.Empty;
-            var ct = Response.Headers.TryGetValue("Content-Type", out var v) ? v : string.Empty;
+            var ct = Response.Headers.TryGetValue(WellKnownHeaders.ContentType, out var v) ? v : string.Empty;
             if (ct.Contains("json", StringComparison.OrdinalIgnoreCase)) return "json";
             if (ct.Contains("xml",  StringComparison.OrdinalIgnoreCase) ||
                 ct.Contains("xhtml", StringComparison.OrdinalIgnoreCase)) return "xml";
@@ -537,7 +537,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         get
         {
             if (Response is null) return string.Empty;
-            var contentType = Response.Headers.TryGetValue("Content-Type", out var ct) ? ct : null;
+            var contentType = Response.Headers.TryGetValue(WellKnownHeaders.ContentType, out var ct) ? ct : null;
             return ResponseFormatter.FormatBody(Response.Body, contentType);
         }
     }
@@ -864,13 +864,13 @@ public sealed partial class RequestTabViewModel : ObservableObject
         {
             case AuthConfig.AuthTypes.Bearer when !string.IsNullOrEmpty(auth.Token):
                 var bearerToken = VariableSubstitutionService.Substitute(auth.Token, vars) ?? auth.Token;
-                resolvedHeaders.Add(new RequestKv("Authorization", $"Bearer {bearerToken}", IsEnabled: true));
+                resolvedHeaders.Add(new RequestKv(WellKnownHeaders.Authorization, $"Bearer {bearerToken}", IsEnabled: true));
                 break;
             case AuthConfig.AuthTypes.Basic when !string.IsNullOrEmpty(auth.Username):
                 var username = VariableSubstitutionService.Substitute(auth.Username, vars) ?? auth.Username;
                 var password = VariableSubstitutionService.Substitute(auth.Password, vars) ?? string.Empty;
                 var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
-                resolvedHeaders.Add(new RequestKv("Authorization", $"Basic {encoded}", IsEnabled: true));
+                resolvedHeaders.Add(new RequestKv(WellKnownHeaders.Authorization, $"Basic {encoded}", IsEnabled: true));
                 break;
             case AuthConfig.AuthTypes.ApiKey when !string.IsNullOrEmpty(auth.ApiKeyName)
                                                && !string.IsNullOrEmpty(auth.ApiKeyValue):
@@ -1735,14 +1735,14 @@ public sealed partial class RequestTabViewModel : ObservableObject
         {
             case AuthConfig.AuthTypes.Bearer when !string.IsNullOrEmpty(AuthToken):
                 var token = Resolve(AuthToken);
-                headers["Authorization"] = $"Bearer {token}";
+                headers[WellKnownHeaders.Authorization] = $"Bearer {token}";
                 break;
             case AuthConfig.AuthTypes.Basic when !string.IsNullOrEmpty(AuthUsername):
                 var username = Resolve(AuthUsername);
                 var password = Resolve(AuthPassword);
                 var encoded = Convert.ToBase64String(
                     Encoding.UTF8.GetBytes($"{username}:{password}"));
-                headers["Authorization"] = $"Basic {encoded}";
+                headers[WellKnownHeaders.Authorization] = $"Basic {encoded}";
                 break;
             case AuthConfig.AuthTypes.ApiKey when !string.IsNullOrEmpty(AuthApiKeyName)
                                                && !string.IsNullOrEmpty(AuthApiKeyValue):
@@ -1856,9 +1856,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     private string? GetContentType() => SelectedBodyType switch
     {
-        CollectionRequest.BodyTypes.Json => "application/json",
-        CollectionRequest.BodyTypes.Text => "text/plain",
-        CollectionRequest.BodyTypes.Xml  => "application/xml",
+        CollectionRequest.BodyTypes.Json => CollectionRequest.BodyTypes.JsonContentType,
+        CollectionRequest.BodyTypes.Text => CollectionRequest.BodyTypes.TextContentType,
+        CollectionRequest.BodyTypes.Xml  => CollectionRequest.BodyTypes.XmlContentType,
         CollectionRequest.BodyTypes.Form => "application/x-www-form-urlencoded",
         CollectionRequest.BodyTypes.Multipart => "multipart/form-data",
         _ => null,
@@ -1912,7 +1912,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
             var contentType = GetContentType();
             IReadOnlyList<RequestKv> autoAppliedHeaders = contentType is not null
-                ? [new RequestKv("Content-Type", contentType)]
+                ? [new RequestKv(WellKnownHeaders.ContentType, contentType)]
                 : [];
 
             var snapshot = new ConfiguredRequestSnapshot

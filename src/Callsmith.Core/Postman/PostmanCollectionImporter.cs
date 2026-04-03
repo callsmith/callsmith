@@ -142,7 +142,7 @@ public sealed class PostmanCollectionImporter : ICollectionImporter
 
         return new ImportedRequest
         {
-            Name = string.IsNullOrWhiteSpace(item.Name) ? "Unnamed Request" : item.Name,
+            Name = string.IsNullOrWhiteSpace(item.Name) ? ImporterConstants.UnnamedRequest : item.Name,
             Method = method,
             Url = url,
             Description = description,
@@ -186,7 +186,7 @@ public sealed class PostmanCollectionImporter : ICollectionImporter
 
         return new ImportedFolder
         {
-            Name = string.IsNullOrWhiteSpace(item.Name) ? "Unnamed Folder" : item.Name,
+            Name = string.IsNullOrWhiteSpace(item.Name) ? ImporterConstants.UnnamedFolder : item.Name,
             Requests = requests,
             SubFolders = subFolders,
             ItemOrder = order,

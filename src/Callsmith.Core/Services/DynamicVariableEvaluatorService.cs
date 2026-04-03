@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Helpers;
 using Callsmith.Core.MockData;
@@ -21,13 +20,6 @@ namespace Callsmith.Core.Services;
 /// </summary>
 public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-
     private readonly ICollectionService _collectionService;
     private readonly ITransportRegistry _transportRegistry;
     private readonly string _cacheDirectory;
@@ -533,13 +525,13 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         {
             case AuthConfig.AuthTypes.Bearer when !string.IsNullOrEmpty(auth.Token):
                 var token = VariableSubstitutionService.Substitute(auth.Token, vars) ?? auth.Token;
-                headers["Authorization"] = $"Bearer {token}";
+                headers[WellKnownHeaders.Authorization] = $"Bearer {token}";
                 break;
 
             case AuthConfig.AuthTypes.Basic when !string.IsNullOrEmpty(auth.Username):
                 var user = VariableSubstitutionService.Substitute(auth.Username, vars) ?? auth.Username;
                 var pass = VariableSubstitutionService.Substitute(auth.Password ?? string.Empty, vars) ?? string.Empty;
-                headers["Authorization"] = $"Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user}:{pass}"))}";
+                headers[WellKnownHeaders.Authorization] = $"Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user}:{pass}"))}";
                 break;
 
             case AuthConfig.AuthTypes.ApiKey when !string.IsNullOrEmpty(auth.ApiKeyName):
@@ -562,9 +554,9 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
     {
         var contentType = req.BodyType switch
         {
-            CollectionRequest.BodyTypes.Json => "application/json",
-            CollectionRequest.BodyTypes.Text => "text/plain",
-            CollectionRequest.BodyTypes.Xml => "application/xml",
+            CollectionRequest.BodyTypes.Json => CollectionRequest.BodyTypes.JsonContentType,
+            CollectionRequest.BodyTypes.Text => CollectionRequest.BodyTypes.TextContentType,
+            CollectionRequest.BodyTypes.Xml => CollectionRequest.BodyTypes.XmlContentType,
             CollectionRequest.BodyTypes.Form => "application/x-www-form-urlencoded",
             _ => null,
         };
@@ -663,7 +655,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         try
         {
             await using var stream = File.OpenRead(path);
-            return await JsonSerializer.DeserializeAsync<DynCache>(stream, JsonOptions, ct)
+            return await JsonSerializer.DeserializeAsync<DynCache>(stream, CallsmithJsonOptions.Default, ct)
                        .ConfigureAwait(false) ?? new DynCache();
         }
         catch (Exception ex) when (ex is IOException or JsonException)
@@ -680,7 +672,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         try
         {
             await using var stream = File.Open(path, FileMode.Create, FileAccess.Write);
-            await JsonSerializer.SerializeAsync(stream, cache, JsonOptions, ct).ConfigureAwait(false);
+            await JsonSerializer.SerializeAsync(stream, cache, CallsmithJsonOptions.Default, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -688,14 +680,8 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         }
     }
 
-    private string GetCacheFilePath(string collectionFolderPath)
-    {
-        var normalised = Path.GetFullPath(collectionFolderPath)
-                             .ToLowerInvariant()
-                             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalised));
-        return Path.Combine(_cacheDirectory, Convert.ToHexString(hash) + ".json");
-    }
+    private string GetCacheFilePath(string collectionFolderPath) =>
+        Path.Combine(_cacheDirectory, FileSystemHelper.HashCollectionPath(collectionFolderPath) + ".json");
 
     private static string GetDefaultCacheDirectory()
     {
