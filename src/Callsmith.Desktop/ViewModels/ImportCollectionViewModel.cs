@@ -22,9 +22,10 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
     /// </summary>
     public IReadOnlyList<ImportTypeOption> ImportTypeOptions { get; } =
     [
-        new("Postman",  isEnabled: true),
-        new("Insomnia", isEnabled: true),
-        new("Hoppscotch", isEnabled: false),
+        new("Postman",              isEnabled: true),
+        new("Insomnia",             isEnabled: true),
+        new("Open API / Swagger",   isEnabled: true),
+        new("Hoppscotch",           isEnabled: false),
     ];
 
     // ─── Bound properties ────────────────────────────────────────────────────
@@ -38,11 +39,26 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
         // first enabled option.
         if (!value.IsEnabled)
             SelectedImportType = ImportTypeOptions.First(o => o.IsEnabled);
+
+        OnPropertyChanged(nameof(IsOpenApiSelected));
+        ImportCommand.NotifyCanExecuteChanged();
+
+        // Switching away from Open API clears the URL field to avoid stale state.
+        if (!IsOpenApiSelected)
+            SpecUrl = string.Empty;
     }
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ImportCommand))]
     private string _filePath = string.Empty;
+
+    /// <summary>
+    /// URL of a publicly accessible OpenAPI / Swagger spec to fetch.
+    /// Only used when <see cref="IsOpenApiSelected"/> is true.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ImportCommand))]
+    private string _specUrl = string.Empty;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ImportCommand))]
@@ -56,6 +72,10 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isImporting;
+
+    /// <summary>True when the selected import type is "Open API / Swagger".</summary>
+    public bool IsOpenApiSelected =>
+        SelectedImportType.Name.Equals("Open API / Swagger", StringComparison.Ordinal);
 
     // ─── Result ───────────────────────────────────────────────────────────────
 
@@ -174,9 +194,16 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
     // ─── Private helpers ─────────────────────────────────────────────────────
 
-    private bool CanImport =>
-        !string.IsNullOrWhiteSpace(FilePath) &&
-        !string.IsNullOrWhiteSpace(FolderPath);
+    private bool CanImport
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(FolderPath)) return false;
+            if (IsOpenApiSelected)
+                return !string.IsNullOrWhiteSpace(FilePath) || !string.IsNullOrWhiteSpace(SpecUrl);
+            return !string.IsNullOrWhiteSpace(FilePath);
+        }
+    }
 
     private async Task RunImportAsync(CancellationToken ct)
     {
@@ -185,7 +212,11 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
         try
         {
-            await _importService.ImportToFolderAsync(FilePath, FolderPath, ct);
+            if (IsOpenApiSelected && !string.IsNullOrWhiteSpace(SpecUrl))
+                await _importService.ImportFromUrlToFolderAsync(SpecUrl, FolderPath, ct);
+            else
+                await _importService.ImportToFolderAsync(FilePath, FolderPath, ct);
+
             ResultFolderPath = FolderPath;
             IsConfirmed = true;
             CloseRequested?.Invoke(this, EventArgs.Empty);

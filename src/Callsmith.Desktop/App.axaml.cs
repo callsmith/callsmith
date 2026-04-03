@@ -1,4 +1,5 @@
-﻿using System.Linq;
+using System.Linq;
+using System.Net.Http;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Data.Core.Plugins;
@@ -6,6 +7,7 @@ using Avalonia.Markup.Xaml;
 using Callsmith.Core;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Insomnia;
+using Callsmith.Core.OpenApi;
 using Callsmith.Core.Postman;
 using Callsmith.Core.Services;
 using Callsmith.Core.Transports.Http;
@@ -100,10 +102,12 @@ public partial class App : Application
         // files regardless of which collection type is currently open in the routing services.
         services.AddSingleton<ICollectionImporter, InsomniaCollectionImporter>();
         services.AddSingleton<ICollectionImporter, PostmanCollectionImporter>();
+        services.AddSingleton<ICollectionImporter, OpenApiCollectionImporter>();
         services.AddSingleton<ICollectionImportService>(sp => new CollectionImportService(
             sp.GetServices<ICollectionImporter>(),
             sp.GetRequiredService<FileSystemCollectionService>(),
             sp.GetRequiredService<FileSystemEnvironmentService>(),
+            new HttpClient(),
             sp.GetRequiredService<ILogger<CollectionImportService>>()));
 
         // History

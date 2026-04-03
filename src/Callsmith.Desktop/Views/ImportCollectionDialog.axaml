@@ -75,6 +75,25 @@
               ToolTip.Tip="Choose the collection file to import"/>
     </Grid>
 
+    <!-- Spec URL (Open API / Swagger only) -->
+    <Grid ColumnDefinitions="110,10,*"
+          IsVisible="{Binding IsOpenApiSelected}">
+      <TextBlock Grid.Column="0"
+                 Text="Spec URL"
+                 Foreground="#aaa"
+                 FontSize="12"
+                 VerticalAlignment="Center"/>
+      <TextBox Grid.Column="2"
+               Text="{Binding SpecUrl}"
+               Watermark="https://api.example.com/openapi.json"
+               Foreground="#d4d4d4"
+               Background="#3c3c3c"
+               BorderBrush="#555"
+               Padding="8,5"
+               FontSize="12"
+               ToolTip.Tip="URL of a publicly accessible OpenAPI or Swagger spec"/>
+    </Grid>
+
     <!-- Path to folder -->
     <Grid ColumnDefinitions="110,10,*,8,Auto">
       <TextBlock Grid.Column="0"

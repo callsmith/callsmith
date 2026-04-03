@@ -18,22 +18,26 @@ public sealed class CollectionImportService : ICollectionImportService
     private readonly IReadOnlyList<ICollectionImporter> _importers;
     private readonly ICollectionService _collectionService;
     private readonly IEnvironmentService _environmentService;
+    private readonly HttpClient _httpClient;
     private readonly ILogger<CollectionImportService> _logger;
 
     public CollectionImportService(
         IEnumerable<ICollectionImporter> importers,
         ICollectionService collectionService,
         IEnvironmentService environmentService,
+        HttpClient httpClient,
         ILogger<CollectionImportService> logger)
     {
         ArgumentNullException.ThrowIfNull(importers);
         ArgumentNullException.ThrowIfNull(collectionService);
         ArgumentNullException.ThrowIfNull(environmentService);
+        ArgumentNullException.ThrowIfNull(httpClient);
         ArgumentNullException.ThrowIfNull(logger);
 
         _importers = [.. importers];
         _collectionService = collectionService;
         _environmentService = environmentService;
+        _httpClient = httpClient;
         _logger = logger;
 
         SupportedFileExtensions = _importers
@@ -122,6 +126,43 @@ public sealed class CollectionImportService : ICollectionImportService
             collection.Environments.Count);
 
         return collection;
+    }
+
+    /// <inheritdoc/>
+    public async Task<ImportedCollection> ImportFromUrlToFolderAsync(
+        string specUrl,
+        string targetFolderPath,
+        CancellationToken ct = default)
+    {
+        _logger.LogInformation("Fetching OpenAPI spec from '{Url}'", specUrl);
+
+        string content;
+        try
+        {
+            content = await _httpClient.GetStringAsync(specUrl, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Failed to download spec from '{specUrl}': {ex.Message}", ex);
+        }
+
+        // Determine a file extension for the temp file so importers can detect format.
+        var ext = specUrl.Contains(".yaml", StringComparison.OrdinalIgnoreCase)
+               || specUrl.Contains(".yml",  StringComparison.OrdinalIgnoreCase)
+                   ? ".yaml"
+                   : ".json";
+
+        var tempFile = Path.Combine(Path.GetTempPath(), $"callsmith-import-{Guid.NewGuid():N}{ext}");
+        try
+        {
+            await File.WriteAllTextAsync(tempFile, content, ct).ConfigureAwait(false);
+            return await ImportToFolderAsync(tempFile, targetFolderPath, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            try { File.Delete(tempFile); } catch { /* best-effort cleanup */ }
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────

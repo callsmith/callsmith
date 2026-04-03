@@ -41,4 +41,22 @@ public interface ICollectionImportService
         string filePath,
         string targetFolderPath,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Downloads a spec from <paramref name="specUrl"/>, saves it to a temporary file,
+    /// then runs the full import pipeline into <paramref name="targetFolderPath"/>.
+    /// </summary>
+    /// <param name="specUrl">Publicly accessible URL of the OpenAPI / Swagger spec.</param>
+    /// <param name="targetFolderPath">
+    /// Absolute path to the destination folder. The folder is created if it does not exist.
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The <see cref="ImportedCollection"/> that was written to disk.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the URL cannot be fetched or no importer can handle the downloaded content.
+    /// </exception>
+    Task<ImportedCollection> ImportFromUrlToFolderAsync(
+        string specUrl,
+        string targetFolderPath,
+        CancellationToken ct = default);
 }

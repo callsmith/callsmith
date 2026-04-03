@@ -378,6 +378,7 @@ public sealed class CollectionImportServiceTests : IDisposable
             })],
             collectionService,
             _environmentService,
+            new System.Net.Http.HttpClient(),
             NullLogger<CollectionImportService>.Instance);
 
         var target = _temp.CreateSubDirectory("basic-auth-import");
@@ -403,6 +404,7 @@ public sealed class CollectionImportServiceTests : IDisposable
         new(importers,
             _collectionService,
             _environmentService,
+            new System.Net.Http.HttpClient(),
             NullLogger<CollectionImportService>.Instance);
 
     private static ICollectionImporter MakeImporter(

@@ -37,7 +37,7 @@ public sealed class ImportCollectionViewModelTests
     public void Constructor_ImportTypeOptions_HasThreeEntries()
     {
         var sut = BuildSut();
-        sut.ImportTypeOptions.Should().HaveCount(3);
+        sut.ImportTypeOptions.Should().HaveCount(4);
     }
 
     [Fact]
@@ -47,7 +47,7 @@ public sealed class ImportCollectionViewModelTests
         sut.ImportTypeOptions.Where(o => o.IsEnabled)
             .Select(o => o.Name)
             .Should()
-            .BeEquivalentTo(["Insomnia", "Postman"]);
+            .BeEquivalentTo(["Insomnia", "Postman", "Open API / Swagger"]);
     }
 
     [Fact]
