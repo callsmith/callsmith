@@ -20,20 +20,20 @@ namespace Callsmith.Desktop.Controls;
 /// </summary>
 public sealed class SyntaxEditor : TextEditor
 {
-    private static readonly IHighlightingDefinition? _jsonHighlighting;
-    private static readonly IHighlightingDefinition? _xmlHighlighting;
-    private static readonly IHighlightingDefinition? _htmlHighlighting;
-    private static readonly IHighlightingDefinition? _textHighlighting;
+    private static readonly IHighlightingDefinition? JsonHighlighting;
+    private static readonly IHighlightingDefinition? XmlHighlighting;
+    private static readonly IHighlightingDefinition? HtmlHighlighting;
+    private static readonly IHighlightingDefinition? TextHighlighting;
     private bool _updatingText;
     private FoldingManager? _foldingManager;
     private XmlFoldingStrategy? _xmlFoldingStrategy;
 
     static SyntaxEditor()
     {
-        _jsonHighlighting = LoadXshd("avares://Callsmith/Highlighting/DarkJson.xshd");
-        _xmlHighlighting  = LoadXshd("avares://Callsmith/Highlighting/DarkXml.xshd");
-        _htmlHighlighting = LoadXshd("avares://Callsmith/Highlighting/DarkHtml.xshd");
-        _textHighlighting = LoadXshd("avares://Callsmith/Highlighting/DarkText.xshd");
+        JsonHighlighting = LoadXshd("avares://Callsmith/Highlighting/DarkJson.xshd");
+        XmlHighlighting  = LoadXshd("avares://Callsmith/Highlighting/DarkXml.xshd");
+        HtmlHighlighting = LoadXshd("avares://Callsmith/Highlighting/DarkHtml.xshd");
+        TextHighlighting = LoadXshd("avares://Callsmith/Highlighting/DarkText.xshd");
     }
 
     private static IHighlightingDefinition? LoadXshd(string uri)
@@ -171,10 +171,10 @@ public sealed class SyntaxEditor : TextEditor
     private static IHighlightingDefinition? ResolveHighlighting(string? language) =>
         language?.ToLowerInvariant() switch
         {
-            "json" => _jsonHighlighting,
-            "xml"  => _xmlHighlighting,
-            "html" => _htmlHighlighting,
-            "text" => _textHighlighting,
+            "json" => JsonHighlighting,
+            "xml"  => XmlHighlighting,
+            "html" => HtmlHighlighting,
+            "text" => TextHighlighting,
             _      => null,
         };
 

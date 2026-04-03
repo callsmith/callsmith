@@ -33,7 +33,7 @@ public sealed class BrunoCollectionService : ICollectionService
         ".git", ".svn", ".hg", ".bzr",
     };
 
-    private static readonly string[] _httpVerbs =
+    private static readonly string[] HttpVerbs =
         ["get", "post", "put", "delete", "patch", "head", "options"];
 
     private readonly ISecretStorageService _secrets;
@@ -530,7 +530,7 @@ public sealed class BrunoCollectionService : ICollectionService
 
         string? httpMethod = null;
         BruBlock? methodBlock = null;
-        foreach (var verb in _httpVerbs)
+        foreach (var verb in HttpVerbs)
         {
             methodBlock = doc.Find(verb);
             if (methodBlock is null) continue;
@@ -827,7 +827,7 @@ public sealed class BrunoCollectionService : ICollectionService
         var verbIdx = -1;
         for (var i = 0; i < blocks.Count; i++)
         {
-            if (_httpVerbs.Contains(blocks[i].Name, StringComparer.OrdinalIgnoreCase))
+            if (HttpVerbs.Contains(blocks[i].Name, StringComparer.OrdinalIgnoreCase))
             {
                 verbIdx = i;
                 break;

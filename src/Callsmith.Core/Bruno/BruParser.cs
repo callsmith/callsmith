@@ -21,11 +21,11 @@ internal static class BruParser
 {
     // Matches a block header at column 0 with optional trailing whitespace before the brace.
     // Examples: "get {", "body:json {", "script:pre-request {", "params:query {"
-    private static readonly Regex _blockHeaderRegex =
+    private static readonly Regex BlockHeaderRegex =
         new(@"^([\w][\w:.-]*)\s*\{$", RegexOptions.Compiled);
 
     // Matches list-based vars:secret block: "vars:secret [" with optional content
-    private static readonly Regex _listBlockHeaderRegex =
+    private static readonly Regex ListBlockHeaderRegex =
         new(@"^(vars:secret)\s*\[", RegexOptions.Compiled);
 
     /// <summary>Parses <paramref name="text"/> and returns the resulting document.</summary>
@@ -46,7 +46,7 @@ internal static class BruParser
             }
 
             // Check for list-based vars:secret block first
-            var listMatch = _listBlockHeaderRegex.Match(line);
+            var listMatch = ListBlockHeaderRegex.Match(line);
             if (listMatch.Success)
             {
                 var block = new BruBlock(listMatch.Groups[1].Value) { HasPrecedingBlankLine = precedingBlankLine };
@@ -59,7 +59,7 @@ internal static class BruParser
             }
 
             // Check for regular key-value block
-            var m = _blockHeaderRegex.Match(line);
+            var m = BlockHeaderRegex.Match(line);
             if (!m.Success)
             {
                 precedingBlankLine = false;

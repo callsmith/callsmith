@@ -1119,8 +1119,8 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
             await Task.WhenAll(listTask, globalTask).ConfigureAwait(true);
 
-            var list = listTask.Result;
-            var globalModel = globalTask.Result;
+            var list = await listTask;
+            var globalModel = await globalTask;
 
             Environments.Clear();
 

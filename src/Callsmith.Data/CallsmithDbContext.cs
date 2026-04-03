@@ -35,11 +35,7 @@ public sealed class CallsmithDbContext : DbContext
     /// </summary>
     public static string GetDbPath()
     {
-        var appData = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-            ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
-            : Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-
-        return Path.Combine(appData, "Callsmith", "data.db");
+        return Path.Combine(GetAppDataDirectory(), "Callsmith", "data.db");
     }
 
     /// <summary>
@@ -50,17 +46,8 @@ public sealed class CallsmithDbContext : DbContext
     /// <param name="collectionFolderPath">Absolute path to the collection root folder.</param>
     public static string GetDbPath(string collectionFolderPath)
     {
-        var appData = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-            ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
-            : Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-
-        var normalised = Path.GetFullPath(collectionFolderPath)
-                             .ToLowerInvariant()
-                             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalised));
-        var fileName = Convert.ToHexString(hash).ToLowerInvariant() + ".db";
-
-        return Path.Combine(appData, "Callsmith", "history", fileName);
+        var fileName = HashPath(collectionFolderPath) + ".db";
+        return Path.Combine(GetAppDataDirectory(), "Callsmith", "history", fileName);
     }
 
     /// <summary>
@@ -68,10 +55,20 @@ public sealed class CallsmithDbContext : DbContext
     /// </summary>
     internal static string GetKeyPath()
     {
-        var appData = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+        return Path.Combine(GetAppDataDirectory(), "Callsmith", "history.key");
+    }
+
+    private static string GetAppDataDirectory() =>
+        RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
             ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
             : Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
 
-        return Path.Combine(appData, "Callsmith", "history.key");
+    private static string HashPath(string path)
+    {
+        var normalised = Path.GetFullPath(path)
+                             .ToLowerInvariant()
+                             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalised));
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 }

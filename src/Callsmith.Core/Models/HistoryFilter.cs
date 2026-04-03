@@ -182,20 +182,3 @@ public sealed class HistoryFilter
     public long? MaxElapsedMs { get; init; }
 }
 
-/// <summary>Controls how a URL pattern is matched.</summary>
-public enum UrlMatchMode
-{
-    /// <summary>The URL must contain the pattern string (default).</summary>
-    Contains,
-
-    /// <summary>The URL must start with the pattern string.</summary>
-    StartsWith,
-
-    /// <summary>The pattern is treated as a regular expression.</summary>
-    Regex,
-}
-
-/// <summary>A name and/or value pair used to search through request or response headers.</summary>
-/// <param name="Name">Header name to search for. Null means match any name.</param>
-/// <param name="Value">Header value to match (case-insensitive contains). Null means match any value.</param>
-public sealed record HeaderSearch(string? Name, string? Value);

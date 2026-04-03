@@ -63,7 +63,7 @@ public partial class CollectionsView : UserControl
                     if (owner is null) return;
                     var dialog = new ImportCollectionDialog { DataContext = vm.PendingImportDialog };
                     await dialog.ShowDialog(owner);
-                    await vm.OnImportDialogClosed();
+                    await vm.OnImportDialogClosedAsync();
                 }
             };
         }
