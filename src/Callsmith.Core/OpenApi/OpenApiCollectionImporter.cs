@@ -459,10 +459,20 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
         // URL: {{baseUrl}}/path
         var url = $"{{{{{BaseUrlVar}}}}}{pathTemplate}";
 
-        // Extract path params from the URL template and collect them.
+        // Extract path params from the URL template and resolve example values from
+        // any matching in:path parameter definitions.
         var pathParams = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (Match m in PathParamRegex().Matches(pathTemplate))
-            pathParams[m.Groups[1].Value] = string.Empty;
+        {
+            var paramName = m.Groups[1].Value;
+            var paramDef  = mergedParams.FirstOrDefault(p =>
+                string.Equals(GetString(p, "in"),   "path",     StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(GetString(p, "name"),  paramName, StringComparison.OrdinalIgnoreCase));
+            var example = paramDef.ValueKind != JsonValueKind.Undefined
+                ? GetExampleString(paramDef)
+                : null;
+            pathParams[paramName] = example ?? string.Empty;
+        }
 
         // Query params
         var queryParams = new List<RequestKv>();
@@ -740,9 +750,14 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
             "array"               => GenerateArrayNode(schema, root, visitedRefs),
             "string"              => GenerateStringNode(schema),
             "integer" or "number" => JsonValue.Create(0)!,
-            "boolean"             => JsonValue.Create(false)!,
-            // No explicit type — if properties are present treat as object, else empty object.
-            _                     => GenerateObjectNode(schema, root, visitedRefs),
+            "boolean"             => JsonValue.Create(true)!,
+            // JSON null type — return null so anyOf/oneOf skips this option.
+            "null"                => null,
+            // No explicit type — treat as object only when properties are defined so that
+            // empty/untyped sub-schemas in anyOf/oneOf don't crowd out more useful options.
+            _                     => schema.TryGetProperty("properties", out _)
+                                         ? GenerateObjectNode(schema, root, visitedRefs)
+                                         : null,
         };
     }
 

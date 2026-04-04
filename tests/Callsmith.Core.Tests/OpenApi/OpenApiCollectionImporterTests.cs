@@ -368,6 +368,104 @@ public sealed class OpenApiCollectionImporterTests : IDisposable
     }
 
     [Fact]
+    public async Task ImportAsync_PopulatesPathParamExampleFromParameterDefinition()
+    {
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /users/{userId}:
+                get:
+                  summary: Get user
+                  parameters:
+                    - name: userId
+                      in: path
+                      required: true
+                      schema:
+                        type: integer
+                        example: 42
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        result.RootRequests[0].PathParams["userId"].Should().Be("42");
+    }
+
+    [Fact]
+    public async Task ImportAsync_PopulatesPathParamExampleFromSchemaDefault()
+    {
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /items/{itemId}:
+                get:
+                  summary: Get item
+                  parameters:
+                    - name: itemId
+                      in: path
+                      required: true
+                      schema:
+                        type: string
+                        default: abc123
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        result.RootRequests[0].PathParams["itemId"].Should().Be("abc123");
+    }
+
+    [Fact]
+    public async Task ImportAsync_PathParamWithNoExampleUsesTypePlaceholder()
+    {
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /users/{userId}:
+                get:
+                  summary: Get user
+                  parameters:
+                    - name: userId
+                      in: path
+                      required: true
+                      schema:
+                        type: integer
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        // Integer type produces the same "0" placeholder as query params.
+        result.RootRequests[0].PathParams["userId"].Should().Be("0");
+    }
+
+    [Fact]
+    public async Task ImportAsync_PathParamNotInParameterListGetsEmptyString()
+    {
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /users/{userId}/orders/{orderId}:
+                get:
+                  summary: Get order
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        result.RootRequests[0].PathParams["userId"].Should().BeEmpty();
+        result.RootRequests[0].PathParams["orderId"].Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task ImportAsync_ExtractsQueryParams()
     {
         var yaml = """
@@ -660,7 +758,7 @@ public sealed class OpenApiCollectionImporterTests : IDisposable
         var root = doc.RootElement;
         root.GetProperty("name").GetString().Should().Be("string");
         root.GetProperty("age").GetInt32().Should().Be(0);
-        root.GetProperty("active").GetBoolean().Should().BeFalse();
+        root.GetProperty("active").GetBoolean().Should().BeTrue();
     }
 
     [Fact]
@@ -836,6 +934,115 @@ public sealed class OpenApiCollectionImporterTests : IDisposable
         var root = doc.RootElement;
         root.GetProperty("name").GetString().Should().Be("string");
         root.GetProperty("petType").GetString().Should().Be("string");
+    }
+
+    [Fact]
+    public async Task ImportAsync_OAS3_AnyOfSkipsNullTypeAndUsesObjectOption()
+    {
+        // OAS 3.1 nullable pattern: anyOf: [{ type: "null" }, { type: object, ... }]
+        // The null type should be skipped; the object schema should be used.
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /items:
+                post:
+                  summary: Create item
+                  requestBody:
+                    content:
+                      application/json:
+                        schema:
+                          anyOf:
+                            - type: "null"
+                            - type: object
+                              properties:
+                                name:
+                                  type: string
+                                count:
+                                  type: integer
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        var body = result.RootRequests[0].Body;
+        body.Should().NotBeNullOrEmpty();
+        using var doc = JsonDocument.Parse(body!);
+        var root = doc.RootElement;
+        root.ValueKind.Should().Be(JsonValueKind.Object);
+        root.GetProperty("name").GetString().Should().Be("string");
+        root.GetProperty("count").GetInt32().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ImportAsync_OAS3_OneOfSkipsNullTypeAndUsesObjectOption()
+    {
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /items:
+                post:
+                  summary: Create item
+                  requestBody:
+                    content:
+                      application/json:
+                        schema:
+                          oneOf:
+                            - type: "null"
+                            - type: object
+                              properties:
+                                label:
+                                  type: string
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        var body = result.RootRequests[0].Body;
+        body.Should().NotBeNullOrEmpty();
+        using var doc = JsonDocument.Parse(body!);
+        var root = doc.RootElement;
+        root.ValueKind.Should().Be(JsonValueKind.Object);
+        root.GetProperty("label").GetString().Should().Be("string");
+    }
+
+    [Fact]
+    public async Task ImportAsync_OAS3_AnyOfSkipsUntypedEmptySchemaAndUsesObjectOption()
+    {
+        // An empty/untyped sub-schema (matches anything) should not block a more
+        // informative subsequent option in anyOf.
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /items:
+                post:
+                  summary: Create item
+                  requestBody:
+                    content:
+                      application/json:
+                        schema:
+                          anyOf:
+                            - description: anything
+                            - type: object
+                              properties:
+                                value:
+                                  type: string
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        var body = result.RootRequests[0].Body;
+        body.Should().NotBeNullOrEmpty();
+        using var doc = JsonDocument.Parse(body!);
+        var root = doc.RootElement;
+        root.ValueKind.Should().Be(JsonValueKind.Object);
+        root.GetProperty("value").GetString().Should().Be("string");
     }
 
     [Fact]
