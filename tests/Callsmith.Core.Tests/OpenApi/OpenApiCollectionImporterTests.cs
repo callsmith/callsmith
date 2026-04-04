@@ -908,6 +908,39 @@ public sealed class OpenApiCollectionImporterTests : IDisposable
     }
 
     [Fact]
+    public async Task ImportAsync_OAS3_DoesNotEscapeSpecialCharsInBodyExample()
+    {
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /search:
+                post:
+                  summary: Search
+                  requestBody:
+                    content:
+                      application/json:
+                        schema:
+                          type: object
+                          properties:
+                            query:
+                              type: string
+                              example: "foo&bar<baz>"
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        var body = result.RootRequests[0].Body;
+        body.Should().NotBeNullOrEmpty();
+        // Characters like & < > must appear literally, not as \u0026 etc.
+        body.Should().Contain("foo&bar<baz>");
+        body.Should().NotContain(@"\u0026");
+        body.Should().NotContain(@"\u003c");
+    }
+
+    [Fact]
     public async Task ImportAsync_OAS3_GeneratesExampleFromSchemaRef()
     {
         var yaml = """

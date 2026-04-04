@@ -1,4 +1,5 @@
 using System.Net.Http;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -45,7 +46,11 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
         CommentHandling = JsonCommentHandling.Skip,
     };
 
-    private static readonly JsonSerializerOptions IndentedJsonOptions = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions IndentedJsonOptions = new()
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
 
     private static readonly IDeserializer YamlDeserializer = new DeserializerBuilder()
         .WithNamingConvention(NullNamingConvention.Instance)
