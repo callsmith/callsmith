@@ -586,7 +586,7 @@ public sealed class OpenApiCollectionImporterTests : IDisposable
     }
 
     [Fact]
-    public async Task ImportAsync_ExtractsHeaderParams_DoesNotDuplicateContentType()
+    public async Task ImportAsync_ExtractsHeaderParams_DoesNotAddContentTypeForBody()
     {
         var yaml = """
             openapi: "3.0.0"
@@ -597,12 +597,6 @@ public sealed class OpenApiCollectionImporterTests : IDisposable
               /users:
                 post:
                   summary: Create user
-                  parameters:
-                    - name: Content-Type
-                      in: header
-                      required: false
-                      schema:
-                        type: string
                   requestBody:
                     content:
                       application/json:
@@ -612,11 +606,11 @@ public sealed class OpenApiCollectionImporterTests : IDisposable
         var path = Write("api.yaml", yaml);
         var result = await _sut.ImportAsync(path);
 
-        // Content-Type from the in:header param is skipped; only the one from
-        // the body type is present.
+        // Content-Type is managed by Callsmith from the body type selection —
+        // it must NOT be auto-generated into the imported header list.
         result.RootRequests[0].Headers
             .Where(h => string.Equals(h.Key, "Content-Type", StringComparison.OrdinalIgnoreCase))
-            .Should().HaveCount(1);
+            .Should().BeEmpty();
     }
 
     [Fact]

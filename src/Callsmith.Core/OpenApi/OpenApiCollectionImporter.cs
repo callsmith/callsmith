@@ -489,24 +489,17 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
         // Request body (OAS3) or body parameter (Swagger 2)
         var (bodyType, bodyContent) = ExtractBody(op, mergedParams, root);
 
-        // Headers: start with any in:header parameters from the spec, then append
-        // the Content-Type header implied by the body type.
+        // Headers: only in:header parameters explicitly defined in the spec.
+        // Content-Type is managed by Callsmith based on the selected body type
+        // and must not be added here.
         var headers = new List<RequestKv>();
         foreach (var p in mergedParams.Where(IsHeaderParam))
         {
             var hname = GetString(p, "name") ?? string.Empty;
             if (string.IsNullOrWhiteSpace(hname)) continue;
-            // Skip Content-Type — it is controlled by the body type selection.
-            if (string.Equals(hname, "Content-Type", StringComparison.OrdinalIgnoreCase)) continue;
             var required = GetBool(p, "required") ?? false;
             var example  = GetExampleString(p);
             headers.Add(new RequestKv(hname, example ?? string.Empty, required));
-        }
-        if (bodyType != BodyTypes.None)
-        {
-            var contentType = BodyTypes.ToContentType(bodyType);
-            if (contentType is not null)
-                headers.Add(new RequestKv("Content-Type", contentType));
         }
 
         return new ImportedRequest
