@@ -44,6 +44,37 @@ public sealed class OpenApiCollectionImporterTests : IDisposable
     }
 
     [Fact]
+    public async Task CanImportAsync_ReturnsTrueForOpenApi31JsonFile()
+    {
+        var json = """{"openapi":"3.1.0","info":{"title":"T","version":"1.0"},"paths":{}}""";
+        var path = Write("openapi31.json", json);
+        (await _sut.CanImportAsync(path)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task CanImportAsync_ReturnsFalseForUnsupportedOpenApi4()
+    {
+        var json = """{"openapi":"4.0.0","info":{"title":"T","version":"1.0"},"paths":{}}""";
+        var path = Write("oas4.json", json);
+        (await _sut.CanImportAsync(path)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task CanImportAsync_ReturnsFalseForUnsupportedSwagger1()
+    {
+        var json = """{"swagger":"1.2","info":{"title":"T","version":"1.0"}}""";
+        var path = Write("sw1.json", json);
+        (await _sut.CanImportAsync(path)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task CanImportAsync_ReturnsFalseForInvalidJson()
+    {
+        var path = Write("bad.json", "this is not json { or yaml }}}");
+        (await _sut.CanImportAsync(path)).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task CanImportAsync_ReturnsFalseForPostmanFile()
     {
         const string json = """{"info": {"name": "My API", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"}, "item": []}""";

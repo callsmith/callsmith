@@ -16,16 +16,18 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
     // ─── Import-type options ─────────────────────────────────────────────────
 
+    private const string OpenApiImportTypeName = "Open API 3.x / Swagger 2.0";
+
     /// <summary>
     /// All import types shown in the dropdown.
     /// Hoppscotch remains disabled until its importer is implemented.
     /// </summary>
     public IReadOnlyList<ImportTypeOption> ImportTypeOptions { get; } =
     [
-        new("Postman",              isEnabled: true),
-        new("Insomnia",             isEnabled: true),
-        new("Open API / Swagger",   isEnabled: true),
-        new("Hoppscotch",           isEnabled: false),
+        new("Postman",                    isEnabled: true),
+        new("Insomnia",                   isEnabled: true),
+        new(OpenApiImportTypeName,        isEnabled: true),
+        new("Hoppscotch",                 isEnabled: false),
     ];
 
     // ─── Bound properties ────────────────────────────────────────────────────
@@ -52,6 +54,16 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ImportCommand))]
     private string _filePath = string.Empty;
 
+    partial void OnFilePathChanged(string value)
+    {
+        // Mutual exclusivity: selecting a file clears any typed URL.
+        if (!string.IsNullOrEmpty(value))
+            SpecUrl = string.Empty;
+
+        OnPropertyChanged(nameof(IsFileInputEnabled));
+        OnPropertyChanged(nameof(IsUrlInputEnabled));
+    }
+
     /// <summary>
     /// URL of a publicly accessible OpenAPI / Swagger spec to fetch.
     /// Only used when <see cref="IsOpenApiSelected"/> is true.
@@ -59,6 +71,16 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ImportCommand))]
     private string _specUrl = string.Empty;
+
+    partial void OnSpecUrlChanged(string value)
+    {
+        // Mutual exclusivity: typing a URL clears any selected file.
+        if (!string.IsNullOrEmpty(value))
+            FilePath = string.Empty;
+
+        OnPropertyChanged(nameof(IsFileInputEnabled));
+        OnPropertyChanged(nameof(IsUrlInputEnabled));
+    }
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ImportCommand))]
@@ -73,9 +95,22 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
     [ObservableProperty]
     private bool _isImporting;
 
-    /// <summary>True when the selected import type is "Open API / Swagger".</summary>
+    /// <summary>True when the selected import type is "Open API 3.x / Swagger 2.0".</summary>
     public bool IsOpenApiSelected =>
-        SelectedImportType.Name.Equals("Open API / Swagger", StringComparison.Ordinal);
+        SelectedImportType.Name.Equals(OpenApiImportTypeName, StringComparison.Ordinal);
+
+    /// <summary>
+    /// True when the file-browse row should be interactive (no URL has been entered yet).
+    /// False when the user has typed a URL, disabling the file row.
+    /// </summary>
+    public bool IsFileInputEnabled => string.IsNullOrWhiteSpace(SpecUrl);
+
+    /// <summary>
+    /// True when the URL row should be interactive (no file has been selected yet).
+    /// False when the user has selected a file, disabling the URL row.
+    /// Only relevant when <see cref="IsOpenApiSelected"/> is true.
+    /// </summary>
+    public bool IsUrlInputEnabled => string.IsNullOrWhiteSpace(FilePath);
 
     // ─── Result ───────────────────────────────────────────────────────────────
 
@@ -147,6 +182,15 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
         var path = folder.TryGetLocalPath();
         if (!string.IsNullOrEmpty(path))
             FolderPath = path;
+    }
+
+    /// <summary>
+    /// Clears the selected file path, re-enabling the URL input for OpenAPI imports.
+    /// </summary>
+    [RelayCommand]
+    private void ClearFilePath()
+    {
+        FilePath = string.Empty;
     }
 
     /// <summary>

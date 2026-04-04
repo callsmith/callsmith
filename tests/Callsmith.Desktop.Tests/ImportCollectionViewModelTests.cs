@@ -47,7 +47,7 @@ public sealed class ImportCollectionViewModelTests
         sut.ImportTypeOptions.Where(o => o.IsEnabled)
             .Select(o => o.Name)
             .Should()
-            .BeEquivalentTo(["Insomnia", "Postman", "Open API / Swagger"]);
+            .BeEquivalentTo(["Insomnia", "Postman", "Open API 3.x / Swagger 2.0"]);
     }
 
     [Fact]
@@ -380,5 +380,99 @@ public sealed class ImportCollectionViewModelTests
 
         sut.IsConfirmed.Should().BeFalse();
         closeRaised.Should().BeTrue();
+    }
+
+    // ─── Mutual exclusivity: FilePath ↔ SpecUrl ──────────────────────────────
+
+    [Fact]
+    public void SettingFilePath_ClearsSpecUrl()
+    {
+        var sut = BuildSut();
+        sut.SpecUrl = "https://example.com/openapi.json";
+
+        sut.FilePath = "/some/file.yaml";
+
+        sut.SpecUrl.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void SettingSpecUrl_ClearsFilePath()
+    {
+        var sut = BuildSut();
+        sut.FilePath = "/some/file.yaml";
+
+        sut.SpecUrl = "https://example.com/openapi.json";
+
+        sut.FilePath.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void IsFileInputEnabled_IsTrueWhenSpecUrlIsEmpty()
+    {
+        var sut = BuildSut();
+        sut.SpecUrl = string.Empty;
+
+        sut.IsFileInputEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsFileInputEnabled_IsFalseWhenSpecUrlIsSet()
+    {
+        var sut = BuildSut();
+        sut.SpecUrl = "https://example.com/openapi.json";
+
+        sut.IsFileInputEnabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsUrlInputEnabled_IsTrueWhenFilePathIsEmpty()
+    {
+        var sut = BuildSut();
+        sut.FilePath = string.Empty;
+
+        sut.IsUrlInputEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsUrlInputEnabled_IsFalseWhenFilePathIsSet()
+    {
+        var sut = BuildSut();
+        sut.FilePath = "/some/file.yaml";
+
+        sut.IsUrlInputEnabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ClearFilePathCommand_ClearsFilePath()
+    {
+        var sut = BuildSut();
+        sut.FilePath = "/some/file.yaml";
+
+        sut.ClearFilePathCommand.Execute(null);
+
+        sut.FilePath.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ClearFilePathCommand_ReEnablesUrlInput()
+    {
+        var sut = BuildSut();
+        sut.FilePath = "/some/file.yaml";
+
+        sut.ClearFilePathCommand.Execute(null);
+
+        sut.IsUrlInputEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ClearingSpecUrl_ReEnablesFileInput()
+    {
+        var sut = BuildSut();
+        sut.SpecUrl = "https://example.com/openapi.json";
+        sut.IsFileInputEnabled.Should().BeFalse(); // sanity check
+
+        sut.SpecUrl = string.Empty;
+
+        sut.IsFileInputEnabled.Should().BeTrue();
     }
 }

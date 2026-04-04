@@ -26,9 +26,6 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
 {
     private const string BaseUrlVar = "baseUrl";
 
-    /// <summary>Maximum number of lines scanned when detecting the spec format in <see cref="CanImportAsync"/>.</summary>
-    private const int MaxLinesToScan = 20;
-
     // Standard HTTP method keys present in a Path Item object.
     private static readonly IReadOnlyList<string> HttpMethods =
         ["get", "post", "put", "patch", "delete", "head", "options", "trace"];
@@ -60,7 +57,7 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
     }
 
     /// <inheritdoc/>
-    public string FormatName => "Open API / Swagger";
+    public string FormatName => "Open API 3.x / Swagger 2.0";
 
     /// <inheritdoc/>
     public IReadOnlyList<string> SupportedFileExtensions { get; } = [".json", ".yaml", ".yml"];
@@ -70,30 +67,58 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
     {
         try
         {
-            using var reader = new StreamReader(filePath);
-            for (var i = 0; i < MaxLinesToScan; i++)
-            {
-                var line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
-                if (line is null) break;
+            var content = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
 
-                var trimmed = line.TrimStart();
-                // Matches YAML: `swagger:` / `openapi:`
-                // and JSON:  `"swagger":` / `"openapi":`
-                if (trimmed.StartsWith("swagger:", StringComparison.OrdinalIgnoreCase)   ||
-                    trimmed.StartsWith("openapi:", StringComparison.OrdinalIgnoreCase)   ||
-                    trimmed.StartsWith("\"swagger\":", StringComparison.OrdinalIgnoreCase) ||
-                    trimmed.StartsWith("\"openapi\":", StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
+            JsonDocument doc;
+            try
+            {
+                doc = ParseContent(content);
             }
-            return false;
+            catch
+            {
+                // File is not valid JSON or YAML — cannot be an OpenAPI/Swagger spec.
+                return false;
+            }
+
+            using (doc)
+            {
+                return IsSupportedSpec(doc.RootElement);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "CanImportAsync: could not read '{FilePath}'", filePath);
             return false;
         }
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the document root element contains an
+    /// <c>openapi</c> key whose value starts with <c>"3."</c> (OpenAPI 3.x) or
+    /// a <c>swagger</c> key whose value starts with <c>"2."</c> (Swagger 2.x).
+    /// Returns <see langword="false"/> for any other content, including unsupported
+    /// versions (e.g. OpenAPI 4, Swagger 1).
+    /// </summary>
+    private static bool IsSupportedSpec(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object)
+            return false;
+
+        // OpenAPI 3.x
+        if (root.TryGetProperty("openapi", out var oasEl))
+        {
+            var version = oasEl.ValueKind == JsonValueKind.String ? oasEl.GetString() : null;
+            return version is not null && version.StartsWith("3.", StringComparison.Ordinal);
+        }
+
+        // Swagger 2.x
+        if (root.TryGetProperty("swagger", out var swEl))
+        {
+            var version = swEl.ValueKind == JsonValueKind.String ? swEl.GetString() : null;
+            return version is not null && version.StartsWith("2.", StringComparison.Ordinal);
+        }
+
+        return false;
     }
 
     /// <inheritdoc/>
