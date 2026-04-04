@@ -489,8 +489,19 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
         // Request body (OAS3) or body parameter (Swagger 2)
         var (bodyType, bodyContent) = ExtractBody(op, mergedParams, root);
 
-        // Headers implied by body content type
+        // Headers: start with any in:header parameters from the spec, then append
+        // the Content-Type header implied by the body type.
         var headers = new List<RequestKv>();
+        foreach (var p in mergedParams.Where(IsHeaderParam))
+        {
+            var hname = GetString(p, "name") ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(hname)) continue;
+            // Skip Content-Type — it is controlled by the body type selection.
+            if (string.Equals(hname, "Content-Type", StringComparison.OrdinalIgnoreCase)) continue;
+            var required = GetBool(p, "required") ?? false;
+            var example  = GetExampleString(p);
+            headers.Add(new RequestKv(hname, example ?? string.Empty, required));
+        }
         if (bodyType != BodyTypes.None)
         {
             var contentType = BodyTypes.ToContentType(bodyType);
@@ -560,6 +571,9 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
     private static bool IsQueryParam(JsonElement p)
         => string.Equals(GetString(p, "in"), "query", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsHeaderParam(JsonElement p)
+        => string.Equals(GetString(p, "in"), "header", StringComparison.OrdinalIgnoreCase);
+
     private static string? GetExampleString(JsonElement param)
     {
         // Try "example" directly
@@ -575,15 +589,16 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
             if (schema.TryGetProperty("default", out var def) && def.ValueKind != JsonValueKind.Null)
                 return JsonElementToString(def);
 
-            // Produce a type-based placeholder
+            // Produce a type-based placeholder (consistent with GenerateStringNode for body examples)
             var type = GetString(schema, "type");
             if (type is not null)
             {
                 return type.ToLowerInvariant() switch
                 {
                     "integer" or "number" => "0",
-                    "boolean"             => "false",
+                    "boolean"             => "true",
                     "array"               => "[]",
+                    "string"              => GetStringFormatPlaceholder(schema),
                     _                     => null,
                 };
             }
@@ -823,8 +838,18 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
             }
         }
 
+        return JsonValue.Create(GetStringFormatPlaceholder(schema))!;
+    }
+
+    /// <summary>
+    /// Returns a format-appropriate placeholder string for a schema with <c>type: string</c>.
+    /// Shared by <see cref="GenerateStringNode"/> (body examples) and
+    /// <see cref="GetExampleString"/> (parameter placeholders).
+    /// </summary>
+    private static string GetStringFormatPlaceholder(JsonElement schema)
+    {
         var format = GetString(schema, "format")?.ToLowerInvariant();
-        return JsonValue.Create(format switch
+        return format switch
         {
             "date"           => "2024-01-01",
             "date-time"      => "2024-01-01T00:00:00Z",
@@ -832,7 +857,7 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
             "email"          => "user@example.com",
             "uri" or "url"   => "https://example.com",
             _                => "string",
-        })!;
+        };
     }
 
     // ─────────────────────────────────────────────────────────────────────────

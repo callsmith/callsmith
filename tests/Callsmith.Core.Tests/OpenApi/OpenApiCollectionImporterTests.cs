@@ -498,6 +498,158 @@ public sealed class OpenApiCollectionImporterTests : IDisposable
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Header parameters
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ImportAsync_ExtractsHeaderParams_OptionalIsDisabled()
+    {
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /users:
+                get:
+                  summary: List users
+                  parameters:
+                    - name: correlation-id
+                      in: header
+                      required: false
+                      schema:
+                        type: string
+                      example: abcdefg
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        var req = result.RootRequests[0];
+        req.Headers.Should().ContainSingle(h => h.Key == "correlation-id");
+        var header = req.Headers.Single(h => h.Key == "correlation-id");
+        header.Value.Should().Be("abcdefg");
+        header.IsEnabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ImportAsync_ExtractsHeaderParams_RequiredIsEnabled()
+    {
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /users:
+                get:
+                  summary: List users
+                  parameters:
+                    - name: X-Api-Key
+                      in: header
+                      required: true
+                      schema:
+                        type: string
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        var req = result.RootRequests[0];
+        var header = req.Headers.Single(h => h.Key == "X-Api-Key");
+        header.IsEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ImportAsync_ExtractsHeaderParams_WithSchemaExample()
+    {
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /users:
+                get:
+                  summary: List users
+                  parameters:
+                    - name: X-Request-Id
+                      in: header
+                      required: false
+                      schema:
+                        type: string
+                        format: uuid
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        var header = result.RootRequests[0].Headers.Single(h => h.Key == "X-Request-Id");
+        header.Value.Should().Be("00000000-0000-0000-0000-000000000000");
+    }
+
+    [Fact]
+    public async Task ImportAsync_ExtractsHeaderParams_DoesNotDuplicateContentType()
+    {
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /users:
+                post:
+                  summary: Create user
+                  parameters:
+                    - name: Content-Type
+                      in: header
+                      required: false
+                      schema:
+                        type: string
+                  requestBody:
+                    content:
+                      application/json:
+                        schema:
+                          type: object
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        // Content-Type from the in:header param is skipped; only the one from
+        // the body type is present.
+        result.RootRequests[0].Headers
+            .Where(h => string.Equals(h.Key, "Content-Type", StringComparison.OrdinalIgnoreCase))
+            .Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task ImportAsync_ExtractsHeaderAndQueryParams_Together()
+    {
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /users:
+                get:
+                  summary: List users
+                  parameters:
+                    - name: limit
+                      in: query
+                      required: false
+                    - name: correlation-id
+                      in: header
+                      required: false
+                      example: trace-123
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        var req = result.RootRequests[0];
+        req.QueryParams.Should().ContainSingle(q => q.Key == "limit");
+        req.Headers.Should().ContainSingle(h => h.Key == "correlation-id");
+        req.Headers.Single(h => h.Key == "correlation-id").Value.Should().Be("trace-123");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Tag-based folder grouping
     // ─────────────────────────────────────────────────────────────────────────
 
