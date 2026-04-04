@@ -59,6 +59,18 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
 
     private readonly ILogger<OpenApiCollectionImporter> _logger;
 
+    /// <summary>
+    /// One-shot cache populated by <see cref="CanImportAsync"/> and consumed by
+    /// <see cref="ImportAsync"/> so that the file is read and parsed only once when
+    /// the two methods are called in immediate succession on the same path (the normal
+    /// import flow). Falls back to a fresh disk read if the paths do not match.
+    /// Written and read with <see cref="Interlocked.Exchange{T}"/> for thread safety.
+    /// </summary>
+    private CachedParse? _lastValidatedParse;
+
+    /// <summary>Holds the raw file content from a successful <see cref="CanImportAsync"/> call.</summary>
+    private sealed record CachedParse(string FilePath, string Content);
+
     public OpenApiCollectionImporter(ILogger<OpenApiCollectionImporter> logger)
     {
         _logger = logger;
@@ -85,17 +97,27 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
             catch
             {
                 // File is not valid JSON or YAML — cannot be an OpenAPI/Swagger spec.
+                Interlocked.Exchange(ref _lastValidatedParse, null);
                 return false;
             }
 
             using (doc)
             {
-                return IsSupportedSpec(doc.RootElement);
+                if (!IsSupportedSpec(doc.RootElement))
+                {
+                    Interlocked.Exchange(ref _lastValidatedParse, null);
+                    return false;
+                }
             }
+
+            // Cache the raw content so ImportAsync can skip the second disk read.
+            Interlocked.Exchange(ref _lastValidatedParse, new CachedParse(filePath, content));
+            return true;
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "CanImportAsync: could not read '{FilePath}'", filePath);
+            Interlocked.Exchange(ref _lastValidatedParse, null);
             return false;
         }
     }
@@ -133,7 +155,13 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
     public async Task<ImportedCollection> ImportAsync(
         string filePath, CancellationToken ct = default)
     {
-        var content = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
+        // Consume the one-shot cache populated by CanImportAsync (same file path) to avoid
+        // reading and parsing the file a second time in the normal import flow.
+        var cached = Interlocked.Exchange(ref _lastValidatedParse, null);
+        var content = (cached?.FilePath == filePath)
+            ? cached.Content
+            : await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
+
         JsonDocument doc;
         try
         {
