@@ -24,7 +24,15 @@ namespace Callsmith.Core.OpenApi;
 /// </remarks>
 public sealed partial class OpenApiCollectionImporter : ICollectionImporter
 {
+    /// <summary>
+    /// The environment variable name written into every imported environment whose value
+    /// holds the server base URL. Request URLs are generated as <c>{{baseUrl}}/path</c>.
+    /// Changing this value would invalidate all collections previously imported by this importer.
+    /// </summary>
     private const string BaseUrlVar = "baseUrl";
+
+    /// <summary>The display name shown in the import-type selector.</summary>
+    public const string DisplayName = "Open API 3.x / Swagger 2.0";
 
     // Standard HTTP method keys present in a Path Item object.
     private static readonly IReadOnlyList<string> HttpMethods =
@@ -57,7 +65,7 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
     }
 
     /// <inheritdoc/>
-    public string FormatName => "Open API 3.x / Swagger 2.0";
+    public string FormatName => DisplayName;
 
     /// <inheritdoc/>
     public IReadOnlyList<string> SupportedFileExtensions { get; } = [".json", ".yaml", ".yml"];

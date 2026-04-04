@@ -443,7 +443,7 @@ public sealed class ImportCollectionViewModelTests
     }
 
     [Fact]
-    public void ClearFilePathCommand_ClearsFilePath()
+    public void ClearFilePathCommand_SetsFilePathToEmpty()
     {
         var sut = BuildSut();
         sut.FilePath = "/some/file.yaml";

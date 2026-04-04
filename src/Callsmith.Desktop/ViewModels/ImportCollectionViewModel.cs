@@ -1,5 +1,6 @@
 using Avalonia.Platform.Storage;
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.OpenApi;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -16,7 +17,7 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
     // ─── Import-type options ─────────────────────────────────────────────────
 
-    private const string OpenApiImportTypeName = "Open API 3.x / Swagger 2.0";
+    private const string OpenApiImportTypeName = OpenApiCollectionImporter.DisplayName;
 
     /// <summary>
     /// All import types shown in the dropdown.

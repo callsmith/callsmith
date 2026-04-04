@@ -15,6 +15,8 @@ public sealed class CollectionImportService : ICollectionImportService
 {
     private static readonly char[] InvalidFileNameChars = Path.GetInvalidFileNameChars();
 
+    private const string TempFilePrefix = "callsmith-import-";
+
     private readonly IReadOnlyList<ICollectionImporter> _importers;
     private readonly ICollectionService _collectionService;
     private readonly IEnvironmentService _environmentService;
@@ -154,7 +156,7 @@ public sealed class CollectionImportService : ICollectionImportService
         // first, then falling back to URL extension heuristics.
         var ext = DetectSpecExtension(response, specUrl);
 
-        var tempFile = Path.Combine(Path.GetTempPath(), $"callsmith-import-{Guid.NewGuid():N}{ext}");
+        var tempFile = Path.Combine(Path.GetTempPath(), $"{TempFilePrefix}{Guid.NewGuid():N}{ext}");
         try
         {
             await File.WriteAllTextAsync(tempFile, content, ct).ConfigureAwait(false);
