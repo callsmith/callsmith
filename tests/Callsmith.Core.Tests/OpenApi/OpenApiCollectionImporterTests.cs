@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Net.Http;
+using System.Text.Json;
 using Callsmith.Core.Models;
 using Callsmith.Core.OpenApi;
 using Callsmith.Core.Tests.TestHelpers;
@@ -619,6 +620,394 @@ public sealed class OpenApiCollectionImporterTests : IDisposable
         var result = await _sut.ImportAsync(path);
 
         result.RootRequests[0].BodyType.Should().Be(CollectionRequest.BodyTypes.Json);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Body example synthesis
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ImportAsync_OAS3_GeneratesExampleFromInlineObjectProperties()
+    {
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /users:
+                post:
+                  summary: Create user
+                  requestBody:
+                    content:
+                      application/json:
+                        schema:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            age:
+                              type: integer
+                            active:
+                              type: boolean
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        var body = result.RootRequests[0].Body;
+        body.Should().NotBeNullOrEmpty();
+        using var doc = JsonDocument.Parse(body!);
+        var root = doc.RootElement;
+        root.GetProperty("name").GetString().Should().Be("string");
+        root.GetProperty("age").GetInt32().Should().Be(0);
+        root.GetProperty("active").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ImportAsync_OAS3_GeneratesExampleFromSchemaRef()
+    {
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /users:
+                post:
+                  summary: Create user
+                  requestBody:
+                    content:
+                      application/json:
+                        schema:
+                          $ref: "#/components/schemas/User"
+            components:
+              schemas:
+                User:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    email:
+                      type: string
+                      format: email
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        var body = result.RootRequests[0].Body;
+        body.Should().NotBeNullOrEmpty();
+        using var doc = JsonDocument.Parse(body!);
+        var root = doc.RootElement;
+        root.GetProperty("name").GetString().Should().Be("string");
+        root.GetProperty("email").GetString().Should().Be("user@example.com");
+    }
+
+    [Fact]
+    public async Task ImportAsync_OAS3_ResolvesNestedSchemaRefs()
+    {
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /orders:
+                post:
+                  summary: Create order
+                  requestBody:
+                    content:
+                      application/json:
+                        schema:
+                          $ref: "#/components/schemas/Order"
+            components:
+              schemas:
+                Order:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    customer:
+                      $ref: "#/components/schemas/Customer"
+                Customer:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    address:
+                      $ref: "#/components/schemas/Address"
+                Address:
+                  type: object
+                  properties:
+                    street:
+                      type: string
+                    city:
+                      type: string
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        var body = result.RootRequests[0].Body;
+        body.Should().NotBeNullOrEmpty();
+        using var doc = JsonDocument.Parse(body!);
+        var root = doc.RootElement;
+        root.GetProperty("id").GetInt32().Should().Be(0);
+        var customer = root.GetProperty("customer");
+        customer.GetProperty("name").GetString().Should().Be("string");
+        var address = customer.GetProperty("address");
+        address.GetProperty("street").GetString().Should().Be("string");
+        address.GetProperty("city").GetString().Should().Be("string");
+    }
+
+    [Fact]
+    public async Task ImportAsync_OAS3_HandlesCircularRefWithoutInfiniteLoop()
+    {
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /nodes:
+                post:
+                  summary: Create node
+                  requestBody:
+                    content:
+                      application/json:
+                        schema:
+                          $ref: "#/components/schemas/TreeNode"
+            components:
+              schemas:
+                TreeNode:
+                  type: object
+                  properties:
+                    value:
+                      type: string
+                    children:
+                      type: array
+                      items:
+                        $ref: "#/components/schemas/TreeNode"
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        // Should complete without a stack overflow; body must be valid JSON.
+        var body = result.RootRequests[0].Body;
+        body.Should().NotBeNullOrEmpty();
+        var act = () => JsonDocument.Parse(body!);
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public async Task ImportAsync_OAS3_GeneratesExampleFromAllOf()
+    {
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /pets:
+                post:
+                  summary: Create pet
+                  requestBody:
+                    content:
+                      application/json:
+                        schema:
+                          allOf:
+                            - $ref: "#/components/schemas/Animal"
+                            - type: object
+                              properties:
+                                petType:
+                                  type: string
+            components:
+              schemas:
+                Animal:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        var body = result.RootRequests[0].Body;
+        body.Should().NotBeNullOrEmpty();
+        using var doc = JsonDocument.Parse(body!);
+        var root = doc.RootElement;
+        root.GetProperty("name").GetString().Should().Be("string");
+        root.GetProperty("petType").GetString().Should().Be("string");
+    }
+
+    [Fact]
+    public async Task ImportAsync_OAS3_GeneratesExampleForArrayOfSchemaRef()
+    {
+        var yaml = """
+            openapi: "3.0.0"
+            info:
+              title: Test
+              version: "1.0"
+            paths:
+              /bulk:
+                post:
+                  summary: Bulk create
+                  requestBody:
+                    content:
+                      application/json:
+                        schema:
+                          type: array
+                          items:
+                            $ref: "#/components/schemas/Item"
+            components:
+              schemas:
+                Item:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    label:
+                      type: string
+            """;
+        var path = Write("api.yaml", yaml);
+        var result = await _sut.ImportAsync(path);
+
+        var body = result.RootRequests[0].Body;
+        body.Should().NotBeNullOrEmpty();
+        using var doc = JsonDocument.Parse(body!);
+        var root = doc.RootElement;
+        root.ValueKind.Should().Be(JsonValueKind.Array);
+        root.GetArrayLength().Should().Be(1);
+        var item = root[0];
+        item.GetProperty("id").GetInt32().Should().Be(0);
+        item.GetProperty("label").GetString().Should().Be("string");
+    }
+
+    [Fact]
+    public async Task ImportAsync_OAS3_UsesExplicitMediaTypeExampleOverGenerated()
+    {
+        // Use JSON spec so that "age": 30 is preserved as a JSON number
+        // (YAML→JSON conversion may coerce unquoted scalars to strings).
+        var json = """
+            {
+              "openapi": "3.0.0",
+              "info": { "title": "Test", "version": "1.0" },
+              "paths": {
+                "/users": {
+                  "post": {
+                    "summary": "Create user",
+                    "requestBody": {
+                      "content": {
+                        "application/json": {
+                          "example": { "name": "Alice", "age": 30 },
+                          "schema": {
+                            "type": "object",
+                            "properties": {
+                              "name": { "type": "string" },
+                              "age":  { "type": "integer" }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            """;
+        var path = Write("api.json", json);
+        var result = await _sut.ImportAsync(path);
+
+        var body = result.RootRequests[0].Body;
+        body.Should().NotBeNullOrEmpty();
+        using var doc = JsonDocument.Parse(body!);
+        var root = doc.RootElement;
+        root.GetProperty("name").GetString().Should().Be("Alice");
+        root.GetProperty("age").GetInt32().Should().Be(30);
+    }
+
+    [Fact]
+    public async Task ImportAsync_OAS3_UsesSchemaExampleOverGenerated()
+    {
+        // Use JSON spec so that "age": 25 is preserved as a JSON number.
+        var json = """
+            {
+              "openapi": "3.0.0",
+              "info": { "title": "Test", "version": "1.0" },
+              "paths": {
+                "/users": {
+                  "post": {
+                    "summary": "Create user",
+                    "requestBody": {
+                      "content": {
+                        "application/json": {
+                          "schema": {
+                            "type": "object",
+                            "example": { "name": "Bob", "age": 25 },
+                            "properties": {
+                              "name": { "type": "string" },
+                              "age":  { "type": "integer" }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            """;
+        var path = Write("api.json", json);
+        var result = await _sut.ImportAsync(path);
+
+        var body = result.RootRequests[0].Body;
+        body.Should().NotBeNullOrEmpty();
+        using var doc = JsonDocument.Parse(body!);
+        var root = doc.RootElement;
+        root.GetProperty("name").GetString().Should().Be("Bob");
+        root.GetProperty("age").GetInt32().Should().Be(25);
+    }
+
+    [Fact]
+    public async Task ImportAsync_Swagger2_GeneratesExampleFromBodyParamSchemaRef()
+    {
+        var json = """
+            {
+              "swagger": "2.0",
+              "info": { "title": "Test", "version": "1.0" },
+              "host": "api.example.com",
+              "paths": {
+                "/users": {
+                  "post": {
+                    "summary": "Create user",
+                    "parameters": [
+                      {
+                        "name": "body",
+                        "in": "body",
+                        "schema": { "$ref": "#/definitions/User" }
+                      }
+                    ]
+                  }
+                }
+              },
+              "definitions": {
+                "User": {
+                  "type": "object",
+                  "properties": {
+                    "username": { "type": "string" },
+                    "score":    { "type": "number" }
+                  }
+                }
+              }
+            }
+            """;
+        var path = Write("api.json", json);
+        var result = await _sut.ImportAsync(path);
+
+        var body = result.RootRequests[0].Body;
+        body.Should().NotBeNullOrEmpty();
+        using var doc = JsonDocument.Parse(body!);
+        var root = doc.RootElement;
+        root.GetProperty("username").GetString().Should().Be("string");
+        root.GetProperty("score").GetInt32().Should().Be(0);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

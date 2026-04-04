@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Import;
@@ -43,6 +44,8 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
         AllowTrailingCommas = true,
         CommentHandling = JsonCommentHandling.Skip,
     };
+
+    private static readonly JsonSerializerOptions IndentedJsonOptions = new() { WriteIndented = true };
 
     private static readonly IDeserializer YamlDeserializer = new DeserializerBuilder()
         .WithNamingConvention(NullNamingConvention.Instance)
@@ -636,7 +639,12 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
         {
             var @in = GetString(p, "in");
             if (string.Equals(@in, "body", StringComparison.OrdinalIgnoreCase))
-                return (BodyTypes.Json, "{}");
+            {
+                var body = p.TryGetProperty("schema", out var bodySchema)
+                    ? GenerateExampleJson(bodySchema, root)
+                    : "{}";
+                return (BodyTypes.Json, body);
+            }
 
             if (string.Equals(@in, "formData", StringComparison.OrdinalIgnoreCase))
                 return (BodyTypes.Form, null);
@@ -651,17 +659,165 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
         if (!mediaType.TryGetProperty("schema", out var schema))
             return (BodyTypes.Json, "{}");
 
-        // Resolve $ref
-        schema = ResolveRef(schema, root) ?? schema;
-
-        // Try to use an existing example
+        // Prefer an explicit media-type-level example (highest precedence).
         if (mediaType.TryGetProperty("example", out var ex) && ex.ValueKind != JsonValueKind.Null)
             return (BodyTypes.Json, ex.GetRawText());
 
-        if (schema.TryGetProperty("example", out var schEx) && schEx.ValueKind != JsonValueKind.Null)
-            return (BodyTypes.Json, schEx.GetRawText());
+        // Generate an example by walking the schema tree and resolving all $refs.
+        return (BodyTypes.Json, GenerateExampleJson(schema, root));
+    }
 
-        return (BodyTypes.Json, "{}");
+    // ─────────────────────────────────────────────────────────────────────────
+    // Example generation from schema
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Generates a JSON example string from the given schema element.
+    /// Resolves <c>$ref</c> pointers recursively (with circular-ref protection),
+    /// honours explicit <c>example</c> / <c>default</c> fields, handles
+    /// <c>allOf</c> / <c>anyOf</c> / <c>oneOf</c>, and falls back to
+    /// type-appropriate placeholder values.
+    /// Returns <c>"{}"</c> when no meaningful example can be derived.
+    /// </summary>
+    private static string GenerateExampleJson(JsonElement schema, JsonElement root)
+    {
+        var node = GenerateExampleNode(schema, root, new HashSet<string>(StringComparer.Ordinal));
+        return node?.ToJsonString(IndentedJsonOptions) ?? "{}";
+    }
+
+    private static JsonNode? GenerateExampleNode(
+        JsonElement schema, JsonElement root, HashSet<string> visitedRefs)
+    {
+        // Resolve $ref — track visited refs to break circular chains.
+        if (schema.TryGetProperty("$ref", out var refEl))
+        {
+            var refStr = refEl.GetString();
+            if (string.IsNullOrEmpty(refStr) || visitedRefs.Contains(refStr))
+                return null;
+
+            var resolved = ResolveRef(schema, root);
+            if (resolved is null) return null;
+
+            visitedRefs.Add(refStr);
+            var result = GenerateExampleNode(resolved.Value, root, visitedRefs);
+            visitedRefs.Remove(refStr);
+            return result;
+        }
+
+        // Explicit example wins over synthesis.
+        if (schema.TryGetProperty("example", out var ex) && ex.ValueKind != JsonValueKind.Null)
+            return JsonNode.Parse(ex.GetRawText());
+
+        // Explicit default is also preferred over synthesis.
+        if (schema.TryGetProperty("default", out var def) && def.ValueKind != JsonValueKind.Null)
+            return JsonNode.Parse(def.GetRawText());
+
+        // allOf: merge all sub-schemas into one object.
+        if (schema.TryGetProperty("allOf", out var allOf) && allOf.ValueKind == JsonValueKind.Array)
+            return GenerateAllOfNode(allOf, root, visitedRefs);
+
+        // anyOf / oneOf: use the first sub-schema that yields a non-null example.
+        foreach (var combiner in (ReadOnlySpan<string>)["anyOf", "oneOf"])
+        {
+            if (!schema.TryGetProperty(combiner, out var combo)
+                || combo.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            foreach (var sub in combo.EnumerateArray())
+            {
+                var node = GenerateExampleNode(sub, root, visitedRefs);
+                if (node is not null) return node;
+            }
+        }
+
+        // Type-based synthesis.
+        var type = GetString(schema, "type");
+        return type?.ToLowerInvariant() switch
+        {
+            "object"              => GenerateObjectNode(schema, root, visitedRefs),
+            "array"               => GenerateArrayNode(schema, root, visitedRefs),
+            "string"              => GenerateStringNode(schema),
+            "integer" or "number" => JsonValue.Create(0)!,
+            "boolean"             => JsonValue.Create(false)!,
+            // No explicit type — if properties are present treat as object, else empty object.
+            _                     => GenerateObjectNode(schema, root, visitedRefs),
+        };
+    }
+
+    private static JsonObject GenerateObjectNode(
+        JsonElement schema, JsonElement root, HashSet<string> visitedRefs)
+    {
+        var obj = new JsonObject();
+        if (!schema.TryGetProperty("properties", out var props)
+            || props.ValueKind != JsonValueKind.Object)
+        {
+            return obj;
+        }
+
+        foreach (var prop in props.EnumerateObject())
+            obj[prop.Name] = GenerateExampleNode(prop.Value, root, visitedRefs);
+
+        return obj;
+    }
+
+    private static JsonArray GenerateArrayNode(
+        JsonElement schema, JsonElement root, HashSet<string> visitedRefs)
+    {
+        var arr = new JsonArray();
+        if (schema.TryGetProperty("items", out var items)
+            && items.ValueKind == JsonValueKind.Object)
+        {
+            arr.Add(GenerateExampleNode(items, root, visitedRefs));
+        }
+
+        return arr;
+    }
+
+    /// <summary>
+    /// Merges the properties from every sub-schema in an <c>allOf</c> array
+    /// into a single <see cref="JsonObject"/>.
+    /// </summary>
+    private static JsonObject GenerateAllOfNode(
+        JsonElement allOf, JsonElement root, HashSet<string> visitedRefs)
+    {
+        var merged = new JsonObject();
+        foreach (var sub in allOf.EnumerateArray())
+        {
+            if (GenerateExampleNode(sub, root, visitedRefs) is not JsonObject subObj)
+                continue;
+
+            foreach (var kvp in subObj.ToList())
+                merged[kvp.Key] = kvp.Value?.DeepClone();
+        }
+
+        return merged;
+    }
+
+    private static JsonValue GenerateStringNode(JsonElement schema)
+    {
+        // Use the first enum value when available.
+        if (schema.TryGetProperty("enum", out var enumEl)
+            && enumEl.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var v in enumEl.EnumerateArray())
+            {
+                if (v.ValueKind == JsonValueKind.String)
+                    return JsonValue.Create(v.GetString())!;
+            }
+        }
+
+        var format = GetString(schema, "format")?.ToLowerInvariant();
+        return JsonValue.Create(format switch
+        {
+            "date"           => "2024-01-01",
+            "date-time"      => "2024-01-01T00:00:00Z",
+            "uuid" or "guid" => "00000000-0000-0000-0000-000000000000",
+            "email"          => "user@example.com",
+            "uri" or "url"   => "https://example.com",
+            _                => "string",
+        })!;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
