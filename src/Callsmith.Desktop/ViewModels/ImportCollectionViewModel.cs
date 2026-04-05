@@ -266,6 +266,8 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
     private bool CanImport =>
         FilePaths.Count > 0 &&
+        // FolderPath is only required in "new collection" mode; in "import into current" mode
+        // the current collection path is already known from the constructor.
         (IsImportIntoCurrentCollection || !string.IsNullOrWhiteSpace(FolderPath));
 
     private async Task RunImportAsync(CancellationToken ct)
