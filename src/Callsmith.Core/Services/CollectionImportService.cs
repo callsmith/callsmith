@@ -1,4 +1,3 @@
-using System.Net.Http;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Import;
 using Callsmith.Core.Models;
