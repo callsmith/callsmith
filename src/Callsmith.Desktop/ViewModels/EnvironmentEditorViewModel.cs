@@ -1128,7 +1128,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             Environments.Add(CreateListItem(globalModel, isGlobal: true));
 
             // ListEnvironmentsAsync already returns environments in the saved order
-            // (from environment/_order.json), so no additional sorting needed here.
+            // (from environment/_meta.json), so no additional sorting needed here.
             foreach (var model in list)
                 Environments.Add(CreateListItem(model));
 

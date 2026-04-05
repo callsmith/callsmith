@@ -323,7 +323,7 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
         ArgumentNullException.ThrowIfNull(collectionFolderPath);
         ArgumentNullException.ThrowIfNull(orderedNames);
 
-        // Order is stored in app-data meta, not as _order.json inside the Bruno repo.
+        // Order is stored in app-data meta, not as _meta.json inside the Bruno repo.
         var meta = await _meta.LoadAsync(collectionFolderPath, ct).ConfigureAwait(false);
         await _meta.SaveAsync(collectionFolderPath, new BrunoCollectionMeta
         {

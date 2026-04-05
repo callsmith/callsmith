@@ -242,11 +242,12 @@ public sealed class CollectionImportServiceTests : IDisposable
 
         await sut.ImportToFolderAsync("/fake.yaml", target);
 
-        var orderFile = Path.Combine(target, "_order.json");
-        File.Exists(orderFile).Should().BeTrue();
+        var metaFile = Path.Combine(target, "_meta.json");
+        File.Exists(metaFile).Should().BeTrue();
 
+        using var doc = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(metaFile));
         var written = System.Text.Json.JsonSerializer.Deserialize<List<string>>(
-            await File.ReadAllTextAsync(orderFile));
+            doc.RootElement.GetProperty("order").GetRawText());
         written.Should().ContainInOrder("Alpha.callsmith", "Beta", "Gamma.callsmith");
     }
 
@@ -275,9 +276,9 @@ public sealed class CollectionImportServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task ImportToFolderAsync_OrderFileReflectsRenamedDuplicates()
+    public async Task ImportToFolderAsync_MetaFileReflectsRenamedDuplicates()
     {
-        // Two requests with the same name plus an explicit ItemOrder — the order file
+        // Two requests with the same name plus an explicit ItemOrder — the meta file
         // must use the actual (deduplicated) filenames, not the original names.
         var collection = new ImportedCollection
         {
@@ -296,18 +297,19 @@ public sealed class CollectionImportServiceTests : IDisposable
 
         await sut.ImportToFolderAsync("/fake.yaml", target);
 
-        var orderFile = Path.Combine(target, "_order.json");
-        File.Exists(orderFile).Should().BeTrue();
+        var metaFile = Path.Combine(target, "_meta.json");
+        File.Exists(metaFile).Should().BeTrue();
 
+        using var doc = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(metaFile));
         var written = System.Text.Json.JsonSerializer.Deserialize<List<string>>(
-            await File.ReadAllTextAsync(orderFile));
+            doc.RootElement.GetProperty("order").GetRawText());
         written.Should().HaveCount(2);
         written.Should().Contain("Req.callsmith");
         written.Should().Contain("Req (1).callsmith");
     }
 
     [Fact]
-    public async Task ImportToFolderAsync_PersistsEnvironmentOrderToOrderFile()
+    public async Task ImportToFolderAsync_PersistsEnvironmentOrderToMetaFile()
     {
         var collection = new ImportedCollection
         {
@@ -326,14 +328,15 @@ public sealed class CollectionImportServiceTests : IDisposable
 
         await sut.ImportToFolderAsync("/fake.yaml", target);
 
-        // Order is written to environment/_order.json inside the collection folder.
-        var orderFile = Path.Combine(target,
+        // Order is written to environment/_meta.json inside the collection folder.
+        var metaFile = Path.Combine(target,
             FileSystemCollectionService.EnvironmentFolderName,
-            FileSystemEnvironmentService.OrderFileName);
-        File.Exists(orderFile).Should().BeTrue();
+            FileSystemEnvironmentService.MetaFileName);
+        File.Exists(metaFile).Should().BeTrue();
 
-        var json = await File.ReadAllTextAsync(orderFile);
-        var order = System.Text.Json.JsonSerializer.Deserialize<List<string>>(json)!;
+        using var doc = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(metaFile));
+        var order = System.Text.Json.JsonSerializer.Deserialize<List<string>>(
+            doc.RootElement.GetProperty("order").GetRawText())!;
         order.Should().HaveCount(3);
         // Order must match the import collection order, not alphabetical (Prod < Dev < Staging)
         order[0].Should().StartWith("Dev");

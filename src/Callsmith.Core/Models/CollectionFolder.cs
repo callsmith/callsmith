@@ -19,7 +19,7 @@ public sealed class CollectionFolder
     public IReadOnlyList<CollectionFolder> SubFolders { get; init; } = [];
 
     /// <summary>
-    /// Ordered item entry names from the folder's <c>_order.json</c> file.
+    /// Ordered item entry names from the folder's <c>_meta.json</c> file.
     /// Filenames (with extension) for requests; directory names for sub-folders.
     /// Empty = use default ordering (sub-folders first, then requests, both alphabetical).
     /// </summary>

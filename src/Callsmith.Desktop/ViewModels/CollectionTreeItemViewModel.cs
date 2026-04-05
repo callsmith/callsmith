@@ -138,7 +138,7 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
 
         if (folder.ItemOrder.Count > 0)
         {
-            // Respect the explicit order from _order.json, enabling mixed folder/request ordering.
+            // Respect the explicit order from _meta.json, enabling mixed folder/request ordering.
             var requestsByFilename = folder.Requests
                 .ToDictionary(r => Path.GetFileName(r.FilePath), StringComparer.OrdinalIgnoreCase);
             var foldersByName = folder.SubFolders

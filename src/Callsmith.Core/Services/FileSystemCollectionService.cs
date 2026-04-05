@@ -27,8 +27,8 @@ public sealed class FileSystemCollectionService : ICollectionService
     /// </summary>
     public const string EnvironmentFolderName = "environment";
 
-    /// <summary>File name of the optional display-order manifest written in each folder.</summary>
-    public const string OrderFileName = "_order.json";
+    /// <summary>File name of the optional metadata manifest written in each folder.</summary>
+    public const string MetaFileName = "_meta.json";
 
     /// <summary>Folder names to exclude from collection scanning (case-insensitive).</summary>
     private static readonly HashSet<string> ExcludedFolderNames = new(StringComparer.OrdinalIgnoreCase)
@@ -397,7 +397,7 @@ public sealed class FileSystemCollectionService : ICollectionService
 
     private CollectionFolder ReadFolder(string folderPath)
     {
-        var itemOrder = ReadOrderFile(Path.Combine(folderPath, OrderFileName));
+        var itemOrder = ReadMetaFile(Path.Combine(folderPath, MetaFileName));
 
         var requests = Directory
             .EnumerateFiles(folderPath, $"*{RequestFileExtension}", SearchOption.TopDirectoryOnly)
@@ -446,14 +446,15 @@ public sealed class FileSystemCollectionService : ICollectionService
             || ExcludedFolderNames.Contains(folderName);
     }
 
-    private static IReadOnlyList<string> ReadOrderFile(string orderFilePath)
+    private static IReadOnlyList<string> ReadMetaFile(string metaFilePath)
     {
-        if (!File.Exists(orderFilePath))
+        if (!File.Exists(metaFilePath))
             return [];
         try
         {
-            var json = File.ReadAllText(orderFilePath);
-            return JsonSerializer.Deserialize<List<string>>(json) ?? [];
+            var json = File.ReadAllText(metaFilePath);
+            var dto = JsonSerializer.Deserialize<FolderMetaDto>(json) ?? new FolderMetaDto();
+            return dto.Order ?? [];
         }
         catch (JsonException)
         {
@@ -468,20 +469,21 @@ public sealed class FileSystemCollectionService : ICollectionService
         ArgumentNullException.ThrowIfNull(folderPath);
         ArgumentNullException.ThrowIfNull(orderedNames);
 
-        var orderFilePath = Path.Combine(folderPath, OrderFileName);
+        var metaFilePath = Path.Combine(folderPath, MetaFileName);
 
         if (orderedNames.Count == 0)
         {
-            if (File.Exists(orderFilePath))
+            if (File.Exists(metaFilePath))
             {
-                File.Delete(orderFilePath);
-                _logger.LogDebug("Removed order file for '{FolderPath}'", folderPath);
+                File.Delete(metaFilePath);
+                _logger.LogDebug("Removed meta file for '{FolderPath}'", folderPath);
             }
             return;
         }
 
-        var json = JsonSerializer.Serialize(orderedNames, CallsmithJsonOptions.Default);
-        await File.WriteAllTextAsync(orderFilePath, json, ct);
+        var dto = new FolderMetaDto { Order = [..orderedNames] };
+        var json = JsonSerializer.Serialize(dto, CallsmithJsonOptions.Default);
+        await File.WriteAllTextAsync(metaFilePath, json, ct);
         _logger.LogDebug("Saved folder order for '{FolderPath}'", folderPath);
     }
 
@@ -639,5 +641,14 @@ public sealed class FileSystemCollectionService : ICollectionService
         public string Value { get; set; } = string.Empty;
         /// <summary>Defaults to true for backwards compatibility with files that lack this field.</summary>
         public bool Enabled { get; set; } = true;
+    }
+
+    /// <summary>
+    /// The JSON structure written to and read from each <c>_meta.json</c> folder metadata file.
+    /// </summary>
+    private sealed class FolderMetaDto
+    {
+        [JsonPropertyName("order")]
+        public List<string>? Order { get; set; }
     }
 }

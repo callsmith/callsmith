@@ -24,7 +24,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
     /// Name of the JSON file that records the user's preferred environment display order,
     /// stored alongside the <c>.env.callsmith</c> files in the <c>environment/</c> folder.
     /// </summary>
-    public const string OrderFileName = "_order.json";
+    public const string MetaFileName = "_meta.json";
 
     private readonly ISecretStorageService _secrets;
     private readonly ILogger<FileSystemEnvironmentService> _logger;
@@ -74,14 +74,15 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
     private static IReadOnlyList<EnvironmentModel> ApplyOrder(
         List<EnvironmentModel> alphabetical, string envFolder)
     {
-        var orderFilePath = Path.Combine(envFolder, OrderFileName);
-        if (!File.Exists(orderFilePath)) return alphabetical;
+        var metaFilePath = Path.Combine(envFolder, MetaFileName);
+        if (!File.Exists(metaFilePath)) return alphabetical;
 
         IReadOnlyList<string> savedOrder;
         try
         {
-            var json = File.ReadAllText(orderFilePath);
-            savedOrder = JsonSerializer.Deserialize<List<string>>(json) ?? [];
+            var json = File.ReadAllText(metaFilePath);
+            var dto = JsonSerializer.Deserialize<EnvironmentMetaDto>(json) ?? new EnvironmentMetaDto();
+            savedOrder = dto.Order ?? [];
         }
         catch (JsonException) { return alphabetical; }
 
@@ -261,21 +262,22 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         ArgumentNullException.ThrowIfNull(orderedNames);
 
         var envFolder = GetEnvFolder(collectionFolderPath);
-        var orderFilePath = Path.Combine(envFolder, OrderFileName);
+        var metaFilePath = Path.Combine(envFolder, MetaFileName);
 
         if (orderedNames.Count == 0)
         {
-            if (File.Exists(orderFilePath))
+            if (File.Exists(metaFilePath))
             {
-                File.Delete(orderFilePath);
-                _logger.LogDebug("Removed environment order file for '{Path}'", collectionFolderPath);
+                File.Delete(metaFilePath);
+                _logger.LogDebug("Removed environment meta file for '{Path}'", collectionFolderPath);
             }
             return;
         }
 
         Directory.CreateDirectory(envFolder);
-        var json = JsonSerializer.Serialize(orderedNames, CallsmithJsonOptions.Default);
-        await File.WriteAllTextAsync(orderFilePath, json, ct).ConfigureAwait(false);
+        var dto = new EnvironmentMetaDto { Order = [..orderedNames] };
+        var json = JsonSerializer.Serialize(dto, CallsmithJsonOptions.Default);
+        await File.WriteAllTextAsync(metaFilePath, json, ct).ConfigureAwait(false);
         _logger.LogDebug("Saved environment order for '{Path}'", collectionFolderPath);
     }
 
@@ -483,5 +485,14 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         public int? ResponseExpiresAfterSeconds { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? IsForceGlobalOverride { get; init; }
+    }
+
+    /// <summary>
+    /// The JSON structure written to and read from the <c>_meta.json</c> environment metadata file.
+    /// </summary>
+    private sealed class EnvironmentMetaDto
+    {
+        [JsonPropertyName("order")]
+        public List<string>? Order { get; set; }
     }
 }

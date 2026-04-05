@@ -544,7 +544,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
 
     /// <summary>
     /// Moves a tree node to a new index within its parent's children, then persists the
-    /// new order by writing the parent folder's <c>_order.json</c> file.
+    /// new order by writing the parent folder's <c>_meta.json</c> file.
     /// </summary>
     public async Task MoveItemAsync(CollectionTreeItemViewModel item, int targetIndex)
     {
