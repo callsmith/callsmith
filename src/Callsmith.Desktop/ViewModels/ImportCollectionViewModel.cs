@@ -276,36 +276,11 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
         try
         {
-            // Validate SubFolderPath: use Path.GetFullPath to resolve any traversal attempts
-            // and ensure the result stays inside the collection root.
-            string absoluteTarget;
-            if (!string.IsNullOrWhiteSpace(SubFolderPath))
+            if (!TryResolveSubFolderTarget(
+                    _currentCollectionPath, SubFolderPath, out var absoluteTarget, out var validationError))
             {
-                if (Path.IsPathRooted(SubFolderPath))
-                {
-                    ErrorMessage = "Sub-folder path must be a relative path.";
-                    return;
-                }
-
-                var candidate = Path.GetFullPath(Path.Combine(_currentCollectionPath, SubFolderPath));
-                var root = Path.GetFullPath(_currentCollectionPath);
-
-                // Ensure the resolved path is inside the collection root.
-                if (!candidate.StartsWith(
-                    root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                    + Path.DirectorySeparatorChar,
-                    StringComparison.Ordinal)
-                    && !string.Equals(candidate, root, StringComparison.Ordinal))
-                {
-                    ErrorMessage = "Sub-folder path must be a relative path with no '..' segments.";
-                    return;
-                }
-
-                absoluteTarget = candidate;
-            }
-            else
-            {
-                absoluteTarget = _currentCollectionPath;
+                ErrorMessage = validationError;
+                return;
             }
 
             await _importService.ImportIntoCollectionAsync(
@@ -336,6 +311,50 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
             return false;
 
         return Directory.EnumerateFileSystemEntries(folderPath).Any();
+    }
+
+    /// <summary>
+    /// Resolves and validates <paramref name="subFolderPath"/> relative to
+    /// <paramref name="collectionRoot"/>, ensuring the result stays inside the root.
+    /// Returns <c>false</c> and sets <paramref name="errorMessage"/> when validation fails.
+    /// </summary>
+    private static bool TryResolveSubFolderTarget(
+        string collectionRoot,
+        string subFolderPath,
+        out string absoluteTarget,
+        out string errorMessage)
+    {
+        if (string.IsNullOrWhiteSpace(subFolderPath))
+        {
+            absoluteTarget = collectionRoot;
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        if (Path.IsPathRooted(subFolderPath))
+        {
+            absoluteTarget = string.Empty;
+            errorMessage = "Sub-folder path must be a relative path.";
+            return false;
+        }
+
+        var candidate = Path.GetFullPath(Path.Combine(collectionRoot, subFolderPath));
+        var root = Path.GetFullPath(collectionRoot);
+        var rootWithSeparator =
+            root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+
+        if (!candidate.StartsWith(rootWithSeparator, StringComparison.Ordinal)
+            && !string.Equals(candidate, root, StringComparison.Ordinal))
+        {
+            absoluteTarget = string.Empty;
+            errorMessage = "Sub-folder path must be a relative path with no '..' segments.";
+            return false;
+        }
+
+        absoluteTarget = candidate;
+        errorMessage = string.Empty;
+        return true;
     }
 
     // ─── Nested types ────────────────────────────────────────────────────────
