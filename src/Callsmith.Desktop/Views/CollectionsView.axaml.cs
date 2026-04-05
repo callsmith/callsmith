@@ -71,14 +71,15 @@ public partial class CollectionsView : UserControl
                     var owner = TopLevel.GetTopLevel(this) as Window;
                     if (owner is null) return;
 
-                    // Capture the node before the dialog closes (PendingFolderSettings is nulled after).
+                    // Capture the selected node before the dialog opens.
                     var node = CollectionTree.SelectedItem as CollectionTreeItemViewModel;
                     var dialog = new FolderSettingsDialog { DataContext = vm.PendingFolderSettings };
                     await dialog.ShowDialog(owner);
+
                     if (node is not null)
                         vm.OnFolderSettingsDialogClosed(node);
                     else
-                        vm.OnFolderSettingsDialogClosed(vm.TreeRoots.Count > 0 ? vm.TreeRoots[0] : null!);
+                        vm.PendingFolderSettings = null; // No node to update; just clear the dialog state.
                 }
             };
         }

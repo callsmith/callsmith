@@ -273,13 +273,15 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     /// <summary>
     /// Called by the view after the folder settings dialog window is closed.
     /// Updates the node's in-memory auth snapshot with the saved settings.
+    /// If <paramref name="node"/> is null the in-memory update is skipped (dialog was opened
+    /// without a valid node reference, which shouldn't happen in normal usage).
     /// </summary>
-    public void OnFolderSettingsDialogClosed(CollectionTreeItemViewModel node)
+    public void OnFolderSettingsDialogClosed(CollectionTreeItemViewModel? node)
     {
         var dialog = PendingFolderSettings;
         PendingFolderSettings = null;
 
-        if (dialog is null) return;
+        if (dialog is null || node is null) return;
 
         // Update the in-memory node so the tree reflects the new auth without a full reload.
         var auth = new AuthConfig
