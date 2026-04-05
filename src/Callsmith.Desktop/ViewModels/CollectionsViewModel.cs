@@ -240,7 +240,9 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     [RelayCommand]
     public void OpenImportDialog()
     {
-        PendingImportDialog = new ImportCollectionViewModel(_importService);
+        PendingImportDialog = new ImportCollectionViewModel(
+            _importService,
+            HasCollection ? CollectionPath : null);
     }
 
     /// <summary>
@@ -252,9 +254,18 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         var dialog = PendingImportDialog;
         PendingImportDialog = null;
 
-        if (dialog is { IsConfirmed: true, ResultFolderPath: var folder }
+        if (dialog is null) return;
+
+        if (dialog.ImportedIntoCurrentCollection)
+        {
+            // Merge-into-current mode: refresh the sidebar in place without navigating away.
+            if (!string.IsNullOrEmpty(CollectionPath))
+                await LoadCollectionAsync(CollectionPath, retainExpansion: true);
+        }
+        else if (dialog is { IsConfirmed: true, ResultFolderPath: var folder }
             && !string.IsNullOrEmpty(folder))
         {
+            // New-collection mode: navigate to the newly created collection.
             await LoadCollectionAsync(folder);
         }
     }

@@ -1,5 +1,4 @@
 using System.Linq;
-using System.Net.Http;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Data.Core.Plugins;
@@ -100,17 +99,13 @@ public partial class App : Application
         // Core -- import (extensible: register new importers here as formats are added)
         // NOTE: always use the plain Callsmith services here — imports must produce Callsmith-format
         // files regardless of which collection type is currently open in the routing services.
-        services.AddSingleton<ICollectionImporter, InsomniaCollectionImporter>();
         services.AddSingleton<ICollectionImporter, PostmanCollectionImporter>();
+        services.AddSingleton<ICollectionImporter, InsomniaCollectionImporter>();
         services.AddSingleton<ICollectionImporter, OpenApiCollectionImporter>();
-        // The HttpClient instance is intentionally shared for the entire app lifetime to
-        // avoid socket exhaustion — it is only used for one-off spec URL fetches.
-        services.AddSingleton(new HttpClient());
         services.AddSingleton<ICollectionImportService>(sp => new CollectionImportService(
             sp.GetServices<ICollectionImporter>(),
             sp.GetRequiredService<FileSystemCollectionService>(),
             sp.GetRequiredService<FileSystemEnvironmentService>(),
-            sp.GetRequiredService<HttpClient>(),
             sp.GetRequiredService<ILogger<CollectionImportService>>()));
 
         // History

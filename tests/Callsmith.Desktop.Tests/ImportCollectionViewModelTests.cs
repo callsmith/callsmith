@@ -26,31 +26,6 @@ public sealed class ImportCollectionViewModelTests
     // ─── Constructor / defaults ───────────────────────────────────────────────
 
     [Fact]
-    public void Constructor_DefaultsSelectedImportTypeToPostman()
-    {
-        var sut = BuildSut();
-        sut.SelectedImportType.Name.Should().Be("Postman");
-        sut.SelectedImportType.IsEnabled.Should().BeTrue();
-    }
-
-    [Fact]
-    public void Constructor_ImportTypeOptions_HasThreeEntries()
-    {
-        var sut = BuildSut();
-        sut.ImportTypeOptions.Should().HaveCount(4);
-    }
-
-    [Fact]
-    public void Constructor_InsomniaAndPostmanAreEnabled()
-    {
-        var sut = BuildSut();
-        sut.ImportTypeOptions.Where(o => o.IsEnabled)
-            .Select(o => o.Name)
-            .Should()
-            .BeEquivalentTo(["Insomnia", "Postman", "Open API 3.x / Swagger 2.0"]);
-    }
-
-    [Fact]
     public void Constructor_InitialStateHasNoErrors()
     {
         var sut = BuildSut();
@@ -60,41 +35,6 @@ public sealed class ImportCollectionViewModelTests
         sut.IsConfirmed.Should().BeFalse();
     }
 
-    // ─── Import-type selection ────────────────────────────────────────────────
-
-    [Fact]
-    public void SelectingPostman_KeepsPostman()
-    {
-        var sut = BuildSut();
-        var postman = sut.ImportTypeOptions.First(o => o.Name == "Postman");
-
-        sut.SelectedImportType = postman;
-
-        sut.SelectedImportType.Name.Should().Be("Postman");
-    }
-
-    [Fact]
-    public void SelectingDisabledImportType_RevertsToFirstEnabled()
-    {
-        var sut = BuildSut();
-        var hoppscotch = sut.ImportTypeOptions.First(o => o.Name == "Hoppscotch");
-
-        sut.SelectedImportType = hoppscotch;
-
-        sut.SelectedImportType.Name.Should().Be("Postman");
-    }
-
-    [Fact]
-    public void SelectingInsomnia_KeepsInsomnia()
-    {
-        var sut = BuildSut();
-        var insomnia = sut.ImportTypeOptions.First(o => o.Name == "Insomnia");
-
-        sut.SelectedImportType = insomnia;
-
-        sut.SelectedImportType.Name.Should().Be("Insomnia");
-    }
-
     // ─── CanImport ────────────────────────────────────────────────────────────
 
     [Fact]
@@ -102,7 +42,7 @@ public sealed class ImportCollectionViewModelTests
     {
         var sut = BuildSut();
         sut.FolderPath = @"/some/folder";
-        sut.FilePath = string.Empty;
+        sut.FilePaths = [];
 
         sut.ImportCommand.CanExecute(null).Should().BeFalse();
     }
@@ -111,7 +51,7 @@ public sealed class ImportCollectionViewModelTests
     public void ImportCommand_IsDisabled_WhenFolderPathIsEmpty()
     {
         var sut = BuildSut();
-        sut.FilePath = @"/some/file.yaml";
+        sut.FilePaths = ["/some/file.yaml"];
         sut.FolderPath = string.Empty;
 
         sut.ImportCommand.CanExecute(null).Should().BeFalse();
@@ -121,7 +61,7 @@ public sealed class ImportCollectionViewModelTests
     public void ImportCommand_IsEnabled_WhenBothPathsAreSet()
     {
         var sut = BuildSut();
-        sut.FilePath = @"/some/file.yaml";
+        sut.FilePaths = ["/some/file.yaml"];
         sut.FolderPath = @"/some/folder";
 
         sut.ImportCommand.CanExecute(null).Should().BeTrue();
@@ -139,7 +79,7 @@ public sealed class ImportCollectionViewModelTests
             File.WriteAllText(Path.Combine(tempDir.FullName, "existing.txt"), "data");
 
             var sut = BuildSut();
-            sut.FilePath = @"/fake/file.yaml";
+            sut.FilePaths = ["/fake/file.yaml"];
             sut.FolderPath = tempDir.FullName;
 
             await sut.ImportCommand.ExecuteAsync(null);
@@ -173,7 +113,7 @@ public sealed class ImportCollectionViewModelTests
         try
         {
             var sut = new ImportCollectionViewModel(svc);
-            sut.FilePath = @"/fake/file.yaml";
+            sut.FilePaths = ["/fake/file.yaml"];
             sut.FolderPath = tempDir.FullName;
 
             await sut.ImportCommand.ExecuteAsync(null);
@@ -219,7 +159,7 @@ public sealed class ImportCollectionViewModelTests
         try
         {
             var sut = new ImportCollectionViewModel(svc);
-            sut.FilePath = @"/fake/file.yaml";
+            sut.FilePaths = ["/fake/file.yaml"];
             sut.FolderPath = tempDir.FullName;
 
             await sut.ImportCommand.ExecuteAsync(null);
@@ -253,7 +193,7 @@ public sealed class ImportCollectionViewModelTests
         try
         {
             var sut = new ImportCollectionViewModel(svc);
-            sut.FilePath = @"/fake/file.yaml";
+            sut.FilePaths = ["/fake/file.yaml"];
             sut.FolderPath = tempDir.FullName;
 
             var closeRaised = 0;
@@ -292,7 +232,7 @@ public sealed class ImportCollectionViewModelTests
             File.WriteAllText(Path.Combine(tempDir.FullName, "existing.txt"), "data");
 
             var sut = new ImportCollectionViewModel(svc);
-            sut.FilePath = @"/fake/file.yaml";
+            sut.FilePaths = ["/fake/file.yaml"];
             sut.FolderPath = tempDir.FullName;
 
             // First call: triggers warning.
@@ -325,7 +265,7 @@ public sealed class ImportCollectionViewModelTests
         try
         {
             var sut = new ImportCollectionViewModel(svc);
-            sut.FilePath = @"/fake/file.yaml";
+            sut.FilePaths = ["/fake/file.yaml"];
             sut.FolderPath = tempDir.FullName;
 
             await sut.ImportCommand.ExecuteAsync(null);
@@ -351,7 +291,7 @@ public sealed class ImportCollectionViewModelTests
         try
         {
             var sut = new ImportCollectionViewModel(svc);
-            sut.FilePath = @"/fake/file.yaml";
+            sut.FilePaths = ["/fake/file.yaml"];
             sut.FolderPath = tempDir.FullName;
 
             var closeRaised = 0;
@@ -382,97 +322,395 @@ public sealed class ImportCollectionViewModelTests
         closeRaised.Should().BeTrue();
     }
 
-    // ─── Mutual exclusivity: FilePath ↔ SpecUrl ──────────────────────────────
+    // ─── HasCurrentCollectionOption ───────────────────────────────────────────
 
     [Fact]
-    public void SettingFilePath_ClearsSpecUrl()
+    public void HasCurrentCollectionOption_IsFalse_WhenNoCollectionPath()
     {
         var sut = BuildSut();
-        sut.SpecUrl = "https://example.com/openapi.json";
-
-        sut.FilePath = "/some/file.yaml";
-
-        sut.SpecUrl.Should().BeEmpty();
+        sut.HasCurrentCollectionOption.Should().BeFalse();
     }
 
     [Fact]
-    public void SettingSpecUrl_ClearsFilePath()
+    public void HasCurrentCollectionOption_IsTrue_WhenCollectionPathProvided()
+    {
+        var svc = Substitute.For<ICollectionImportService>();
+        svc.SupportedFileExtensions.Returns([".yaml"]);
+        var sut = new ImportCollectionViewModel(svc, "/some/collection");
+        sut.HasCurrentCollectionOption.Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsImportIntoCurrentCollection_DefaultsFalse()
+    {
+        var svc = Substitute.For<ICollectionImportService>();
+        svc.SupportedFileExtensions.Returns([".yaml"]);
+        var sut = new ImportCollectionViewModel(svc, "/some/collection");
+        sut.IsImportIntoCurrentCollection.Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsImportIntoCurrentCollection_CannotBeSetTrue_WhenNoCollection()
     {
         var sut = BuildSut();
-        sut.FilePath = "/some/file.yaml";
+        sut.IsImportIntoCurrentCollection = true;
+        sut.IsImportIntoCurrentCollection.Should().BeFalse();
+    }
 
-        sut.SpecUrl = "https://example.com/openapi.json";
+    // ─── CanImport in import-into-current mode ────────────────────────────────
 
+    [Fact]
+    public void ImportCommand_IsEnabled_WhenImportIntoCurrent_AndFilePathSet()
+    {
+        var svc = Substitute.For<ICollectionImportService>();
+        svc.SupportedFileExtensions.Returns([".yaml"]);
+        var sut = new ImportCollectionViewModel(svc, "/col");
+        sut.IsImportIntoCurrentCollection = true;
+        sut.FilePaths = ["/some/file.yaml"];
+
+        sut.ImportCommand.CanExecute(null).Should().BeTrue();
+    }
+
+    [Fact]
+    public void ImportCommand_IsDisabled_WhenImportIntoCurrent_AndNoFilePath()
+    {
+        var svc = Substitute.For<ICollectionImportService>();
+        svc.SupportedFileExtensions.Returns([".yaml"]);
+        var sut = new ImportCollectionViewModel(svc, "/col");
+        sut.IsImportIntoCurrentCollection = true;
+        sut.FilePaths = [];
+
+        sut.ImportCommand.CanExecute(null).Should().BeFalse();
+    }
+
+    // ─── Import-into-current: success ─────────────────────────────────────────
+
+    [Fact]
+    public async Task ImportCommand_InImportIntoCurrentMode_CallsImportIntoCollectionAsync()
+    {
+        var svc = Substitute.For<ICollectionImportService>();
+        svc.SupportedFileExtensions.Returns([".yaml"]);
+        svc.ImportIntoCollectionAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Any<string?>(), Arg.Any<CancellationToken>())
+           .Returns(new ImportedCollection
+           {
+               Name = "Test", RootRequests = [], RootFolders = [],
+               ItemOrder = [], Environments = [], GlobalDynamicVars = [],
+           });
+
+        var sut = new ImportCollectionViewModel(svc, "/my/collection");
+        sut.IsImportIntoCurrentCollection = true;
+        sut.FilePaths = ["/fake/file.yaml"];
+
+        await sut.ImportCommand.ExecuteAsync(null);
+
+        await svc.Received(1).ImportIntoCollectionAsync(
+            "/fake/file.yaml",
+            "/my/collection",
+            "/my/collection",
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ImportCommand_InImportIntoCurrentMode_WithSubFolder_PassesCorrectAbsolutePath()
+    {
+        var svc = Substitute.For<ICollectionImportService>();
+        svc.SupportedFileExtensions.Returns([".yaml"]);
+        svc.ImportIntoCollectionAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Any<string?>(), Arg.Any<CancellationToken>())
+           .Returns(new ImportedCollection
+           {
+               Name = "Test", RootRequests = [], RootFolders = [],
+               ItemOrder = [], Environments = [], GlobalDynamicVars = [],
+           });
+
+        var sut = new ImportCollectionViewModel(svc, "/my/collection");
+        sut.IsImportIntoCurrentCollection = true;
+        sut.FilePaths = ["/fake/file.yaml"];
+        sut.SubFolderPath = "Orders/Internal";
+
+        await sut.ImportCommand.ExecuteAsync(null);
+
+        var expectedTarget = Path.Combine("/my/collection", "Orders/Internal");
+        await svc.Received(1).ImportIntoCollectionAsync(
+            "/fake/file.yaml",
+            "/my/collection",
+            expectedTarget,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ImportCommand_InImportIntoCurrentMode_SetsImportedIntoCurrentCollectionAndIsConfirmed()
+    {
+        var svc = Substitute.For<ICollectionImportService>();
+        svc.SupportedFileExtensions.Returns([".yaml"]);
+        svc.ImportIntoCollectionAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Any<string?>(), Arg.Any<CancellationToken>())
+           .Returns(new ImportedCollection
+           {
+               Name = "Test", RootRequests = [], RootFolders = [],
+               ItemOrder = [], Environments = [], GlobalDynamicVars = [],
+           });
+
+        var sut = new ImportCollectionViewModel(svc, "/my/collection");
+        sut.IsImportIntoCurrentCollection = true;
+        sut.FilePaths = ["/fake/file.yaml"];
+
+        await sut.ImportCommand.ExecuteAsync(null);
+
+        sut.IsConfirmed.Should().BeTrue();
+        sut.ImportedIntoCurrentCollection.Should().BeTrue();
+        sut.ResultFolderPath.Should().Be("/my/collection");
+    }
+
+    [Fact]
+    public async Task ImportCommand_InImportIntoCurrentMode_DoesNotShowNonEmptyFolderWarning()
+    {
+        var tempDir = Directory.CreateTempSubdirectory("callsmith_import_into_col_test_");
+        try
+        {
+            // Folder is non-empty — warning must NOT appear in import-into-current mode.
+            File.WriteAllText(Path.Combine(tempDir.FullName, "existing.txt"), "data");
+
+            var svc = Substitute.For<ICollectionImportService>();
+            svc.SupportedFileExtensions.Returns([".yaml"]);
+            svc.ImportIntoCollectionAsync(
+                    Arg.Any<string>(), Arg.Any<string>(),
+                    Arg.Any<string?>(), Arg.Any<CancellationToken>())
+               .Returns(new ImportedCollection
+               {
+                   Name = "Test", RootRequests = [], RootFolders = [],
+                   ItemOrder = [], Environments = [], GlobalDynamicVars = [],
+               });
+
+            var sut = new ImportCollectionViewModel(svc, tempDir.FullName);
+            sut.IsImportIntoCurrentCollection = true;
+            sut.FilePaths = ["/fake/file.yaml"];
+
+            await sut.ImportCommand.ExecuteAsync(null);
+
+            sut.IsNonEmptyFolderWarningVisible.Should().BeFalse();
+            sut.IsConfirmed.Should().BeTrue();
+        }
+        finally
+        {
+            tempDir.Delete(recursive: true);
+        }
+    }
+
+    // ─── Import-into-current: invalid sub-folder path ─────────────────────────
+
+    [Fact]
+    public async Task ImportCommand_InImportIntoCurrentMode_RejectsRootedSubFolderPath()
+    {
+        var svc = Substitute.For<ICollectionImportService>();
+        svc.SupportedFileExtensions.Returns([".yaml"]);
+
+        var sut = new ImportCollectionViewModel(svc, "/my/collection");
+        sut.IsImportIntoCurrentCollection = true;
+        sut.FilePaths = ["/fake/file.yaml"];
+        sut.SubFolderPath = "/absolute/path";
+
+        await sut.ImportCommand.ExecuteAsync(null);
+
+        sut.IsConfirmed.Should().BeFalse();
+        sut.ErrorMessage.Should().NotBeEmpty();
+        await svc.DidNotReceive().ImportIntoCollectionAsync(
+            Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<string?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ImportCommand_InImportIntoCurrentMode_RejectsDoubleDotSegments()
+    {
+        var svc = Substitute.For<ICollectionImportService>();
+        svc.SupportedFileExtensions.Returns([".yaml"]);
+
+        var sut = new ImportCollectionViewModel(svc, "/my/collection");
+        sut.IsImportIntoCurrentCollection = true;
+        sut.FilePaths = ["/fake/file.yaml"];
+        sut.SubFolderPath = "valid/../../../etc/passwd";
+
+        await sut.ImportCommand.ExecuteAsync(null);
+
+        sut.IsConfirmed.Should().BeFalse();
+        sut.ErrorMessage.Should().NotBeEmpty();
+        await svc.DidNotReceive().ImportIntoCollectionAsync(
+            Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<string?>(), Arg.Any<CancellationToken>());
+    }
+
+    // ─── Multi-file: FilePath display property ────────────────────────────────
+
+    [Fact]
+    public void FilePath_IsEmpty_WhenNoFilesSelected()
+    {
+        var sut = BuildSut();
         sut.FilePath.Should().BeEmpty();
     }
 
     [Fact]
-    public void IsFileInputEnabled_IsTrueWhenSpecUrlIsEmpty()
+    public void FilePath_ShowsPath_WhenSingleFileSelected()
     {
         var sut = BuildSut();
-        sut.SpecUrl = string.Empty;
-
-        sut.IsFileInputEnabled.Should().BeTrue();
+        sut.FilePaths = ["/some/file.yaml"];
+        sut.FilePath.Should().Be("/some/file.yaml");
     }
 
     [Fact]
-    public void IsFileInputEnabled_IsFalseWhenSpecUrlIsSet()
+    public void FilePath_ShowsCount_WhenMultipleFilesSelected()
     {
         var sut = BuildSut();
-        sut.SpecUrl = "https://example.com/openapi.json";
+        sut.FilePaths = ["/a.yaml", "/b.json", "/c.yaml"];
+        sut.FilePath.Should().Be("3 files selected");
+    }
 
-        sut.IsFileInputEnabled.Should().BeFalse();
+    // ─── Multi-file: new-collection mode ─────────────────────────────────────
+
+    [Fact]
+    public async Task ImportCommand_MultiFile_NewCollectionMode_FirstFileCreatesCollection()
+    {
+        var svc = Substitute.For<ICollectionImportService>();
+        svc.SupportedFileExtensions.Returns([".yaml", ".json"]);
+        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+           .Returns(EmptyCollection());
+        svc.ImportIntoCollectionAsync(Arg.Any<string>(), Arg.Any<string>(),
+               Arg.Any<string?>(), Arg.Any<CancellationToken>())
+           .Returns(EmptyCollection());
+
+        var tempDir = Directory.CreateTempSubdirectory("callsmith_multi_import_");
+        try
+        {
+            var sut = new ImportCollectionViewModel(svc);
+            sut.FilePaths = ["/first.yaml", "/second.json"];
+            sut.FolderPath = tempDir.FullName;
+
+            await sut.ImportCommand.ExecuteAsync(null);
+
+            // First file → ImportToFolderAsync
+            await svc.Received(1).ImportToFolderAsync("/first.yaml", tempDir.FullName, Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            tempDir.Delete(recursive: true);
+        }
     }
 
     [Fact]
-    public void IsUrlInputEnabled_IsTrueWhenFilePathIsEmpty()
+    public async Task ImportCommand_MultiFile_NewCollectionMode_SubsequentFilesMergedIn()
     {
-        var sut = BuildSut();
-        sut.FilePath = string.Empty;
+        var svc = Substitute.For<ICollectionImportService>();
+        svc.SupportedFileExtensions.Returns([".yaml", ".json"]);
+        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+           .Returns(EmptyCollection());
+        svc.ImportIntoCollectionAsync(Arg.Any<string>(), Arg.Any<string>(),
+               Arg.Any<string?>(), Arg.Any<CancellationToken>())
+           .Returns(EmptyCollection());
 
-        sut.IsUrlInputEnabled.Should().BeTrue();
+        var tempDir = Directory.CreateTempSubdirectory("callsmith_multi_import_");
+        try
+        {
+            var sut = new ImportCollectionViewModel(svc);
+            sut.FilePaths = ["/first.yaml", "/second.json", "/third.yaml"];
+            sut.FolderPath = tempDir.FullName;
+
+            await sut.ImportCommand.ExecuteAsync(null);
+
+            // Second and third files → ImportIntoCollectionAsync
+            await svc.Received(1).ImportIntoCollectionAsync(
+                "/second.json", tempDir.FullName, tempDir.FullName, Arg.Any<CancellationToken>());
+            await svc.Received(1).ImportIntoCollectionAsync(
+                "/third.yaml", tempDir.FullName, tempDir.FullName, Arg.Any<CancellationToken>());
+            // ImportToFolderAsync called exactly once (for the first file only)
+            await svc.Received(1).ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            tempDir.Delete(recursive: true);
+        }
     }
 
     [Fact]
-    public void IsUrlInputEnabled_IsFalseWhenFilePathIsSet()
+    public async Task ImportCommand_MultiFile_NewCollectionMode_SingleFile_DoesNotCallMerge()
     {
-        var sut = BuildSut();
-        sut.FilePath = "/some/file.yaml";
+        var svc = Substitute.For<ICollectionImportService>();
+        svc.SupportedFileExtensions.Returns([".yaml"]);
+        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+           .Returns(EmptyCollection());
 
-        sut.IsUrlInputEnabled.Should().BeFalse();
+        var tempDir = Directory.CreateTempSubdirectory("callsmith_single_import_");
+        try
+        {
+            var sut = new ImportCollectionViewModel(svc);
+            sut.FilePaths = ["/only.yaml"];
+            sut.FolderPath = tempDir.FullName;
+
+            await sut.ImportCommand.ExecuteAsync(null);
+
+            await svc.Received(1).ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+            await svc.DidNotReceive().ImportIntoCollectionAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            tempDir.Delete(recursive: true);
+        }
+    }
+
+    // ─── Multi-file: import-into-current mode ────────────────────────────────
+
+    [Fact]
+    public async Task ImportCommand_MultiFile_InImportIntoCurrentMode_AllFilesAreMerged()
+    {
+        var svc = Substitute.For<ICollectionImportService>();
+        svc.SupportedFileExtensions.Returns([".yaml", ".json"]);
+        svc.ImportIntoCollectionAsync(Arg.Any<string>(), Arg.Any<string>(),
+               Arg.Any<string?>(), Arg.Any<CancellationToken>())
+           .Returns(EmptyCollection());
+
+        var sut = new ImportCollectionViewModel(svc, "/my/collection");
+        sut.IsImportIntoCurrentCollection = true;
+        sut.FilePaths = ["/alpha.yaml", "/beta.json"];
+
+        await sut.ImportCommand.ExecuteAsync(null);
+
+        await svc.Received(1).ImportIntoCollectionAsync(
+            "/alpha.yaml", "/my/collection", "/my/collection", Arg.Any<CancellationToken>());
+        await svc.Received(1).ImportIntoCollectionAsync(
+            "/beta.json", "/my/collection", "/my/collection", Arg.Any<CancellationToken>());
+        await svc.DidNotReceive().ImportToFolderAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        sut.IsConfirmed.Should().BeTrue();
     }
 
     [Fact]
-    public void ClearFilePathCommand_SetsFilePathToEmpty()
+    public async Task ImportCommand_MultiFile_InImportIntoCurrentMode_UsesSubFolderForAllFiles()
     {
-        var sut = BuildSut();
-        sut.FilePath = "/some/file.yaml";
+        var svc = Substitute.For<ICollectionImportService>();
+        svc.SupportedFileExtensions.Returns([".yaml"]);
+        svc.ImportIntoCollectionAsync(Arg.Any<string>(), Arg.Any<string>(),
+               Arg.Any<string?>(), Arg.Any<CancellationToken>())
+           .Returns(EmptyCollection());
 
-        sut.ClearFilePathCommand.Execute(null);
+        var sut = new ImportCollectionViewModel(svc, "/col");
+        sut.IsImportIntoCurrentCollection = true;
+        sut.SubFolderPath = "Orders";
+        sut.FilePaths = ["/a.yaml", "/b.yaml"];
 
-        sut.FilePath.Should().BeEmpty();
+        await sut.ImportCommand.ExecuteAsync(null);
+
+        var expectedTarget = Path.Combine("/col", "Orders");
+        await svc.Received(1).ImportIntoCollectionAsync(
+            "/a.yaml", "/col", expectedTarget, Arg.Any<CancellationToken>());
+        await svc.Received(1).ImportIntoCollectionAsync(
+            "/b.yaml", "/col", expectedTarget, Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public void ClearFilePathCommand_ReEnablesUrlInput()
-    {
-        var sut = BuildSut();
-        sut.FilePath = "/some/file.yaml";
+    // ─── Helpers ─────────────────────────────────────────────────────────────
 
-        sut.ClearFilePathCommand.Execute(null);
-
-        sut.IsUrlInputEnabled.Should().BeTrue();
-    }
-
-    [Fact]
-    public void ClearingSpecUrl_ReEnablesFileInput()
-    {
-        var sut = BuildSut();
-        sut.SpecUrl = "https://example.com/openapi.json";
-        sut.IsFileInputEnabled.Should().BeFalse(); // sanity check
-
-        sut.SpecUrl = string.Empty;
-
-        sut.IsFileInputEnabled.Should().BeTrue();
-    }
+    private static ImportedCollection EmptyCollection() =>
+        new() { Name = "Test", RootRequests = [], RootFolders = [], ItemOrder = [], Environments = [], GlobalDynamicVars = [] };
 }
