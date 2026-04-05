@@ -119,7 +119,7 @@ public sealed partial class FolderSettingsViewModel : ObservableObject
         try
         {
             var auth = BuildAuthConfig();
-            await _collectionService.SaveFolderAuthAsync(_folderPath, auth, ct).ConfigureAwait(false);
+            await _collectionService.SaveFolderAuthAsync(_folderPath, auth, ct);
             CloseRequested?.Invoke(this, EventArgs.Empty);
         }
         catch (OperationCanceledException)
