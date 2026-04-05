@@ -73,22 +73,23 @@
       </ComboBox>
     </Grid>
 
-    <!-- Path to file -->
+    <!-- Files to import -->
     <Grid ColumnDefinitions="110,10,*,8,Auto">
       <TextBlock Grid.Column="0"
-                 Text="Path to file"
+                 Text="Files to import"
                  Foreground="#aaa"
                  FontSize="12"
                  VerticalAlignment="Center"/>
       <TextBox Grid.Column="2"
                Text="{Binding FilePath}"
-               Watermark="Select a collection file…"
+               Watermark="Select one or more collection files…"
                Foreground="#d4d4d4"
                Background="#3c3c3c"
                BorderBrush="#555"
                Padding="8,5"
                FontSize="12"
-               IsReadOnly="True"/>
+               IsReadOnly="True"
+               ToolTip.Tip="{Binding FilePath}"/>
       <Button Grid.Column="4"
               Content="Browse…"
               Command="{Binding BrowseFileCommand}"
@@ -99,7 +100,7 @@
               Padding="10,5"
               FontSize="12"
               CornerRadius="3"
-              ToolTip.Tip="Choose the collection file to import"/>
+              ToolTip.Tip="Choose one or more collection files to import (different formats may be mixed)"/>
     </Grid>
 
     <!-- Path to folder (new-collection mode only) -->

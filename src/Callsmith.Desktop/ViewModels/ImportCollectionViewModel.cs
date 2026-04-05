@@ -41,9 +41,36 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
             SelectedImportType = ImportTypeOptions.First(o => o.IsEnabled);
     }
 
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ImportCommand))]
-    private string _filePath = string.Empty;
+    private List<string> _filePathsList = [];
+
+    /// <summary>
+    /// All collection files selected for import.  In "new collection" mode the first file
+    /// defines the base (collection name and folder); subsequent files are merged in via
+    /// <see cref="ICollectionImportService.ImportIntoCollectionAsync"/>.  In
+    /// "import into current collection" mode every file is merged in sequentially.
+    /// </summary>
+    public IReadOnlyList<string> FilePaths
+    {
+        get => _filePathsList;
+        internal set
+        {
+            _filePathsList = [.. value];
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(FilePath));
+            ImportCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    /// <summary>
+    /// Display summary of the selected files, suitable for the read-only text box.
+    /// Single file → the full path. Multiple files → "N files selected".
+    /// </summary>
+    public string FilePath => _filePathsList.Count switch
+    {
+        0 => string.Empty,
+        1 => _filePathsList[0],
+        _ => $"{_filePathsList.Count} files selected",
+    };
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ImportCommand))]
@@ -132,7 +159,7 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
     // ─── Commands ────────────────────────────────────────────────────────────
 
-    /// <summary>Opens a file picker so the user can choose the collection file to import.</summary>
+    /// <summary>Opens a file picker so the user can choose one or more collection files to import.</summary>
     [RelayCommand]
     private async Task BrowseFileAsync(IStorageProvider storageProvider)
     {
@@ -147,17 +174,22 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
         var files = await storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Select Collection File to Import",
-            AllowMultiple = false,
+            Title = "Select Collection Files to Import",
+            AllowMultiple = true,
             FileTypeFilter = [fileTypeFilter, FilePickerFileTypes.All],
         });
 
-        if (files is not [var file])
+        if (files.Count == 0)
             return;
 
-        var path = file.TryGetLocalPath();
-        if (!string.IsNullOrEmpty(path))
-            FilePath = path;
+        var paths = files
+            .Select(f => f.TryGetLocalPath())
+            .Where(p => !string.IsNullOrEmpty(p))
+            .Cast<string>()
+            .ToList();
+
+        if (paths.Count > 0)
+            FilePaths = paths;
     }
 
     /// <summary>Opens a folder picker so the user can choose the destination folder.</summary>
@@ -233,7 +265,7 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
     // ─── Private helpers ─────────────────────────────────────────────────────
 
     private bool CanImport =>
-        !string.IsNullOrWhiteSpace(FilePath) &&
+        FilePaths.Count > 0 &&
         (IsImportIntoCurrentCollection || !string.IsNullOrWhiteSpace(FolderPath));
 
     private async Task RunImportAsync(CancellationToken ct)
@@ -243,7 +275,13 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
         try
         {
-            await _importService.ImportToFolderAsync(FilePath, FolderPath, ct);
+            // First file creates the new collection (sets its name and populates root requests).
+            await _importService.ImportToFolderAsync(FilePaths[0], FolderPath, ct);
+
+            // Subsequent files are merged into the newly-created collection.
+            for (var i = 1; i < FilePaths.Count; i++)
+                await _importService.ImportIntoCollectionAsync(FilePaths[i], FolderPath, FolderPath, ct);
+
             ResultFolderPath = FolderPath;
             IsConfirmed = true;
             CloseRequested?.Invoke(this, EventArgs.Empty);
@@ -283,8 +321,10 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
                 return;
             }
 
-            await _importService.ImportIntoCollectionAsync(
-                FilePath, _currentCollectionPath, absoluteTarget, ct);
+            // All selected files are merged sequentially into the collection.
+            foreach (var filePath in FilePaths)
+                await _importService.ImportIntoCollectionAsync(
+                    filePath, _currentCollectionPath, absoluteTarget, ct);
 
             ResultFolderPath = _currentCollectionPath;
             ImportedIntoCurrentCollection = true;
