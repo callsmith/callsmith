@@ -1,5 +1,6 @@
 using Avalonia.Platform.Storage;
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.OpenApi;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -16,15 +17,18 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
     // ─── Import-type options ─────────────────────────────────────────────────
 
+    private const string OpenApiImportTypeName = OpenApiCollectionImporter.DisplayName;
+
     /// <summary>
     /// All import types shown in the dropdown.
     /// Hoppscotch remains disabled until its importer is implemented.
     /// </summary>
     public IReadOnlyList<ImportTypeOption> ImportTypeOptions { get; } =
     [
-        new("Postman",  isEnabled: true),
-        new("Insomnia", isEnabled: true),
-        new("Hoppscotch", isEnabled: false),
+        new("Postman",                    isEnabled: true),
+        new("Insomnia",                   isEnabled: true),
+        new(OpenApiImportTypeName,        isEnabled: true),
+        new("Hoppscotch",                 isEnabled: false),
     ];
 
     // ─── Bound properties ────────────────────────────────────────────────────
@@ -38,11 +42,46 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
         // first enabled option.
         if (!value.IsEnabled)
             SelectedImportType = ImportTypeOptions.First(o => o.IsEnabled);
+
+        OnPropertyChanged(nameof(IsOpenApiSelected));
+        ImportCommand.NotifyCanExecuteChanged();
+
+        // Switching away from Open API clears the URL field to avoid stale state.
+        if (!IsOpenApiSelected)
+            SpecUrl = string.Empty;
     }
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ImportCommand))]
     private string _filePath = string.Empty;
+
+    partial void OnFilePathChanged(string value)
+    {
+        // Mutual exclusivity: selecting a file clears any typed URL.
+        if (!string.IsNullOrEmpty(value))
+            SpecUrl = string.Empty;
+
+        OnPropertyChanged(nameof(IsFileInputEnabled));
+        OnPropertyChanged(nameof(IsUrlInputEnabled));
+    }
+
+    /// <summary>
+    /// URL of a publicly accessible OpenAPI / Swagger spec to fetch.
+    /// Only used when <see cref="IsOpenApiSelected"/> is true.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ImportCommand))]
+    private string _specUrl = string.Empty;
+
+    partial void OnSpecUrlChanged(string value)
+    {
+        // Mutual exclusivity: typing a URL clears any selected file.
+        if (!string.IsNullOrEmpty(value))
+            FilePath = string.Empty;
+
+        OnPropertyChanged(nameof(IsFileInputEnabled));
+        OnPropertyChanged(nameof(IsUrlInputEnabled));
+    }
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ImportCommand))]
@@ -56,6 +95,23 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isImporting;
+
+    /// <summary>True when the selected import type is "Open API 3.x / Swagger 2.0".</summary>
+    public bool IsOpenApiSelected =>
+        SelectedImportType.Name.Equals(OpenApiImportTypeName, StringComparison.Ordinal);
+
+    /// <summary>
+    /// True when the file-browse row should be interactive (no URL has been entered yet).
+    /// False when the user has typed a URL, disabling the file row.
+    /// </summary>
+    public bool IsFileInputEnabled => string.IsNullOrWhiteSpace(SpecUrl);
+
+    /// <summary>
+    /// True when the URL row should be interactive (no file has been selected yet).
+    /// False when the user has selected a file, disabling the URL row.
+    /// Only relevant when <see cref="IsOpenApiSelected"/> is true.
+    /// </summary>
+    public bool IsUrlInputEnabled => string.IsNullOrWhiteSpace(FilePath);
 
     // ─── Result ───────────────────────────────────────────────────────────────
 
@@ -130,6 +186,15 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Clears the selected file path, re-enabling the URL input for OpenAPI imports.
+    /// </summary>
+    [RelayCommand]
+    private void ClearFilePath()
+    {
+        FilePath = string.Empty;
+    }
+
+    /// <summary>
     /// Validates inputs, warns if the destination folder is non-empty, then runs the import.
     /// Shows an inline error if the file cannot be parsed — the entire operation is a no-op.
     /// </summary>
@@ -174,9 +239,16 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
     // ─── Private helpers ─────────────────────────────────────────────────────
 
-    private bool CanImport =>
-        !string.IsNullOrWhiteSpace(FilePath) &&
-        !string.IsNullOrWhiteSpace(FolderPath);
+    private bool CanImport
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(FolderPath)) return false;
+            if (IsOpenApiSelected)
+                return !string.IsNullOrWhiteSpace(FilePath) || !string.IsNullOrWhiteSpace(SpecUrl);
+            return !string.IsNullOrWhiteSpace(FilePath);
+        }
+    }
 
     private async Task RunImportAsync(CancellationToken ct)
     {
@@ -185,7 +257,11 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
         try
         {
-            await _importService.ImportToFolderAsync(FilePath, FolderPath, ct);
+            if (IsOpenApiSelected && !string.IsNullOrWhiteSpace(SpecUrl))
+                await _importService.ImportFromUrlToFolderAsync(SpecUrl, FolderPath, ct);
+            else
+                await _importService.ImportToFolderAsync(FilePath, FolderPath, ct);
+
             ResultFolderPath = FolderPath;
             IsConfirmed = true;
             CloseRequested?.Invoke(this, EventArgs.Empty);

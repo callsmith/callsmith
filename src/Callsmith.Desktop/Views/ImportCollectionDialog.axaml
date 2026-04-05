@@ -47,7 +47,8 @@
     </Grid>
 
     <!-- Path to file -->
-    <Grid ColumnDefinitions="110,10,*,8,Auto">
+    <Grid ColumnDefinitions="110,10,*,8,Auto,4,Auto"
+          IsEnabled="{Binding IsFileInputEnabled}">
       <TextBlock Grid.Column="0"
                  Text="Path to file"
                  Foreground="#aaa"
@@ -73,6 +74,45 @@
               FontSize="12"
               CornerRadius="3"
               ToolTip.Tip="Choose the collection file to import"/>
+      <Button Grid.Column="6"
+              Content="✕"
+              Command="{Binding ClearFilePathCommand}"
+              IsVisible="{Binding FilePath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+              Background="Transparent"
+              Foreground="#888"
+              BorderThickness="0"
+              Padding="6,5"
+              FontSize="12"
+              CornerRadius="3"
+              ToolTip.Tip="Clear selected file"/>
+    </Grid>
+
+    <!-- "— or —" separator (Open API / Swagger only) -->
+    <TextBlock Text="— or —"
+               IsVisible="{Binding IsOpenApiSelected}"
+               HorizontalAlignment="Center"
+               Foreground="#555"
+               FontSize="11"
+               Margin="0,-4"/>
+
+    <!-- Spec URL (Open API / Swagger only) -->
+    <Grid ColumnDefinitions="110,10,*"
+          IsVisible="{Binding IsOpenApiSelected}"
+          IsEnabled="{Binding IsUrlInputEnabled}">
+      <TextBlock Grid.Column="0"
+                 Text="Spec URL"
+                 Foreground="#aaa"
+                 FontSize="12"
+                 VerticalAlignment="Center"/>
+      <TextBox Grid.Column="2"
+               Text="{Binding SpecUrl}"
+               Watermark="https://api.example.com/openapi.json"
+               Foreground="#d4d4d4"
+               Background="#3c3c3c"
+               BorderBrush="#555"
+               Padding="8,5"
+               FontSize="12"
+               ToolTip.Tip="URL of a publicly accessible OpenAPI or Swagger spec"/>
     </Grid>
 
     <!-- Path to folder -->

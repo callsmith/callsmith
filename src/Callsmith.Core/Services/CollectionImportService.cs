@@ -15,25 +15,31 @@ public sealed class CollectionImportService : ICollectionImportService
 {
     private static readonly char[] InvalidFileNameChars = Path.GetInvalidFileNameChars();
 
+    private const string TempFilePrefix = "callsmith-import-";
+
     private readonly IReadOnlyList<ICollectionImporter> _importers;
     private readonly ICollectionService _collectionService;
     private readonly IEnvironmentService _environmentService;
+    private readonly HttpClient _httpClient;
     private readonly ILogger<CollectionImportService> _logger;
 
     public CollectionImportService(
         IEnumerable<ICollectionImporter> importers,
         ICollectionService collectionService,
         IEnvironmentService environmentService,
+        HttpClient httpClient,
         ILogger<CollectionImportService> logger)
     {
         ArgumentNullException.ThrowIfNull(importers);
         ArgumentNullException.ThrowIfNull(collectionService);
         ArgumentNullException.ThrowIfNull(environmentService);
+        ArgumentNullException.ThrowIfNull(httpClient);
         ArgumentNullException.ThrowIfNull(logger);
 
         _importers = [.. importers];
         _collectionService = collectionService;
         _environmentService = environmentService;
+        _httpClient = httpClient;
         _logger = logger;
 
         SupportedFileExtensions = _importers
@@ -122,6 +128,78 @@ public sealed class CollectionImportService : ICollectionImportService
             collection.Environments.Count);
 
         return collection;
+    }
+
+    /// <inheritdoc/>
+    public async Task<ImportedCollection> ImportFromUrlToFolderAsync(
+        string specUrl,
+        string targetFolderPath,
+        CancellationToken ct = default)
+    {
+        _logger.LogInformation("Fetching OpenAPI spec from '{Url}'", specUrl);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.GetAsync(specUrl, ct).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw new InvalidOperationException(
+                $"Failed to download spec from '{specUrl}': {ex.Message}", ex);
+        }
+
+        var content = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+
+        // Determine file extension for the temp file by checking the Content-Type header
+        // first, then falling back to URL extension heuristics.
+        var ext = DetectSpecExtension(response, specUrl);
+
+        var tempFile = Path.Combine(Path.GetTempPath(), $"{TempFilePrefix}{Guid.NewGuid():N}{ext}");
+        try
+        {
+            await File.WriteAllTextAsync(tempFile, content, ct).ConfigureAwait(false);
+            return await ImportToFolderAsync(tempFile, targetFolderPath, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(tempFile);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to delete temp import file '{TempFile}'", tempFile);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Determines whether the downloaded spec is YAML or JSON by inspecting the
+    /// Content-Type response header, then falling back to URL extension heuristics.
+    /// </summary>
+    private static string DetectSpecExtension(HttpResponseMessage response, string specUrl)
+    {
+        var contentType = response.Content.Headers.ContentType?.MediaType;
+        if (contentType is not null)
+        {
+            if (contentType.Contains("yaml", StringComparison.OrdinalIgnoreCase) ||
+                contentType.Contains("yml",  StringComparison.OrdinalIgnoreCase))
+            {
+                return ".yaml";
+            }
+            if (contentType.Contains("json", StringComparison.OrdinalIgnoreCase))
+            {
+                return ".json";
+            }
+        }
+
+        // Fall back to URL extension heuristics.
+        return specUrl.Contains(".yaml", StringComparison.OrdinalIgnoreCase)
+            || specUrl.Contains(".yml",  StringComparison.OrdinalIgnoreCase)
+                ? ".yaml"
+                : ".json";
     }
 
     // ─────────────────────────────────────────────────────────────────────────
