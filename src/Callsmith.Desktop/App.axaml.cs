@@ -98,8 +98,8 @@ public partial class App : Application
         // Core -- import (extensible: register new importers here as formats are added)
         // NOTE: always use the plain Callsmith services here — imports must produce Callsmith-format
         // files regardless of which collection type is currently open in the routing services.
-        services.AddSingleton<ICollectionImporter, InsomniaCollectionImporter>();
         services.AddSingleton<ICollectionImporter, PostmanCollectionImporter>();
+        services.AddSingleton<ICollectionImporter, InsomniaCollectionImporter>();
         services.AddSingleton<ICollectionImportService>(sp => new CollectionImportService(
             sp.GetServices<ICollectionImporter>(),
             sp.GetRequiredService<FileSystemCollectionService>(),

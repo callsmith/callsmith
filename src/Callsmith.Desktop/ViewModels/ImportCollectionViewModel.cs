@@ -7,39 +7,16 @@ namespace Callsmith.Desktop.ViewModels;
 
 /// <summary>
 /// ViewModel for the "Import collection from another API tool" dialog.
-/// Owns the import-type selection, source-file and destination-folder paths,
+/// Owns the source-file paths, destination-folder path,
 /// the non-empty-folder warning, and the error message shown when parsing fails.
+/// Format detection is performed automatically by the import service.
 /// </summary>
 public sealed partial class ImportCollectionViewModel : ObservableObject
 {
     private readonly ICollectionImportService _importService;
     private readonly string? _currentCollectionPath;
 
-    // ─── Import-type options ─────────────────────────────────────────────────
-
-    /// <summary>
-    /// All import types shown in the dropdown.
-    /// Hoppscotch remains disabled until its importer is implemented.
-    /// </summary>
-    public IReadOnlyList<ImportTypeOption> ImportTypeOptions { get; } =
-    [
-        new("Postman",  isEnabled: true),
-        new("Insomnia", isEnabled: true),
-        new("Hoppscotch", isEnabled: false),
-    ];
-
     // ─── Bound properties ────────────────────────────────────────────────────
-
-    [ObservableProperty]
-    private ImportTypeOption _selectedImportType;
-
-    partial void OnSelectedImportTypeChanged(ImportTypeOption value)
-    {
-        // If the user selects a disabled entry (currently Hoppscotch), revert to the
-        // first enabled option.
-        if (!value.IsEnabled)
-            SelectedImportType = ImportTypeOptions.First(o => o.IsEnabled);
-    }
 
     private List<string> _filePathsList = [];
 
@@ -154,7 +131,6 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(importService);
         _importService = importService;
         _currentCollectionPath = currentCollectionPath;
-        _selectedImportType = ImportTypeOptions[0]; // default to Postman
     }
 
     // ─── Commands ────────────────────────────────────────────────────────────
@@ -397,15 +373,5 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
         absoluteTarget = candidate;
         errorMessage = string.Empty;
         return true;
-    }
-
-    // ─── Nested types ────────────────────────────────────────────────────────
-
-    /// <summary>A display item for the import-type ComboBox.</summary>
-    public sealed class ImportTypeOption(string name, bool isEnabled)
-    {
-        public string Name { get; } = name;
-        public bool IsEnabled { get; } = isEnabled;
-        public override string ToString() => Name;
     }
 }

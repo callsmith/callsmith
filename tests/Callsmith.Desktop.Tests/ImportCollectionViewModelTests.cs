@@ -26,31 +26,6 @@ public sealed class ImportCollectionViewModelTests
     // ─── Constructor / defaults ───────────────────────────────────────────────
 
     [Fact]
-    public void Constructor_DefaultsSelectedImportTypeToPostman()
-    {
-        var sut = BuildSut();
-        sut.SelectedImportType.Name.Should().Be("Postman");
-        sut.SelectedImportType.IsEnabled.Should().BeTrue();
-    }
-
-    [Fact]
-    public void Constructor_ImportTypeOptions_HasThreeEntries()
-    {
-        var sut = BuildSut();
-        sut.ImportTypeOptions.Should().HaveCount(3);
-    }
-
-    [Fact]
-    public void Constructor_InsomniaAndPostmanAreEnabled()
-    {
-        var sut = BuildSut();
-        sut.ImportTypeOptions.Where(o => o.IsEnabled)
-            .Select(o => o.Name)
-            .Should()
-            .BeEquivalentTo(["Insomnia", "Postman"]);
-    }
-
-    [Fact]
     public void Constructor_InitialStateHasNoErrors()
     {
         var sut = BuildSut();
@@ -58,41 +33,6 @@ public sealed class ImportCollectionViewModelTests
         sut.IsNonEmptyFolderWarningVisible.Should().BeFalse();
         sut.IsImporting.Should().BeFalse();
         sut.IsConfirmed.Should().BeFalse();
-    }
-
-    // ─── Import-type selection ────────────────────────────────────────────────
-
-    [Fact]
-    public void SelectingPostman_KeepsPostman()
-    {
-        var sut = BuildSut();
-        var postman = sut.ImportTypeOptions.First(o => o.Name == "Postman");
-
-        sut.SelectedImportType = postman;
-
-        sut.SelectedImportType.Name.Should().Be("Postman");
-    }
-
-    [Fact]
-    public void SelectingDisabledImportType_RevertsToFirstEnabled()
-    {
-        var sut = BuildSut();
-        var hoppscotch = sut.ImportTypeOptions.First(o => o.Name == "Hoppscotch");
-
-        sut.SelectedImportType = hoppscotch;
-
-        sut.SelectedImportType.Name.Should().Be("Postman");
-    }
-
-    [Fact]
-    public void SelectingInsomnia_KeepsInsomnia()
-    {
-        var sut = BuildSut();
-        var insomnia = sut.ImportTypeOptions.First(o => o.Name == "Insomnia");
-
-        sut.SelectedImportType = insomnia;
-
-        sut.SelectedImportType.Name.Should().Be("Insomnia");
     }
 
     // ─── CanImport ────────────────────────────────────────────────────────────

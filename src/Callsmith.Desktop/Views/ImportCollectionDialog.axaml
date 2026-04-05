@@ -1,7 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Callsmith.Desktop.ViewModels"
-        xmlns:conv="using:Callsmith.Desktop.Converters"
         x:Class="Callsmith.Desktop.Views.ImportCollectionDialog"
         x:DataType="vm:ImportCollectionViewModel"
         Title="Import Collection"
@@ -46,32 +45,6 @@
         </StackPanel>
       </StackPanel>
     </Border>
-
-    <!-- Import type -->
-    <Grid ColumnDefinitions="110,10,*">
-      <TextBlock Grid.Column="0"
-                 Text="Import type"
-                 Foreground="#aaa"
-                 FontSize="12"
-                 VerticalAlignment="Center"/>
-      <ComboBox Grid.Column="2"
-                ItemsSource="{Binding ImportTypeOptions}"
-                SelectedItem="{Binding SelectedImportType, Mode=TwoWay}"
-                HorizontalAlignment="Stretch"
-                Foreground="#d4d4d4"
-                Background="#3c3c3c"
-                BorderBrush="#555"
-                FontSize="12"
-                VerticalContentAlignment="Center">
-        <ComboBox.ItemTemplate>
-          <DataTemplate x:DataType="vm:ImportCollectionViewModel+ImportTypeOption">
-            <TextBlock Text="{Binding Name}"
-                       Opacity="{Binding IsEnabled, Converter={x:Static conv:BoolToOpacityConverter.Instance}}"
-                       FontSize="12"/>
-          </DataTemplate>
-        </ComboBox.ItemTemplate>
-      </ComboBox>
-    </Grid>
 
     <!-- Files to import -->
     <Grid ColumnDefinitions="110,10,*,8,Auto">
