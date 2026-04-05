@@ -1,7 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Callsmith.Desktop.ViewModels"
-        xmlns:conv="using:Callsmith.Desktop.Converters"
         x:Class="Callsmith.Desktop.Views.ImportCollectionDialog"
         x:DataType="vm:ImportCollectionViewModel"
         Title="Import Collection"
@@ -20,49 +19,50 @@
                FontSize="14"
                FontWeight="SemiBold"/>
 
-    <!-- Import type -->
-    <Grid ColumnDefinitions="110,10,*">
-      <TextBlock Grid.Column="0"
-                 Text="Import type"
-                 Foreground="#aaa"
-                 FontSize="12"
-                 VerticalAlignment="Center"/>
-      <ComboBox Grid.Column="2"
-                ItemsSource="{Binding ImportTypeOptions}"
-                SelectedItem="{Binding SelectedImportType, Mode=TwoWay}"
-                HorizontalAlignment="Stretch"
-                Foreground="#d4d4d4"
-                Background="#3c3c3c"
-                BorderBrush="#555"
-                FontSize="12"
-                VerticalContentAlignment="Center">
-        <ComboBox.ItemTemplate>
-          <DataTemplate x:DataType="vm:ImportCollectionViewModel+ImportTypeOption">
-            <TextBlock Text="{Binding Name}"
-                       Opacity="{Binding IsEnabled, Converter={x:Static conv:BoolToOpacityConverter.Instance}}"
-                       FontSize="12"/>
-          </DataTemplate>
-        </ComboBox.ItemTemplate>
-      </ComboBox>
-    </Grid>
+    <!-- Mode toggle (only visible when a collection is already open) -->
+    <Border IsVisible="{Binding HasCurrentCollectionOption}"
+            Background="#2d2d2d"
+            BorderBrush="#444"
+            BorderThickness="1"
+            CornerRadius="4"
+            Padding="12,10">
+      <StackPanel Spacing="6">
+        <TextBlock Text="Import mode"
+                   Foreground="#aaa"
+                   FontSize="11"
+                   FontWeight="SemiBold"/>
+        <StackPanel Orientation="Horizontal" Spacing="20">
+          <RadioButton Content="Create new collection"
+                       Foreground="#d4d4d4"
+                       FontSize="12"
+                       IsChecked="{Binding IsImportIntoCurrentCollection,
+                                           Mode=TwoWay,
+                                           Converter={x:Static BoolConverters.Not}}"/>
+          <RadioButton Content="Import into current collection"
+                       Foreground="#d4d4d4"
+                       FontSize="12"
+                       IsChecked="{Binding IsImportIntoCurrentCollection, Mode=TwoWay}"/>
+        </StackPanel>
+      </StackPanel>
+    </Border>
 
-    <!-- Path to file -->
-    <Grid ColumnDefinitions="110,10,*,8,Auto,4,Auto"
-          IsEnabled="{Binding IsFileInputEnabled}">
+    <!-- Files to import -->
+    <Grid ColumnDefinitions="110,10,*,8,Auto">
       <TextBlock Grid.Column="0"
-                 Text="Path to file"
+                 Text="Files to import"
                  Foreground="#aaa"
                  FontSize="12"
                  VerticalAlignment="Center"/>
       <TextBox Grid.Column="2"
                Text="{Binding FilePath}"
-               Watermark="Select a collection file…"
+               Watermark="Select one or more collection files…"
                Foreground="#d4d4d4"
                Background="#3c3c3c"
                BorderBrush="#555"
                Padding="8,5"
                FontSize="12"
-               IsReadOnly="True"/>
+               IsReadOnly="True"
+               ToolTip.Tip="{Binding FilePath}"/>
       <Button Grid.Column="4"
               Content="Browse…"
               Command="{Binding BrowseFileCommand}"
@@ -73,50 +73,12 @@
               Padding="10,5"
               FontSize="12"
               CornerRadius="3"
-              ToolTip.Tip="Choose the collection file to import"/>
-      <Button Grid.Column="6"
-              Content="✕"
-              Command="{Binding ClearFilePathCommand}"
-              IsVisible="{Binding FilePath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-              Background="Transparent"
-              Foreground="#888"
-              BorderThickness="0"
-              Padding="6,5"
-              FontSize="12"
-              CornerRadius="3"
-              ToolTip.Tip="Clear selected file"/>
+              ToolTip.Tip="Choose one or more collection files to import (different formats may be mixed)"/>
     </Grid>
 
-    <!-- "— or —" separator (Open API / Swagger only) -->
-    <TextBlock Text="— or —"
-               IsVisible="{Binding IsOpenApiSelected}"
-               HorizontalAlignment="Center"
-               Foreground="#555"
-               FontSize="11"
-               Margin="0,-4"/>
-
-    <!-- Spec URL (Open API / Swagger only) -->
-    <Grid ColumnDefinitions="110,10,*"
-          IsVisible="{Binding IsOpenApiSelected}"
-          IsEnabled="{Binding IsUrlInputEnabled}">
-      <TextBlock Grid.Column="0"
-                 Text="Spec URL"
-                 Foreground="#aaa"
-                 FontSize="12"
-                 VerticalAlignment="Center"/>
-      <TextBox Grid.Column="2"
-               Text="{Binding SpecUrl}"
-               Watermark="https://api.example.com/openapi.json"
-               Foreground="#d4d4d4"
-               Background="#3c3c3c"
-               BorderBrush="#555"
-               Padding="8,5"
-               FontSize="12"
-               ToolTip.Tip="URL of a publicly accessible OpenAPI or Swagger spec"/>
-    </Grid>
-
-    <!-- Path to folder -->
-    <Grid ColumnDefinitions="110,10,*,8,Auto">
+    <!-- Path to folder (new-collection mode only) -->
+    <Grid ColumnDefinitions="110,10,*,8,Auto"
+          IsVisible="{Binding !IsImportIntoCurrentCollection}">
       <TextBlock Grid.Column="0"
                  Text="Path to folder"
                  Foreground="#aaa"
@@ -142,6 +104,25 @@
               FontSize="12"
               CornerRadius="3"
               ToolTip.Tip="Choose the folder to import into"/>
+    </Grid>
+
+    <!-- Sub-folder path (import-into-current mode only) -->
+    <Grid ColumnDefinitions="110,10,*"
+          IsVisible="{Binding IsImportIntoCurrentCollection}">
+      <TextBlock Grid.Column="0"
+                 Text="Target sub-folder"
+                 Foreground="#aaa"
+                 FontSize="12"
+                 VerticalAlignment="Center"/>
+      <TextBox Grid.Column="2"
+               Text="{Binding SubFolderPath}"
+               Watermark="Leave blank to import at collection root"
+               Foreground="#d4d4d4"
+               Background="#3c3c3c"
+               BorderBrush="#555"
+               Padding="8,5"
+               FontSize="12"
+               ToolTip.Tip="Optional relative path within the collection (e.g. 'Orders/Internal'). Leave blank to import at the collection root."/>
     </Grid>
 
     <!-- Non-empty folder warning -->

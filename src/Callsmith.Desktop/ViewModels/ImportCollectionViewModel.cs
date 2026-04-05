@@ -1,6 +1,5 @@
 using Avalonia.Platform.Storage;
 using Callsmith.Core.Abstractions;
-using Callsmith.Core.OpenApi;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -8,80 +7,47 @@ namespace Callsmith.Desktop.ViewModels;
 
 /// <summary>
 /// ViewModel for the "Import collection from another API tool" dialog.
-/// Owns the import-type selection, source-file and destination-folder paths,
+/// Owns the source-file paths, destination-folder path,
 /// the non-empty-folder warning, and the error message shown when parsing fails.
+/// Format detection is performed automatically by the import service.
 /// </summary>
 public sealed partial class ImportCollectionViewModel : ObservableObject
 {
     private readonly ICollectionImportService _importService;
-
-    // ─── Import-type options ─────────────────────────────────────────────────
-
-    private const string OpenApiImportTypeName = OpenApiCollectionImporter.DisplayName;
-
-    /// <summary>
-    /// All import types shown in the dropdown.
-    /// Hoppscotch remains disabled until its importer is implemented.
-    /// </summary>
-    public IReadOnlyList<ImportTypeOption> ImportTypeOptions { get; } =
-    [
-        new("Postman",                    isEnabled: true),
-        new("Insomnia",                   isEnabled: true),
-        new(OpenApiImportTypeName,        isEnabled: true),
-        new("Hoppscotch",                 isEnabled: false),
-    ];
+    private readonly string? _currentCollectionPath;
 
     // ─── Bound properties ────────────────────────────────────────────────────
 
-    [ObservableProperty]
-    private ImportTypeOption _selectedImportType;
+    private List<string> _filePathsList = [];
 
-    partial void OnSelectedImportTypeChanged(ImportTypeOption value)
+    /// <summary>
+    /// All collection files selected for import.  In "new collection" mode the first file
+    /// defines the base (collection name and folder); subsequent files are merged in via
+    /// <see cref="ICollectionImportService.ImportIntoCollectionAsync"/>.  In
+    /// "import into current collection" mode every file is merged in sequentially.
+    /// </summary>
+    public IReadOnlyList<string> FilePaths
     {
-        // If the user selects a disabled entry (currently Hoppscotch), revert to the
-        // first enabled option.
-        if (!value.IsEnabled)
-            SelectedImportType = ImportTypeOptions.First(o => o.IsEnabled);
-
-        OnPropertyChanged(nameof(IsOpenApiSelected));
-        ImportCommand.NotifyCanExecuteChanged();
-
-        // Switching away from Open API clears the URL field to avoid stale state.
-        if (!IsOpenApiSelected)
-            SpecUrl = string.Empty;
-    }
-
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ImportCommand))]
-    private string _filePath = string.Empty;
-
-    partial void OnFilePathChanged(string value)
-    {
-        // Mutual exclusivity: selecting a file clears any typed URL.
-        if (!string.IsNullOrEmpty(value))
-            SpecUrl = string.Empty;
-
-        OnPropertyChanged(nameof(IsFileInputEnabled));
-        OnPropertyChanged(nameof(IsUrlInputEnabled));
+        get => _filePathsList;
+        internal set
+        {
+            _filePathsList = [.. value];
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(FilePath));
+            ImportCommand.NotifyCanExecuteChanged();
+        }
     }
 
     /// <summary>
-    /// URL of a publicly accessible OpenAPI / Swagger spec to fetch.
-    /// Only used when <see cref="IsOpenApiSelected"/> is true.
+    /// Display summary of the selected files, suitable for the read-only text box.
+    /// Single file → the full path. Multiple files → "N files selected".
     /// </summary>
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ImportCommand))]
-    private string _specUrl = string.Empty;
-
-    partial void OnSpecUrlChanged(string value)
+    public string FilePath => _filePathsList.Count switch
     {
-        // Mutual exclusivity: typing a URL clears any selected file.
-        if (!string.IsNullOrEmpty(value))
-            FilePath = string.Empty;
-
-        OnPropertyChanged(nameof(IsFileInputEnabled));
-        OnPropertyChanged(nameof(IsUrlInputEnabled));
-    }
+        0 => string.Empty,
+        1 => _filePathsList[0],
+        _ => $"{_filePathsList.Count} files selected",
+    };
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ImportCommand))]
@@ -96,27 +62,48 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
     [ObservableProperty]
     private bool _isImporting;
 
-    /// <summary>True when the selected import type is "Open API 3.x / Swagger 2.0".</summary>
-    public bool IsOpenApiSelected =>
-        SelectedImportType.Name.Equals(OpenApiImportTypeName, StringComparison.Ordinal);
+    /// <summary>
+    /// When <c>true</c> the import merges into the currently open collection instead of
+    /// creating a new one. Only settable when <see cref="HasCurrentCollectionOption"/> is true.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ImportCommand))]
+    private bool _isImportIntoCurrentCollection;
+
+    partial void OnIsImportIntoCurrentCollectionChanged(bool value)
+    {
+        // Guard: this mode requires an open collection.
+        if (value && !HasCurrentCollectionOption)
+            IsImportIntoCurrentCollection = false;
+    }
 
     /// <summary>
-    /// True when the file-browse row should be interactive (no URL has been entered yet).
-    /// False when the user has typed a URL, disabling the file row.
+    /// Relative sub-folder path within the current collection where requests will be placed.
+    /// Empty or whitespace means "collection root".
+    /// Only relevant when <see cref="IsImportIntoCurrentCollection"/> is <c>true</c>.
     /// </summary>
-    public bool IsFileInputEnabled => string.IsNullOrWhiteSpace(SpecUrl);
+    [ObservableProperty]
+    private string _subFolderPath = string.Empty;
+
+    // ─── Computed ─────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// True when the URL row should be interactive (no file has been selected yet).
-    /// False when the user has selected a file, disabling the URL row.
-    /// Only relevant when <see cref="IsOpenApiSelected"/> is true.
+    /// <c>true</c> when a collection is open and the "import into current collection"
+    /// toggle should be shown.
     /// </summary>
-    public bool IsUrlInputEnabled => string.IsNullOrWhiteSpace(FilePath);
+    public bool HasCurrentCollectionOption =>
+        !string.IsNullOrEmpty(_currentCollectionPath);
 
     // ─── Result ───────────────────────────────────────────────────────────────
 
     /// <summary>True after the import completes successfully.</summary>
     public bool IsConfirmed { get; private set; }
+
+    /// <summary>
+    /// True when the import was performed in "merge into current collection" mode.
+    /// Available after a successful import.
+    /// </summary>
+    public bool ImportedIntoCurrentCollection { get; private set; }
 
     /// <summary>The destination folder path, available after a successful import.</summary>
     public string ResultFolderPath { get; private set; } = string.Empty;
@@ -128,16 +115,27 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
     // ─── Constructor ─────────────────────────────────────────────────────────
 
-    public ImportCollectionViewModel(ICollectionImportService importService)
+    /// <summary>
+    /// Creates a new import dialog ViewModel.
+    /// </summary>
+    /// <param name="importService">The import orchestration service.</param>
+    /// <param name="currentCollectionPath">
+    /// The root path of the currently open collection, or <c>null</c> when no
+    /// collection is open.  When provided, the dialog shows a mode toggle that lets
+    /// the user choose between creating a new collection and merging into the current one.
+    /// </param>
+    public ImportCollectionViewModel(
+        ICollectionImportService importService,
+        string? currentCollectionPath = null)
     {
         ArgumentNullException.ThrowIfNull(importService);
         _importService = importService;
-        _selectedImportType = ImportTypeOptions[0]; // default to Insomnia
+        _currentCollectionPath = currentCollectionPath;
     }
 
     // ─── Commands ────────────────────────────────────────────────────────────
 
-    /// <summary>Opens a file picker so the user can choose the collection file to import.</summary>
+    /// <summary>Opens a file picker so the user can choose one or more collection files to import.</summary>
     [RelayCommand]
     private async Task BrowseFileAsync(IStorageProvider storageProvider)
     {
@@ -152,17 +150,22 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
         var files = await storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Select Collection File to Import",
-            AllowMultiple = false,
+            Title = "Select Collection Files to Import",
+            AllowMultiple = true,
             FileTypeFilter = [fileTypeFilter, FilePickerFileTypes.All],
         });
 
-        if (files is not [var file])
+        if (files.Count == 0)
             return;
 
-        var path = file.TryGetLocalPath();
-        if (!string.IsNullOrEmpty(path))
-            FilePath = path;
+        var paths = files
+            .Select(f => f.TryGetLocalPath())
+            .Where(p => !string.IsNullOrEmpty(p))
+            .Cast<string>()
+            .ToList();
+
+        if (paths.Count > 0)
+            FilePaths = paths;
     }
 
     /// <summary>Opens a folder picker so the user can choose the destination folder.</summary>
@@ -186,15 +189,6 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Clears the selected file path, re-enabling the URL input for OpenAPI imports.
-    /// </summary>
-    [RelayCommand]
-    private void ClearFilePath()
-    {
-        FilePath = string.Empty;
-    }
-
-    /// <summary>
     /// Validates inputs, warns if the destination folder is non-empty, then runs the import.
     /// Shows an inline error if the file cannot be parsed — the entire operation is a no-op.
     /// </summary>
@@ -203,6 +197,13 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
     {
         ErrorMessage = string.Empty;
         IsNonEmptyFolderWarningVisible = false;
+
+        if (IsImportIntoCurrentCollection)
+        {
+            // "Import into current collection" mode — no folder-emptiness check needed.
+            await RunImportIntoCollectionAsync(ct);
+            return;
+        }
 
         // Guard: destination folder must not be empty on disk (warn first).
         if (IsFolderNonEmpty(FolderPath))
@@ -239,16 +240,11 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
     // ─── Private helpers ─────────────────────────────────────────────────────
 
-    private bool CanImport
-    {
-        get
-        {
-            if (string.IsNullOrWhiteSpace(FolderPath)) return false;
-            if (IsOpenApiSelected)
-                return !string.IsNullOrWhiteSpace(FilePath) || !string.IsNullOrWhiteSpace(SpecUrl);
-            return !string.IsNullOrWhiteSpace(FilePath);
-        }
-    }
+    private bool CanImport =>
+        FilePaths.Count > 0 &&
+        // FolderPath is only required in "new collection" mode; in "import into current" mode
+        // the current collection path is already known from the constructor.
+        (IsImportIntoCurrentCollection || !string.IsNullOrWhiteSpace(FolderPath));
 
     private async Task RunImportAsync(CancellationToken ct)
     {
@@ -257,12 +253,59 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
         try
         {
-            if (IsOpenApiSelected && !string.IsNullOrWhiteSpace(SpecUrl))
-                await _importService.ImportFromUrlToFolderAsync(SpecUrl, FolderPath, ct);
-            else
-                await _importService.ImportToFolderAsync(FilePath, FolderPath, ct);
+            // First file creates the new collection (sets its name and populates root requests).
+            await _importService.ImportToFolderAsync(FilePaths[0], FolderPath, ct);
+
+            // Subsequent files are merged into the newly-created collection.
+            for (var i = 1; i < FilePaths.Count; i++)
+                await _importService.ImportIntoCollectionAsync(FilePaths[i], FolderPath, FolderPath, ct);
 
             ResultFolderPath = FolderPath;
+            IsConfirmed = true;
+            CloseRequested?.Invoke(this, EventArgs.Empty);
+        }
+        catch (OperationCanceledException)
+        {
+            // Silently cancelled — leave the dialog open.
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Import failed: {ex.Message}";
+        }
+        finally
+        {
+            IsImporting = false;
+        }
+    }
+
+    private async Task RunImportIntoCollectionAsync(CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(_currentCollectionPath))
+        {
+            // Should never happen: the mode toggle is guarded, but fail fast with a clear error.
+            ErrorMessage = "No collection is currently open.";
+            return;
+        }
+
+        IsImporting = true;
+        ErrorMessage = string.Empty;
+
+        try
+        {
+            if (!TryResolveSubFolderTarget(
+                    _currentCollectionPath, SubFolderPath, out var absoluteTarget, out var validationError))
+            {
+                ErrorMessage = validationError;
+                return;
+            }
+
+            // All selected files are merged sequentially into the collection.
+            foreach (var filePath in FilePaths)
+                await _importService.ImportIntoCollectionAsync(
+                    filePath, _currentCollectionPath, absoluteTarget, ct);
+
+            ResultFolderPath = _currentCollectionPath;
+            ImportedIntoCurrentCollection = true;
             IsConfirmed = true;
             CloseRequested?.Invoke(this, EventArgs.Empty);
         }
@@ -288,13 +331,47 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
         return Directory.EnumerateFileSystemEntries(folderPath).Any();
     }
 
-    // ─── Nested types ────────────────────────────────────────────────────────
-
-    /// <summary>A display item for the import-type ComboBox.</summary>
-    public sealed class ImportTypeOption(string name, bool isEnabled)
+    /// <summary>
+    /// Resolves and validates <paramref name="subFolderPath"/> relative to
+    /// <paramref name="collectionRoot"/>, ensuring the result stays inside the root.
+    /// Returns <c>false</c> and sets <paramref name="errorMessage"/> when validation fails.
+    /// </summary>
+    private static bool TryResolveSubFolderTarget(
+        string collectionRoot,
+        string subFolderPath,
+        out string absoluteTarget,
+        out string errorMessage)
     {
-        public string Name { get; } = name;
-        public bool IsEnabled { get; } = isEnabled;
-        public override string ToString() => Name;
+        if (string.IsNullOrWhiteSpace(subFolderPath))
+        {
+            absoluteTarget = collectionRoot;
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        if (Path.IsPathRooted(subFolderPath))
+        {
+            absoluteTarget = string.Empty;
+            errorMessage = "Sub-folder path must be a relative path.";
+            return false;
+        }
+
+        var candidate = Path.GetFullPath(Path.Combine(collectionRoot, subFolderPath));
+        var root = Path.GetFullPath(collectionRoot);
+        var rootWithSeparator =
+            root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+
+        if (!candidate.StartsWith(rootWithSeparator, StringComparison.Ordinal)
+            && !string.Equals(candidate, root, StringComparison.Ordinal))
+        {
+            absoluteTarget = string.Empty;
+            errorMessage = "Sub-folder path must be a relative path with no '..' segments.";
+            return false;
+        }
+
+        absoluteTarget = candidate;
+        errorMessage = string.Empty;
+        return true;
     }
 }

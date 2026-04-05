@@ -43,20 +43,33 @@ public interface ICollectionImportService
         CancellationToken ct = default);
 
     /// <summary>
-    /// Downloads a spec from <paramref name="specUrl"/>, saves it to a temporary file,
-    /// then runs the full import pipeline into <paramref name="targetFolderPath"/>.
+    /// Merges an import file into an already-open collection.
+    /// Requests are written (with counter-suffix deduplication) to
+    /// <paramref name="targetSubFolderPath"/> (or the collection root when
+    /// <paramref name="targetSubFolderPath"/> is <c>null</c> or equal to
+    /// <paramref name="collectionRootPath"/>).
+    /// Environments are merged by name: existing variables are never changed or
+    /// removed; new variables from the import file are appended; entirely new
+    /// environments are added as additional environments.
     /// </summary>
-    /// <param name="specUrl">Publicly accessible URL of the OpenAPI / Swagger spec.</param>
-    /// <param name="targetFolderPath">
-    /// Absolute path to the destination folder. The folder is created if it does not exist.
+    /// <param name="filePath">Absolute path to the source collection file.</param>
+    /// <param name="collectionRootPath">
+    /// Absolute path to the root of the already-open collection. Used to locate
+    /// existing environments and global dynamic variables.
+    /// </param>
+    /// <param name="targetSubFolderPath">
+    /// Absolute path of the sub-folder inside the collection where requests will be
+    /// placed. When <c>null</c> or equal to <paramref name="collectionRootPath"/>,
+    /// requests land at the collection root.
     /// </param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>The <see cref="ImportedCollection"/> that was written to disk.</returns>
+    /// <returns>The <see cref="ImportedCollection"/> that was merged into the collection.</returns>
     /// <exception cref="InvalidOperationException">
-    /// Thrown when the URL cannot be fetched or no importer can handle the downloaded content.
+    /// Thrown when no importer can handle the file format.
     /// </exception>
-    Task<ImportedCollection> ImportFromUrlToFolderAsync(
-        string specUrl,
-        string targetFolderPath,
+    Task<ImportedCollection> ImportIntoCollectionAsync(
+        string filePath,
+        string collectionRootPath,
+        string? targetSubFolderPath = null,
         CancellationToken ct = default);
 }

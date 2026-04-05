@@ -1,4 +1,3 @@
-using System.Net.Http;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Import;
 using Callsmith.Core.Models;
@@ -15,31 +14,25 @@ public sealed class CollectionImportService : ICollectionImportService
 {
     private static readonly char[] InvalidFileNameChars = Path.GetInvalidFileNameChars();
 
-    private const string TempFilePrefix = "callsmith-import-";
-
     private readonly IReadOnlyList<ICollectionImporter> _importers;
     private readonly ICollectionService _collectionService;
     private readonly IEnvironmentService _environmentService;
-    private readonly HttpClient _httpClient;
     private readonly ILogger<CollectionImportService> _logger;
 
     public CollectionImportService(
         IEnumerable<ICollectionImporter> importers,
         ICollectionService collectionService,
         IEnvironmentService environmentService,
-        HttpClient httpClient,
         ILogger<CollectionImportService> logger)
     {
         ArgumentNullException.ThrowIfNull(importers);
         ArgumentNullException.ThrowIfNull(collectionService);
         ArgumentNullException.ThrowIfNull(environmentService);
-        ArgumentNullException.ThrowIfNull(httpClient);
         ArgumentNullException.ThrowIfNull(logger);
 
         _importers = [.. importers];
         _collectionService = collectionService;
         _environmentService = environmentService;
-        _httpClient = httpClient;
         _logger = logger;
 
         SupportedFileExtensions = _importers
@@ -131,75 +124,71 @@ public sealed class CollectionImportService : ICollectionImportService
     }
 
     /// <inheritdoc/>
-    public async Task<ImportedCollection> ImportFromUrlToFolderAsync(
-        string specUrl,
-        string targetFolderPath,
+    public async Task<ImportedCollection> ImportIntoCollectionAsync(
+        string filePath,
+        string collectionRootPath,
+        string? targetSubFolderPath = null,
         CancellationToken ct = default)
     {
-        _logger.LogInformation("Fetching OpenAPI spec from '{Url}'", specUrl);
-
-        HttpResponseMessage response;
-        try
-        {
-            response = await _httpClient.GetAsync(specUrl, ct).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
+        var importer = await FindImporterAsync(filePath, ct).ConfigureAwait(false);
+        if (importer is null)
             throw new InvalidOperationException(
-                $"Failed to download spec from '{specUrl}': {ex.Message}", ex);
-        }
+                $"No importer found for file '{filePath}'. Supported formats: " +
+                string.Join(", ", _importers.Select(i => i.FormatName)));
 
-        var content = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        // Normalise the target: null or same as root → requests land at root.
+        // Use platform-appropriate path comparison: case-insensitive on Windows,
+        // case-sensitive on Linux/macOS.
+        var pathComparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
 
-        // Determine file extension for the temp file by checking the Content-Type header
-        // first, then falling back to URL extension heuristics.
-        var ext = DetectSpecExtension(response, specUrl);
+        var effectiveTarget = string.IsNullOrEmpty(targetSubFolderPath) ||
+                              string.Equals(targetSubFolderPath, collectionRootPath, pathComparison)
+            ? collectionRootPath
+            : targetSubFolderPath;
 
-        var tempFile = Path.Combine(Path.GetTempPath(), $"{TempFilePrefix}{Guid.NewGuid():N}{ext}");
-        try
+        _logger.LogInformation(
+            "Importing '{FilePath}' using {Format} importer into existing collection '{CollectionRoot}' (target folder: '{TargetFolder}')",
+            filePath, importer.FormatName, collectionRootPath, effectiveTarget);
+
+        var collection = await importer.ImportAsync(filePath, ct).ConfigureAwait(false);
+
+        // Ensure the target sub-folder exists (the collection root already exists).
+        Directory.CreateDirectory(effectiveTarget);
+
+        // Write root requests at the target folder; deduplication is handled by WriteRequestAsync.
+        var rootNameQueues = new Dictionary<string, Queue<string>>(StringComparer.Ordinal);
+        foreach (var req in collection.RootRequests)
         {
-            await File.WriteAllTextAsync(tempFile, content, ct).ConfigureAwait(false);
-            return await ImportToFolderAsync(tempFile, targetFolderPath, ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            try
-            {
-                File.Delete(tempFile);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Failed to delete temp import file '{TempFile}'", tempFile);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Determines whether the downloaded spec is YAML or JSON by inspecting the
-    /// Content-Type response header, then falling back to URL extension heuristics.
-    /// </summary>
-    private static string DetectSpecExtension(HttpResponseMessage response, string specUrl)
-    {
-        var contentType = response.Content.Headers.ContentType?.MediaType;
-        if (contentType is not null)
-        {
-            if (contentType.Contains("yaml", StringComparison.OrdinalIgnoreCase) ||
-                contentType.Contains("yml",  StringComparison.OrdinalIgnoreCase))
-            {
-                return ".yaml";
-            }
-            if (contentType.Contains("json", StringComparison.OrdinalIgnoreCase))
-            {
-                return ".json";
-            }
+            var actualName = await WriteRequestAsync(req, effectiveTarget, ct).ConfigureAwait(false);
+            EnqueueName(rootNameQueues, req.Name, actualName);
         }
 
-        // Fall back to URL extension heuristics.
-        return specUrl.Contains(".yaml", StringComparison.OrdinalIgnoreCase)
-            || specUrl.Contains(".yml",  StringComparison.OrdinalIgnoreCase)
-                ? ".yaml"
-                : ".json";
+        // Write root folders (recursive).
+        foreach (var folder in collection.RootFolders)
+            await WriteFolderAsync(folder, effectiveTarget, ct).ConfigureAwait(false);
+
+        // Persist the interleaved sort order from the source tool.
+        await WriteFolderOrderAsync(effectiveTarget, collection.ItemOrder, rootNameQueues, ct).ConfigureAwait(false);
+
+        // Merge environments by name into the existing collection environments.
+        if (collection.Environments.Count > 0)
+            await MergeEnvironmentsIntoCollectionAsync(collection.Environments, collectionRootPath, ct)
+                .ConfigureAwait(false);
+
+        // Merge global dynamic vars using additive-only semantics (same as ImportToFolderAsync).
+        if (collection.GlobalDynamicVars.Count > 0)
+            await MergeGlobalDynamicVarsAsync(collection.GlobalDynamicVars, collectionRootPath, ct)
+                .ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "Merge-import complete: {RequestCount} root requests, {FolderCount} folders, {EnvCount} environments",
+            collection.RootRequests.Count,
+            collection.RootFolders.Count,
+            collection.Environments.Count);
+
+        return collection;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -408,6 +397,129 @@ public sealed class CollectionImportService : ICollectionImportService
         await _environmentService.SaveGlobalEnvironmentAsync(updated, ct).ConfigureAwait(false);
         _logger.LogDebug(
             "Added {Count} global dynamic variable(s) to global environment", toAdd.Count);
+    }
+
+    /// <summary>
+    /// Merges <paramref name="importedEnvironments"/> into an existing collection:
+    /// <list type="bullet">
+    ///   <item>If an environment with the same name already exists, new variables
+    ///   from the import are appended; existing variables are never changed or
+    ///   removed.</item>
+    ///   <item>If no matching environment exists, the environment is added in full.</item>
+    /// </list>
+    /// </summary>
+    private async Task MergeEnvironmentsIntoCollectionAsync(
+        IReadOnlyList<ImportedEnvironment> importedEnvironments,
+        string collectionRootPath,
+        CancellationToken ct)
+    {
+        var existingEnvs = await _environmentService
+            .ListEnvironmentsAsync(collectionRootPath, ct)
+            .ConfigureAwait(false);
+
+        // Build a lookup: env name → model (case-sensitive, matching existing behaviour).
+        var envByName = existingEnvs.ToDictionary(e => e.Name, StringComparer.Ordinal);
+
+        // Track newly created environment filenames so we can append them to the order file.
+        var newEnvFileNames = new List<string>();
+
+        foreach (var imported in importedEnvironments)
+        {
+            if (envByName.TryGetValue(imported.Name, out var existing))
+            {
+                // ── Merge into existing environment ──────────────────────────
+                var existingNames = new HashSet<string>(
+                    existing.Variables.Select(v => v.Name), StringComparer.Ordinal);
+
+                var toAdd = new List<EnvironmentVariable>();
+
+                // Static variables present in the import but absent from the existing env.
+                foreach (var kv in imported.Variables)
+                {
+                    if (existingNames.Contains(kv.Key)) continue;
+                    existingNames.Add(kv.Key);
+                    toAdd.Add(new EnvironmentVariable
+                    {
+                        Name = kv.Key,
+                        Value = kv.Value,
+                        VariableType = EnvironmentVariable.VariableTypes.Static,
+                        IsSecret = false,
+                    });
+                }
+
+                // Dynamic variables present in the import but absent from the existing env.
+                foreach (var dv in imported.DynamicVariables)
+                {
+                    if (existingNames.Contains(dv.Name)) continue;
+                    existingNames.Add(dv.Name);
+
+                    toAdd.Add(dv.IsMockData
+                        ? new EnvironmentVariable
+                        {
+                            Name = dv.Name,
+                            Value = string.Empty,
+                            VariableType = EnvironmentVariable.VariableTypes.MockData,
+                            MockDataCategory = dv.MockDataCategory,
+                            MockDataField = dv.MockDataField,
+                        }
+                        : new EnvironmentVariable
+                        {
+                            Name = dv.Name,
+                            Value = string.Empty,
+                            VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                            ResponseRequestName = dv.ResponseRequestName,
+                            ResponsePath = dv.ResponsePath,
+                            ResponseMatcher = dv.ResponseMatcher,
+                            ResponseFrequency = dv.ResponseFrequency,
+                            ResponseExpiresAfterSeconds = dv.ResponseExpiresAfterSeconds,
+                        });
+                }
+
+                if (toAdd.Count == 0)
+                {
+                    _logger.LogDebug(
+                        "Environment '{Name}' already exists; no new variables to merge", imported.Name);
+                    continue;
+                }
+
+                var updated = existing with
+                {
+                    Variables = [.. existing.Variables, .. toAdd],
+                };
+                await _environmentService.SaveEnvironmentAsync(updated, ct).ConfigureAwait(false);
+                _logger.LogDebug(
+                    "Merged {Count} new variable(s) into existing environment '{Name}'",
+                    toAdd.Count, imported.Name);
+            }
+            else
+            {
+                // ── Add as a new environment ──────────────────────────────────
+                var fileName = await WriteEnvironmentAsync(imported, collectionRootPath, ct).ConfigureAwait(false);
+                newEnvFileNames.Add(fileName);
+                _logger.LogDebug(
+                    "Added new environment '{Name}' → '{FileName}'", imported.Name, fileName);
+            }
+        }
+
+        // Append newly added environment files to the end of the existing order list.
+        if (newEnvFileNames.Count > 0)
+        {
+            var envFolder = Path.Combine(
+                collectionRootPath, FileSystemCollectionService.EnvironmentFolderName);
+            var orderFile = Path.Combine(envFolder, FileSystemEnvironmentService.OrderFileName);
+
+            List<string> existingOrder = [];
+            if (File.Exists(orderFile))
+            {
+                var json = await File.ReadAllTextAsync(orderFile, ct).ConfigureAwait(false);
+                existingOrder = System.Text.Json.JsonSerializer.Deserialize<List<string>>(json) ?? [];
+            }
+
+            await _environmentService.SaveEnvironmentOrderAsync(
+                collectionRootPath,
+                [.. existingOrder, .. newEnvFileNames],
+                ct).ConfigureAwait(false);
+        }
     }
 
     private static void EnqueueName(
