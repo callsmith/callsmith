@@ -391,6 +391,38 @@ public sealed class FileSystemCollectionService : ICollectionService
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc/>
+    public Task<CollectionFolder> MoveFolderAsync(
+        string folderPath, string destinationParentPath, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(folderPath);
+        ArgumentNullException.ThrowIfNull(destinationParentPath);
+
+        if (!Directory.Exists(folderPath))
+            throw new DirectoryNotFoundException($"Folder not found: '{folderPath}'");
+
+        if (!Directory.Exists(destinationParentPath))
+            throw new DirectoryNotFoundException($"Destination folder not found: '{destinationParentPath}'");
+
+        var folderName = Path.GetFileName(folderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var newPath = Path.Combine(destinationParentPath, folderName);
+
+        if (Directory.Exists(newPath))
+            throw new InvalidOperationException($"A folder named '{folderName}' already exists in the destination.");
+
+        ct.ThrowIfCancellationRequested();
+        Directory.Move(folderPath, newPath);
+        _logger.LogDebug("Moved folder '{OldPath}' → '{NewPath}'", folderPath, newPath);
+
+        return Task.FromResult(new CollectionFolder
+        {
+            FolderPath = newPath,
+            Name = folderName,
+            Requests = [],
+            SubFolders = [],
+        });
+    }
+
     // -------------------------------------------------------------------------
     // Private — folder traversal
     // -------------------------------------------------------------------------

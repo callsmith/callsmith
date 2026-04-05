@@ -691,6 +691,96 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     }
 
 
+    /// <summary>
+    /// Moves a folder into another folder by updating the underlying directory and
+    /// refreshing the tree from disk, while preserving expanded folders. Sends
+    /// <see cref="RequestRenamedMessage"/> for every request whose path changes so that
+    /// open tabs and environment variables are updated.
+    /// </summary>
+    /// <param name="folderNode">The folder node to move.</param>
+    /// <param name="destinationFolder">The folder that will become the new parent.</param>
+    /// <param name="insertAtIndex">
+    /// Zero-based index at which to insert the folder in the destination folder's child order.
+    /// Pass -1 to append at the end.
+    /// </param>
+    public async Task MoveFolderToFolderAsync(
+        CollectionTreeItemViewModel folderNode,
+        CollectionTreeItemViewModel destinationFolder,
+        int insertAtIndex = -1)
+    {
+        if (folderNode is null || destinationFolder is null) return;
+        if (!folderNode.IsFolder || folderNode.IsRoot) return;
+        if (string.IsNullOrEmpty(folderNode.FolderPath)) return;
+        if (string.IsNullOrEmpty(destinationFolder.FolderPath)) return;
+
+        var sourceParentPath = folderNode.Parent?.FolderPath;
+        if (string.IsNullOrEmpty(sourceParentPath)) return;
+
+        if (string.Equals(sourceParentPath, destinationFolder.FolderPath, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        // Collect all requests under the folder BEFORE the move (file paths are still current).
+        var oldFolderPath = folderNode.FolderPath;
+        var affectedRequests = folderNode.GetAllRequestsUnder()
+            .Where(r => r.Request is not null)
+            .Select(r => r.Request!)
+            .ToList();
+
+        // Build the ordered name list for the destination folder, inserting the
+        // moved folder at the exact slot the drop indicator showed.
+        var destNames = destinationFolder.Children
+            .Select(c => c.IsFolder ? c.Name : Path.GetFileName(c.Request!.FilePath.Replace('\\', '/')))
+            .ToList();
+        if (insertAtIndex >= 0 && insertAtIndex <= destNames.Count)
+            destNames.Insert(insertAtIndex, folderNode.Name);
+        else
+            destNames.Add(folderNode.Name);
+
+        _suppressWatcher = true;
+        try
+        {
+            var movedFolder = await _collectionService.MoveFolderAsync(oldFolderPath, destinationFolder.FolderPath);
+            await _collectionService.SaveFolderOrderAsync(destinationFolder.FolderPath, destNames);
+
+            // Notify open tabs and environment variables for every request that moved.
+            foreach (var oldRequest in affectedRequests)
+            {
+                var newFilePath = oldRequest.FilePath.Replace(
+                    oldFolderPath, movedFolder.FolderPath, StringComparison.OrdinalIgnoreCase);
+
+                var updatedRequest = new CollectionRequest
+                {
+                    RequestId = oldRequest.RequestId,
+                    FilePath = newFilePath,
+                    Name = oldRequest.Name,
+                    Method = oldRequest.Method,
+                    Url = oldRequest.Url,
+                    Description = oldRequest.Description,
+                    Headers = oldRequest.Headers,
+                    BodyType = oldRequest.BodyType,
+                    Body = oldRequest.Body,
+                    QueryParams = oldRequest.QueryParams,
+                    PathParams = oldRequest.PathParams,
+                    Auth = oldRequest.Auth,
+                    FormParams = oldRequest.FormParams,
+                };
+                Messenger.Send(new RequestRenamedMessage(oldRequest.FilePath, updatedRequest));
+            }
+
+            if (!string.IsNullOrEmpty(CollectionPath))
+                await LoadCollectionAsync(CollectionPath, retainExpansion: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to move folder '{Path}' to '{Destination}'", oldFolderPath, destinationFolder.FolderPath);
+        }
+        finally
+        {
+            _suppressWatcher = false;
+        }
+    }
+
+
     // -------------------------------------------------------------------------
     // Recently-opened collections
     // -------------------------------------------------------------------------

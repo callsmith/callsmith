@@ -390,4 +390,121 @@ public sealed class CollectionsViewModelDeleteTests
         await cs.DidNotReceive().DeleteFolderAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
         await cs.DidNotReceive().DeleteRequestAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
+
+    // ─── MoveFolderToFolderAsync ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task MoveFolderToFolderAsync_CallsCollectionServiceAndReloadsTree()
+    {
+        var cs = Substitute.For<ICollectionService>();
+        cs.OpenFolderAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+          .Returns(new CollectionFolder { Name = "root", FolderPath = FakeCollectionPath, Requests = [], SubFolders = [] });
+
+        var sourceFolderPath = @"C:\collections\my-api\auth";
+        var destFolderPath = @"C:\collections\my-api\api";
+        var newFolderPath = @"C:\collections\my-api\api\auth";
+
+        cs.MoveFolderAsync(sourceFolderPath, destFolderPath, Arg.Any<CancellationToken>())
+          .Returns(new CollectionFolder { FolderPath = newFolderPath, Name = "auth", Requests = [], SubFolders = [] });
+
+        var sut = BuildSut(cs);
+        sut.CollectionPath = FakeCollectionPath;
+
+        var (root, folder, _) = BuildTree();
+
+        // Build a second top-level folder that is the drop target.
+        var destModel = new CollectionFolder
+        {
+            Name = "api",
+            FolderPath = destFolderPath,
+            Requests = [],
+            SubFolders = [],
+        };
+        var destNode = CollectionTreeItemViewModel.FromFolder(destModel, parent: root);
+
+        await sut.MoveFolderToFolderAsync(folder, destNode);
+
+        await cs.Received(1).MoveFolderAsync(sourceFolderPath, destFolderPath, Arg.Any<CancellationToken>());
+        sut.HasCollection.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task MoveFolderToFolderAsync_SendsRequestRenamedMessageForAllRequestsUnderFolder()
+    {
+        var cs = Substitute.For<ICollectionService>();
+        cs.OpenFolderAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+          .Returns(new CollectionFolder { Name = "root", FolderPath = FakeCollectionPath, Requests = [], SubFolders = [] });
+
+        var sourceFolderPath = @"C:\collections\my-api\auth";
+        var destFolderPath = @"C:\collections\my-api\api";
+        var newFolderPath = @"C:\collections\my-api\api\auth";
+
+        cs.MoveFolderAsync(sourceFolderPath, destFolderPath, Arg.Any<CancellationToken>())
+          .Returns(new CollectionFolder { FolderPath = newFolderPath, Name = "auth", Requests = [], SubFolders = [] });
+
+        var messenger = new WeakReferenceMessenger();
+        var capturedMessages = new List<RequestRenamedMessage>();
+        messenger.Register<RequestRenamedMessage>(new object(), (_, m) => capturedMessages.Add(m));
+
+        var sut = BuildSut(cs, messenger);
+        sut.CollectionPath = FakeCollectionPath;
+
+        var (root, folder, _) = BuildTree(folderPath: sourceFolderPath,
+                                           requestPath: @"C:\collections\my-api\auth\login.callsmith");
+
+        var destModel = new CollectionFolder
+        {
+            Name = "api",
+            FolderPath = destFolderPath,
+            Requests = [],
+            SubFolders = [],
+        };
+        var destNode = CollectionTreeItemViewModel.FromFolder(destModel, parent: root);
+
+        await sut.MoveFolderToFolderAsync(folder, destNode);
+
+        capturedMessages.Should().HaveCount(1);
+        capturedMessages[0].OldFilePath.Should().Be(@"C:\collections\my-api\auth\login.callsmith");
+        capturedMessages[0].Renamed.FilePath.Should().Be(@"C:\collections\my-api\api\auth\login.callsmith");
+    }
+
+    [Fact]
+    public async Task MoveFolderToFolderAsync_WhenInsertAtIndexZero_WritesOrderFileWithFolderBeforeExistingItems()
+    {
+        var cs = Substitute.For<ICollectionService>();
+        cs.OpenFolderAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+          .Returns(new CollectionFolder { Name = "root", FolderPath = FakeCollectionPath, Requests = [], SubFolders = [] });
+
+        var sourceFolderPath = @"C:\collections\my-api\auth";
+        var destFolderPath = @"C:\collections\my-api\api";
+        var newFolderPath = @"C:\collections\my-api\api\auth";
+
+        cs.MoveFolderAsync(sourceFolderPath, destFolderPath, Arg.Any<CancellationToken>())
+          .Returns(new CollectionFolder { FolderPath = newFolderPath, Name = "auth", Requests = [], SubFolders = [] });
+
+        var sut = BuildSut(cs);
+        sut.CollectionPath = FakeCollectionPath;
+
+        var (root, folder, _) = BuildTree(folderPath: sourceFolderPath);
+
+        // Destination has one existing child folder named "users".
+        var destModel = new CollectionFolder
+        {
+            Name = "api",
+            FolderPath = destFolderPath,
+            Requests = [],
+            SubFolders =
+            [
+                new CollectionFolder { Name = "users", FolderPath = Path.Combine(destFolderPath, "users"), Requests = [], SubFolders = [] },
+            ],
+        };
+        var destNode = CollectionTreeItemViewModel.FromFolder(destModel, parent: root);
+
+        await sut.MoveFolderToFolderAsync(folder, destNode, insertAtIndex: 0);
+
+        await cs.Received(1).SaveFolderOrderAsync(
+            destFolderPath,
+            Arg.Is<IReadOnlyList<string>>(l => l.SequenceEqual(new[] { "auth", "users" })),
+            Arg.Any<CancellationToken>());
+    }
 }

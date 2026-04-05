@@ -89,6 +89,9 @@ public sealed class RoutingCollectionService : ICollectionService
     public Task DeleteFolderAsync(string folderPath, CancellationToken ct = default) =>
         ServiceForFolder(folderPath).DeleteFolderAsync(folderPath, ct);
 
+    public Task<CollectionFolder> MoveFolderAsync(string folderPath, string destinationParentPath, CancellationToken ct = default) =>
+        ServiceForFolder(folderPath).MoveFolderAsync(folderPath, destinationParentPath, ct);
+
     public Task SaveFolderOrderAsync(string folderPath, IReadOnlyList<string> orderedNames, CancellationToken ct = default) =>
         ServiceForFolder(folderPath).SaveFolderOrderAsync(folderPath, orderedNames, ct);
 
