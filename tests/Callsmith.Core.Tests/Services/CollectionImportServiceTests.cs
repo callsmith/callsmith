@@ -396,6 +396,348 @@ public sealed class CollectionImportServiceTests : IDisposable
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // ImportIntoCollectionAsync
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ImportIntoCollectionAsync_ThrowsWhenNoImporterFound()
+    {
+        var importer = MakeImporter(canImport: false, extensions: [".yaml"]);
+        var sut = BuildSut(importer);
+        var collectionRoot = _temp.CreateSubDirectory("col");
+
+        var act = () => sut.ImportIntoCollectionAsync("/no.yaml", collectionRoot);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task ImportIntoCollectionAsync_WritesRootRequestsToCollectionRoot()
+    {
+        var collection = new ImportedCollection
+        {
+            Name = "Test",
+            RootRequests =
+            [
+                new ImportedRequest
+                {
+                    Name = "Get Users",
+                    Method = System.Net.Http.HttpMethod.Get,
+                    Url = "https://example.com/users",
+                },
+            ],
+        };
+
+        var importer = MakeImporter(canImport: true, extensions: [".yaml"], returns: collection);
+        var sut = BuildSut(importer);
+        var collectionRoot = _temp.CreateSubDirectory("col-root");
+
+        await sut.ImportIntoCollectionAsync("/fake.yaml", collectionRoot);
+
+        var files = Directory.GetFiles(collectionRoot, "*.callsmith");
+        files.Should().HaveCount(1);
+        Path.GetFileNameWithoutExtension(files[0]).Should().Be("Get Users");
+    }
+
+    [Fact]
+    public async Task ImportIntoCollectionAsync_WritesRequestsToSpecifiedSubFolder()
+    {
+        var collection = new ImportedCollection
+        {
+            Name = "Test",
+            RootRequests =
+            [
+                new ImportedRequest
+                {
+                    Name = "Post Order",
+                    Method = System.Net.Http.HttpMethod.Post,
+                    Url = "https://example.com/orders",
+                },
+            ],
+        };
+
+        var importer = MakeImporter(canImport: true, extensions: [".yaml"], returns: collection);
+        var sut = BuildSut(importer);
+        var collectionRoot = _temp.CreateSubDirectory("col-sub");
+        var subFolder = Path.Combine(collectionRoot, "Orders");
+        Directory.CreateDirectory(subFolder);
+
+        await sut.ImportIntoCollectionAsync("/fake.yaml", collectionRoot, subFolder);
+
+        // No request at root.
+        Directory.GetFiles(collectionRoot, "*.callsmith").Should().BeEmpty();
+        // Request in sub-folder.
+        var subFiles = Directory.GetFiles(subFolder, "*.callsmith");
+        subFiles.Should().HaveCount(1);
+        Path.GetFileNameWithoutExtension(subFiles[0]).Should().Be("Post Order");
+    }
+
+    [Fact]
+    public async Task ImportIntoCollectionAsync_DeduplicatesRequestFilenamesOnConflict()
+    {
+        // Pre-create a file with the same name.
+        var collectionRoot = _temp.CreateSubDirectory("col-dedup");
+        var existingFile = Path.Combine(collectionRoot, "Req.callsmith");
+        File.WriteAllText(existingFile, "{}");
+
+        var collection = new ImportedCollection
+        {
+            Name = "Test",
+            RootRequests =
+            [
+                new ImportedRequest { Name = "Req", Method = System.Net.Http.HttpMethod.Get, Url = "https://a.com" },
+            ],
+        };
+
+        var importer = MakeImporter(canImport: true, extensions: [".yaml"], returns: collection);
+        var sut = BuildSut(importer);
+
+        await sut.ImportIntoCollectionAsync("/fake.yaml", collectionRoot);
+
+        var files = Directory.GetFiles(collectionRoot, "*.callsmith");
+        files.Should().HaveCount(2);
+        files.Should().Contain(f => Path.GetFileName(f) == "Req (1).callsmith");
+    }
+
+    [Fact]
+    public async Task ImportIntoCollectionAsync_SameNameEnv_AddsNewVariables()
+    {
+        // Pre-create the collection with an existing environment.
+        var collectionRoot = _temp.CreateSubDirectory("col-merge-env");
+        var envFolder = Path.Combine(collectionRoot, FileSystemCollectionService.EnvironmentFolderName);
+        Directory.CreateDirectory(envFolder);
+
+        var existingEnv = new EnvironmentModel
+        {
+            FilePath = Path.Combine(envFolder, "Dev.env.callsmith"),
+            EnvironmentId = Guid.NewGuid(),
+            Name = "Dev",
+            Variables =
+            [
+                new EnvironmentVariable { Name = "Var1", Value = "a", VariableType = EnvironmentVariable.VariableTypes.Static },
+                new EnvironmentVariable { Name = "Var2", Value = "b", VariableType = EnvironmentVariable.VariableTypes.Static },
+            ],
+        };
+        await _environmentService.SaveEnvironmentAsync(existingEnv);
+
+        var collection = new ImportedCollection
+        {
+            Name = "Test",
+            Environments =
+            [
+                new ImportedEnvironment
+                {
+                    Name = "Dev",
+                    Variables = new Dictionary<string, string>
+                    {
+                        { "Var2", "c" },  // Already exists — must NOT be changed.
+                        { "Var3", "d" },  // New — must be added.
+                    },
+                },
+            ],
+        };
+
+        var importer = MakeImporter(canImport: true, extensions: [".yaml"], returns: collection);
+        var sut = BuildSut(importer);
+
+        await sut.ImportIntoCollectionAsync("/fake.yaml", collectionRoot);
+
+        var saved = await _environmentService.LoadEnvironmentAsync(existingEnv.FilePath);
+        saved.Variables.Should().HaveCount(3);
+        saved.Variables.Should().Contain(v => v.Name == "Var1" && v.Value == "a");  // Preserved.
+        saved.Variables.Should().Contain(v => v.Name == "Var2" && v.Value == "b");  // NOT changed.
+        saved.Variables.Should().Contain(v => v.Name == "Var3" && v.Value == "d");  // Added.
+    }
+
+    [Fact]
+    public async Task ImportIntoCollectionAsync_SameNameEnv_PreservesVarsNotInImportFile()
+    {
+        var collectionRoot = _temp.CreateSubDirectory("col-merge-preserve");
+        var envFolder = Path.Combine(collectionRoot, FileSystemCollectionService.EnvironmentFolderName);
+        Directory.CreateDirectory(envFolder);
+
+        var existingEnv = new EnvironmentModel
+        {
+            FilePath = Path.Combine(envFolder, "Dev.env.callsmith"),
+            EnvironmentId = Guid.NewGuid(),
+            Name = "Dev",
+            Variables =
+            [
+                new EnvironmentVariable { Name = "OnlyInExisting", Value = "keep-me", VariableType = EnvironmentVariable.VariableTypes.Static },
+            ],
+        };
+        await _environmentService.SaveEnvironmentAsync(existingEnv);
+
+        var collection = new ImportedCollection
+        {
+            Name = "Test",
+            Environments =
+            [
+                new ImportedEnvironment
+                {
+                    Name = "Dev",
+                    Variables = new Dictionary<string, string>
+                    {
+                        { "OnlyInImport", "new-val" },
+                    },
+                },
+            ],
+        };
+
+        var importer = MakeImporter(canImport: true, extensions: [".yaml"], returns: collection);
+        var sut = BuildSut(importer);
+
+        await sut.ImportIntoCollectionAsync("/fake.yaml", collectionRoot);
+
+        var saved = await _environmentService.LoadEnvironmentAsync(existingEnv.FilePath);
+        saved.Variables.Should().HaveCount(2);
+        saved.Variables.Should().Contain(v => v.Name == "OnlyInExisting" && v.Value == "keep-me");
+        saved.Variables.Should().Contain(v => v.Name == "OnlyInImport" && v.Value == "new-val");
+    }
+
+    [Fact]
+    public async Task ImportIntoCollectionAsync_NewEnv_IsAddedAsAdditionalEnvironment()
+    {
+        var collectionRoot = _temp.CreateSubDirectory("col-new-env");
+        var envFolder = Path.Combine(collectionRoot, FileSystemCollectionService.EnvironmentFolderName);
+        Directory.CreateDirectory(envFolder);
+
+        var existingEnv = new EnvironmentModel
+        {
+            FilePath = Path.Combine(envFolder, "Env1.env.callsmith"),
+            EnvironmentId = Guid.NewGuid(),
+            Name = "Env1",
+            Variables = [new EnvironmentVariable { Name = "Var1", Value = "a", VariableType = EnvironmentVariable.VariableTypes.Static }],
+        };
+        await _environmentService.SaveEnvironmentAsync(existingEnv);
+
+        var collection = new ImportedCollection
+        {
+            Name = "Test",
+            Environments =
+            [
+                new ImportedEnvironment
+                {
+                    Name = "Env2",
+                    Variables = new Dictionary<string, string> { { "Var4", "e" } },
+                },
+            ],
+        };
+
+        var importer = MakeImporter(canImport: true, extensions: [".yaml"], returns: collection);
+        var sut = BuildSut(importer);
+
+        await sut.ImportIntoCollectionAsync("/fake.yaml", collectionRoot);
+
+        var allEnvs = await _environmentService.ListEnvironmentsAsync(collectionRoot);
+        allEnvs.Should().HaveCount(2);
+        allEnvs.Should().Contain(e => e.Name == "Env1");
+        allEnvs.Should().Contain(e => e.Name == "Env2");
+
+        var env2 = allEnvs.First(e => e.Name == "Env2");
+        env2.Variables.Should().ContainSingle(v => v.Name == "Var4" && v.Value == "e");
+    }
+
+    [Fact]
+    public async Task ImportIntoCollectionAsync_NewEnv_IsAppendedToOrderFile()
+    {
+        var collectionRoot = _temp.CreateSubDirectory("col-env-order");
+        var envFolder = Path.Combine(collectionRoot, FileSystemCollectionService.EnvironmentFolderName);
+        Directory.CreateDirectory(envFolder);
+
+        // Seed an existing environment and save its order.
+        var existingEnv = new EnvironmentModel
+        {
+            FilePath = Path.Combine(envFolder, "Existing.env.callsmith"),
+            EnvironmentId = Guid.NewGuid(),
+            Name = "Existing",
+            Variables = [],
+        };
+        await _environmentService.SaveEnvironmentAsync(existingEnv);
+        await _environmentService.SaveEnvironmentOrderAsync(collectionRoot, ["Existing.env.callsmith"]);
+
+        var collection = new ImportedCollection
+        {
+            Name = "Test",
+            Environments =
+            [
+                new ImportedEnvironment { Name = "NewEnv", Variables = new Dictionary<string, string>() },
+            ],
+        };
+
+        var importer = MakeImporter(canImport: true, extensions: [".yaml"], returns: collection);
+        var sut = BuildSut(importer);
+
+        await sut.ImportIntoCollectionAsync("/fake.yaml", collectionRoot);
+
+        var orderFile = Path.Combine(envFolder, FileSystemEnvironmentService.OrderFileName);
+        var json = await File.ReadAllTextAsync(orderFile);
+        var order = System.Text.Json.JsonSerializer.Deserialize<List<string>>(json)!;
+        order[0].Should().StartWith("Existing");
+        order[1].Should().StartWith("NewEnv");
+    }
+
+    [Fact]
+    public async Task ImportIntoCollectionAsync_FullScenario_MatchesProblemStatementExample()
+    {
+        // Collection currently has: Env1 { Var1=a, Var2=b }
+        // Import file has:          Env1 { Var2=c, Var3=d }, Env2 { Var4=e }
+        // Expected result:          Env1 { Var1=a, Var2=b, Var3=d }, Env2 { Var4=e }
+
+        var collectionRoot = _temp.CreateSubDirectory("col-full");
+        var envFolder = Path.Combine(collectionRoot, FileSystemCollectionService.EnvironmentFolderName);
+        Directory.CreateDirectory(envFolder);
+
+        var env1 = new EnvironmentModel
+        {
+            FilePath = Path.Combine(envFolder, "Env1.env.callsmith"),
+            EnvironmentId = Guid.NewGuid(),
+            Name = "Env1",
+            Variables =
+            [
+                new EnvironmentVariable { Name = "Var1", Value = "a", VariableType = EnvironmentVariable.VariableTypes.Static },
+                new EnvironmentVariable { Name = "Var2", Value = "b", VariableType = EnvironmentVariable.VariableTypes.Static },
+            ],
+        };
+        await _environmentService.SaveEnvironmentAsync(env1);
+
+        var collection = new ImportedCollection
+        {
+            Name = "Test",
+            Environments =
+            [
+                new ImportedEnvironment
+                {
+                    Name = "Env1",
+                    Variables = new Dictionary<string, string> { { "Var2", "c" }, { "Var3", "d" } },
+                },
+                new ImportedEnvironment
+                {
+                    Name = "Env2",
+                    Variables = new Dictionary<string, string> { { "Var4", "e" } },
+                },
+            ],
+        };
+
+        var importer = MakeImporter(canImport: true, extensions: [".yaml"], returns: collection);
+        var sut = BuildSut(importer);
+
+        await sut.ImportIntoCollectionAsync("/fake.yaml", collectionRoot);
+
+        var allEnvs = await _environmentService.ListEnvironmentsAsync(collectionRoot);
+        allEnvs.Should().HaveCount(2);
+
+        var mergedEnv1 = allEnvs.First(e => e.Name == "Env1");
+        mergedEnv1.Variables.Should().HaveCount(3);
+        mergedEnv1.Variables.Should().Contain(v => v.Name == "Var1" && v.Value == "a");
+        mergedEnv1.Variables.Should().Contain(v => v.Name == "Var2" && v.Value == "b");
+        mergedEnv1.Variables.Should().Contain(v => v.Name == "Var3" && v.Value == "d");
+
+        var addedEnv2 = allEnvs.First(e => e.Name == "Env2");
+        addedEnv2.Variables.Should().ContainSingle(v => v.Name == "Var4" && v.Value == "e");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────
 

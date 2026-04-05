@@ -20,6 +20,33 @@
                FontSize="14"
                FontWeight="SemiBold"/>
 
+    <!-- Mode toggle (only visible when a collection is already open) -->
+    <Border IsVisible="{Binding HasCurrentCollectionOption}"
+            Background="#2d2d2d"
+            BorderBrush="#444"
+            BorderThickness="1"
+            CornerRadius="4"
+            Padding="12,10">
+      <StackPanel Spacing="6">
+        <TextBlock Text="Import mode"
+                   Foreground="#aaa"
+                   FontSize="11"
+                   FontWeight="SemiBold"/>
+        <StackPanel Orientation="Horizontal" Spacing="20">
+          <RadioButton Content="Create new collection"
+                       Foreground="#d4d4d4"
+                       FontSize="12"
+                       IsChecked="{Binding IsImportIntoCurrentCollection,
+                                           Mode=TwoWay,
+                                           Converter={x:Static BoolConverters.Not}}"/>
+          <RadioButton Content="Import into current collection"
+                       Foreground="#d4d4d4"
+                       FontSize="12"
+                       IsChecked="{Binding IsImportIntoCurrentCollection, Mode=TwoWay}"/>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
     <!-- Import type -->
     <Grid ColumnDefinitions="110,10,*">
       <TextBlock Grid.Column="0"
@@ -75,8 +102,9 @@
               ToolTip.Tip="Choose the collection file to import"/>
     </Grid>
 
-    <!-- Path to folder -->
-    <Grid ColumnDefinitions="110,10,*,8,Auto">
+    <!-- Path to folder (new-collection mode only) -->
+    <Grid ColumnDefinitions="110,10,*,8,Auto"
+          IsVisible="{Binding !IsImportIntoCurrentCollection}">
       <TextBlock Grid.Column="0"
                  Text="Path to folder"
                  Foreground="#aaa"
@@ -102,6 +130,25 @@
               FontSize="12"
               CornerRadius="3"
               ToolTip.Tip="Choose the folder to import into"/>
+    </Grid>
+
+    <!-- Sub-folder path (import-into-current mode only) -->
+    <Grid ColumnDefinitions="110,10,*"
+          IsVisible="{Binding IsImportIntoCurrentCollection}">
+      <TextBlock Grid.Column="0"
+                 Text="Target sub-folder"
+                 Foreground="#aaa"
+                 FontSize="12"
+                 VerticalAlignment="Center"/>
+      <TextBox Grid.Column="2"
+               Text="{Binding SubFolderPath}"
+               Watermark="Leave blank to import at collection root"
+               Foreground="#d4d4d4"
+               Background="#3c3c3c"
+               BorderBrush="#555"
+               Padding="8,5"
+               FontSize="12"
+               ToolTip.Tip="Optional relative path within the collection (e.g. 'Orders/Internal'). Leave blank to import at the collection root."/>
     </Grid>
 
     <!-- Non-empty folder warning -->
