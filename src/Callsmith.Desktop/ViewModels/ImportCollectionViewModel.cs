@@ -126,9 +126,7 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(importService);
         _importService = importService;
-        _currentCollectionPath = string.IsNullOrEmpty(currentCollectionPath)
-            ? null
-            : currentCollectionPath;
+        _currentCollectionPath = currentCollectionPath;
         _selectedImportType = ImportTypeOptions[0]; // default to Postman
     }
 
@@ -266,31 +264,54 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
     private async Task RunImportIntoCollectionAsync(CancellationToken ct)
     {
+        if (string.IsNullOrEmpty(_currentCollectionPath))
+        {
+            // Should never happen: the mode toggle is guarded, but fail fast with a clear error.
+            ErrorMessage = "No collection is currently open.";
+            return;
+        }
+
         IsImporting = true;
         ErrorMessage = string.Empty;
 
         try
         {
-            // Validate SubFolderPath: must be relative (no rooted path, no ".." segments).
+            // Validate SubFolderPath: use Path.GetFullPath to resolve any traversal attempts
+            // and ensure the result stays inside the collection root.
+            string absoluteTarget;
             if (!string.IsNullOrWhiteSpace(SubFolderPath))
             {
-                if (Path.IsPathRooted(SubFolderPath) ||
-                    SubFolderPath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                        .Any(seg => seg == ".."))
+                if (Path.IsPathRooted(SubFolderPath))
+                {
+                    ErrorMessage = "Sub-folder path must be a relative path.";
+                    return;
+                }
+
+                var candidate = Path.GetFullPath(Path.Combine(_currentCollectionPath, SubFolderPath));
+                var root = Path.GetFullPath(_currentCollectionPath);
+
+                // Ensure the resolved path is inside the collection root.
+                if (!candidate.StartsWith(
+                    root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    + Path.DirectorySeparatorChar,
+                    StringComparison.Ordinal)
+                    && !string.Equals(candidate, root, StringComparison.Ordinal))
                 {
                     ErrorMessage = "Sub-folder path must be a relative path with no '..' segments.";
                     return;
                 }
+
+                absoluteTarget = candidate;
+            }
+            else
+            {
+                absoluteTarget = _currentCollectionPath;
             }
 
-            var absoluteTarget = string.IsNullOrWhiteSpace(SubFolderPath)
-                ? _currentCollectionPath!
-                : Path.Combine(_currentCollectionPath!, SubFolderPath);
-
             await _importService.ImportIntoCollectionAsync(
-                FilePath, _currentCollectionPath!, absoluteTarget, ct);
+                FilePath, _currentCollectionPath, absoluteTarget, ct);
 
-            ResultFolderPath = _currentCollectionPath!;
+            ResultFolderPath = _currentCollectionPath;
             ImportedIntoCurrentCollection = true;
             IsConfirmed = true;
             CloseRequested?.Invoke(this, EventArgs.Empty);

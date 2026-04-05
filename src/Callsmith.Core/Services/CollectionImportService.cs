@@ -138,9 +138,14 @@ public sealed class CollectionImportService : ICollectionImportService
                 string.Join(", ", _importers.Select(i => i.FormatName)));
 
         // Normalise the target: null or same as root → requests land at root.
+        // Use platform-appropriate path comparison: case-insensitive on Windows,
+        // case-sensitive on Linux/macOS.
+        var pathComparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
         var effectiveTarget = string.IsNullOrEmpty(targetSubFolderPath) ||
-                              string.Equals(targetSubFolderPath, collectionRootPath,
-                                  StringComparison.OrdinalIgnoreCase)
+                              string.Equals(targetSubFolderPath, collectionRootPath, pathComparison)
             ? collectionRootPath
             : targetSubFolderPath;
 
