@@ -24,4 +24,11 @@ public sealed class CollectionFolder
     /// Empty = use default ordering (sub-folders first, then requests, both alphabetical).
     /// </summary>
     public IReadOnlyList<string> ItemOrder { get; init; } = [];
+
+    /// <summary>
+    /// Authentication configuration for this folder.
+    /// When <see cref="AuthConfig.AuthTypes.Inherit"/> (the default), requests inside
+    /// this folder fall back to the parent folder's auth, recursively up to the root.
+    /// </summary>
+    public AuthConfig Auth { get; init; } = new();
 }

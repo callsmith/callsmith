@@ -378,7 +378,7 @@ public sealed class RequestTabViewModelSendTests
 
         sut.LoadFromHistorySnapshot(snapshot, []);
 
-        sut.AuthType.Should().Be(AuthConfig.AuthTypes.None);
+        sut.AuthType.Should().Be(AuthConfig.AuthTypes.Inherit);
         sut.Headers.GetAllKv().Should().Contain(h => h.Key == "Authorization" && h.Value == "Bearer my-token");
     }
 
@@ -403,7 +403,7 @@ public sealed class RequestTabViewModelSendTests
 
         sut.LoadFromHistorySnapshot(snapshot, []);
 
-        sut.AuthType.Should().Be(AuthConfig.AuthTypes.None);
+        sut.AuthType.Should().Be(AuthConfig.AuthTypes.Inherit);
         var expectedEncoded = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("user:pass"));
         sut.Headers.GetAllKv().Should().Contain(h => h.Key == "Authorization" && h.Value == $"Basic {expectedEncoded}");
     }
@@ -430,7 +430,7 @@ public sealed class RequestTabViewModelSendTests
 
         sut.LoadFromHistorySnapshot(snapshot, []);
 
-        sut.AuthType.Should().Be(AuthConfig.AuthTypes.None);
+        sut.AuthType.Should().Be(AuthConfig.AuthTypes.Inherit);
         sut.Headers.GetAllKv().Should().Contain(h => h.Key == "X-API-Key" && h.Value == "secret123");
     }
 
@@ -456,7 +456,7 @@ public sealed class RequestTabViewModelSendTests
 
         sut.LoadFromHistorySnapshot(snapshot, []);
 
-        sut.AuthType.Should().Be(AuthConfig.AuthTypes.None);
+        sut.AuthType.Should().Be(AuthConfig.AuthTypes.Inherit);
         sut.QueryParams.GetAllKv().Should().Contain(p => p.Key == "apikey" && p.Value == "secret123");
         sut.Url.Should().Contain("apikey=secret123");
     }
@@ -486,7 +486,7 @@ public sealed class RequestTabViewModelSendTests
 
         sut.LoadFromHistorySnapshot(snapshot, bindings);
 
-        sut.AuthType.Should().Be(AuthConfig.AuthTypes.None);
+        sut.AuthType.Should().Be(AuthConfig.AuthTypes.Inherit);
         sut.Headers.GetAllKv().Should().Contain(h => h.Key == "Authorization" && h.Value == "Bearer actual-token");
     }
 

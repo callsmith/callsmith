@@ -130,10 +130,11 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private string _body = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAuthInherit))]
     [NotifyPropertyChangedFor(nameof(IsAuthBearer))]
     [NotifyPropertyChangedFor(nameof(IsAuthBasic))]
     [NotifyPropertyChangedFor(nameof(IsAuthApiKey))]
-    private string _authType = AuthConfig.AuthTypes.None;
+    private string _authType = AuthConfig.AuthTypes.Inherit;
 
     [ObservableProperty] private string _authToken = string.Empty;
     [ObservableProperty] private string _authUsername = string.Empty;
@@ -578,6 +579,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     public bool HasResponseHeaders => ResponseHeaderRows.Count > 0;
 
+    public bool IsAuthInherit => AuthType == AuthConfig.AuthTypes.Inherit;
     public bool IsAuthBearer => AuthType == AuthConfig.AuthTypes.Bearer;
     public bool IsAuthBasic  => AuthType == AuthConfig.AuthTypes.Basic;
     public bool IsAuthApiKey => AuthType == AuthConfig.AuthTypes.ApiKey;
@@ -601,6 +603,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     public IReadOnlyList<string> AuthTypes { get; } =
     [
+        AuthConfig.AuthTypes.Inherit,
         AuthConfig.AuthTypes.None,
         AuthConfig.AuthTypes.Bearer,
         AuthConfig.AuthTypes.Basic,
@@ -692,7 +695,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(StatusBadgeColor) or nameof(MethodColor) or
                 nameof(ShowBodyEditor) or nameof(ShowTextBodyEditor) or nameof(ShowFormBodyEditor) or
                 nameof(PreviewUrl) or nameof(HasUnresolvedPathParams) or nameof(PreviewUrlForeground) or nameof(PreviewUrlTooltip) or
-                nameof(IsAuthBearer) or nameof(IsAuthBasic) or nameof(IsAuthApiKey) or
+                nameof(IsAuthInherit) or nameof(IsAuthBearer) or nameof(IsAuthBasic) or nameof(IsAuthApiKey) or
                 nameof(ShowAuthPassword) or nameof(ShowAuthApiKeyValue) or
                 nameof(EnvVarNames) or
                 nameof(FormattedResponseBody) or nameof(FormattedResponseHeaders) or
@@ -928,7 +931,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             SelectedBodyType = snapshot.BodyType;
             Body = resolvedBody ?? string.Empty;
             FormParams.LoadFrom(resolvedFormParams);
-            AuthType = AuthConfig.AuthTypes.None;
+            AuthType = AuthConfig.AuthTypes.Inherit;
             AuthToken = string.Empty;
             AuthTokenField.LoadFromText(AuthToken);
             AuthUsername = string.Empty;
@@ -1144,7 +1147,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         // Headers + auth
         var headers = ResolveHeaders(Headers.GetEnabledPairs(), env.Variables);
 
-        ApplyAuthHeaders(headers, requestUrl, env.Variables, out requestUrl);
+        var effectiveAuth = await GetEffectiveAuthAsync(ct).ConfigureAwait(false);
+        ApplyAuthHeaders(headers, requestUrl, env.Variables, out requestUrl, effectiveAuth);
 
         requestUrl = VariableSubstitutionService.Substitute(requestUrl, env) ?? requestUrl;
 
@@ -1179,11 +1183,11 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
         // Determine API-key masking info for the cURL dialog.
         CurlAuthMaskInfo? authMask = null;
-        if (AuthType == AuthConfig.AuthTypes.ApiKey && !string.IsNullOrEmpty(AuthApiKeyName))
+        if (effectiveAuth.AuthType == AuthConfig.AuthTypes.ApiKey && !string.IsNullOrEmpty(effectiveAuth.ApiKeyName))
         {
-            var resolvedName = VariableSubstitutionService.Substitute(AuthApiKeyName, env.Variables) ?? AuthApiKeyName;
+            var resolvedName = VariableSubstitutionService.Substitute(effectiveAuth.ApiKeyName, env.Variables) ?? effectiveAuth.ApiKeyName;
 
-            authMask = AuthApiKeyIn == AuthConfig.ApiKeyLocations.Header
+            authMask = effectiveAuth.ApiKeyIn == AuthConfig.ApiKeyLocations.Header
                 ? new CurlAuthMaskInfo(ApiKeyHeaderName: resolvedName, ApiKeyQueryParamName: null)
                 : new CurlAuthMaskInfo(ApiKeyHeaderName: null, ApiKeyQueryParamName: resolvedName);
         }
@@ -1231,7 +1235,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
             requestUrl = QueryStringHelper.AppendQueryParams(requestUrl, substitutedQueryParams);
 
-            ApplyAuthHeaders(headers, requestUrl, env.Variables, out requestUrl, env.MockGenerators, secretNames, sentBindings);
+            var effectiveAuth = await GetEffectiveAuthAsync(ct).ConfigureAwait(false);
+            ApplyAuthHeaders(headers, requestUrl, env.Variables, out requestUrl, effectiveAuth, env.MockGenerators, secretNames, sentBindings);
 
             // Substitute any remaining {{tokens}} in the base URL / path.
             requestUrl = VariableSubstitutionService.SubstituteCollecting(requestUrl, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? requestUrl;
@@ -1715,11 +1720,39 @@ public sealed partial class RequestTabViewModel : ObservableObject
         return resolved;
     }
 
-    private void ApplyAuthHeaders(
+    /// <summary>
+    /// Returns the effective auth configuration for the current request.
+    /// If the request's auth is "inherit", walks up the folder hierarchy via the collection service.
+    /// </summary>
+    private async Task<AuthConfig> GetEffectiveAuthAsync(CancellationToken ct)
+    {
+        if (AuthType != AuthConfig.AuthTypes.Inherit)
+        {
+            return new AuthConfig
+            {
+                AuthType = AuthType,
+                Token = string.IsNullOrEmpty(AuthToken) ? null : AuthToken,
+                Username = string.IsNullOrEmpty(AuthUsername) ? null : AuthUsername,
+                Password = string.IsNullOrEmpty(AuthPassword) ? null : AuthPassword,
+                ApiKeyName = string.IsNullOrEmpty(AuthApiKeyName) ? null : AuthApiKeyName,
+                ApiKeyValue = string.IsNullOrEmpty(AuthApiKeyValue) ? null : AuthApiKeyValue,
+                ApiKeyIn = AuthApiKeyIn,
+            };
+        }
+
+        if (string.IsNullOrEmpty(SourceFilePath))
+            return new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
+
+        return await _collectionService.ResolveEffectiveAuthAsync(SourceFilePath, ct).ConfigureAwait(false)
+            ?? new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
+    }
+
+    private static void ApplyAuthHeaders(
         Dictionary<string, string> headers,
         string requestUrl,
         IReadOnlyDictionary<string, string> vars,
         out string url,
+        AuthConfig auth,
         IReadOnlyDictionary<string, MockDataEntry>? mockGenerators = null,
         IReadOnlySet<string>? secretVariableNames = null,
         IList<VariableBinding>? collector = null)
@@ -1731,27 +1764,27 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 ? VariableSubstitutionService.SubstituteCollecting(template, vars, secretVariableNames, collector, mockGenerators) ?? template ?? string.Empty
                 : VariableSubstitutionService.Substitute(template, vars) ?? template ?? string.Empty;
 
-        switch (AuthType)
+        switch (auth.AuthType)
         {
-            case AuthConfig.AuthTypes.Bearer when !string.IsNullOrEmpty(AuthToken):
-                var token = Resolve(AuthToken);
+            case AuthConfig.AuthTypes.Bearer when !string.IsNullOrEmpty(auth.Token):
+                var token = Resolve(auth.Token);
                 headers[WellKnownHeaders.Authorization] = $"Bearer {token}";
                 break;
-            case AuthConfig.AuthTypes.Basic when !string.IsNullOrEmpty(AuthUsername):
-                var username = Resolve(AuthUsername);
-                var password = Resolve(AuthPassword);
+            case AuthConfig.AuthTypes.Basic when !string.IsNullOrEmpty(auth.Username):
+                var username = Resolve(auth.Username);
+                var password = Resolve(auth.Password);
                 var encoded = Convert.ToBase64String(
                     Encoding.UTF8.GetBytes($"{username}:{password}"));
                 headers[WellKnownHeaders.Authorization] = $"Basic {encoded}";
                 break;
-            case AuthConfig.AuthTypes.ApiKey when !string.IsNullOrEmpty(AuthApiKeyName)
-                                               && !string.IsNullOrEmpty(AuthApiKeyValue):
-                var resolvedName = Resolve(AuthApiKeyName);
-                var resolvedValue = Resolve(AuthApiKeyValue);
+            case AuthConfig.AuthTypes.ApiKey when !string.IsNullOrEmpty(auth.ApiKeyName)
+                                               && !string.IsNullOrEmpty(auth.ApiKeyValue):
+                var resolvedName = Resolve(auth.ApiKeyName);
+                var resolvedValue = Resolve(auth.ApiKeyValue);
                 if (string.IsNullOrWhiteSpace(resolvedName))
                     break;
 
-                if (AuthApiKeyIn == AuthConfig.ApiKeyLocations.Header)
+                if (auth.ApiKeyIn == AuthConfig.ApiKeyLocations.Header)
                     headers[resolvedName] = resolvedValue;
                 else
                     url = QueryStringHelper.AppendQueryParams(

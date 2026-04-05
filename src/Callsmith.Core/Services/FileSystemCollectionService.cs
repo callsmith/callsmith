@@ -397,7 +397,7 @@ public sealed class FileSystemCollectionService : ICollectionService
 
     private CollectionFolder ReadFolder(string folderPath)
     {
-        var itemOrder = ReadMetaFile(Path.Combine(folderPath, MetaFileName));
+        var meta = ReadMetaFile(Path.Combine(folderPath, MetaFileName));
 
         var requests = Directory
             .EnumerateFiles(folderPath, $"*{RequestFileExtension}", SearchOption.TopDirectoryOnly)
@@ -432,7 +432,8 @@ public sealed class FileSystemCollectionService : ICollectionService
             Name = Path.GetFileName(folderPath),
             Requests = requests,
             SubFolders = subFolders,
-            ItemOrder = itemOrder,
+            ItemOrder = meta.Order,
+            Auth = meta.Auth,
         };
     }
 
@@ -446,19 +447,19 @@ public sealed class FileSystemCollectionService : ICollectionService
             || ExcludedFolderNames.Contains(folderName);
     }
 
-    private static IReadOnlyList<string> ReadMetaFile(string metaFilePath)
+    private static FolderMeta ReadMetaFile(string metaFilePath)
     {
         if (!File.Exists(metaFilePath))
-            return [];
+            return FolderMeta.Empty;
         try
         {
             var json = File.ReadAllText(metaFilePath);
             var dto = JsonSerializer.Deserialize<FolderMetaDto>(json) ?? new FolderMetaDto();
-            return dto.Order ?? [];
+            return FolderMeta.FromDto(dto);
         }
         catch (JsonException)
         {
-            return [];
+            return FolderMeta.Empty;
         }
     }
 
@@ -471,8 +472,12 @@ public sealed class FileSystemCollectionService : ICollectionService
 
         var metaFilePath = Path.Combine(folderPath, MetaFileName);
 
-        if (orderedNames.Count == 0)
+        // Read existing meta to preserve the auth field.
+        var existing = ReadMetaFile(metaFilePath);
+
+        if (orderedNames.Count == 0 && existing.Auth.AuthType == AuthConfig.AuthTypes.Inherit)
         {
+            // Both order and auth are default — remove the file entirely.
             if (File.Exists(metaFilePath))
             {
                 File.Delete(metaFilePath);
@@ -481,10 +486,111 @@ public sealed class FileSystemCollectionService : ICollectionService
             return;
         }
 
-        var dto = new FolderMetaDto { Order = [..orderedNames] };
+        var dto = BuildMetaDto(orderedNames, existing.Auth);
         var json = JsonSerializer.Serialize(dto, CallsmithJsonOptions.Default);
         await File.WriteAllTextAsync(metaFilePath, json, ct);
         _logger.LogDebug("Saved folder order for '{FolderPath}'", folderPath);
+    }
+
+    /// <inheritdoc/>
+    public async Task SaveFolderAuthAsync(
+        string folderPath, AuthConfig auth, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(folderPath);
+        ArgumentNullException.ThrowIfNull(auth);
+
+        var metaFilePath = Path.Combine(folderPath, MetaFileName);
+
+        // Read existing meta to preserve the order field.
+        var existing = ReadMetaFile(metaFilePath);
+
+        if (auth.AuthType == AuthConfig.AuthTypes.Inherit && existing.Order.Count == 0)
+        {
+            // Both auth and order are default — remove the file entirely.
+            if (File.Exists(metaFilePath))
+            {
+                File.Delete(metaFilePath);
+                _logger.LogDebug("Removed meta file (auth cleared) for '{FolderPath}'", folderPath);
+            }
+            return;
+        }
+
+        var dto = BuildMetaDto(existing.Order, auth);
+        var json = JsonSerializer.Serialize(dto, CallsmithJsonOptions.Default);
+        await File.WriteAllTextAsync(metaFilePath, json, ct);
+        _logger.LogDebug("Saved folder auth for '{FolderPath}'", folderPath);
+    }
+
+    /// <inheritdoc/>
+    public Task<AuthConfig> ResolveEffectiveAuthAsync(
+        string requestFilePath, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(requestFilePath);
+
+        return Task.Run(() =>
+        {
+            var dir = Path.GetDirectoryName(requestFilePath);
+            if (string.IsNullOrEmpty(dir))
+                return new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
+
+            var root = string.IsNullOrEmpty(_currentRoot)
+                ? null
+                : Path.GetFullPath(_currentRoot);
+
+            while (true)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var metaPath = Path.Combine(dir, MetaFileName);
+                var meta = ReadMetaFile(metaPath);
+
+                if (meta.Auth.AuthType != AuthConfig.AuthTypes.Inherit)
+                    return meta.Auth;
+
+                // If we've reached (or passed) the collection root, stop.
+                var fullDir = Path.GetFullPath(dir);
+                if (root is not null && string.Equals(fullDir, root, StringComparison.OrdinalIgnoreCase))
+                    return new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
+
+                var parent = Path.GetDirectoryName(dir);
+                if (parent is null || string.Equals(parent, dir, StringComparison.OrdinalIgnoreCase))
+                    return new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
+
+                dir = parent;
+            }
+        }, ct);
+    }
+
+    // -------------------------------------------------------------------------
+    // Private — meta file helpers
+    // -------------------------------------------------------------------------
+
+    private static FolderMetaDto BuildMetaDto(IReadOnlyList<string> order, AuthConfig auth)
+    {
+        var dto = new FolderMetaDto();
+
+        if (order.Count > 0)
+            dto.Order = [..order];
+
+        if (auth.AuthType != AuthConfig.AuthTypes.Inherit)
+        {
+            dto.Auth = new FolderMetaAuthDto
+            {
+                Type = auth.AuthType,
+                Token = auth.Token,
+                Username = auth.Username,
+                ApiKeyName = auth.ApiKeyName,
+                ApiKeyIn = auth.ApiKeyIn == AuthConfig.ApiKeyLocations.Header ? null : auth.ApiKeyIn,
+            };
+
+            // Passwords are stored in plaintext in the meta file (same as request files).
+            if (auth.AuthType == AuthConfig.AuthTypes.Basic)
+                dto.Auth.Password = auth.Password;
+            if (auth.AuthType == AuthConfig.AuthTypes.ApiKey)
+                dto.Auth.ApiKeyValue = auth.ApiKeyValue;
+        }
+
+        return dto;
     }
 
     // -------------------------------------------------------------------------
@@ -534,7 +640,7 @@ public sealed class FileSystemCollectionService : ICollectionService
             FormParams = formParams,
             Auth = new AuthConfig
             {
-                AuthType = dto.AuthType ?? AuthConfig.AuthTypes.None,
+                AuthType = dto.AuthType ?? AuthConfig.AuthTypes.Inherit,
                 Token = dto.AuthToken,
                 Username = dto.AuthUsername,
                 Password = basicAuthPassword ?? dto.AuthPassword,
@@ -574,7 +680,7 @@ public sealed class FileSystemCollectionService : ICollectionService
                 ? null
                 : request.BodyType,
             Body = request.Body,
-            AuthType = request.Auth.AuthType == AuthConfig.AuthTypes.None
+            AuthType = request.Auth.AuthType == AuthConfig.AuthTypes.Inherit
                 ? null
                 : request.Auth.AuthType,
             AuthToken = request.Auth.Token,
@@ -650,5 +756,66 @@ public sealed class FileSystemCollectionService : ICollectionService
     {
         [JsonPropertyName("order")]
         public List<string>? Order { get; set; }
+
+        [JsonPropertyName("auth")]
+        public FolderMetaAuthDto? Auth { get; set; }
+    }
+
+    /// <summary>Auth section within <c>_meta.json</c>.</summary>
+    private sealed class FolderMetaAuthDto
+    {
+        [JsonPropertyName("type")]
+        public string? Type { get; set; }
+
+        [JsonPropertyName("token")]
+        public string? Token { get; set; }
+
+        [JsonPropertyName("username")]
+        public string? Username { get; set; }
+
+        [JsonPropertyName("password")]
+        public string? Password { get; set; }
+
+        [JsonPropertyName("apiKeyName")]
+        public string? ApiKeyName { get; set; }
+
+        [JsonPropertyName("apiKeyValue")]
+        public string? ApiKeyValue { get; set; }
+
+        /// <summary>Null means header (the default); explicit "query" means query string.</summary>
+        [JsonPropertyName("apiKeyIn")]
+        public string? ApiKeyIn { get; set; }
+    }
+
+    /// <summary>Parsed result of a <c>_meta.json</c> file.</summary>
+    private sealed record FolderMeta(IReadOnlyList<string> Order, AuthConfig Auth)
+    {
+        public static FolderMeta Empty { get; } = new([], new AuthConfig());
+
+        public static FolderMeta FromDto(FolderMetaDto dto)
+        {
+            IReadOnlyList<string> order = dto.Order ?? [];
+            AuthConfig auth;
+
+            if (dto.Auth is { Type: not null } a)
+            {
+                auth = new AuthConfig
+                {
+                    AuthType = a.Type,
+                    Token = a.Token,
+                    Username = a.Username,
+                    Password = a.Password,
+                    ApiKeyName = a.ApiKeyName,
+                    ApiKeyValue = a.ApiKeyValue,
+                    ApiKeyIn = a.ApiKeyIn ?? AuthConfig.ApiKeyLocations.Header,
+                };
+            }
+            else
+            {
+                auth = new AuthConfig();
+            }
+
+            return new FolderMeta(order, auth);
+        }
     }
 }

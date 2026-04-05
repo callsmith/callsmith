@@ -65,6 +65,21 @@ public partial class CollectionsView : UserControl
                     await dialog.ShowDialog(owner);
                     await vm.OnImportDialogClosedAsync();
                 }
+                else if (args.PropertyName == nameof(CollectionsViewModel.PendingFolderSettings)
+                    && vm.PendingFolderSettings is not null)
+                {
+                    var owner = TopLevel.GetTopLevel(this) as Window;
+                    if (owner is null) return;
+
+                    // Capture the node before the dialog closes (PendingFolderSettings is nulled after).
+                    var node = CollectionTree.SelectedItem as CollectionTreeItemViewModel;
+                    var dialog = new FolderSettingsDialog { DataContext = vm.PendingFolderSettings };
+                    await dialog.ShowDialog(owner);
+                    if (node is not null)
+                        vm.OnFolderSettingsDialogClosed(node);
+                    else
+                        vm.OnFolderSettingsDialogClosed(vm.TreeRoots.Count > 0 ? vm.TreeRoots[0] : null!);
+                }
             };
         }
 
@@ -85,6 +100,8 @@ public partial class CollectionsView : UserControl
                 {
                     menu.Items.Add(MakeMenuItem("New Request", () => vm.CreateRequestCommand.Execute(root)));
                     menu.Items.Add(MakeMenuItem("New Folder", () => vm.CreateFolderCommand.Execute(root)));
+                    menu.Items.Add(new Separator());
+                    menu.Items.Add(MakeMenuItem("Settings…", () => vm.OpenFolderSettingsCommand.Execute(root)));
                 }
                 return;
             }
@@ -93,6 +110,8 @@ public partial class CollectionsView : UserControl
             {
                 menu.Items.Add(MakeMenuItem("New Request", () => vm.CreateRequestCommand.Execute(node)));
                 menu.Items.Add(MakeMenuItem("New Folder", () => vm.CreateFolderCommand.Execute(node)));
+                menu.Items.Add(new Separator());
+                menu.Items.Add(MakeMenuItem("Settings…", () => vm.OpenFolderSettingsCommand.Execute(node)));
 
                 if (!node.IsRoot)
                 {

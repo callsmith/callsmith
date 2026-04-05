@@ -368,7 +368,7 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
                     ? ApiKeyLocations.Query
                     : ApiKeyLocations.Header,
             },
-            _ => new AuthConfig(),
+            _ => new AuthConfig { AuthType = AuthTypes.None },
         };
     }
 

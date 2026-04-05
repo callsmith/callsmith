@@ -126,6 +126,13 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     [ObservableProperty]
     private ImportCollectionViewModel? _pendingImportDialog;
 
+    /// <summary>
+    /// Non-null while the folder settings dialog is open.
+    /// The view observes this property and opens the dialog window.
+    /// </summary>
+    [ObservableProperty]
+    private FolderSettingsViewModel? _pendingFolderSettings;
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
@@ -250,6 +257,42 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         {
             await LoadCollectionAsync(folder);
         }
+    }
+
+    /// <summary>
+    /// Opens the folder settings modal dialog for the given folder node.
+    /// The view observes <see cref="PendingFolderSettings"/> and shows the window.
+    /// </summary>
+    [RelayCommand]
+    public void OpenFolderSettings(CollectionTreeItemViewModel node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        PendingFolderSettings = new FolderSettingsViewModel(node, _collectionService);
+    }
+
+    /// <summary>
+    /// Called by the view after the folder settings dialog window is closed.
+    /// Updates the node's in-memory auth snapshot with the saved settings.
+    /// </summary>
+    public void OnFolderSettingsDialogClosed(CollectionTreeItemViewModel node)
+    {
+        var dialog = PendingFolderSettings;
+        PendingFolderSettings = null;
+
+        if (dialog is null) return;
+
+        // Update the in-memory node so the tree reflects the new auth without a full reload.
+        var auth = new AuthConfig
+        {
+            AuthType = dialog.AuthType,
+            Token = string.IsNullOrEmpty(dialog.AuthToken) ? null : dialog.AuthToken,
+            Username = string.IsNullOrEmpty(dialog.AuthUsername) ? null : dialog.AuthUsername,
+            Password = string.IsNullOrEmpty(dialog.AuthPassword) ? null : dialog.AuthPassword,
+            ApiKeyName = string.IsNullOrEmpty(dialog.AuthApiKeyName) ? null : dialog.AuthApiKeyName,
+            ApiKeyValue = string.IsNullOrEmpty(dialog.AuthApiKeyValue) ? null : dialog.AuthApiKeyValue,
+            ApiKeyIn = dialog.AuthApiKeyIn,
+        };
+        node.UpdateFolderAuth(auth);
     }
 
     [RelayCommand(CanExecute = nameof(HasCollection))]
