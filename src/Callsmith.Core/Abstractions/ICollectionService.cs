@@ -86,10 +86,29 @@ public interface ICollectionService
     Task<CollectionRequest> MoveRequestAsync(string filePath, string destinationFolderPath, CancellationToken ct = default);
 
     /// <summary>
-    /// Persists the display order for items inside a folder by writing a <c>_order.json</c> file.
+    /// Persists the display order for items inside a folder by writing a <c>_meta.json</c> file.
     /// <paramref name="orderedNames"/> should list every item's entry name in the desired display order:
     /// filenames (including <c>.callsmith</c> extension) for requests, and directory names for sub-folders.
-    /// Passing an empty list removes any existing order file, restoring default (alphabetical) ordering.
+    /// Passing an empty list removes any existing meta file, restoring default (alphabetical) ordering.
     /// </summary>
     Task SaveFolderOrderAsync(string folderPath, IReadOnlyList<string> orderedNames, CancellationToken ct = default);
+
+    /// <summary>
+    /// Persists an authentication configuration for the specified folder in the folder's
+    /// <c>_meta.json</c> file. Existing ordering information is preserved.
+    /// Saving <see cref="AuthConfig.AuthTypes.Inherit"/> removes the auth entry from the file.
+    /// </summary>
+    /// <param name="folderPath">Absolute path to the folder.</param>
+    /// <param name="auth">The auth configuration to persist.</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task SaveFolderAuthAsync(string folderPath, AuthConfig auth, CancellationToken ct = default);
+
+    /// <summary>
+    /// Resolves the effective authentication configuration for a request by walking up the folder
+    /// hierarchy from the request's directory. Returns the first non-inherit auth found, or
+    /// <see cref="AuthConfig.AuthTypes.None"/> if the entire hierarchy uses inherit.
+    /// </summary>
+    /// <param name="requestFilePath">Absolute path to the <c>.callsmith</c> request file.</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<AuthConfig> ResolveEffectiveAuthAsync(string requestFilePath, CancellationToken ct = default);
 }

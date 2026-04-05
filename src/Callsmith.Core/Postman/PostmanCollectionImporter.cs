@@ -414,7 +414,7 @@ public sealed class PostmanCollectionImporter : ICollectionImporter
     {
         // "noauth" at request level explicitly disables auth for that request.
         if (string.Equals(requestAuth?.Type, "noauth", StringComparison.OrdinalIgnoreCase))
-            return new AuthConfig();
+            return new AuthConfig { AuthType = AuthTypes.None };
 
         // Use request-level auth if defined, otherwise fall back to collection-level.
         var auth = requestAuth ?? collectionAuth;
@@ -461,7 +461,7 @@ public sealed class PostmanCollectionImporter : ICollectionImporter
             }
 
             default:
-                return new AuthConfig();
+                return new AuthConfig { AuthType = AuthTypes.None };
         }
     }
 

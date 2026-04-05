@@ -746,14 +746,14 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveAndLoad_NoAuth_DefaultsToNone()
+    public async Task SaveAndLoad_NoAuth_DefaultsToInherit()
     {
         var folder = _temp.CreateSubDirectory("col");
         var filePath = WriteRequestFile(folder, "req");
 
         var loaded = await _sut.LoadRequestAsync(filePath);
 
-        loaded.Auth.AuthType.Should().Be(AuthConfig.AuthTypes.None);
+        loaded.Auth.AuthType.Should().Be(AuthConfig.AuthTypes.Inherit);
         loaded.Auth.Token.Should().BeNull();
     }
 

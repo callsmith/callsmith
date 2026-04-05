@@ -1,0 +1,251 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Callsmith.Desktop.ViewModels"
+        x:Class="Callsmith.Desktop.Views.FolderSettingsDialog"
+        x:DataType="vm:FolderSettingsViewModel"
+        Title="Folder Settings"
+        Icon="/Assets/callsmith.ico"
+        Width="480" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="#252526"
+        ShowInTaskbar="False">
+
+  <StackPanel Spacing="16" Margin="24,20">
+
+    <!-- Header -->
+    <TextBlock Text="{Binding FolderName, StringFormat='Settings — {0}'}"
+               Foreground="#d4d4d4"
+               FontSize="14"
+               FontWeight="SemiBold"/>
+
+    <!-- ── Authentication ─────────────────────────────────────────────────── -->
+
+    <TextBlock Text="AUTHENTICATION"
+               Foreground="#666"
+               FontSize="10"
+               FontWeight="SemiBold"
+               LetterSpacing="1"/>
+
+    <!-- Auth type selector -->
+    <Grid ColumnDefinitions="110,10,*">
+      <TextBlock Grid.Column="0"
+                 Text="Auth type"
+                 Foreground="#aaa"
+                 FontSize="12"
+                 VerticalAlignment="Center"/>
+      <ComboBox Grid.Column="2"
+                ItemsSource="{Binding AuthTypes}"
+                SelectedItem="{Binding AuthType, Mode=TwoWay}"
+                HorizontalAlignment="Stretch"
+                Foreground="#d4d4d4"
+                Background="#3c3c3c"
+                BorderBrush="#555"
+                FontSize="12"/>
+    </Grid>
+
+    <!-- Inherit hint -->
+    <TextBlock IsVisible="{Binding IsAuthInherit}"
+               TextWrapping="Wrap"
+               Text="All requests in this folder will inherit auth from the parent folder (recursively). If no ancestor specifies auth, no credentials are sent."
+               Foreground="#888"
+               FontSize="11"
+               Margin="0,-4,0,0"/>
+
+    <!-- Bearer token -->
+    <StackPanel IsVisible="{Binding IsAuthBearer}" Spacing="8">
+      <Grid ColumnDefinitions="110,10,*">
+        <TextBlock Grid.Column="0"
+                   Text="Token"
+                   Foreground="#aaa"
+                   FontSize="12"
+                   VerticalAlignment="Center"/>
+        <TextBox Grid.Column="2"
+                 Text="{Binding AuthToken, Mode=TwoWay}"
+                 Watermark="Enter bearer token…"
+                 Foreground="#d4d4d4"
+                 Background="#3c3c3c"
+                 BorderBrush="#555"
+                 Padding="8,6"
+                 FontFamily="Consolas,Menlo,monospace"
+                 FontSize="12"/>
+      </Grid>
+    </StackPanel>
+
+    <!-- Basic auth -->
+    <StackPanel IsVisible="{Binding IsAuthBasic}" Spacing="8">
+      <Grid ColumnDefinitions="110,10,*">
+        <TextBlock Grid.Column="0"
+                   Text="Username"
+                   Foreground="#aaa"
+                   FontSize="12"
+                   VerticalAlignment="Center"/>
+        <TextBox Grid.Column="2"
+                 Text="{Binding AuthUsername, Mode=TwoWay}"
+                 Watermark="username"
+                 Foreground="#d4d4d4"
+                 Background="#3c3c3c"
+                 BorderBrush="#555"
+                 Padding="8,6"
+                 FontFamily="Consolas,Menlo,monospace"
+                 FontSize="12"/>
+      </Grid>
+      <Grid ColumnDefinitions="110,10,*,8,Auto">
+        <TextBlock Grid.Column="0"
+                   Text="Password"
+                   Foreground="#aaa"
+                   FontSize="12"
+                   VerticalAlignment="Center"/>
+        <TextBox Grid.Column="2"
+                 Text="{Binding AuthPassword, Mode=TwoWay}"
+                 Watermark="password"
+                 PasswordChar="●"
+                 Foreground="#d4d4d4"
+                 Background="#3c3c3c"
+                 BorderBrush="#555"
+                 Padding="8,6"
+                 FontFamily="Consolas,Menlo,monospace"
+                 FontSize="12"
+                 IsVisible="{Binding ShowAuthPassword, Converter={x:Static BoolConverters.Not}}"/>
+        <TextBox Grid.Column="2"
+                 Text="{Binding AuthPassword, Mode=TwoWay}"
+                 Watermark="password"
+                 Foreground="#d4d4d4"
+                 Background="#3c3c3c"
+                 BorderBrush="#555"
+                 Padding="8,6"
+                 FontFamily="Consolas,Menlo,monospace"
+                 FontSize="12"
+                 IsVisible="{Binding ShowAuthPassword}"/>
+        <ToggleButton Grid.Column="4"
+                      IsChecked="{Binding ShowAuthPassword, Mode=TwoWay}"
+                      Background="Transparent"
+                      BorderThickness="0"
+                      Padding="6,4"
+                      Cursor="Hand"
+                      VerticalAlignment="Center"
+                      ToolTip.Tip="Show/hide password">
+          <Grid>
+            <PathIcon Width="16" Height="16" Foreground="#888"
+                      IsVisible="{Binding ShowAuthPassword, Converter={x:Static BoolConverters.Not}}"
+                      Data="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+            <PathIcon Width="16" Height="16" Foreground="#888"
+                      IsVisible="{Binding ShowAuthPassword}"
+                      Data="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
+          </Grid>
+        </ToggleButton>
+      </Grid>
+    </StackPanel>
+
+    <!-- API Key auth -->
+    <StackPanel IsVisible="{Binding IsAuthApiKey}" Spacing="8">
+      <Grid ColumnDefinitions="110,10,*">
+        <TextBlock Grid.Column="0"
+                   Text="Key name"
+                   Foreground="#aaa"
+                   FontSize="12"
+                   VerticalAlignment="Center"/>
+        <TextBox Grid.Column="2"
+                 Text="{Binding AuthApiKeyName, Mode=TwoWay}"
+                 Watermark="X-Api-Key"
+                 Foreground="#d4d4d4"
+                 Background="#3c3c3c"
+                 BorderBrush="#555"
+                 Padding="8,6"
+                 FontFamily="Consolas,Menlo,monospace"
+                 FontSize="12"/>
+      </Grid>
+      <Grid ColumnDefinitions="110,10,*,8,Auto">
+        <TextBlock Grid.Column="0"
+                   Text="Key value"
+                   Foreground="#aaa"
+                   FontSize="12"
+                   VerticalAlignment="Center"/>
+        <TextBox Grid.Column="2"
+                 Text="{Binding AuthApiKeyValue, Mode=TwoWay}"
+                 Watermark="key value…"
+                 PasswordChar="●"
+                 Foreground="#d4d4d4"
+                 Background="#3c3c3c"
+                 BorderBrush="#555"
+                 Padding="8,6"
+                 FontFamily="Consolas,Menlo,monospace"
+                 FontSize="12"
+                 IsVisible="{Binding ShowAuthApiKeyValue, Converter={x:Static BoolConverters.Not}}"/>
+        <TextBox Grid.Column="2"
+                 Text="{Binding AuthApiKeyValue, Mode=TwoWay}"
+                 Watermark="key value…"
+                 Foreground="#d4d4d4"
+                 Background="#3c3c3c"
+                 BorderBrush="#555"
+                 Padding="8,6"
+                 FontFamily="Consolas,Menlo,monospace"
+                 FontSize="12"
+                 IsVisible="{Binding ShowAuthApiKeyValue}"/>
+        <ToggleButton Grid.Column="4"
+                      IsChecked="{Binding ShowAuthApiKeyValue, Mode=TwoWay}"
+                      Background="Transparent"
+                      BorderThickness="0"
+                      Padding="6,4"
+                      Cursor="Hand"
+                      VerticalAlignment="Center"
+                      ToolTip.Tip="Show/hide API key value">
+          <Grid>
+            <PathIcon Width="16" Height="16" Foreground="#888"
+                      IsVisible="{Binding ShowAuthApiKeyValue, Converter={x:Static BoolConverters.Not}}"
+                      Data="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+            <PathIcon Width="16" Height="16" Foreground="#888"
+                      IsVisible="{Binding ShowAuthApiKeyValue}"
+                      Data="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>
+          </Grid>
+        </ToggleButton>
+      </Grid>
+      <Grid ColumnDefinitions="110,10,*">
+        <TextBlock Grid.Column="0"
+                   Text="Add key to"
+                   Foreground="#aaa"
+                   FontSize="12"
+                   VerticalAlignment="Center"/>
+        <ComboBox Grid.Column="2"
+                  ItemsSource="{Binding ApiKeyLocations}"
+                  SelectedItem="{Binding AuthApiKeyIn, Mode=TwoWay}"
+                  HorizontalAlignment="Stretch"
+                  Foreground="#d4d4d4"
+                  Background="#3c3c3c"
+                  BorderBrush="#555"
+                  FontSize="12"/>
+      </Grid>
+    </StackPanel>
+
+    <!-- Error message -->
+    <TextBlock Text="{Binding ErrorMessage}"
+               IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+               Foreground="#f48771"
+               FontSize="11"
+               TextWrapping="Wrap"/>
+
+    <!-- Save / Cancel buttons -->
+    <Grid ColumnDefinitions="*,Auto,10,Auto" Margin="0,4,0,4">
+      <Button Grid.Column="1"
+              Content="Save"
+              Command="{Binding SaveCommand}"
+              Background="#0e639c"
+              Foreground="White"
+              BorderThickness="0"
+              Padding="20,7"
+              FontSize="12"
+              CornerRadius="4"/>
+      <Button Grid.Column="3"
+              Content="Cancel"
+              Command="{Binding CancelCommand}"
+              Background="#3a3a3a"
+              Foreground="#ccc"
+              BorderThickness="0"
+              Padding="14,7"
+              FontSize="12"
+              CornerRadius="4"/>
+    </Grid>
+
+  </StackPanel>
+
+</Window>

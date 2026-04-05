@@ -252,6 +252,11 @@
               <StackPanel Spacing="8">
                 <ComboBox ItemsSource="{Binding AuthTypes}" SelectedItem="{Binding AuthType}"
                           MinWidth="160" Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"/>
+                <!-- Inherit message — shown when auth is inherited from the parent folder -->
+                <TextBlock IsVisible="{Binding IsAuthInherit}"
+                           TextWrapping="Wrap"
+                           Text="Auth will be inherited from the parent folder. Set a scheme on the folder to apply credentials to all requests within it."
+                           Foreground="#888" FontSize="11" Margin="0,4,0,0"/>
                 <StackPanel IsVisible="{Binding IsAuthBearer}" Spacing="6">
                   <TextBlock Text="Token" Foreground="#888" FontSize="11"/>
                   <!-- Plain input when no segments -->

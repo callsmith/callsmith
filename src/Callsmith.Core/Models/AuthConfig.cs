@@ -7,7 +7,7 @@ namespace Callsmith.Core.Models;
 public sealed class AuthConfig
 {
     /// <summary>The authentication strategy to apply when sending this request.</summary>
-    public string AuthType { get; init; } = AuthTypes.None;
+    public string AuthType { get; init; } = AuthTypes.Inherit;
 
     /// <summary>Bearer token. Used when <see cref="AuthType"/> is <see cref="AuthTypes.Bearer"/>.</summary>
     public string? Token { get; init; }
@@ -30,6 +30,14 @@ public sealed class AuthConfig
     /// <summary>Well-known auth type constants.</summary>
     public static class AuthTypes
     {
+        /// <summary>
+        /// Inherit the auth configuration from the parent folder.
+        /// This is the default for both requests and folders.
+        /// If the root folder is also set to inherit, effective auth is <see cref="None"/>.
+        /// </summary>
+        public const string Inherit = "inherit";
+
+        /// <summary>No authentication credentials are sent.</summary>
         public const string None = "none";
         public const string Bearer = "bearer";
         public const string Basic = "basic";

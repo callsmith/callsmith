@@ -19,9 +19,16 @@ public sealed class CollectionFolder
     public IReadOnlyList<CollectionFolder> SubFolders { get; init; } = [];
 
     /// <summary>
-    /// Ordered item entry names from the folder's <c>_order.json</c> file.
+    /// Ordered item entry names from the folder's <c>_meta.json</c> file.
     /// Filenames (with extension) for requests; directory names for sub-folders.
     /// Empty = use default ordering (sub-folders first, then requests, both alphabetical).
     /// </summary>
     public IReadOnlyList<string> ItemOrder { get; init; } = [];
+
+    /// <summary>
+    /// Authentication configuration for this folder.
+    /// When <see cref="AuthConfig.AuthTypes.Inherit"/> (the default), requests inside
+    /// this folder fall back to the parent folder's auth, recursively up to the root.
+    /// </summary>
+    public AuthConfig Auth { get; init; } = new();
 }

@@ -288,7 +288,7 @@ public sealed class FileSystemEnvironmentServiceTests : IDisposable
     // ─── SaveEnvironmentOrderAsync / ListEnvironmentsAsync (ordered) ─────────
 
     [Fact]
-    public async Task SaveEnvironmentOrderAsync_WritesOrderFileInEnvFolder()
+    public async Task SaveEnvironmentOrderAsync_WritesMetaFileInEnvFolder()
     {
         var collection = _temp.CreateSubDirectory("col");
         await _sut.CreateEnvironmentAsync(collection, "Prod");
@@ -296,14 +296,14 @@ public sealed class FileSystemEnvironmentServiceTests : IDisposable
 
         await _sut.SaveEnvironmentOrderAsync(collection, ["Prod.env.callsmith", "Dev.env.callsmith"]);
 
-        var orderFile = Path.Combine(collection,
+        var metaFile = Path.Combine(collection,
             FileSystemCollectionService.EnvironmentFolderName,
-            FileSystemEnvironmentService.OrderFileName);
-        File.Exists(orderFile).Should().BeTrue();
+            FileSystemEnvironmentService.MetaFileName);
+        File.Exists(metaFile).Should().BeTrue();
     }
 
     [Fact]
-    public async Task SaveEnvironmentOrderAsync_EmptyList_DeletesOrderFile()
+    public async Task SaveEnvironmentOrderAsync_EmptyList_DeletesMetaFile()
     {
         var collection = _temp.CreateSubDirectory("col");
         await _sut.CreateEnvironmentAsync(collection, "Dev");
@@ -311,14 +311,14 @@ public sealed class FileSystemEnvironmentServiceTests : IDisposable
 
         await _sut.SaveEnvironmentOrderAsync(collection, []);
 
-        var orderFile = Path.Combine(collection,
+        var metaFile = Path.Combine(collection,
             FileSystemCollectionService.EnvironmentFolderName,
-            FileSystemEnvironmentService.OrderFileName);
-        File.Exists(orderFile).Should().BeFalse();
+            FileSystemEnvironmentService.MetaFileName);
+        File.Exists(metaFile).Should().BeFalse();
     }
 
     [Fact]
-    public async Task ListEnvironmentsAsync_RespectsOrderFile()
+    public async Task ListEnvironmentsAsync_RespectsMetaFile()
     {
         var collection = _temp.CreateSubDirectory("col");
         await _sut.CreateEnvironmentAsync(collection, "Alpha");

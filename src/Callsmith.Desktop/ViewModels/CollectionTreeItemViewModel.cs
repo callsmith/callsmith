@@ -34,6 +34,9 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
     /// <summary>Absolute path for folder nodes; null for request nodes.</summary>
     public string? FolderPath { get; private set; }
 
+    /// <summary>Auth configuration for folder nodes, loaded from the folder's <c>_meta.json</c>. Null for request nodes.</summary>
+    public AuthConfig? FolderAuth { get; private set; }
+
     /// <summary>Parent node. Null for the root node.</summary>
     public CollectionTreeItemViewModel? Parent { get; }
 
@@ -72,6 +75,7 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
         bool isFolder,
         CollectionRequest? request,
         string? folderPath,
+        AuthConfig? folderAuth,
         CollectionTreeItemViewModel? parent,
         bool isRoot,
         IEnumerable<CollectionTreeItemViewModel> children)
@@ -80,6 +84,7 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
         IsFolder = isFolder;
         Request = request;
         FolderPath = folderPath;
+        FolderAuth = folderAuth;
         Parent = parent;
         IsRoot = isRoot;
         Children = new ObservableCollection<CollectionTreeItemViewModel>(children);
@@ -117,6 +122,12 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
         OnPropertyChanged(nameof(Name));
     }
 
+    /// <summary>Updates the in-memory folder auth snapshot after settings are saved.</summary>
+    internal void UpdateFolderAuth(AuthConfig auth)
+    {
+        FolderAuth = auth;
+    }
+
     // -------------------------------------------------------------------------
     // Factory methods
     // -------------------------------------------------------------------------
@@ -132,13 +143,14 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
             isFolder: true,
             request: null,
             folderPath: folder.FolderPath,
+            folderAuth: folder.Auth,
             parent: parent,
             isRoot: isRoot,
             children: Enumerable.Empty<CollectionTreeItemViewModel>());
 
         if (folder.ItemOrder.Count > 0)
         {
-            // Respect the explicit order from _order.json, enabling mixed folder/request ordering.
+            // Respect the explicit order from _meta.json, enabling mixed folder/request ordering.
             var requestsByFilename = folder.Requests
                 .ToDictionary(r => Path.GetFileName(r.FilePath), StringComparer.OrdinalIgnoreCase);
             var foldersByName = folder.SubFolders
@@ -179,6 +191,7 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
             isFolder: false,
             request: request,
             folderPath: null,
+            folderAuth: null,
             parent: parent,
             isRoot: false,
             children: Enumerable.Empty<CollectionTreeItemViewModel>());

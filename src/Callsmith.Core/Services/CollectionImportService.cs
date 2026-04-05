@@ -506,13 +506,15 @@ public sealed class CollectionImportService : ICollectionImportService
         {
             var envFolder = Path.Combine(
                 collectionRootPath, FileSystemCollectionService.EnvironmentFolderName);
-            var orderFile = Path.Combine(envFolder, FileSystemEnvironmentService.OrderFileName);
+            var metaFile = Path.Combine(envFolder, FileSystemEnvironmentService.MetaFileName);
 
             List<string> existingOrder = [];
-            if (File.Exists(orderFile))
+            if (File.Exists(metaFile))
             {
-                var json = await File.ReadAllTextAsync(orderFile, ct).ConfigureAwait(false);
-                existingOrder = System.Text.Json.JsonSerializer.Deserialize<List<string>>(json) ?? [];
+                var json = await File.ReadAllTextAsync(metaFile, ct).ConfigureAwait(false);
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("order", out var orderEl))
+                    existingOrder = System.Text.Json.JsonSerializer.Deserialize<List<string>>(orderEl.GetRawText()) ?? [];
             }
 
             await _environmentService.SaveEnvironmentOrderAsync(

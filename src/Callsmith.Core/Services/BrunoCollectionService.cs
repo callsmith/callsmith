@@ -365,6 +365,14 @@ public sealed class BrunoCollectionService : ICollectionService
         }
     }
 
+    // Folder-level auth is a Callsmith-native feature; Bruno has its own auth scheme.
+    public Task SaveFolderAuthAsync(string folderPath, AuthConfig auth, CancellationToken ct = default) =>
+        Task.CompletedTask;
+
+    // Bruno collections don't use the Callsmith inherit hierarchy; return None.
+    public Task<AuthConfig> ResolveEffectiveAuthAsync(string requestFilePath, CancellationToken ct = default) =>
+        Task.FromResult(new AuthConfig { AuthType = AuthConfig.AuthTypes.None });
+
     // ─────────────────────────────────────────────────────────────────────────
     //  Private — folder traversal
     // ─────────────────────────────────────────────────────────────────────────
