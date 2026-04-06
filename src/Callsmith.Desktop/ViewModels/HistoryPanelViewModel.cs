@@ -140,6 +140,17 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(OpenRequestTooltip))]
     private bool _canOpenRequest;
 
+    /// <summary>Whether the currently selected history entry has a file body available for download.</summary>
+    [ObservableProperty]
+    private bool _detailHasFileBody;
+
+    /// <summary>Display name of the file body for the currently selected history entry.</summary>
+    [ObservableProperty]
+    private string _detailFileBodyName = string.Empty;
+
+    /// <summary>Raw bytes of the currently displayed file body. Null when no file body is present.</summary>
+    private byte[]? _detailFileBodyBytes;
+
     /// <summary>
     /// Tooltip text shown on the "Open Request" button when it is disabled.
     /// Returns <see langword="null"/> when the button is enabled (no tooltip needed).
@@ -291,6 +302,9 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             DetailSentAtDisplay = string.Empty;
             DetailSentAtToolTip = string.Empty;
             DetailHasResponseBody = false;
+            DetailHasFileBody = false;
+            DetailFileBodyName = string.Empty;
+            _detailFileBodyBytes = null;
         }
     }
 
@@ -621,6 +635,22 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private void CancelRemoveEntryDelete()
     {
         PendingDeleteEntry = null;
+    }
+
+    /// <summary>
+    /// Callback injected by the view to show a platform save-file dialog.
+    /// Receives the file bytes, the suggested file name, and a cancellation token.
+    /// </summary>
+    public Func<byte[], string, CancellationToken, Task>? SaveFileFunc { get; set; }
+
+    [RelayCommand]
+    private async Task DownloadFileBodyAsync(CancellationToken ct)
+    {
+        if (SaveFileFunc is null || _detailFileBodyBytes is null) return;
+        var suggestedName = string.IsNullOrWhiteSpace(DetailFileBodyName)
+            ? "file"
+            : DetailFileBodyName;
+        await SaveFileFunc(_detailFileBodyBytes, suggestedName, ct);
     }
 
     // -------------------------------------------------------------------------
@@ -991,7 +1021,10 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         string Response,
         bool HasResponseBody,
         string ResponseHeaders,
-        IReadOnlyList<ResponseHeaderRowViewModel> ResponseHeaderRows);
+        IReadOnlyList<ResponseHeaderRowViewModel> ResponseHeaderRows,
+        bool HasFileBody,
+        string FileBodyName,
+        byte[]? FileBodyBytes);
 
     /// <summary>
     /// Applies a precomputed <see cref="DetailValues"/> to the observable properties.
@@ -1011,6 +1044,9 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         DetailHasResponseBody = values.HasResponseBody;
         DetailResponseHeaders = values.ResponseHeaders;
         DetailResponseHeaderRows = values.ResponseHeaderRows;
+        DetailHasFileBody = values.HasFileBody;
+        DetailFileBodyName = values.FileBodyName;
+        _detailFileBodyBytes = values.FileBodyBytes;
     }
 
     /// <summary>
@@ -1210,7 +1246,12 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             Response: responseBody,
             HasResponseBody: hasResponseBody,
             ResponseHeaders: responseHeaders,
-            ResponseHeaderRows: responseHeaderRows);
+            ResponseHeaderRows: responseHeaderRows,
+            HasFileBody: cfg.BodyType == CollectionRequest.BodyTypes.File && cfg.FileBodyBase64 is not null,
+            FileBodyName: cfg.FileBodyName ?? string.Empty,
+            FileBodyBytes: cfg.BodyType == CollectionRequest.BodyTypes.File && cfg.FileBodyBase64 is not null
+                ? Convert.FromBase64String(cfg.FileBodyBase64)
+                : null);
     }
 
     private static string? TryGetContentType(IReadOnlyDictionary<string, string> headers)

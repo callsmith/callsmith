@@ -488,6 +488,17 @@
                       </Button.Styles>
                     </Button>
                   </Panel>
+                  <Button Content="Download File"
+                          Command="{Binding DownloadFileBodyCommand}"
+                          IsVisible="{Binding DetailHasFileBody}"
+                          ToolTip.Tip="Save the uploaded file to disk"
+                          FontSize="11"
+                          Background="Transparent"
+                          Foreground="#4ec9b0"
+                          BorderThickness="1"
+                          BorderBrush="#555"
+                          Padding="8,3"
+                          VerticalAlignment="Center"/>
                 </StackPanel>
                 <Border Background="#252526"
                         CornerRadius="4"

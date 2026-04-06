@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Callsmith.Desktop.ViewModels;
@@ -42,6 +43,18 @@ public partial class HistoryPanelView : UserControl
         {
             _trackedVm.PropertyChanged += OnViewModelPropertyChanged;
             ApplyDetailLayout(_trackedVm.IsHorizontalDetailLayout);
+
+            // Inject the platform save-file callback — the ViewModel has no Avalonia reference.
+            _trackedVm.SaveFileFunc = async (bytes, suggestedName, ct) =>
+            {
+                var topLevel = TopLevel.GetTopLevel(this);
+                if (topLevel is null) return;
+                var file = await topLevel.StorageProvider.SaveFilePickerAsync(
+                    new FilePickerSaveOptions { SuggestedFileName = suggestedName });
+                if (file is null) return;
+                await using var stream = await file.OpenWriteAsync();
+                await stream.WriteAsync(bytes, ct);
+            };
         }
     }
 
