@@ -76,4 +76,124 @@ public sealed class HistorySentViewBuilderTests
         model.Headers.Should().Contain(kv => kv.Key == "X-Api-Key" && kv.Value == "key-xyz");
         model.Body.Should().Be("{\"name\":\"Robert\"}");
     }
+
+    [Fact]
+    public void Build_WithYamlBody_ReturnsYamlBodyAndContentType()
+    {
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "POST",
+            Url = "https://example.com",
+            BodyType = CollectionRequest.BodyTypes.Yaml,
+            Body = "key: value",
+        };
+
+        var model = HistorySentViewBuilder.Build(snapshot, []);
+
+        model.Body.Should().Be("key: value");
+        model.ContentType.Should().Be(CollectionRequest.BodyTypes.YamlContentType);
+    }
+
+    [Fact]
+    public void Build_WithOtherBody_ReturnsBodyAndNullContentType()
+    {
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "POST",
+            Url = "https://example.com",
+            BodyType = CollectionRequest.BodyTypes.Other,
+            Body = "custom payload",
+        };
+
+        var model = HistorySentViewBuilder.Build(snapshot, []);
+
+        model.Body.Should().Be("custom payload");
+        model.ContentType.Should().BeNull();
+    }
+
+    [Fact]
+    public void Build_WithMultipartBody_ReturnsMultipartFormParamsAndContentType()
+    {
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "POST",
+            Url = "https://example.com",
+            BodyType = CollectionRequest.BodyTypes.Multipart,
+            FormParams =
+            [
+                new KeyValuePair<string, string>("field1", "value1"),
+                new KeyValuePair<string, string>("field2", "value2"),
+            ],
+        };
+
+        var model = HistorySentViewBuilder.Build(snapshot, []);
+
+        model.MultipartFormParams.Should().NotBeNull();
+        model.MultipartFormParams.Should().HaveCount(2);
+        model.MultipartFormParams!.Should().Contain(kv => kv.Key == "field1" && kv.Value == "value1");
+        model.MultipartFormParams!.Should().Contain(kv => kv.Key == "field2" && kv.Value == "value2");
+        model.ContentType.Should().Be("multipart/form-data");
+        model.Body.Should().BeNull();
+    }
+
+    [Fact]
+    public void Build_WithFileBody_ReturnsBodyBytesAndContentType()
+    {
+        var bytes = new byte[] { 0x01, 0x02, 0x03 };
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "POST",
+            Url = "https://example.com",
+            BodyType = CollectionRequest.BodyTypes.File,
+            FileBodyBase64 = Convert.ToBase64String(bytes),
+            FileBodyName = "test.bin",
+        };
+
+        var model = HistorySentViewBuilder.Build(snapshot, []);
+
+        model.BodyBytes.Should().Equal(bytes);
+        model.ContentType.Should().Be(CollectionRequest.BodyTypes.FileContentType);
+        model.Body.Should().BeNull();
+    }
+
+    [Fact]
+    public void Build_WithFileBodyButNoBase64_ReturnsNullBodyBytes()
+    {
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "POST",
+            Url = "https://example.com",
+            BodyType = CollectionRequest.BodyTypes.File,
+            FileBodyBase64 = null,
+        };
+
+        var model = HistorySentViewBuilder.Build(snapshot, []);
+
+        model.BodyBytes.Should().BeNull();
+        model.Body.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(CollectionRequest.BodyTypes.None, null)]
+    [InlineData(CollectionRequest.BodyTypes.Json, CollectionRequest.BodyTypes.JsonContentType)]
+    [InlineData(CollectionRequest.BodyTypes.Text, CollectionRequest.BodyTypes.TextContentType)]
+    [InlineData(CollectionRequest.BodyTypes.Xml, CollectionRequest.BodyTypes.XmlContentType)]
+    [InlineData(CollectionRequest.BodyTypes.Yaml, CollectionRequest.BodyTypes.YamlContentType)]
+    [InlineData(CollectionRequest.BodyTypes.Other, null)]
+    [InlineData(CollectionRequest.BodyTypes.Form, "application/x-www-form-urlencoded")]
+    [InlineData(CollectionRequest.BodyTypes.Multipart, "multipart/form-data")]
+    [InlineData(CollectionRequest.BodyTypes.File, CollectionRequest.BodyTypes.FileContentType)]
+    public void Build_ContentTypeMatchesBodyType(string bodyType, string? expectedContentType)
+    {
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "POST",
+            Url = "https://example.com",
+            BodyType = bodyType,
+        };
+
+        var model = HistorySentViewBuilder.Build(snapshot, []);
+
+        model.ContentType.Should().Be(expectedContentType);
+    }
 }

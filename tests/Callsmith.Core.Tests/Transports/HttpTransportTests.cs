@@ -209,6 +209,87 @@ public sealed class HttpTransportTests
         handler.LastRequest!.Content!.Headers.ContentType?.MediaType.Should().Be("application/json");
     }
 
+    [Fact]
+    public async Task SendAsync_WithBodyBytes_SendsBinaryBody()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK);
+        var transport = CreateTransport(handler);
+        var bytes = new byte[] { 0x01, 0x02, 0x03, 0xFF };
+        var request = new RequestModel
+        {
+            Method = HttpMethod.Post,
+            Url = "https://example.com",
+            BodyBytes = bytes,
+            ContentType = CollectionRequest.BodyTypes.FileContentType,
+        };
+
+        await transport.SendAsync(request);
+
+        handler.LastRequest!.Content.Should().BeOfType<ByteArrayContent>();
+        handler.LastRequest!.Content!.Headers.ContentType?.MediaType.Should().Be("application/octet-stream");
+    }
+
+    [Fact]
+    public async Task SendAsync_WithBodyBytes_BodyBytesTakePrecedenceOverBody()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK);
+        var transport = CreateTransport(handler);
+        var bytes = new byte[] { 0xAA, 0xBB };
+        var request = new RequestModel
+        {
+            Method = HttpMethod.Post,
+            Url = "https://example.com",
+            Body = "text-body",
+            BodyBytes = bytes,
+            ContentType = CollectionRequest.BodyTypes.FileContentType,
+        };
+
+        await transport.SendAsync(request);
+
+        handler.LastRequest!.Content.Should().BeOfType<ByteArrayContent>();
+    }
+
+    [Fact]
+    public async Task SendAsync_WithMultipartFormParams_SendsMultipartBody()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK);
+        var transport = CreateTransport(handler);
+        var request = new RequestModel
+        {
+            Method = HttpMethod.Post,
+            Url = "https://example.com",
+            MultipartFormParams =
+            [
+                new KeyValuePair<string, string>("field1", "value1"),
+                new KeyValuePair<string, string>("field2", "value2"),
+            ],
+        };
+
+        await transport.SendAsync(request);
+
+        handler.LastRequest!.Content.Should().BeOfType<MultipartFormDataContent>();
+        handler.LastRequest!.Content!.Headers.ContentType?.MediaType.Should().Be("multipart/form-data");
+    }
+
+    [Fact]
+    public async Task SendAsync_WithMultipartFormParams_ContentTypeIncludesBoundary()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK);
+        var transport = CreateTransport(handler);
+        var request = new RequestModel
+        {
+            Method = HttpMethod.Post,
+            Url = "https://example.com",
+            MultipartFormParams = [new KeyValuePair<string, string>("key", "val")],
+        };
+
+        await transport.SendAsync(request);
+
+        // The boundary parameter must be present in the Content-Type.
+        handler.LastRequest!.Content!.Headers.ContentType!.Parameters
+            .Should().Contain(p => p.Name == "boundary");
+    }
+
     // ---------------------------------------------------------------------------
     // SendAsync — cancellation
     // ---------------------------------------------------------------------------
