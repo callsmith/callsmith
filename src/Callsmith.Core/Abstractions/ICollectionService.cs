@@ -86,6 +86,16 @@ public interface ICollectionService
     Task<CollectionRequest> MoveRequestAsync(string filePath, string destinationFolderPath, CancellationToken ct = default);
 
     /// <summary>
+    /// Moves a folder (and all of its contents) into a new parent folder on disk.
+    /// Returns an updated (empty) <see cref="CollectionFolder"/> with the new path and name.
+    /// Callers should reload the folder's contents separately.
+    /// </summary>
+    /// <param name="folderPath">Absolute path of the folder to move.</param>
+    /// <param name="destinationParentPath">Absolute path of the new parent folder.</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<CollectionFolder> MoveFolderAsync(string folderPath, string destinationParentPath, CancellationToken ct = default);
+
+    /// <summary>
     /// Persists the display order for items inside a folder by writing a <c>_meta.json</c> file.
     /// <paramref name="orderedNames"/> should list every item's entry name in the desired display order:
     /// filenames (including <c>.callsmith</c> extension) for requests, and directory names for sub-folders.

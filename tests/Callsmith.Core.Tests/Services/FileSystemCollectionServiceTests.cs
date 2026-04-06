@@ -535,8 +535,64 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
     }
 
     // -------------------------------------------------------------------------
+    // MoveFolderAsync
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task MoveFolderAsync_MovesDirectoryToNewParent()
+    {
+        var parent = _temp.CreateSubDirectory("col");
+        var source = _temp.CreateSubDirectory(Path.Combine("col", "auth"));
+        var destination = _temp.CreateSubDirectory(Path.Combine("col", "api"));
+        WriteRequestFile(source, "login");
+
+        var result = await _sut.MoveFolderAsync(source, destination);
+
+        result.Name.Should().Be("auth");
+        result.FolderPath.Should().Be(Path.Combine(destination, "auth"));
+        Directory.Exists(source).Should().BeFalse();
+        Directory.Exists(result.FolderPath).Should().BeTrue();
+        File.Exists(Path.Combine(result.FolderPath, "login.callsmith")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task MoveFolderAsync_WhenFolderDoesNotExist_ThrowsDirectoryNotFoundException()
+    {
+        var destination = _temp.CreateSubDirectory("dest");
+        var source = Path.Combine(_temp.Path, "nonexistent");
+
+        var act = () => _sut.MoveFolderAsync(source, destination);
+
+        await act.Should().ThrowAsync<DirectoryNotFoundException>();
+    }
+
+    [Fact]
+    public async Task MoveFolderAsync_WhenDestinationDoesNotExist_ThrowsDirectoryNotFoundException()
+    {
+        var source = _temp.CreateSubDirectory("auth");
+        var destination = Path.Combine(_temp.Path, "nonexistent");
+
+        var act = () => _sut.MoveFolderAsync(source, destination);
+
+        await act.Should().ThrowAsync<DirectoryNotFoundException>();
+    }
+
+    [Fact]
+    public async Task MoveFolderAsync_WhenFolderNameAlreadyExistsInDestination_ThrowsInvalidOperationException()
+    {
+        var source = _temp.CreateSubDirectory("auth");
+        var destination = _temp.CreateSubDirectory("api");
+        _temp.CreateSubDirectory(Path.Combine("api", "auth")); // conflict
+
+        var act = () => _sut.MoveFolderAsync(source, destination);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    // -------------------------------------------------------------------------
     // SaveRequestAsync / LoadRequestAsync — new fields (QueryParams, Auth)
     // -------------------------------------------------------------------------
+
 
     [Fact]
     public async Task SaveAndLoad_WithQueryParams_RoundTrips()

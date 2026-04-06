@@ -317,6 +317,39 @@ public partial class CollectionsView : UserControl
             _dropInsertIndex = -1;
         }
 
+        if (_draggedNode.IsFolder)
+        {
+            // Prevent dropping a folder into one of its own descendants (circular hierarchy).
+            if (IsDescendantOf(targetNode, _draggedNode)) return;
+
+            // Allow dropping a folder into a different parent folder.
+            CollectionTreeItemViewModel? destFolder = null;
+            TreeViewItem? destFolderTvi = null;
+
+            if ((targetNode.IsFolder || targetNode.IsRoot) && targetNode != _draggedNode.Parent)
+            {
+                destFolder = targetNode;
+                destFolderTvi = targetTvi;
+            }
+            else if (!targetNode.IsFolder && targetNode.Parent is not null && targetNode.Parent != _draggedNode.Parent)
+            {
+                destFolder = targetNode.Parent;
+                destFolderTvi = targetTvi.Parent as TreeViewItem;
+            }
+
+            if (destFolder is not null)
+            {
+                _dropTargetFolder = destFolder;
+                _dropInsertIndex = -1;
+                if (destFolderTvi is not null && FindItemBorder(destFolderTvi) is Border destBorder)
+                {
+                    destBorder.Classes.Add("drop-target");
+                    _previousDropTargetBorder = destBorder;
+                }
+                return;
+            }
+        }
+
         if (targetNode.Parent != _draggedNode.Parent) return; // restrict to siblings
         if (targetNode.IsRoot) return;
 
@@ -343,6 +376,10 @@ public partial class CollectionsView : UserControl
             if (!_draggedNode.IsFolder && _draggedNode.Parent != _dropTargetFolder)
             {
                 await vm.MoveRequestToFolderAsync(_draggedNode, _dropTargetFolder, _dropInsertIndex);
+            }
+            else if (_draggedNode.IsFolder && _draggedNode.Parent != _dropTargetFolder)
+            {
+                await vm.MoveFolderToFolderAsync(_draggedNode, _dropTargetFolder, _dropInsertIndex);
             }
             else if (_draggedNode.Parent == _dropTargetFolder)
             {
@@ -391,6 +428,23 @@ public partial class CollectionsView : UserControl
             _previousDropIndicator.IsVisible = false;
             _previousDropIndicator = null;
         }
+    }
+
+    /// <summary>
+    /// Returns true if <paramref name="node"/> is a descendant of <paramref name="potentialAncestor"/>
+    /// in the tree hierarchy. Used to prevent dropping a folder into its own subtree.
+    /// </summary>
+    private static bool IsDescendantOf(
+        CollectionTreeItemViewModel node,
+        CollectionTreeItemViewModel potentialAncestor)
+    {
+        var current = node.Parent;
+        while (current is not null)
+        {
+            if (current == potentialAncestor) return true;
+            current = current.Parent;
+        }
+        return false;
     }
 
     private Border? FindItemBorder(Visual? source)
