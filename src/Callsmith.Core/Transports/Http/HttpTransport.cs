@@ -128,7 +128,22 @@ public sealed class HttpTransport : ITransport, IDisposable
                 message.Content?.Headers.TryAddWithoutValidation(key, value);
         }
 
-        if (request.Body is not null)
+        if (request.BodyBytes is not null)
+        {
+            message.Content = new ByteArrayContent(request.BodyBytes);
+
+            if (request.ContentType is not null)
+                message.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(request.ContentType);
+        }
+        else if (request.MultipartFormParams is { Count: > 0 })
+        {
+            var multipart = new MultipartFormDataContent();
+            foreach (var (key, value) in request.MultipartFormParams)
+                multipart.Add(new StringContent(value), key);
+            message.Content = multipart;
+            // Content-Type (including the required boundary parameter) is set automatically.
+        }
+        else if (request.Body is not null)
         {
             message.Content = new StringContent(request.Body);
 

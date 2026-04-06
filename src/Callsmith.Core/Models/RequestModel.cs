@@ -22,6 +22,17 @@ public sealed class RequestModel
     public string? Body { get; init; }
 
     /// <summary>
+    /// Binary request body for file uploads. When non-null, takes precedence over <see cref="Body"/>.
+    /// </summary>
+    public byte[]? BodyBytes { get; init; }
+
+    /// <summary>
+    /// Form fields for multipart/form-data bodies.
+    /// When non-null and non-empty, the transport builds proper <see cref="System.Net.Http.MultipartFormDataContent"/>.
+    /// </summary>
+    public IReadOnlyList<KeyValuePair<string, string>>? MultipartFormParams { get; init; }
+
+    /// <summary>
     /// Content-Type of the body (e.g. "application/json"). Null when <see cref="Body"/> is null.
     /// </summary>
     public string? ContentType { get; init; }

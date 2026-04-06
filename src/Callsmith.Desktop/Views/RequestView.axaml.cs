@@ -1,8 +1,10 @@
 using System.ComponentModel;
+using System.IO;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.Platform.Storage;
 using Callsmith.Desktop.ViewModels;
 
 namespace Callsmith.Desktop.Views;
@@ -30,6 +32,22 @@ public partial class RequestView : UserControl
         {
             _trackedVm.PropertyChanged += OnViewModelPropertyChanged;
             ApplyLayout(_trackedVm.IsHorizontalLayout);
+
+            // Inject the platform file picker callback — the ViewModel has no Avalonia reference.
+            _trackedVm.OpenFilePickerFunc = async () =>
+            {
+                var topLevel = TopLevel.GetTopLevel(this);
+                if (topLevel is null) return null;
+                var files = await topLevel.StorageProvider.OpenFilePickerAsync(
+                    new FilePickerOpenOptions { AllowMultiple = false });
+                if (files.Count == 0) return null;
+                await using var stream = await files[0].OpenReadAsync();
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms);
+                var localPath = files[0].TryGetLocalPath();
+                var displayPath = localPath ?? files[0].Name;
+                return (ms.ToArray(), files[0].Name, displayPath);
+            };
         }
     }
 

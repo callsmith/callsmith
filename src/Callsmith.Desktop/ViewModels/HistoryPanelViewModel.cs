@@ -1075,7 +1075,8 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             sb.AppendLine("Body:");
             sb.Append(cfg.Body);
         }
-        if (cfg.BodyType == CollectionRequest.BodyTypes.Form && cfg.FormParams.Count > 0)
+        if ((cfg.BodyType == CollectionRequest.BodyTypes.Form ||
+             cfg.BodyType == CollectionRequest.BodyTypes.Multipart) && cfg.FormParams.Count > 0)
         {
             sb.AppendLine();
             sb.AppendLine("Body:");
@@ -1087,6 +1088,14 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                 else
                     sb.Append($"{p.Key}={p.Value}");
             }
+        }
+        if (cfg.BodyType == CollectionRequest.BodyTypes.File)
+        {
+            sb.AppendLine();
+            if (!string.IsNullOrEmpty(cfg.FileBodyName))
+                sb.Append($"File: {cfg.FileBodyName}");
+            else
+                sb.Append("File: (binary data)");
         }
 
         var configured = TrimTrailingBlankLines(sb.ToString());
@@ -1114,7 +1123,8 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                     rb.AppendLine($"  {kv.Key}: {displayValue}");
                 }
             }
-            if (cfg.BodyType == CollectionRequest.BodyTypes.Form && cfg.FormParams.Count > 0)
+            if ((cfg.BodyType == CollectionRequest.BodyTypes.Form ||
+                 cfg.BodyType == CollectionRequest.BodyTypes.Multipart) && cfg.FormParams.Count > 0)
             {
                 var vars = HistorySentViewBuilder.BuildVariableMap(bindings);
                 // Re-use BuildVariableMap on the secret-only subset so token normalisation
@@ -1136,6 +1146,14 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                     else
                         rb.Append($"{displayKey}={displayValue}");
                 }
+            }
+            else if (cfg.BodyType == CollectionRequest.BodyTypes.File)
+            {
+                rb.AppendLine();
+                if (!string.IsNullOrEmpty(cfg.FileBodyName))
+                    rb.Append($"File: {cfg.FileBodyName}");
+                else
+                    rb.Append("File: (binary data)");
             }
             else if (!string.IsNullOrEmpty(resolvedRequest.Body))
             {
