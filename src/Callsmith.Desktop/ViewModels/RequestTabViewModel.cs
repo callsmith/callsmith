@@ -137,7 +137,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private string _selectedFilePath = string.Empty;
 
     /// <summary>Callback injected by the view code-behind to open the platform file picker.</summary>
-    public Func<Task<(byte[] Bytes, string Name, string Path)?>>? OpenFilePickerFunc { get; set; }
+    public Func<CancellationToken, Task<(byte[] Bytes, string Name, string Path)?>>? OpenFilePickerFunc { get; set; }
 
     /// <summary>Raw bytes of the currently loaded file body. Null when no file has been selected.</summary>
     private byte[]? _fileBodyBytes;
@@ -519,7 +519,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     public bool ShowBodyEditor => SelectedBodyType != CollectionRequest.BodyTypes.None;
     public bool ShowTextBodyEditor => SelectedBodyType is
-        CollectionRequest.BodyTypes.Json or CollectionRequest.BodyTypes.Xml  or
+        CollectionRequest.BodyTypes.Json or CollectionRequest.BodyTypes.Xml or
         CollectionRequest.BodyTypes.Yaml or CollectionRequest.BodyTypes.Text or
         CollectionRequest.BodyTypes.Other;
     public bool ShowFormBodyEditor => SelectedBodyType is
@@ -1179,10 +1179,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
     /// Does nothing when <see cref="OpenFilePickerFunc"/> has not been set by the view.
     /// </summary>
     [RelayCommand]
-    private async Task SelectFileAsync()
+    private async Task SelectFileAsync(CancellationToken ct)
     {
         if (OpenFilePickerFunc is null) return;
-        var result = await OpenFilePickerFunc().ConfigureAwait(true);
+        var result = await OpenFilePickerFunc(ct);
         if (result is null) return;
         _fileBodyBytes = result.Value.Bytes;
         _fileBodyName = result.Value.Name;
@@ -1332,7 +1332,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             requestUrl = VariableSubstitutionService.SubstituteCollecting(requestUrl, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? requestUrl;
 
             var resolvedBody = SelectedBodyType is
-                CollectionRequest.BodyTypes.Json or CollectionRequest.BodyTypes.Xml  or
+                CollectionRequest.BodyTypes.Json or CollectionRequest.BodyTypes.Xml or
                 CollectionRequest.BodyTypes.Yaml or CollectionRequest.BodyTypes.Text or
                 CollectionRequest.BodyTypes.Other
                 && !string.IsNullOrEmpty(Body)

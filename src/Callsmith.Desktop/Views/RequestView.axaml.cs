@@ -34,7 +34,7 @@ public partial class RequestView : UserControl
             ApplyLayout(_trackedVm.IsHorizontalLayout);
 
             // Inject the platform file picker callback — the ViewModel has no Avalonia reference.
-            _trackedVm.OpenFilePickerFunc = async () =>
+            _trackedVm.OpenFilePickerFunc = async (ct) =>
             {
                 var topLevel = TopLevel.GetTopLevel(this);
                 if (topLevel is null) return null;
@@ -43,7 +43,7 @@ public partial class RequestView : UserControl
                 if (files.Count == 0) return null;
                 await using var stream = await files[0].OpenReadAsync();
                 using var ms = new MemoryStream();
-                await stream.CopyToAsync(ms);
+                await stream.CopyToAsync(ms, ct);
                 var localPath = files[0].TryGetLocalPath();
                 var displayPath = localPath ?? files[0].Name;
                 return (ms.ToArray(), files[0].Name, displayPath);
