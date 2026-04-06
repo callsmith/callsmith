@@ -1265,6 +1265,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     {
         var ct = contentType ?? string.Empty;
         if (ct.Contains("json", StringComparison.OrdinalIgnoreCase)) return "json";
+        if (ct.Contains("yaml", StringComparison.OrdinalIgnoreCase)) return "yaml";
         if (ct.Contains("xml", StringComparison.OrdinalIgnoreCase) ||
             ct.Contains("xhtml", StringComparison.OrdinalIgnoreCase)) return "xml";
         if (ct.Contains("html", StringComparison.OrdinalIgnoreCase)) return "html";

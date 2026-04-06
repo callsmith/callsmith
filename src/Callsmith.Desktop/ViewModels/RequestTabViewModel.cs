@@ -124,6 +124,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowFormBodyEditor))]
     [NotifyPropertyChangedFor(nameof(ShowFileBodyEditor))]
     [NotifyPropertyChangedFor(nameof(IsBodyJson))]
+    [NotifyPropertyChangedFor(nameof(CanFormatBody))]
     [NotifyPropertyChangedFor(nameof(BodyLanguage))]
     [NotifyPropertyChangedFor(nameof(SelectedBodyTypeOption))]
     private string _selectedBodyType = CollectionRequest.BodyTypes.None;
@@ -528,6 +529,12 @@ public sealed partial class RequestTabViewModel : ObservableObject
     public bool HasFileBodySelected => _fileBodyBytes is not null;
     public bool IsBodyJson => SelectedBodyType == CollectionRequest.BodyTypes.Json;
 
+    /// <summary>True when the request body type supports the Format action (JSON, XML, YAML).</summary>
+    public bool CanFormatBody => SelectedBodyType is
+        CollectionRequest.BodyTypes.Json or
+        CollectionRequest.BodyTypes.Xml  or
+        CollectionRequest.BodyTypes.Yaml;
+
     /// <summary>Language hint for the request body editor (for syntax highlighting).</summary>
     public string BodyLanguage => SelectedBodyType switch
     {
@@ -545,6 +552,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             if (Response is null) return string.Empty;
             var ct = Response.Headers.TryGetValue(WellKnownHeaders.ContentType, out var v) ? v : string.Empty;
             if (ct.Contains("json", StringComparison.OrdinalIgnoreCase)) return "json";
+            if (ct.Contains("yaml", StringComparison.OrdinalIgnoreCase)) return "yaml";
             if (ct.Contains("xml",  StringComparison.OrdinalIgnoreCase) ||
                 ct.Contains("xhtml", StringComparison.OrdinalIgnoreCase)) return "xml";
             if (ct.Contains("html", StringComparison.OrdinalIgnoreCase)) return "html";
@@ -1163,13 +1171,19 @@ public sealed partial class RequestTabViewModel : ObservableObject
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Pretty-prints the JSON body in the text editor.
-    /// Does nothing if the body is not valid JSON.
+    /// Pretty-prints the body in the text editor based on the selected body type.
+    /// Supports JSON, XML, and YAML. Does nothing if the body cannot be parsed.
     /// </summary>
     [RelayCommand]
     private void FormatBody()
     {
-        var formatted = ResponseFormatter.TryFormatJson(Body);
+        var formatted = SelectedBodyType switch
+        {
+            CollectionRequest.BodyTypes.Json => ResponseFormatter.TryFormatJson(Body),
+            CollectionRequest.BodyTypes.Xml  => ResponseFormatter.TryFormatXml(Body),
+            CollectionRequest.BodyTypes.Yaml => ResponseFormatter.TryFormatYaml(Body),
+            _                                => null,
+        };
         if (formatted is not null)
             Body = formatted;
     }

@@ -248,11 +248,11 @@
                   </ComboBox.Styles>
                 </ComboBox>
                 <Button Content="Format" Command="{Binding FormatBodyCommand}"
-                        IsVisible="{Binding IsBodyJson}"
+                        IsVisible="{Binding CanFormatBody}"
                         Background="Transparent" Foreground="#4ec9b0" BorderThickness="0"
                   Padding="0" FontSize="12"
                         VerticalAlignment="Center"
-                        ToolTip.Tip="Pretty-print the JSON body"/>
+                        ToolTip.Tip="Pretty-print the body"/>
               </StackPanel>
               <controls:SyntaxEditor x:Name="BodyEditor" Grid.Row="1"
                        Text="{Binding Body}" Language="{Binding BodyLanguage}"

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark-theme YAML syntax highlighting for Callsmith -->
+<SyntaxDefinition name="DarkYaml" extensions=".yaml;.yml"
+    xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+
+  <!-- VS Code Dark+-inspired palette -->
+  <Color name="Comment"    foreground="#6a9955" />   <!-- green — comments -->
+  <Color name="Key"        foreground="#9cdcfe" />   <!-- light blue — mapping keys -->
+  <Color name="String"     foreground="#ce9178" />   <!-- orange — quoted strings -->
+  <Color name="Number"     foreground="#b5cea8" />   <!-- light green — numbers -->
+  <Color name="Scalar"     foreground="#569cd6" />   <!-- blue — booleans, null -->
+  <Color name="Anchor"     foreground="#c586c0" fontWeight="bold"/> <!-- purple — &anchors -->
+  <Color name="Alias"      foreground="#9cdcfe" />   <!-- light blue — *aliases -->
+  <Color name="Indicator"  foreground="#808080" />   <!-- grey — document markers, list dashes -->
+  <Color name="DynamicTag" foreground="#c586c0" fontWeight="bold"/> <!-- purple — {% %} dynamic/mock tags -->
+  <Color name="EnvVar"     foreground="#4ec9b0" fontWeight="bold"/> <!-- teal — {{ }} env-var references -->
+
+  <RuleSet>
+    <!-- Dynamic/mock tags and env-var references — processed first so they stand out inside strings -->
+    <Span color="DynamicTag" multiline="false">
+      <Begin>\{%</Begin>
+      <End>%\}</End>
+    </Span>
+    <Span color="EnvVar" multiline="false">
+      <Begin>\{\{</Begin>
+      <End>\}\}</End>
+    </Span>
+
+    <!-- Double-quoted strings (before comment so # inside strings doesn't start a comment) -->
+    <Span color="String" multiline="false">
+      <Begin>"</Begin>
+      <End>"</End>
+    </Span>
+
+    <!-- Single-quoted strings -->
+    <Span color="String" multiline="false">
+      <Begin>'</Begin>
+      <End>'</End>
+    </Span>
+
+    <!-- Line comments -->
+    <Span color="Comment" multiline="false">
+      <Begin>#</Begin>
+      <End>$</End>
+    </Span>
+
+    <!-- Anchors (&name) and aliases (*name) -->
+    <Rule color="Anchor">&amp;\w+</Rule>
+    <Rule color="Alias">\*\w+</Rule>
+
+    <!-- Scalar keywords -->
+    <Keywords color="Scalar">
+      <Word>true</Word>
+      <Word>false</Word>
+      <Word>null</Word>
+      <Word>yes</Word>
+      <Word>no</Word>
+      <Word>on</Word>
+      <Word>off</Word>
+    </Keywords>
+
+    <!-- Numbers -->
+    <Rule color="Number">-?(\b\d+(\.\d+)?|\.\d+)([eE][+-]?\d+)?\b</Rule>
+
+    <!-- Mapping keys: word/hyphen identifier followed by optional whitespace then colon -->
+    <Rule color="Key">[\w][\w\-\.]*(?=\s*:)</Rule>
+
+  </RuleSet>
+
+</SyntaxDefinition>
