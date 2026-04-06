@@ -62,8 +62,8 @@
     <!-- Numbers -->
     <Rule color="Number">-?(\b\d+(\.\d+)?|\.\d+)([eE][+-]?\d+)?\b</Rule>
 
-    <!-- Mapping keys: word/hyphen identifier followed by optional whitespace then colon -->
-    <Rule color="Key">[\w][\w\-\.]*(?=\s*:)</Rule>
+    <!-- Mapping keys: identifier starting with letter/underscore followed by colon -->
+    <Rule color="Key">[a-zA-Z_][\w\-\.]*(?=\s*:)</Rule>
 
   </RuleSet>
 
