@@ -38,10 +38,11 @@
       <End>'</End>
     </Span>
 
-    <!-- Line comments — no <End> needed; multiline="false" terminates the span at end-of-line -->
-    <Span color="Comment" multiline="false">
-      <Begin>#</Begin>
-    </Span>
+    <!-- Line comments: Rule matches # and everything to end of line in one shot.
+         A Span cannot be used here because AvaloniaEdit always synthesizes a $ end
+         pattern for multiline="false" spans, and $ alone matches zero characters on
+         an empty line, causing an InvalidOperationException. -->
+    <Rule color="Comment">#.*</Rule>
 
     <!-- Anchors (&name) and aliases (*name) -->
     <Rule color="Anchor">&amp;\w+</Rule>
