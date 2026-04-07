@@ -64,6 +64,50 @@ public sealed class RequestTabViewModelSaveTests
     }
 
     [Fact]
+    public void AfterLoad_WithNonNoneBodyType_HasUnsavedChanges_IsFalse()
+    {
+        var req = new CollectionRequest
+        {
+            FilePath = @"c:\tmp\sample.callsmith",
+            Name = "sample",
+            Method = HttpMethod.Post,
+            Url = "https://api.example.com",
+            BodyType = CollectionRequest.BodyTypes.Json,
+            Body = "{\"key\":\"value\"}",
+        };
+        var sut = BuildSut();
+        sut.LoadRequest(req);
+        sut.HasUnsavedChanges.Should().BeFalse("loading a request with a body type should not mark it dirty");
+    }
+
+    [Fact]
+    public void BindingFeedback_SetsBodyTypeToNoneThenBack_DoesNotMarkDirty()
+    {
+        // Simulates what Avalonia's ComboBox TwoWay binding does when rebinding:
+        // briefly sets SelectedBodyTypeOption to the first valid item (None) before
+        // the SelectedItem binding corrects it to the real value.
+        var req = new CollectionRequest
+        {
+            FilePath = @"c:\tmp\sample.callsmith",
+            Name = "sample",
+            Method = HttpMethod.Post,
+            Url = "https://api.example.com",
+            BodyType = CollectionRequest.BodyTypes.Json,
+            Body = "{\"key\":\"value\"}",
+        };
+        var sut = BuildSut();
+        sut.LoadRequest(req);
+
+        var noneOption = sut.BodyTypes.First(o => !o.IsSeparator && o.Value == CollectionRequest.BodyTypes.None);
+        var jsonOption = sut.BodyTypes.First(o => !o.IsSeparator && o.Value == CollectionRequest.BodyTypes.Json);
+        sut.SelectedBodyTypeOption = noneOption;
+        sut.SelectedBodyTypeOption = jsonOption;
+
+        sut.HasUnsavedChanges.Should().BeFalse("binding feedback round-trip should not dirty the tab");
+        sut.Body.Should().Be("{\"key\":\"value\"}", "body content should be restored after feedback round-trip");
+    }
+
+    [Fact]
     public void ChangingUrl_MarksTabDirty()
     {
         var sut = BuildSut();
