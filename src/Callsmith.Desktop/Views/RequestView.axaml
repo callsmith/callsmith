@@ -224,15 +224,36 @@
           <TabItem Header="Body">
             <Grid RowDefinitions="Auto,*" Margin="0,8">
               <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-                <ComboBox ItemsSource="{Binding BodyTypes}" SelectedItem="{Binding SelectedBodyType}"
+                <ComboBox ItemsSource="{Binding BodyTypes}"
+                          SelectedItem="{Binding SelectedBodyTypeOption, Mode=OneWay}"
+                          SelectionChanged="OnBodyTypeSelectionChanged"
                           MinWidth="160" Foreground="#d4d4d4" Background="#3c3c3c"
-                          BorderBrush="#555"/>
+                          BorderBrush="#555">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:BodyTypeOption">
+                      <Panel>
+                        <!-- Separator row -->
+                        <Separator IsVisible="{Binding IsSeparator}" Margin="0,2"/>
+                        <!-- Normal item -->
+                        <TextBlock Text="{Binding DisplayName}"
+                                   IsVisible="{Binding !IsSeparator}"
+                                   Foreground="#d4d4d4"/>
+                      </Panel>
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                  <ComboBox.Styles>
+                    <Style Selector="ComboBoxItem" x:DataType="vm:BodyTypeOption">
+                      <Setter Property="IsEnabled" Value="{Binding !IsSeparator}"/>
+                      <Setter Property="IsHitTestVisible" Value="{Binding !IsSeparator}"/>
+                    </Style>
+                  </ComboBox.Styles>
+                </ComboBox>
                 <Button Content="Format" Command="{Binding FormatBodyCommand}"
-                        IsVisible="{Binding IsBodyJson}"
+                        IsVisible="{Binding CanFormatBody}"
                         Background="Transparent" Foreground="#4ec9b0" BorderThickness="0"
                   Padding="0" FontSize="12"
                         VerticalAlignment="Center"
-                        ToolTip.Tip="Pretty-print the JSON body"/>
+                        ToolTip.Tip="Pretty-print the body"/>
               </StackPanel>
               <controls:SyntaxEditor x:Name="BodyEditor" Grid.Row="1"
                        Text="{Binding Body}" Language="{Binding BodyLanguage}"
@@ -241,6 +262,27 @@
               <Panel Grid.Row="1" IsVisible="{Binding ShowFormBodyEditor}">
                 <views:KeyValueEditorView DataContext="{Binding FormParams}"/>
               </Panel>
+              <!-- File body picker -->
+              <StackPanel Grid.Row="1" IsVisible="{Binding ShowFileBodyEditor}"
+                          VerticalAlignment="Top" Spacing="12" Margin="0,8">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Button Content="Choose File…"
+                          Command="{Binding SelectFileCommand}"
+                          Background="#3c3c3c" Foreground="#d4d4d4"
+                          BorderBrush="#555" BorderThickness="1"
+                          Padding="12,6" CornerRadius="4"/>
+                  <TextBlock Text="{Binding SelectedFilePath}"
+                             Foreground="#888" FontFamily="Consolas,Menlo,monospace"
+                             FontSize="12" VerticalAlignment="Center"
+                             TextTrimming="CharacterEllipsis"
+                             IsVisible="{Binding HasFileBodySelected}"/>
+                  <TextBlock Text="No file selected"
+                             Foreground="#666" FontSize="12" VerticalAlignment="Center"
+                             IsVisible="{Binding !HasFileBodySelected}"/>
+                </StackPanel>
+                <TextBlock Text="The file will be sent as application/octet-stream."
+                           Foreground="#666" FontSize="11"/>
+              </StackPanel>
               <TextBlock Grid.Row="1" IsVisible="{Binding !ShowBodyEditor}"
                          Text="No body" Foreground="#888" FontSize="12"
                          HorizontalAlignment="Center" VerticalAlignment="Center"/>

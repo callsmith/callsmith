@@ -122,12 +122,29 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowBodyEditor))]
     [NotifyPropertyChangedFor(nameof(ShowTextBodyEditor))]
     [NotifyPropertyChangedFor(nameof(ShowFormBodyEditor))]
+    [NotifyPropertyChangedFor(nameof(ShowFileBodyEditor))]
     [NotifyPropertyChangedFor(nameof(IsBodyJson))]
+    [NotifyPropertyChangedFor(nameof(CanFormatBody))]
     [NotifyPropertyChangedFor(nameof(BodyLanguage))]
+    [NotifyPropertyChangedFor(nameof(SelectedBodyTypeOption))]
     private string _selectedBodyType = CollectionRequest.BodyTypes.None;
 
     [ObservableProperty]
     private string _body = string.Empty;
+
+    /// <summary>File path of the currently selected file body, for display purposes only.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasFileBodySelected))]
+    private string _selectedFilePath = string.Empty;
+
+    /// <summary>Callback injected by the view code-behind to open the platform file picker.</summary>
+    public Func<CancellationToken, Task<(byte[] Bytes, string Name, string Path)?>>? OpenFilePickerFunc { get; set; }
+
+    /// <summary>Raw bytes of the currently loaded file body. Null when no file has been selected.</summary>
+    private byte[]? _fileBodyBytes;
+
+    /// <summary>Original file name of the currently loaded file body.</summary>
+    private string? _fileBodyName;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAuthInherit))]
@@ -502,15 +519,28 @@ public sealed partial class RequestTabViewModel : ObservableObject
     }
 
     public bool ShowBodyEditor => SelectedBodyType != CollectionRequest.BodyTypes.None;
-    public bool ShowTextBodyEditor => ShowBodyEditor && SelectedBodyType != CollectionRequest.BodyTypes.Form;
-    public bool ShowFormBodyEditor => SelectedBodyType == CollectionRequest.BodyTypes.Form;
+    public bool ShowTextBodyEditor => SelectedBodyType is
+        CollectionRequest.BodyTypes.Json or CollectionRequest.BodyTypes.Xml or
+        CollectionRequest.BodyTypes.Yaml or CollectionRequest.BodyTypes.Text or
+        CollectionRequest.BodyTypes.Other;
+    public bool ShowFormBodyEditor => SelectedBodyType is
+        CollectionRequest.BodyTypes.Form or CollectionRequest.BodyTypes.Multipart;
+    public bool ShowFileBodyEditor => SelectedBodyType == CollectionRequest.BodyTypes.File;
+    public bool HasFileBodySelected => _fileBodyBytes is not null;
     public bool IsBodyJson => SelectedBodyType == CollectionRequest.BodyTypes.Json;
+
+    /// <summary>True when the request body type supports the Format action (JSON, XML, YAML).</summary>
+    public bool CanFormatBody => SelectedBodyType is
+        CollectionRequest.BodyTypes.Json or
+        CollectionRequest.BodyTypes.Xml  or
+        CollectionRequest.BodyTypes.Yaml;
 
     /// <summary>Language hint for the request body editor (for syntax highlighting).</summary>
     public string BodyLanguage => SelectedBodyType switch
     {
         CollectionRequest.BodyTypes.Json => "json",
         CollectionRequest.BodyTypes.Xml  => "xml",
+        CollectionRequest.BodyTypes.Yaml => "yaml",
         _                                => string.Empty,
     };
 
@@ -522,6 +552,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             if (Response is null) return string.Empty;
             var ct = Response.Headers.TryGetValue(WellKnownHeaders.ContentType, out var v) ? v : string.Empty;
             if (ct.Contains("json", StringComparison.OrdinalIgnoreCase)) return "json";
+            if (ct.Contains("yaml", StringComparison.OrdinalIgnoreCase)) return "yaml";
             if (ct.Contains("xml",  StringComparison.OrdinalIgnoreCase) ||
                 ct.Contains("xhtml", StringComparison.OrdinalIgnoreCase)) return "xml";
             if (ct.Contains("html", StringComparison.OrdinalIgnoreCase)) return "html";
@@ -591,15 +622,36 @@ public sealed partial class RequestTabViewModel : ObservableObject
     public IReadOnlyList<string> HttpMethods { get; } =
         ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
-    public IReadOnlyList<string> BodyTypes { get; } =
+    public IReadOnlyList<BodyTypeOption> BodyTypes { get; } =
     [
-        CollectionRequest.BodyTypes.None,
-        CollectionRequest.BodyTypes.Json,
-        CollectionRequest.BodyTypes.Text,
-        CollectionRequest.BodyTypes.Xml,
-        CollectionRequest.BodyTypes.Form,
-        CollectionRequest.BodyTypes.Multipart,
+        new() { Value = CollectionRequest.BodyTypes.None,      DisplayName = "None"           },
+        new() { Value = CollectionRequest.BodyTypes.Json,      DisplayName = "JSON"           },
+        new() { Value = CollectionRequest.BodyTypes.Xml,       DisplayName = "XML"            },
+        new() { Value = CollectionRequest.BodyTypes.Yaml,      DisplayName = "YAML"           },
+        new() { Value = CollectionRequest.BodyTypes.Text,      DisplayName = "Text"           },
+        new() { Value = CollectionRequest.BodyTypes.Other,     DisplayName = "Other"          },
+        BodyTypeOption.Separator,
+        new() { Value = CollectionRequest.BodyTypes.Multipart, DisplayName = "Multipart Form" },
+        new() { Value = CollectionRequest.BodyTypes.Form,      DisplayName = "URL Encoded Form" },
+        BodyTypeOption.Separator,
+        new() { Value = CollectionRequest.BodyTypes.File,      DisplayName = "File"           },
     ];
+
+    /// <summary>
+    /// The currently-selected body type as a <see cref="BodyTypeOption"/>.
+    /// The view reads this via a OneWay binding; user selections are written back through
+    /// the <c>SelectionChanged</c> code-behind handler (see RequestView.axaml.cs).
+    /// Separator items and null values are rejected in the setter.
+    /// </summary>
+    public BodyTypeOption? SelectedBodyTypeOption
+    {
+        get => BodyTypes.FirstOrDefault(o => !o.IsSeparator && o.Value == SelectedBodyType);
+        set
+        {
+            if (value is null || value.IsSeparator) return;
+            SelectedBodyType = value.Value;
+        }
+    }
 
     public IReadOnlyList<string> AuthTypes { get; } =
     [
@@ -694,6 +746,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(StatusDisplay) or nameof(ElapsedDisplay) or nameof(SizeDisplay) or
                 nameof(StatusBadgeColor) or nameof(MethodColor) or
                 nameof(ShowBodyEditor) or nameof(ShowTextBodyEditor) or nameof(ShowFormBodyEditor) or
+                nameof(ShowFileBodyEditor) or nameof(HasFileBodySelected) or nameof(SelectedBodyTypeOption) or
+                nameof(CanFormatBody) or
                 nameof(PreviewUrl) or nameof(HasUnresolvedPathParams) or nameof(PreviewUrlForeground) or nameof(PreviewUrlTooltip) or
                 nameof(IsAuthInherit) or nameof(IsAuthBearer) or nameof(IsAuthBasic) or nameof(IsAuthApiKey) or
                 nameof(ShowAuthPassword) or nameof(ShowAuthApiKeyValue) or
@@ -770,6 +824,19 @@ public sealed partial class RequestTabViewModel : ObservableObject
             Headers.LoadFrom(req.Headers);
             SelectedBodyType = req.BodyType;
             Body = req.Body ?? string.Empty;
+            // Restore file body if present.
+            if (req.BodyType == CollectionRequest.BodyTypes.File && req.FileBodyBase64 is not null)
+            {
+                _fileBodyBytes = Convert.FromBase64String(req.FileBodyBase64);
+                _fileBodyName = req.FileBodyName;
+                SelectedFilePath = req.FileBodyName ?? string.Empty;
+            }
+            else
+            {
+                _fileBodyBytes = null;
+                _fileBodyName = null;
+                SelectedFilePath = string.Empty;
+            }
             // Seed the per-type dictionary so switching body types immediately shows the
             // correct editor content without needing a tab reload.
             _bodyContents.Clear();
@@ -779,7 +846,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
             // the ViewModel edits; this is the authoritative current value).
             if (req.BodyType is CollectionRequest.BodyTypes.Json
                              or CollectionRequest.BodyTypes.Text
-                             or CollectionRequest.BodyTypes.Xml)
+                             or CollectionRequest.BodyTypes.Xml
+                             or CollectionRequest.BodyTypes.Yaml
+                             or CollectionRequest.BodyTypes.Other)
                 _bodyContents[req.BodyType] = req.Body ?? string.Empty;
             FormParams.LoadFrom(req.FormParams);
             AuthType = req.Auth.AuthType;
@@ -899,6 +968,16 @@ public sealed partial class RequestTabViewModel : ObservableObject
         // Resolve body.
         var resolvedBody = VariableSubstitutionService.Substitute(snapshot.Body, vars);
 
+        // Restore file body bytes from the history snapshot.
+        byte[]? restoredFileBytes = null;
+        string? restoredFileName = null;
+        if (snapshot.BodyType == CollectionRequest.BodyTypes.File
+            && snapshot.FileBodyBase64 is not null)
+        {
+            restoredFileBytes = Convert.FromBase64String(snapshot.FileBodyBase64);
+            restoredFileName = snapshot.FileBodyName;
+        }
+
         // No source file — this is a brand-new unsaved tab.
         _sourceRequest = null;
 
@@ -930,6 +1009,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
             Headers.LoadFrom(resolvedHeaders);
             SelectedBodyType = snapshot.BodyType;
             Body = resolvedBody ?? string.Empty;
+            _fileBodyBytes = restoredFileBytes;
+            _fileBodyName = restoredFileName;
+            SelectedFilePath = restoredFileName ?? string.Empty;
             FormParams.LoadFrom(resolvedFormParams);
             AuthType = AuthConfig.AuthTypes.Inherit;
             AuthToken = string.Empty;
@@ -1087,19 +1169,43 @@ public sealed partial class RequestTabViewModel : ObservableObject
     }
 
     // -------------------------------------------------------------------------
-    // Commands — Body formatting
+    // Commands — Body formatting and file selection
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Pretty-prints the JSON body in the text editor.
-    /// Does nothing if the body is not valid JSON.
+    /// Pretty-prints the body in the text editor based on the selected body type.
+    /// Supports JSON, XML, and YAML. Does nothing if the body cannot be parsed.
     /// </summary>
     [RelayCommand]
     private void FormatBody()
     {
-        var formatted = ResponseFormatter.TryFormatJson(Body);
+        var formatted = SelectedBodyType switch
+        {
+            CollectionRequest.BodyTypes.Json => ResponseFormatter.TryFormatJson(Body),
+            CollectionRequest.BodyTypes.Xml  => ResponseFormatter.TryFormatXml(Body),
+            CollectionRequest.BodyTypes.Yaml => ResponseFormatter.TryFormatYaml(Body),
+            _                                => null,
+        };
         if (formatted is not null)
             Body = formatted;
+    }
+
+    /// <summary>
+    /// Opens the platform file picker and loads the selected file as the request body.
+    /// Does nothing when <see cref="OpenFilePickerFunc"/> has not been set by the view.
+    /// </summary>
+    [RelayCommand]
+    private async Task SelectFileAsync(CancellationToken ct)
+    {
+        if (OpenFilePickerFunc is null) return;
+        var result = await OpenFilePickerFunc(ct);
+        if (result is null) return;
+        _fileBodyBytes = result.Value.Bytes;
+        _fileBodyName = result.Value.Name;
+        SelectedFilePath = result.Value.Path;
+        OnPropertyChanged(nameof(HasFileBodySelected));
+        if (_sourceRequest is not null && !_loading && !_saving)
+            HasUnsavedChanges = true;
     }
 
     [RelayCommand]
@@ -1241,8 +1347,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
             // Substitute any remaining {{tokens}} in the base URL / path.
             requestUrl = VariableSubstitutionService.SubstituteCollecting(requestUrl, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? requestUrl;
 
-            var resolvedBody = SelectedBodyType != CollectionRequest.BodyTypes.None
-                && SelectedBodyType != CollectionRequest.BodyTypes.Form
+            var resolvedBody = SelectedBodyType is
+                CollectionRequest.BodyTypes.Json or CollectionRequest.BodyTypes.Xml or
+                CollectionRequest.BodyTypes.Yaml or CollectionRequest.BodyTypes.Text or
+                CollectionRequest.BodyTypes.Other
                 && !string.IsNullOrEmpty(Body)
                 ? VariableSubstitutionService.SubstituteCollecting(Body, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? Body
                 : null;
@@ -1261,12 +1369,30 @@ public sealed partial class RequestTabViewModel : ObservableObject
                             Uri.EscapeDataString(p.Key) + "=" + Uri.EscapeDataString(p.Value)));
             }
 
+            // For multipart bodies, collect form params for proper MultipartFormDataContent.
+            IReadOnlyList<KeyValuePair<string, string>>? multipartFormParams = null;
+            if (SelectedBodyType == CollectionRequest.BodyTypes.Multipart)
+            {
+                multipartFormParams = FormParams.GetEnabledPairs()
+                    .Select(p => new KeyValuePair<string, string>(
+                        VariableSubstitutionService.SubstituteCollecting(p.Key, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Key,
+                        VariableSubstitutionService.SubstituteCollecting(p.Value, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Value))
+                    .ToList();
+            }
+
+            // For file bodies, pass the loaded bytes directly.
+            byte[]? fileBodyBytes = SelectedBodyType == CollectionRequest.BodyTypes.File
+                ? _fileBodyBytes
+                : null;
+
             var request = new RequestModel
             {
                 Method = new HttpMethod(SelectedMethod),
                 Url = requestUrl,
                 Headers = headers,
                 Body = resolvedBody,
+                BodyBytes = fileBodyBytes,
+                MultipartFormParams = multipartFormParams,
                 ContentType = GetContentType(),
             };
 
@@ -1495,6 +1621,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         if (SelectedBodyType is CollectionRequest.BodyTypes.Json
                              or CollectionRequest.BodyTypes.Text
                              or CollectionRequest.BodyTypes.Xml
+                             or CollectionRequest.BodyTypes.Yaml
+                             or CollectionRequest.BodyTypes.Other
             && !string.IsNullOrEmpty(Body))
         {
             allBodyContents[SelectedBodyType] = Body;
@@ -1513,6 +1641,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
             QueryParams = QueryParams.GetAllKv(),
             BodyType = SelectedBodyType,
             Body = string.IsNullOrEmpty(Body) ? null : Body,
+            FileBodyBase64 = SelectedBodyType == CollectionRequest.BodyTypes.File && _fileBodyBytes is not null
+                ? Convert.ToBase64String(_fileBodyBytes)
+                : null,
+            FileBodyName = SelectedBodyType == CollectionRequest.BodyTypes.File ? _fileBodyName : null,
             AllBodyContents = allBodyContents,
             FormParams = FormParams.GetEnabledPairs().ToList(),
             Auth = new AuthConfig
@@ -1565,20 +1697,25 @@ public sealed partial class RequestTabViewModel : ObservableObject
         // Stash the current editor content under the old body type.
         if (oldValue is CollectionRequest.BodyTypes.Json
                      or CollectionRequest.BodyTypes.Text
-                     or CollectionRequest.BodyTypes.Xml)        {
+                     or CollectionRequest.BodyTypes.Xml
+                     or CollectionRequest.BodyTypes.Yaml
+                     or CollectionRequest.BodyTypes.Other)
+        {
             _bodyContents[oldValue] = Body;
         }
 
         // Restore the editor content that was last used with the new body type.
         if (newValue is CollectionRequest.BodyTypes.Json
                      or CollectionRequest.BodyTypes.Text
-                     or CollectionRequest.BodyTypes.Xml)
+                     or CollectionRequest.BodyTypes.Xml
+                     or CollectionRequest.BodyTypes.Yaml
+                     or CollectionRequest.BodyTypes.Other)
         {
             Body = _bodyContents.GetValueOrDefault(newValue, string.Empty);
         }
         else
         {
-            // Switching to "none", "form", or "multipart" — clear the text editor.
+            // Switching to "none", "form", "multipart", or "file" — clear the text editor.
             Body = string.Empty;
         }
     }
@@ -1887,15 +2024,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         }
     }
 
-    private string? GetContentType() => SelectedBodyType switch
-    {
-        CollectionRequest.BodyTypes.Json => CollectionRequest.BodyTypes.JsonContentType,
-        CollectionRequest.BodyTypes.Text => CollectionRequest.BodyTypes.TextContentType,
-        CollectionRequest.BodyTypes.Xml  => CollectionRequest.BodyTypes.XmlContentType,
-        CollectionRequest.BodyTypes.Form => "application/x-www-form-urlencoded",
-        CollectionRequest.BodyTypes.Multipart => "multipart/form-data",
-        _ => null,
-    };
+    private string? GetContentType() => CollectionRequest.BodyTypes.ToContentType(SelectedBodyType);
 
     // -------------------------------------------------------------------------
     // History helpers
@@ -1959,6 +2088,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
                     .ToDictionary(p => p.Key, p => p.Value),
                 BodyType = SelectedBodyType,
                 Body = string.IsNullOrEmpty(Body) ? null : Body,
+                FileBodyBase64 = SelectedBodyType == CollectionRequest.BodyTypes.File && _fileBodyBytes is not null
+                    ? Convert.ToBase64String(_fileBodyBytes)
+                    : null,
+                FileBodyName = SelectedBodyType == CollectionRequest.BodyTypes.File ? _fileBodyName : null,
                 FormParams = FormParams.GetAllKv()
                     .Select(kv => new KeyValuePair<string, string>(kv.Key, kv.Value))
                     .ToList(),

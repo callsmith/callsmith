@@ -61,6 +61,18 @@ public sealed class ConfiguredRequestSnapshot
     /// <summary>Form parameters for form-encoded bodies. Values may contain placeholders.</summary>
     public IReadOnlyList<KeyValuePair<string, string>> FormParams { get; init; } = [];
 
+    /// <summary>
+    /// Binary file body encoded as Base64.
+    /// Only populated when <see cref="BodyType"/> is <see cref="CollectionRequest.BodyTypes.File"/>.
+    /// </summary>
+    public string? FileBodyBase64 { get; init; }
+
+    /// <summary>
+    /// Original file name of the uploaded file.
+    /// Only populated when <see cref="BodyType"/> is <see cref="CollectionRequest.BodyTypes.File"/>.
+    /// </summary>
+    public string? FileBodyName { get; init; }
+
     /// <summary>Authentication configuration. Field values may contain <c>{{variable}}</c> placeholders.</summary>
     public AuthConfig Auth { get; init; } = new();
 
@@ -82,6 +94,8 @@ public sealed class ConfiguredRequestSnapshot
             BodyType = request.BodyType,
             Body = request.Body,
             FormParams = request.FormParams,
+            FileBodyBase64 = request.FileBodyBase64,
+            FileBodyName = request.FileBodyName,
             Auth = request.Auth,
         };
 }

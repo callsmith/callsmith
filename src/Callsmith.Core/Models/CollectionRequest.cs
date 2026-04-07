@@ -81,6 +81,18 @@ public sealed class CollectionRequest
     public IReadOnlyList<KeyValuePair<string, string>> FormParams { get; init; } = [];
 
     /// <summary>
+    /// Binary file body encoded as a Base64 string.
+    /// Only populated when <see cref="BodyType"/> is <c>"file"</c>.
+    /// </summary>
+    public string? FileBodyBase64 { get; init; }
+
+    /// <summary>
+    /// The original file name of the uploaded file (e.g. <c>"image.png"</c>).
+    /// Only populated when <see cref="BodyType"/> is <c>"file"</c>.
+    /// </summary>
+    public string? FileBodyName { get; init; }
+
+    /// <summary>
     /// The full URL including all <em>enabled</em> query parameters from <see cref="QueryParams"/>.
     /// Use this when building a <c>RequestModel</c> to send.
     /// </summary>
@@ -103,13 +115,18 @@ public sealed class CollectionRequest
         public const string Json = "json";
         public const string Text = "text";
         public const string Xml = "xml";
+        public const string Yaml = "yaml";
+        public const string Other = "other";
         public const string Form = "form";
         public const string Multipart = "multipart";
+        public const string File = "file";
 
         // MIME content-type values that map to each body type token.
         public const string JsonContentType = "application/json";
         public const string TextContentType = "text/plain";
         public const string XmlContentType  = "application/xml";
+        public const string YamlContentType = "application/yaml";
+        public const string FileContentType = "application/octet-stream";
 
         /// <summary>
         /// Returns the MIME content type for the given body type token,
@@ -117,10 +134,14 @@ public sealed class CollectionRequest
         /// </summary>
         public static string? ToContentType(string? bodyType) => bodyType switch
         {
-            Json => JsonContentType,
-            Text => TextContentType,
-            Xml  => XmlContentType,
-            _    => null,
+            Json      => JsonContentType,
+            Text      => TextContentType,
+            Xml       => XmlContentType,
+            Yaml      => YamlContentType,
+            File      => FileContentType,
+            Form      => "application/x-www-form-urlencoded",
+            Multipart => "multipart/form-data",
+            _         => null,
         };
     }
 }

@@ -11,7 +11,7 @@
   <Color name="DocType"          foreground="#808080" />   <!-- grey -->
   <Color name="XmlDeclaration"   foreground="#808080" />   <!-- grey -->
   <Color name="XmlTag"           foreground="#808080" />   <!-- grey — <> brackets -->
-  <Color name="TagName"          foreground="#4ec9b0" />   <!-- teal — element names -->
+  <Color name="TagName"          foreground="#569cd6" />   <!-- blue — element names -->
   <Color name="AttributeName"    foreground="#9cdcfe" />   <!-- light blue — attr names -->
   <Color name="AttributeValue"   foreground="#ce9178" />   <!-- orange — attr values -->
   <Color name="Entity"           foreground="#4ec9b0" />   <!-- teal — &amp; etc. -->
@@ -48,6 +48,7 @@
         </Span>
         <Rule color="AttributeName">[\d\w_\-\.]+(?=(\s*=))</Rule>
         <Rule color="AttributeValue">=</Rule>
+        <Rule color="TagName">[/\w][:\w\d\-\.]*</Rule>
       </RuleSet>
     </Span>
     <Import ruleSet="EntitySet" />

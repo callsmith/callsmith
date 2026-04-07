@@ -24,6 +24,7 @@ public sealed class SyntaxEditor : TextEditor
     private static readonly IHighlightingDefinition? XmlHighlighting;
     private static readonly IHighlightingDefinition? HtmlHighlighting;
     private static readonly IHighlightingDefinition? TextHighlighting;
+    private static readonly IHighlightingDefinition? YamlHighlighting;
     private bool _updatingText;
     private FoldingManager? _foldingManager;
     private XmlFoldingStrategy? _xmlFoldingStrategy;
@@ -34,6 +35,7 @@ public sealed class SyntaxEditor : TextEditor
         XmlHighlighting  = LoadXshd("avares://Callsmith/Highlighting/DarkXml.xshd");
         HtmlHighlighting = LoadXshd("avares://Callsmith/Highlighting/DarkHtml.xshd");
         TextHighlighting = LoadXshd("avares://Callsmith/Highlighting/DarkText.xshd");
+        YamlHighlighting = LoadXshd("avares://Callsmith/Highlighting/DarkYaml.xshd");
     }
 
     private static IHighlightingDefinition? LoadXshd(string uri)
@@ -71,8 +73,8 @@ public sealed class SyntaxEditor : TextEditor
     // ── Language ───────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Syntax language for highlighting. Accepted values: <c>"json"</c>, <c>"xml"</c>.
-    /// Any other value shows plain text.
+    /// Syntax language for highlighting. Accepted values: <c>"json"</c>, <c>"xml"</c>,
+    /// <c>"yaml"</c>, <c>"html"</c>, <c>"text"</c>. Any other value shows plain text.
     /// </summary>
     public static readonly StyledProperty<string> LanguageProperty =
         AvaloniaProperty.Register<SyntaxEditor, string>(nameof(Language), string.Empty);
@@ -175,6 +177,7 @@ public sealed class SyntaxEditor : TextEditor
             "xml"  => XmlHighlighting,
             "html" => HtmlHighlighting,
             "text" => TextHighlighting,
+            "yaml" => YamlHighlighting,
             _      => null,
         };
 

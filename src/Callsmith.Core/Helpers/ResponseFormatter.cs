@@ -4,6 +4,8 @@ using System.Xml.Linq;
 using AngleSharp;
 using AngleSharp.Html;
 using AngleSharp.Html.Parser;
+using YamlDotNet.Serialization;
+using YamlDotNet.Serialization.NamingConventions;
 
 namespace Callsmith.Core.Helpers;
 
@@ -15,8 +17,8 @@ public static class ResponseFormatter
 {
     /// <summary>
     /// Pretty-prints <paramref name="body"/> if the <paramref name="contentType"/> implies
-    /// a known structured format (JSON, XML). Returns the original body unchanged when the
-    /// content type is unrecognised or the body cannot be parsed.
+    /// a known structured format (JSON, XML, YAML). Returns the original body unchanged when
+    /// the content type is unrecognised or the body cannot be parsed.
     /// </summary>
     public static string FormatBody(string body, string? contentType)
     {
@@ -26,6 +28,9 @@ public static class ResponseFormatter
 
         if (ct.Contains("json"))
             return TryFormatJson(body) ?? body;
+
+        if (ct.Contains("yaml"))
+            return TryFormatYaml(body) ?? body;
 
         if (ct.Contains("xml") || ct.Contains("xhtml"))
             return TryFormatXml(body) ?? body;
@@ -89,9 +94,38 @@ public static class ResponseFormatter
         try
         {
             var doc = XDocument.Parse(xml);
-            return doc.ToString();
+            var body = doc.ToString();
+            return doc.Declaration is { } decl
+                ? decl + "\n" + body
+                : body;
         }
         catch (System.Xml.XmlException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Attempts to pretty-print <paramref name="yaml"/> as normalised, block-style YAML.
+    /// Returns <c>null</c> if the input is not valid YAML.
+    /// </summary>
+    public static string? TryFormatYaml(string yaml)
+    {
+        if (string.IsNullOrWhiteSpace(yaml)) return yaml;
+        try
+        {
+            var deserializer = new DeserializerBuilder()
+                .WithNamingConvention(NullNamingConvention.Instance)
+                .Build();
+            var obj = deserializer.Deserialize<object>(yaml);
+
+            var serializer = new SerializerBuilder()
+                .WithNamingConvention(NullNamingConvention.Instance)
+                .WithIndentedSequences()
+                .Build();
+            return serializer.Serialize(obj).TrimEnd();
+        }
+        catch
         {
             return null;
         }

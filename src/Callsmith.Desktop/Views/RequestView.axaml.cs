@@ -1,8 +1,10 @@
 using System.ComponentModel;
+using System.IO;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.Platform.Storage;
 using Callsmith.Desktop.ViewModels;
 
 namespace Callsmith.Desktop.Views;
@@ -30,6 +32,22 @@ public partial class RequestView : UserControl
         {
             _trackedVm.PropertyChanged += OnViewModelPropertyChanged;
             ApplyLayout(_trackedVm.IsHorizontalLayout);
+
+            // Inject the platform file picker callback — the ViewModel has no Avalonia reference.
+            _trackedVm.OpenFilePickerFunc = async (ct) =>
+            {
+                var topLevel = TopLevel.GetTopLevel(this);
+                if (topLevel is null) return null;
+                var files = await topLevel.StorageProvider.OpenFilePickerAsync(
+                    new FilePickerOpenOptions { AllowMultiple = false });
+                if (files.Count == 0) return null;
+                await using var stream = await files[0].OpenReadAsync();
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms, ct);
+                var localPath = files[0].TryGetLocalPath();
+                var displayPath = localPath ?? files[0].Name;
+                return (ms.ToArray(), files[0].Name, displayPath);
+            };
         }
     }
 
@@ -135,6 +153,27 @@ public partial class RequestView : UserControl
         var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
         if (clipboard is not null && !string.IsNullOrEmpty(vm.PreviewUrl))
             await clipboard.SetTextAsync(vm.PreviewUrl);
+    }
+
+    /// <summary>
+    /// Handles the body-type ComboBox selection change.  The binding is OneWay (VM → View)
+    /// to prevent Avalonia's TwoWay binding from writing back intermediate values during
+    /// DataContext switches, which would spuriously mark the tab dirty.
+    /// This handler provides the View → VM direction, but only for genuine user selections
+    /// (i.e. it ignores events that fire as a result of the binding updating the control).
+    /// </summary>
+    private void OnBodyTypeSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is not RequestTabViewModel vm) return;
+        if (sender is not ComboBox cb) return;
+        if (cb.SelectedItem is not BodyTypeOption opt || opt.IsSeparator) return;
+
+        // When the OneWay binding updates the ComboBox (e.g. on DataContext change or
+        // after LoadRequest), SelectedItem is set to the value already held by the VM.
+        // Skip those no-op echoes so only true user clicks reach the ViewModel.
+        if (opt.Value == vm.SelectedBodyType) return;
+
+        vm.SelectedBodyTypeOption = opt;
     }
 }
 

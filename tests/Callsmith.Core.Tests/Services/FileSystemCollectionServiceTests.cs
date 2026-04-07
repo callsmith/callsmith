@@ -974,4 +974,58 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
         var loaded = await sut.LoadRequestAsync(renamed.FilePath);
         loaded.Auth.ApiKeyValue.Should().Be("supersecret123");
     }
+
+    // -------------------------------------------------------------------------
+    // File body round-trip
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task SaveAndLoad_FileBodyType_RoundTrips()
+    {
+        var folder = _temp.CreateSubDirectory("col");
+        var filePath = Path.Combine(folder, "file-req.callsmith");
+        var bytes = new byte[] { 0x01, 0x02, 0x03, 0xFF };
+        var original = new CollectionRequest
+        {
+            FilePath = filePath,
+            Name = "file-req",
+            Method = HttpMethod.Post,
+            Url = "https://example.com/upload",
+            BodyType = CollectionRequest.BodyTypes.File,
+            FileBodyBase64 = Convert.ToBase64String(bytes),
+            FileBodyName = "data.bin",
+        };
+
+        await _sut.SaveRequestAsync(original);
+        var loaded = await _sut.LoadRequestAsync(filePath);
+
+        loaded.BodyType.Should().Be(CollectionRequest.BodyTypes.File);
+        loaded.FileBodyName.Should().Be("data.bin");
+        loaded.FileBodyBase64.Should().Be(Convert.ToBase64String(bytes));
+        Convert.FromBase64String(loaded.FileBodyBase64!).Should().Equal(bytes);
+    }
+
+    [Theory]
+    [InlineData(CollectionRequest.BodyTypes.Yaml, "key: value")]
+    [InlineData(CollectionRequest.BodyTypes.Other, "custom payload")]
+    public async Task SaveAndLoad_NewTextBodyTypes_RoundTrip(string bodyType, string body)
+    {
+        var folder = _temp.CreateSubDirectory("col");
+        var filePath = Path.Combine(folder, $"req-{bodyType}.callsmith");
+        var original = new CollectionRequest
+        {
+            FilePath = filePath,
+            Name = $"req-{bodyType}",
+            Method = HttpMethod.Post,
+            Url = "https://example.com",
+            BodyType = bodyType,
+            Body = body,
+        };
+
+        await _sut.SaveRequestAsync(original);
+        var loaded = await _sut.LoadRequestAsync(filePath);
+
+        loaded.BodyType.Should().Be(bodyType);
+        loaded.Body.Should().Be(body);
+    }
 }

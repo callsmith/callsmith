@@ -669,6 +669,8 @@ public sealed class FileSystemCollectionService : ICollectionService
             QueryParams = queryParams,
             BodyType = dto.BodyType ?? CollectionRequest.BodyTypes.None,
             Body = dto.Body,
+            FileBodyBase64 = dto.FileBodyBase64,
+            FileBodyName = dto.FileBodyName,
             FormParams = formParams,
             Auth = new AuthConfig
             {
@@ -712,6 +714,8 @@ public sealed class FileSystemCollectionService : ICollectionService
                 ? null
                 : request.BodyType,
             Body = request.Body,
+            FileBodyBase64 = request.FileBodyBase64,
+            FileBodyName = request.FileBodyName,
             AuthType = request.Auth.AuthType == AuthConfig.AuthTypes.Inherit
                 ? null
                 : request.Auth.AuthType,
@@ -757,6 +761,8 @@ public sealed class FileSystemCollectionService : ICollectionService
         public List<QueryParamEntryDto>? FormParamEntries { get; set; }
         public string? BodyType { get; set; }
         public string? Body { get; set; }
+        public string? FileBodyBase64 { get; set; }
+        public string? FileBodyName { get; set; }
         public string? AuthType { get; set; }
         public string? AuthToken { get; set; }
         public string? AuthUsername { get; set; }

@@ -84,36 +84,48 @@ public static class HistorySentViewBuilder
 
         // 7. Resolve body.
         string? resolvedBody = null;
-        if (snapshot.BodyType != CollectionRequest.BodyTypes.None
-            && snapshot.BodyType != CollectionRequest.BodyTypes.Form)
+        byte[]? resolvedBodyBytes = null;
+        IReadOnlyList<KeyValuePair<string, string>>? multipartFormParams = null;
+
+        switch (snapshot.BodyType)
         {
-            resolvedBody = string.IsNullOrEmpty(snapshot.Body)
-                ? null
-                : Substitute(snapshot.Body, vars);
-        }
-        else if (snapshot.BodyType == CollectionRequest.BodyTypes.Form
-            && snapshot.FormParams.Count > 0)
-        {
-            var formPairs = snapshot.FormParams
-                .Select(p => new KeyValuePair<string, string>(
-                    Substitute(p.Key, vars) ?? p.Key,
-                    Substitute(p.Value, vars) ?? p.Value))
-                .ToList();
-            resolvedBody = string.Join("&",
-                formPairs.Select(p =>
-                    Uri.EscapeDataString(p.Key) + "=" + Uri.EscapeDataString(p.Value)));
+            case CollectionRequest.BodyTypes.None:
+                break;
+
+            case CollectionRequest.BodyTypes.Form when snapshot.FormParams.Count > 0:
+            {
+                var formPairs = snapshot.FormParams
+                    .Select(p => new KeyValuePair<string, string>(
+                        Substitute(p.Key, vars) ?? p.Key,
+                        Substitute(p.Value, vars) ?? p.Value))
+                    .ToList();
+                resolvedBody = string.Join("&",
+                    formPairs.Select(p =>
+                        Uri.EscapeDataString(p.Key) + "=" + Uri.EscapeDataString(p.Value)));
+                break;
+            }
+
+            case CollectionRequest.BodyTypes.Multipart when snapshot.FormParams.Count > 0:
+                multipartFormParams = snapshot.FormParams
+                    .Select(p => new KeyValuePair<string, string>(
+                        Substitute(p.Key, vars) ?? p.Key,
+                        Substitute(p.Value, vars) ?? p.Value))
+                    .ToList();
+                break;
+
+            case CollectionRequest.BodyTypes.File when snapshot.FileBodyBase64 is not null:
+                resolvedBodyBytes = Convert.FromBase64String(snapshot.FileBodyBase64);
+                break;
+
+            default:
+                resolvedBody = string.IsNullOrEmpty(snapshot.Body)
+                    ? null
+                    : Substitute(snapshot.Body, vars);
+                break;
         }
 
         // 8. Determine Content-Type from the snapshot body type.
-        var contentType = snapshot.BodyType switch
-        {
-            CollectionRequest.BodyTypes.Json => CollectionRequest.BodyTypes.JsonContentType,
-            CollectionRequest.BodyTypes.Text => CollectionRequest.BodyTypes.TextContentType,
-            CollectionRequest.BodyTypes.Xml => CollectionRequest.BodyTypes.XmlContentType,
-            CollectionRequest.BodyTypes.Form => "application/x-www-form-urlencoded",
-            CollectionRequest.BodyTypes.Multipart => "multipart/form-data",
-            _ => null,
-        };
+        var contentType = CollectionRequest.BodyTypes.ToContentType(snapshot.BodyType);
 
         return new RequestModel
         {
@@ -121,6 +133,8 @@ public static class HistorySentViewBuilder
             Url = requestUrl,
             Headers = headers,
             Body = resolvedBody,
+            BodyBytes = resolvedBodyBytes,
+            MultipartFormParams = multipartFormParams,
             ContentType = contentType,
         };
     }

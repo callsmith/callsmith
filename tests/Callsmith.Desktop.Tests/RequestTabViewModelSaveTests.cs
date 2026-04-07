@@ -64,6 +64,48 @@ public sealed class RequestTabViewModelSaveTests
     }
 
     [Fact]
+    public void AfterLoad_WithNonNoneBodyType_HasUnsavedChanges_IsFalse()
+    {
+        var req = new CollectionRequest
+        {
+            FilePath = @"c:\tmp\sample.callsmith",
+            Name = "sample",
+            Method = HttpMethod.Post,
+            Url = "https://api.example.com",
+            BodyType = CollectionRequest.BodyTypes.Json,
+            Body = "{\"key\":\"value\"}",
+        };
+        var sut = BuildSut();
+        sut.LoadRequest(req);
+        sut.HasUnsavedChanges.Should().BeFalse("loading a request with a body type should not mark it dirty");
+    }
+
+    [Fact]
+    public void ChangingBodyTypeViaOption_MarksTabDirty()
+    {
+        // Ensures that the SelectedBodyTypeOption setter (the path used by the
+        // code-behind SelectionChanged handler for genuine user clicks) does
+        // mark the tab dirty when the selected type actually changes.
+        var req = new CollectionRequest
+        {
+            FilePath = @"c:\tmp\sample.callsmith",
+            Name = "sample",
+            Method = HttpMethod.Post,
+            Url = "https://api.example.com",
+            BodyType = CollectionRequest.BodyTypes.Json,
+            Body = "{\"key\":\"value\"}",
+        };
+        var sut = BuildSut();
+        sut.LoadRequest(req);
+
+        var xmlOption = sut.BodyTypes.First(o => !o.IsSeparator && o.Value == CollectionRequest.BodyTypes.Xml);
+        sut.SelectedBodyTypeOption = xmlOption;
+
+        sut.HasUnsavedChanges.Should().BeTrue("switching body type via option should mark the tab dirty");
+        sut.SelectedBodyType.Should().Be(CollectionRequest.BodyTypes.Xml);
+    }
+
+    [Fact]
     public void ChangingUrl_MarksTabDirty()
     {
         var sut = BuildSut();
