@@ -433,7 +433,26 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
             request = stub;
         }
 
-        var requestModel = BuildRequestModel(request, vars);
+        // When the request uses inherited auth, resolve the effective auth by walking up the
+        // folder hierarchy. Without this, no auth headers would be added for such requests.
+        AuthConfig? effectiveAuth = null;
+        if (request.Auth.AuthType == AuthConfig.AuthTypes.Inherit)
+        {
+            try
+            {
+                effectiveAuth = await _collectionService
+                    .ResolveEffectiveAuthAsync(stub.FilePath, ct)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Dynamic variable: could not resolve effective auth for request '{RequestName}'; request will proceed without authentication",
+                    segment.RequestName);
+            }
+        }
+
+        var requestModel = BuildRequestModel(request, vars, effectiveAuth);
 
         ResponseModel response;
         try
@@ -462,7 +481,8 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
     // ─── Request building ────────────────────────────────────────────────────
 
     private static RequestModel BuildRequestModel(
-        CollectionRequest req, IReadOnlyDictionary<string, string> vars)
+        CollectionRequest req, IReadOnlyDictionary<string, string> vars,
+        AuthConfig? effectiveAuth = null)
     {
         // Substitute URL, path params
         var pathParamValues = req.PathParams.ToDictionary(
@@ -492,7 +512,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
             headers[key] = VariableSubstitutionService.Substitute(h.Value, vars) ?? h.Value;
         }
 
-        ApplyAuth(req.Auth, headers, vars, ref requestUrl);
+        ApplyAuth(effectiveAuth ?? req.Auth, headers, vars, ref requestUrl);
 
         // Final variable substitution on URL
         requestUrl = VariableSubstitutionService.Substitute(requestUrl, vars) ?? requestUrl;

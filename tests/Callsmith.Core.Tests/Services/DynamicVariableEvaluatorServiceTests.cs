@@ -31,7 +31,7 @@ public sealed class DynamicVariableEvaluatorServiceTests : IDisposable
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
-    private static CollectionRequest MakeRequest(string name, Guid? requestId = null) =>
+    private static CollectionRequest MakeRequest(string name, Guid? requestId = null, AuthConfig? auth = null) =>
         new()
         {
             FilePath = $"/collection/{name}.callsmith",
@@ -39,6 +39,7 @@ public sealed class DynamicVariableEvaluatorServiceTests : IDisposable
             Method = HttpMethod.Get,
             Url = "https://api.example.com/token",
             RequestId = requestId,
+            Auth = auth ?? new AuthConfig(),
         };
 
     private static CollectionFolder MakeFolder(CollectionRequest request) =>
@@ -196,5 +197,92 @@ public sealed class DynamicVariableEvaluatorServiceTests : IDisposable
             .WhoseValue.Should().Be("fresh-token",
                 "when there is no cache entry at all, HTTP must still be executed even with allowStaleCache");
         await _transport.Received(1).SendAsync(Arg.Any<RequestModel>(), Arg.Any<CancellationToken>());
+    }
+
+    // ─── Inherited auth ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// When the target request has <c>inherit</c> auth, the effective auth must be resolved
+    /// by walking up the folder hierarchy, and that auth must be applied to the outgoing
+    /// HTTP request (e.g. as an Authorization header).
+    /// </summary>
+    [Fact]
+    public async Task ResolveAsync_WhenRequestUsesInheritAuth_ResolvesEffectiveAuthAndAppliesIt()
+    {
+        var requestId = Guid.NewGuid();
+        var inheritAuthRequest = MakeRequest("get-token", requestId,
+            auth: new AuthConfig { AuthType = AuthConfig.AuthTypes.Inherit });
+        var folder = MakeFolder(inheritAuthRequest);
+        var collectionPath = _temp.CreateSubDirectory("inherit-auth-collection");
+
+        var effectiveAuth = new AuthConfig
+        {
+            AuthType = AuthConfig.AuthTypes.Bearer,
+            Token = "inherited-bearer-token",
+        };
+
+        _collectionService.OpenFolderAsync(collectionPath, Arg.Any<CancellationToken>())
+            .Returns(folder);
+        _collectionService.LoadRequestAsync(inheritAuthRequest.FilePath, Arg.Any<CancellationToken>())
+            .Returns(inheritAuthRequest);
+        _collectionService.ResolveEffectiveAuthAsync(inheritAuthRequest.FilePath, Arg.Any<CancellationToken>())
+            .Returns(effectiveAuth);
+        _transportRegistry.Resolve(Arg.Any<RequestModel>())
+            .Returns(_transport);
+
+        RequestModel? capturedModel = null;
+        _transport.SendAsync(Arg.Do<RequestModel>(m => capturedModel = m), Arg.Any<CancellationToken>())
+            .Returns(OkResponse("""{"token":"secret123"}"""));
+
+        var variable = ResponseBodyVar("token", "get-token");
+        var sut = Sut();
+
+        var result = await sut.ResolveAsync(
+            collectionPath, "ns", [variable], new Dictionary<string, string>());
+
+        result.Variables.Should().ContainKey("token")
+            .WhoseValue.Should().Be("secret123");
+
+        capturedModel.Should().NotBeNull();
+        capturedModel!.Headers.Should().ContainKey("Authorization")
+            .WhoseValue.Should().Be("Bearer inherited-bearer-token",
+                "the inherited bearer token must be forwarded as an Authorization header");
+    }
+
+    /// <summary>
+    /// When the target request has <c>inherit</c> auth and no ancestor folder provides auth,
+    /// no Authorization header should be added (same as if auth type were None).
+    /// </summary>
+    [Fact]
+    public async Task ResolveAsync_WhenRequestUsesInheritAuth_AndNoParentProvidesAuth_SendsNoAuthHeader()
+    {
+        var requestId = Guid.NewGuid();
+        var inheritAuthRequest = MakeRequest("get-token", requestId,
+            auth: new AuthConfig { AuthType = AuthConfig.AuthTypes.Inherit });
+        var folder = MakeFolder(inheritAuthRequest);
+        var collectionPath = _temp.CreateSubDirectory("inherit-no-parent-auth-collection");
+
+        _collectionService.OpenFolderAsync(collectionPath, Arg.Any<CancellationToken>())
+            .Returns(folder);
+        _collectionService.LoadRequestAsync(inheritAuthRequest.FilePath, Arg.Any<CancellationToken>())
+            .Returns(inheritAuthRequest);
+        // Effective auth resolves to None (no parent provides auth).
+        _collectionService.ResolveEffectiveAuthAsync(inheritAuthRequest.FilePath, Arg.Any<CancellationToken>())
+            .Returns(new AuthConfig { AuthType = AuthConfig.AuthTypes.None });
+        _transportRegistry.Resolve(Arg.Any<RequestModel>())
+            .Returns(_transport);
+
+        RequestModel? capturedModel = null;
+        _transport.SendAsync(Arg.Do<RequestModel>(m => capturedModel = m), Arg.Any<CancellationToken>())
+            .Returns(OkResponse("""{"token":"anon"}"""));
+
+        var variable = ResponseBodyVar("token", "get-token");
+        var sut = Sut();
+
+        await sut.ResolveAsync(collectionPath, "ns", [variable], new Dictionary<string, string>());
+
+        capturedModel.Should().NotBeNull();
+        capturedModel!.Headers.Should().NotContainKey("Authorization",
+            "when no parent provides auth and effective auth is None, no auth header should be added");
     }
 }
