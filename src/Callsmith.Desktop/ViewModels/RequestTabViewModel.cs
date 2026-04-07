@@ -1254,7 +1254,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         // Headers + auth
         var headers = ResolveHeaders(Headers.GetEnabledPairs(), env.Variables);
 
-        var effectiveAuth = await GetEffectiveAuthAsync(ct).ConfigureAwait(false);
+        var effectiveAuth = await GetEffectiveAuthAsync(ct);
         ApplyAuthHeaders(headers, requestUrl, env.Variables, out requestUrl, effectiveAuth);
 
         requestUrl = VariableSubstitutionService.Substitute(requestUrl, env) ?? requestUrl;
