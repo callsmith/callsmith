@@ -297,9 +297,9 @@ public sealed class RequestTabViewModelSendTests
 
         // URL field should have no {{}} or {param} placeholders
         sut.Url.Should().Contain("api.example.com");
-        sut.Url.Should().Contain("/api/users/42");
+        sut.Url.Should().Contain("/api/users/{id}");
         sut.Url.Should().NotContain("{{baseUrl}}");
-        sut.Url.Should().NotContain("{id}");
+        sut.PathParams.GetAllKv().Should().Contain(p => p.Key == "id" && p.Value == "42");
         sut.SelectedMethod.Should().Be("GET");
         sut.IsNew.Should().BeTrue();
     }
@@ -354,7 +354,7 @@ public sealed class RequestTabViewModelSendTests
         var qp = sut.QueryParams.GetAllKv();
         qp.Should().Contain(p => p.Key == "active" && p.Value == "1");
         qp.Should().NotContain(p => p.Key == "inactive");
-        sut.Url.Should().Contain("active=1");
+        sut.Url.Should().NotContain("active=1");
         sut.Url.Should().NotContain("inactive");
     }
 
@@ -458,7 +458,7 @@ public sealed class RequestTabViewModelSendTests
 
         sut.AuthType.Should().Be(AuthConfig.AuthTypes.Inherit);
         sut.QueryParams.GetAllKv().Should().Contain(p => p.Key == "apikey" && p.Value == "secret123");
-        sut.Url.Should().Contain("apikey=secret123");
+        sut.Url.Should().NotContain("apikey=secret123");
     }
 
     [Fact]
