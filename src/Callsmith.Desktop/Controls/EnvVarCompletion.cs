@@ -5,6 +5,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using AvaloniaEdit;
@@ -113,7 +114,10 @@ internal sealed class TextBoxCompletionHandler
         _textBox.TextChanged -= OnTextChanged;
         _textBox.KeyDown -= OnKeyDown;
         if (_popup is not null)
+        {
             _popup.Closed -= OnPopupClosed;
+            ((ISetLogicalParent)_popup).SetParent(null);
+        }
     }
 
     // ─── Public API ───────────────────────────────────────────────────────
@@ -312,6 +316,10 @@ internal sealed class TextBoxCompletionHandler
             IsLightDismissEnabled = true,
             Child = popupChild,
         };
+
+        // Set the TextBox as the logical parent so the PopupRoot inherits the
+        // application's style tree — required for the ListBox to measure correctly.
+        ((ISetLogicalParent)_popup).SetParent(_textBox);
 
         // Keep _isVisible in sync when the popup is dismissed externally (click outside).
         _popup.Closed += OnPopupClosed;
