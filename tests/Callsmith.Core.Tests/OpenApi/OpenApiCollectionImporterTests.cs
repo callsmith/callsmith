@@ -442,7 +442,7 @@ public sealed class OpenApiCollectionImporterTests : IDisposable
         var result = await _sut.ImportAsync(path);
 
         // Integer type produces the same "0" placeholder as query params.
-        result.RootRequests[0].PathParams["userId"].Should().Be("0");
+        result.RootRequests[0].PathParams["userId"].Should().Be(string.Empty);
     }
 
     [Fact]
@@ -582,7 +582,7 @@ public sealed class OpenApiCollectionImporterTests : IDisposable
         var result = await _sut.ImportAsync(path);
 
         var header = result.RootRequests[0].Headers.Single(h => h.Key == "X-Request-Id");
-        header.Value.Should().Be("00000000-0000-0000-0000-000000000000");
+        header.Value.Should().Be(string.Empty);
     }
 
     [Fact]

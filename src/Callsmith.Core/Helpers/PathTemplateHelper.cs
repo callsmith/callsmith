@@ -10,12 +10,12 @@ namespace Callsmith.Core.Helpers;
 public static partial class PathTemplateHelper
 {
     // Match single-brace placeholders like {id}, but do not match {{envVar}}.
-    [GeneratedRegex(@"(?<!\{)\{([A-Za-z0-9_-]+)\}(?!\})", RegexOptions.Compiled)]
+    [GeneratedRegex(@"(?<!\{)\{([A-Za-z0-9\._-]+)\}(?!\})", RegexOptions.Compiled)]
     private static partial Regex PathParamPattern();
 
     // Match colon path params like :userId — but only when preceded by '/' to avoid matching
     // URL scheme (https:), host:port, or auth credentials.
-    [GeneratedRegex(@"(?<=/):([A-Za-z][A-Za-z0-9_-]*)", RegexOptions.Compiled)]
+    [GeneratedRegex(@"(?<=/):([A-Za-z][A-Za-z0-9\._-]*)", RegexOptions.Compiled)]
     private static partial Regex ColonPathParamPattern();
 
     /// <summary>

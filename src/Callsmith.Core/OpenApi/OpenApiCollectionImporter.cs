@@ -586,20 +586,6 @@ public sealed partial class OpenApiCollectionImporter : ICollectionImporter
 
             if (schema.TryGetProperty("default", out var def) && def.ValueKind != JsonValueKind.Null)
                 return JsonElementToString(def);
-
-            // Produce a type-based placeholder (consistent with GenerateStringNode for body examples)
-            var type = GetString(schema, "type");
-            if (type is not null)
-            {
-                return type.ToLowerInvariant() switch
-                {
-                    "integer" or "number" => "0",
-                    "boolean"             => "true",
-                    "array"               => "[]",
-                    "string"              => GetStringFormatPlaceholder(schema),
-                    _                     => null,
-                };
-            }
         }
 
         return null;
