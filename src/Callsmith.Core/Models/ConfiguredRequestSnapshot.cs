@@ -77,6 +77,18 @@ public sealed class ConfiguredRequestSnapshot
     public AuthConfig Auth { get; init; } = new();
 
     /// <summary>
+    /// The effective authentication configuration that was actually applied when the request was sent.
+    /// When <see cref="Auth"/> has <see cref="AuthConfig.AuthTypes.Inherit"/>, this contains the
+    /// resolved inherited auth walked up from the parent folder hierarchy; otherwise it mirrors
+    /// <see cref="Auth"/>. Field values may contain <c>{{variable}}</c> placeholders.
+    /// <para>
+    /// Use this (with <see cref="Auth"/> as a fallback for older entries) when reconstructing the
+    /// exact wire-level request, e.g. in <see cref="HistorySentViewBuilder"/>.
+    /// </para>
+    /// </summary>
+    public AuthConfig? EffectiveAuth { get; init; }
+
+    /// <summary>
     /// Creates a <see cref="ConfiguredRequestSnapshot"/> from a <see cref="CollectionRequest"/>
     /// with additional auto-applied headers provided by the caller.
     /// </summary>

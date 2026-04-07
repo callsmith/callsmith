@@ -196,4 +196,97 @@ public sealed class HistorySentViewBuilderTests
 
         model.ContentType.Should().Be(expectedContentType);
     }
+
+    [Fact]
+    public void Build_WithInheritAuth_UsesEffectiveAuthForBearerToken()
+    {
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "GET",
+            Url = "https://example.com/api",
+            Auth = new AuthConfig { AuthType = AuthConfig.AuthTypes.Inherit },
+            EffectiveAuth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.Bearer,
+                Token = "{{inheritedToken}}",
+            },
+        };
+
+        var bindings = new List<VariableBinding>
+        {
+            new("{{inheritedToken}}", "parent-bearer-123", true),
+        };
+
+        var model = HistorySentViewBuilder.Build(snapshot, bindings);
+
+        model.Headers.Should().Contain(kv =>
+            kv.Key == "Authorization" && kv.Value == "Bearer parent-bearer-123");
+    }
+
+    [Fact]
+    public void Build_WithInheritAuth_UsesEffectiveAuthForApiKeyInHeader()
+    {
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "GET",
+            Url = "https://example.com/api",
+            Auth = new AuthConfig { AuthType = AuthConfig.AuthTypes.Inherit },
+            EffectiveAuth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.ApiKey,
+                ApiKeyName = "X-Folder-Key",
+                ApiKeyValue = "{{folderKey}}",
+                ApiKeyIn = AuthConfig.ApiKeyLocations.Header,
+            },
+        };
+
+        var bindings = new List<VariableBinding>
+        {
+            new("{{folderKey}}", "folder-api-key", true),
+        };
+
+        var model = HistorySentViewBuilder.Build(snapshot, bindings);
+
+        model.Headers.Should().Contain(kv =>
+            kv.Key == "X-Folder-Key" && kv.Value == "folder-api-key");
+    }
+
+    [Fact]
+    public void Build_WithInheritAuth_UsesEffectiveAuthForApiKeyInQuery()
+    {
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "GET",
+            Url = "https://example.com/api",
+            Auth = new AuthConfig { AuthType = AuthConfig.AuthTypes.Inherit },
+            EffectiveAuth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.ApiKey,
+                ApiKeyName = "api_key",
+                ApiKeyValue = "secret-value",
+                ApiKeyIn = AuthConfig.ApiKeyLocations.Query,
+            },
+        };
+
+        var model = HistorySentViewBuilder.Build(snapshot, []);
+
+        model.Url.Should().Contain("api_key=secret-value");
+    }
+
+    [Fact]
+    public void Build_WithInheritAuth_AndNoEffectiveAuth_DoesNotAddAuthHeaders()
+    {
+        // EffectiveAuth is null — e.g. an entry recorded before the field was introduced.
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "GET",
+            Url = "https://example.com/api",
+            Auth = new AuthConfig { AuthType = AuthConfig.AuthTypes.Inherit },
+            EffectiveAuth = null,
+        };
+
+        var model = HistorySentViewBuilder.Build(snapshot, []);
+
+        model.Headers.Should().NotContainKey("Authorization");
+    }
 }
