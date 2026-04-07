@@ -62,7 +62,7 @@
                Padding="8,5"
                FontSize="12"
                IsReadOnly="True"
-               ToolTip.Tip="{Binding FilePath}"/>
+               ToolTip.Tip="Postman, Insomnia, OpenAPI, Swagger, …"/>
       <Button Grid.Column="4"
               Content="Browse…"
               Command="{Binding BrowseFileCommand}"
