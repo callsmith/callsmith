@@ -639,8 +639,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     /// <summary>
     /// The currently-selected body type as a <see cref="BodyTypeOption"/>.
-    /// Syncs bidirectionally with <see cref="SelectedBodyType"/>.
-    /// Separator items are rejected; selecting one restores the previous option.
+    /// The view reads this via a OneWay binding; user selections are written back through
+    /// the <c>SelectionChanged</c> code-behind handler (see RequestView.axaml.cs).
+    /// Separator items and null values are rejected in the setter.
     /// </summary>
     public BodyTypeOption? SelectedBodyTypeOption
     {
@@ -746,6 +747,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(StatusBadgeColor) or nameof(MethodColor) or
                 nameof(ShowBodyEditor) or nameof(ShowTextBodyEditor) or nameof(ShowFormBodyEditor) or
                 nameof(ShowFileBodyEditor) or nameof(HasFileBodySelected) or nameof(SelectedBodyTypeOption) or
+                nameof(CanFormatBody) or
                 nameof(PreviewUrl) or nameof(HasUnresolvedPathParams) or nameof(PreviewUrlForeground) or nameof(PreviewUrlTooltip) or
                 nameof(IsAuthInherit) or nameof(IsAuthBearer) or nameof(IsAuthBasic) or nameof(IsAuthApiKey) or
                 nameof(ShowAuthPassword) or nameof(ShowAuthApiKeyValue) or

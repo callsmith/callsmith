@@ -154,5 +154,26 @@ public partial class RequestView : UserControl
         if (clipboard is not null && !string.IsNullOrEmpty(vm.PreviewUrl))
             await clipboard.SetTextAsync(vm.PreviewUrl);
     }
+
+    /// <summary>
+    /// Handles the body-type ComboBox selection change.  The binding is OneWay (VM → View)
+    /// to prevent Avalonia's TwoWay binding from writing back intermediate values during
+    /// DataContext switches, which would spuriously mark the tab dirty.
+    /// This handler provides the View → VM direction, but only for genuine user selections
+    /// (i.e. it ignores events that fire as a result of the binding updating the control).
+    /// </summary>
+    private void OnBodyTypeSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is not RequestTabViewModel vm) return;
+        if (sender is not ComboBox cb) return;
+        if (cb.SelectedItem is not BodyTypeOption opt || opt.IsSeparator) return;
+
+        // When the OneWay binding updates the ComboBox (e.g. on DataContext change or
+        // after LoadRequest), SelectedItem is set to the value already held by the VM.
+        // Skip those no-op echoes so only true user clicks reach the ViewModel.
+        if (opt.Value == vm.SelectedBodyType) return;
+
+        vm.SelectedBodyTypeOption = opt;
+    }
 }
 

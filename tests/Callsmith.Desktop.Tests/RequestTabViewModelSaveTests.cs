@@ -81,11 +81,11 @@ public sealed class RequestTabViewModelSaveTests
     }
 
     [Fact]
-    public void BindingFeedback_SetsBodyTypeToNoneThenBack_DoesNotMarkDirty()
+    public void ChangingBodyTypeViaOption_MarksTabDirty()
     {
-        // Simulates what Avalonia's ComboBox TwoWay binding does when rebinding:
-        // briefly sets SelectedBodyTypeOption to the first valid item (None) before
-        // the SelectedItem binding corrects it to the real value.
+        // Ensures that the SelectedBodyTypeOption setter (the path used by the
+        // code-behind SelectionChanged handler for genuine user clicks) does
+        // mark the tab dirty when the selected type actually changes.
         var req = new CollectionRequest
         {
             FilePath = @"c:\tmp\sample.callsmith",
@@ -98,13 +98,11 @@ public sealed class RequestTabViewModelSaveTests
         var sut = BuildSut();
         sut.LoadRequest(req);
 
-        var noneOption = sut.BodyTypes.First(o => !o.IsSeparator && o.Value == CollectionRequest.BodyTypes.None);
-        var jsonOption = sut.BodyTypes.First(o => !o.IsSeparator && o.Value == CollectionRequest.BodyTypes.Json);
-        sut.SelectedBodyTypeOption = noneOption;
-        sut.SelectedBodyTypeOption = jsonOption;
+        var xmlOption = sut.BodyTypes.First(o => !o.IsSeparator && o.Value == CollectionRequest.BodyTypes.Xml);
+        sut.SelectedBodyTypeOption = xmlOption;
 
-        sut.HasUnsavedChanges.Should().BeFalse("binding feedback round-trip should not dirty the tab");
-        sut.Body.Should().Be("{\"key\":\"value\"}", "body content should be restored after feedback round-trip");
+        sut.HasUnsavedChanges.Should().BeTrue("switching body type via option should mark the tab dirty");
+        sut.SelectedBodyType.Should().Be(CollectionRequest.BodyTypes.Xml);
     }
 
     [Fact]
