@@ -1147,7 +1147,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             var rb = new StringBuilder();
             var displayUrl = resolved 
                 ? resolvedRequest.Url 
-                : MaskAuthInUrl(resolvedRequest.Url, cfg.Auth);
+                : MaskAuthInUrl(resolvedRequest.Url, cfg.EffectiveAuth ?? cfg.Auth);
             rb.AppendLine($"{resolvedRequest.Method} {displayUrl}");
             if (resolvedRequest.Headers.Count > 0)
             {
@@ -1155,7 +1155,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                 rb.AppendLine("Headers:");
                 foreach (var kv in resolvedRequest.Headers)
                 {
-                    var displayValue = resolved ? kv.Value : MaskAuthHeaderValue(kv.Key, kv.Value, cfg.Auth);
+                    var displayValue = resolved ? kv.Value : MaskAuthHeaderValue(kv.Key, kv.Value, cfg.EffectiveAuth ?? cfg.Auth);
                     rb.AppendLine($"  {kv.Key}: {displayValue}");
                 }
             }
@@ -1283,7 +1283,8 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         if (entry.ConfiguredSnapshot.Headers.FirstOrDefault(x => x.Key == WellKnownHeaders.Authorization) != null)
             return true;
 
-        var auth = entry.ConfiguredSnapshot.Auth;
+        // Check the effective auth when available (covers inherited auth); fall back to raw auth.
+        var auth = entry.ConfiguredSnapshot.EffectiveAuth ?? entry.ConfiguredSnapshot.Auth;
         return auth.AuthType switch
         {
             AuthConfig.AuthTypes.Bearer => !string.IsNullOrWhiteSpace(auth.Token),

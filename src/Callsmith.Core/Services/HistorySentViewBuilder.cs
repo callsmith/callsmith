@@ -77,7 +77,8 @@ public static class HistorySentViewBuilder
         }
 
         // 5. Apply auth headers (mirrors RequestTabViewModel.ApplyAuthHeaders).
-        ApplyAuthHeaders(snapshot.Auth, headers, vars, ref requestUrl);
+        // Use EffectiveAuth when available so that inherited auth is correctly reflected.
+        ApplyAuthHeaders(snapshot.EffectiveAuth ?? snapshot.Auth, headers, vars, ref requestUrl);
 
         // 6. Substitute any remaining tokens in the final URL.
         requestUrl = Substitute(requestUrl, vars) ?? requestUrl;

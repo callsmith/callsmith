@@ -931,7 +931,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
         // Auth mode is NOT preserved on resend. Instead, auth is materialised as explicit
         // headers or query params so the new tab shows only literal, active values.
-        var auth = snapshot.Auth;
+        // Use EffectiveAuth when available so that inherited auth is correctly replayed.
+        var auth = snapshot.EffectiveAuth ?? snapshot.Auth;
         switch (auth.AuthType)
         {
             case AuthConfig.AuthTypes.Bearer when !string.IsNullOrEmpty(auth.Token):
@@ -1403,7 +1404,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 var sentAt = DateTimeOffset.UtcNow - (Response?.Elapsed ?? TimeSpan.Zero);
 
                 if (_historyService is not null && Response is not null)
-                    _ = RecordHistoryAsync(env, Response, requestUrl, sentAt, sentBindings);
+                    _ = RecordHistoryAsync(env, Response, requestUrl, sentAt, effectiveAuth, sentBindings);
 
             // If this is a saved request, update the dynamic variable cache for any
             // environment variables that reference this request, so subsequent resolutions
@@ -2035,6 +2036,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         ResponseModel response,
         string resolvedUrl,
         DateTimeOffset sentAt,
+        AuthConfig? effectiveAuth = null,
         IReadOnlyList<VariableBinding>? sentBindings = null)
     {
         try
@@ -2054,17 +2056,35 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 VariableSubstitutionService.SubstituteCollecting(
                     template, env.Variables, secretNames, bindings, mockGenerators: null);
 
+            void CollectAuthFields(AuthConfig auth)
+            {
+                Collect(auth.Token);
+                Collect(auth.Username);
+                Collect(auth.Password);
+                Collect(auth.ApiKeyName);
+                Collect(auth.ApiKeyValue);
+            }
+
             Collect(Url);
             foreach (var p in QueryParams.GetAllKv()) { Collect(p.Key); Collect(p.Value); }
             foreach (var p in Headers.GetAllKv())    { Collect(p.Key); Collect(p.Value); }
             Collect(Body);
             foreach (var p in FormParams.GetAllKv())  { Collect(p.Key); Collect(p.Value); }
             foreach (var p in PathParams.GetEnabledPairs()) Collect(p.Value);
-            Collect(AuthToken);
-            Collect(AuthUsername);
-            Collect(AuthPassword);
-            Collect(AuthApiKeyName);
-            Collect(AuthApiKeyValue);
+            CollectAuthFields(new AuthConfig
+            {
+                Token = string.IsNullOrEmpty(AuthToken) ? null : AuthToken,
+                Username = string.IsNullOrEmpty(AuthUsername) ? null : AuthUsername,
+                Password = string.IsNullOrEmpty(AuthPassword) ? null : AuthPassword,
+                ApiKeyName = string.IsNullOrEmpty(AuthApiKeyName) ? null : AuthApiKeyName,
+                ApiKeyValue = string.IsNullOrEmpty(AuthApiKeyValue) ? null : AuthApiKeyValue,
+            });
+
+            // When auth is inherited, the request's own auth fields are not used for sending.
+            // Collect variable bindings from the effective (inherited) auth fields so that
+            // the Resolved view can correctly substitute any {{tokens}} in the auth config.
+            if (AuthType == AuthConfig.AuthTypes.Inherit && effectiveAuth is not null)
+                CollectAuthFields(effectiveAuth);
 
             // Deduplicate — same token may appear in multiple fields.
             var dedupedBindings = bindings
@@ -2105,6 +2125,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                     ApiKeyValue = string.IsNullOrEmpty(AuthApiKeyValue) ? null : AuthApiKeyValue,
                     ApiKeyIn = AuthApiKeyIn,
                 },
+                EffectiveAuth = effectiveAuth,
             };
 
             var entry = new HistoryEntry
