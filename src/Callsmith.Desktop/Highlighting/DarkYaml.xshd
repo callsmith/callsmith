@@ -38,10 +38,9 @@
       <End>'</End>
     </Span>
 
-    <!-- Line comments -->
+    <!-- Line comments — no <End> needed; multiline="false" terminates the span at end-of-line -->
     <Span color="Comment" multiline="false">
       <Begin>#</Begin>
-      <End>$</End>
     </Span>
 
     <!-- Anchors (&name) and aliases (*name) -->
