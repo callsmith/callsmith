@@ -455,7 +455,9 @@ public sealed class BrunoCollectionService : ICollectionService
             ? null
             : Path.GetFullPath(_currentRoot);
 
-        while (true)
+        // Safety cap: filesystem hierarchies are never deeper than this in practice.
+        const int maxDepth = 256;
+        for (var depth = 0; depth < maxDepth; depth++)
         {
             ct.ThrowIfCancellationRequested();
 
@@ -500,6 +502,8 @@ public sealed class BrunoCollectionService : ICollectionService
 
             dir = parent;
         }
+
+        return new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
     }
 
     /// <summary>
@@ -1114,7 +1118,9 @@ public sealed class BrunoCollectionService : ICollectionService
     }
 
     /// <summary>
-    /// Updates or removes auth blocks (<c>auth:bearer</c> / <c>auth:basic</c> / <c>auth:apikey</c>) in-place.
+    /// Updates or removes auth blocks (<c>auth:bearer</c>, <c>auth:basic</c>, <c>auth:apikey</c>)
+    /// in-place.  For <see cref="AuthConfig.AuthTypes.Inherit"/> and
+    /// <see cref="AuthConfig.AuthTypes.None"/>, all three auth detail blocks are removed.
     /// </summary>
     private static void UpdateAuthBlockInPlace(
         List<BruBlock> blocks, CollectionRequest request, BruDocument? existing, string bruMethod)
