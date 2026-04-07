@@ -54,6 +54,13 @@ public static class EnvVarCompletion
     public static void SetSuggestions(InputElement element, IReadOnlyList<EnvVarSuggestion>? value)
         => element.SetValue(SuggestionsProperty, value);
 
+    /// <summary>
+    /// Returns the active <see cref="TextBoxCompletionHandler"/> for the given TextBox, if one
+    /// has been created (i.e. suggestions were set on it). Intended for test use only.
+    /// </summary>
+    internal static TextBoxCompletionHandler? GetHandlerForTesting(TextBox textBox) =>
+        TextBoxHandlers.TryGetValue(textBox, out var handler) ? handler : null;
+
     private static void OnTextBoxSuggestionsChanged(TextBox textBox, AvaloniaPropertyChangedEventArgs e)
     {
         var handler = TextBoxHandlers.GetValue(textBox, static tb => new TextBoxCompletionHandler(tb));
@@ -72,9 +79,9 @@ public static class EnvVarCompletion
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// <summary>
-/// Manages the autocomplete overlay lifecycle for a single TextBox.
-/// Uses OverlayLayer to render the panel so it floats above all other content
-/// without requiring a Popup logical-parent relationship.
+/// Manages the autocomplete popup lifecycle for a single TextBox.
+/// Uses a <see cref="Popup"/> so the dropdown renders in its own OS-level
+/// overlay and is never clipped by a parent window or dialog.
 /// </summary>
 internal sealed class TextBoxCompletionHandler
 {
@@ -83,72 +90,30 @@ internal sealed class TextBoxCompletionHandler
     private IReadOnlyList<EnvVarSuggestion> _suggestions = [];
     private List<EnvVarSuggestion> _currentItems = [];
 
-    private Border? _overlayPanel;
+    private Popup? _popup;
     private ListBox? _listBox;
     private bool _isVisible;
 
     // Prevents re-entrant text-change processing during a commit.
     private bool _suppressChange;
 
-    // TopLevel pointer handler for dismiss-on-click-outside.
-    private TopLevel? _topLevel;
-    private EventHandler<PointerPressedEventArgs>? _dismissHandler;
-
     public TextBoxCompletionHandler(TextBox textBox)
     {
         _textBox = textBox;
         _textBox.TextChanged += OnTextChanged;
         _textBox.KeyDown += OnKeyDown;
-        _textBox.AttachedToVisualTree += OnAttachedToVisualTree;
         _textBox.DetachedFromVisualTree += OnDetachedFromVisualTree;
     }
 
     // ─── Visual-tree lifecycle ────────────────────────────────────────────
 
-    private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
-    {
-        _topLevel = TopLevel.GetTopLevel(_textBox);
-        if (_topLevel is null) return;
-
-        _dismissHandler = OnTopLevelPointerPressed;
-        _topLevel.AddHandler(
-            InputElement.PointerPressedEvent,
-            _dismissHandler,
-            RoutingStrategies.Tunnel,
-            handledEventsToo: true);
-    }
-
     private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
     {
         ClosePanel();
-
-        if (_overlayPanel != null)
-        {
-            var overlay = OverlayLayer.GetOverlayLayer(_textBox);
-            overlay?.Children.Remove(_overlayPanel);
-        }
-
-        if (_topLevel is not null && _dismissHandler is not null)
-        {
-            _topLevel.RemoveHandler(InputElement.PointerPressedEvent, _dismissHandler);
-            _topLevel = null;
-            _dismissHandler = null;
-        }
-    }
-
-    // ─── Dismiss on click outside ─────────────────────────────────────────
-
-    private void OnTopLevelPointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        if (!_isVisible) return;
-
-        if (_overlayPanel is not null && e.Source is Visual src)
-        {
-            if (_overlayPanel == src || _overlayPanel.IsVisualAncestorOf(src))
-                return;
-        }
-
-        ClosePanel();
+        _textBox.TextChanged -= OnTextChanged;
+        _textBox.KeyDown -= OnKeyDown;
+        if (_popup is not null)
+            _popup.Closed -= OnPopupClosed;
     }
 
     // ─── Public API ───────────────────────────────────────────────────────
@@ -159,6 +124,14 @@ internal sealed class TextBoxCompletionHandler
         if (_isVisible)
             OnTextChanged(null, null!);
     }
+
+    // ─── Test helpers ─────────────────────────────────────────────────────
+
+    /// <summary>Whether the completion popup is currently open. For test use only.</summary>
+    internal bool IsPopupOpen => _popup?.IsOpen ?? false;
+
+    /// <summary>The active list-box showing suggestions. For test use only.</summary>
+    internal ListBox? CurrentListBox => _listBox;
 
     // ─── Text / keyboard handlers ─────────────────────────────────────────
 
@@ -211,28 +184,15 @@ internal sealed class TextBoxCompletionHandler
         _listBox!.ItemsSource = items;
         _listBox.SelectedIndex = 0;
 
-        var overlay = OverlayLayer.GetOverlayLayer(_textBox);
-        if (overlay is null) return;
-
-        if (!overlay.Children.Contains(_overlayPanel!))
-            overlay.Children.Add(_overlayPanel!);
-
-        var pos = _textBox.TranslatePoint(new Point(0, _textBox.Bounds.Height), overlay);
-        if (pos.HasValue)
-        {
-            Canvas.SetLeft(_overlayPanel!, pos.Value.X);
-            Canvas.SetTop(_overlayPanel!, pos.Value.Y);
-        }
-
-        _overlayPanel!.Width = Math.Max(180, _textBox.Bounds.Width);
-        _overlayPanel.IsVisible = true;
+        _popup!.MinWidth = Math.Max(180, _textBox.Bounds.Width);
+        _popup.IsOpen = true;
         _isVisible = true;
     }
 
     private void ClosePanel()
     {
-        if (_overlayPanel is not null)
-            _overlayPanel.IsVisible = false;
+        if (_popup is not null)
+            _popup.IsOpen = false;
         _isVisible = false;
     }
 
@@ -297,7 +257,7 @@ internal sealed class TextBoxCompletionHandler
 
     private void EnsurePanelCreated()
     {
-        if (_overlayPanel is not null) return;
+        if (_popup is not null) return;
 
         _listBox = new ListBox
         {
@@ -335,18 +295,29 @@ internal sealed class TextBoxCompletionHandler
 
         _listBox.Tapped += (_, _) => CommitSelection();
 
-        _overlayPanel = new Border
+        var popupChild = new Border
         {
             Background = new SolidColorBrush(Color.Parse("#252526")),
             BorderBrush = new SolidColorBrush(Color.Parse("#555555")),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(4),
             BoxShadow = BoxShadows.Parse("0 4 14 2 #AA000000"),
-            IsVisible = false,
-            ZIndex = 9999,
             Child = _listBox,
         };
+
+        _popup = new Popup
+        {
+            PlacementTarget = _textBox,
+            Placement = PlacementMode.Bottom,
+            IsLightDismissEnabled = true,
+            Child = popupChild,
+        };
+
+        // Keep _isVisible in sync when the popup is dismissed externally (click outside).
+        _popup.Closed += OnPopupClosed;
     }
+
+    private void OnPopupClosed(object? sender, EventArgs e) => _isVisible = false;
 
     private sealed record TriggerContext(int StartIndex, string Prefix);
 }

@@ -96,8 +96,22 @@ public sealed class EnvVarCompletionUiTests
         Content = content,
     };
 
-    private static ListBox? FindPopupList(Window window) =>
-        FindPopupBorder(window)?.Child as ListBox;
+    private static ListBox? FindPopupList(Window window)
+    {
+        // TextBox path: completion uses a Popup that lives in its own PopupRoot (a separate
+        // TopLevel), so it is not reachable via window.GetVisualDescendants(). Access it
+        // directly through the internal handler.
+        var textBox = window.GetVisualDescendants().OfType<TextBox>().FirstOrDefault();
+        if (textBox is not null)
+        {
+            var handler = EnvVarCompletion.GetHandlerForTesting(textBox);
+            if (handler?.IsPopupOpen == true)
+                return handler.CurrentListBox;
+        }
+
+        // SyntaxEditor path: Border is added directly to the OverlayLayer.
+        return FindPopupBorder(window)?.Child as ListBox;
+    }
 
     private static Border? FindPopupBorder(Window window) =>
         window.GetVisualDescendants()
