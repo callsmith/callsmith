@@ -94,7 +94,10 @@ public static class ResponseFormatter
         try
         {
             var doc = XDocument.Parse(xml);
-            return doc.ToString();
+            var body = doc.ToString();
+            return doc.Declaration is { } decl
+                ? decl + "\n" + body
+                : body;
         }
         catch (System.Xml.XmlException)
         {
