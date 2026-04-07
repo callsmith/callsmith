@@ -28,16 +28,23 @@ public static class CurlCommandBuilder
     /// <param name="request">A fully-resolved request (env vars already substituted).</param>
     /// <param name="maskAuthentication">
     /// When true, auth credentials are replaced with placeholders
-    /// (<c>&lt;token&gt;</c> for Authorization headers, <c>&lt;key&gt;</c> for API keys).
+    /// (<c>&lt;token&gt;</c> for Authorization headers, <c>&lt;key&gt;</c> for API keys),
+    /// and any secret environment variable values are replaced with <c>&lt;secret&gt;</c>.
     /// </param>
     /// <param name="authMaskInfo">
     /// Additional hints for masking API key auth. Only needed when
     /// <paramref name="maskAuthentication"/> is true and the request uses API key auth.
     /// </param>
+    /// <param name="secretValues">
+    /// The resolved values of all secret environment variables. When
+    /// <paramref name="maskAuthentication"/> is true, any occurrence of these values in the
+    /// URL, headers, and body is replaced with <c>&lt;secret&gt;</c>.
+    /// </param>
     public static string Build(
         RequestModel request,
         bool maskAuthentication = false,
-        CurlAuthMaskInfo? authMaskInfo = null)
+        CurlAuthMaskInfo? authMaskInfo = null,
+        IReadOnlySet<string>? secretValues = null)
     {
         // Method — curl defaults to GET, HEAD uses -I. All others need -X.
         var method = request.Method.Method.ToUpperInvariant();
@@ -54,10 +61,13 @@ public static class CurlCommandBuilder
         if (methodFlag is not null)
             sb.Append($" {methodFlag}");
 
-        // URL — mask API-key query param value if needed
+        // URL — mask API-key query param value if needed, then mask secret values
         var url = maskAuthentication && authMaskInfo?.ApiKeyQueryParamName is { } qpName
             ? MaskQueryParamValue(request.Url, qpName)
             : request.Url;
+
+        if (maskAuthentication && secretValues is { Count: > 0 })
+            url = MaskSecretValues(url, secretValues);
 
         sb.Append($" \\\n  \"{EscapeUrl(url)}\"");
 
@@ -65,6 +75,8 @@ public static class CurlCommandBuilder
         foreach (var (key, value) in request.Headers)
         {
             var displayValue = maskAuthentication ? MaskHeaderValue(key, value, authMaskInfo) : value;
+            if (maskAuthentication && secretValues is { Count: > 0 })
+                displayValue = MaskSecretValues(displayValue, secretValues);
             sb.Append($" \\\n  -H \"{EscapeHeaderValue(key)}: {EscapeHeaderValue(displayValue)}\"");
         }
 
@@ -78,9 +90,28 @@ public static class CurlCommandBuilder
 
         // Body
         if (!string.IsNullOrEmpty(request.Body))
-            sb.Append($" \\\n  --data-raw {QuoteBody(request.Body)}");
+        {
+            var body = request.Body;
+            if (maskAuthentication && secretValues is { Count: > 0 })
+                body = MaskSecretValues(body, secretValues);
+            sb.Append($" \\\n  --data-raw {QuoteBody(body)}");
+        }
 
         return sb.ToString();
+    }
+
+    // Replace each known secret value with <secret>.
+    // Secrets are applied longest-first to prevent a shorter secret that is a substring
+    // of a longer secret from being masked first and leaving a partial longer match.
+    // Empty values are skipped.
+    private static string MaskSecretValues(string text, IReadOnlySet<string> secretValues)
+    {
+        foreach (var secret in secretValues.OrderByDescending(s => s.Length))
+        {
+            if (string.IsNullOrEmpty(secret)) continue;
+            text = text.Replace(secret, "<secret>", StringComparison.Ordinal);
+        }
+        return text;
     }
 
     // Mask the value of a named Authorization header, keeping the scheme.
