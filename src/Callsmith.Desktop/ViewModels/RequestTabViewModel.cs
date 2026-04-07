@@ -348,6 +348,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
     /// <summary>API-key masking hints for the cURL dialog. Set alongside <see cref="CurlRequestSnapshot"/>.</summary>
     internal CurlAuthMaskInfo? CurlAuthMask { get; private set; }
 
+    /// <summary>Resolved values of all secret environment variables for the cURL dialog. Set alongside <see cref="CurlRequestSnapshot"/>.</summary>
+    internal IReadOnlySet<string> CurlSecretValues { get; private set; } = new HashSet<string>();
+
     /// <summary>
     /// Opens the dynamic value configuration dialog. Returns the configured segment or null.
     /// Used as the callback wired into every KV editor row's <see cref="SegmentedValueFieldViewModel"/>.
@@ -1301,6 +1304,24 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
         CurlRequestSnapshot = request;
         CurlAuthMask = authMask;
+
+        // Collect the resolved values of all secret environment variables so the cURL
+        // dialog can replace them with <secret> when masking is active.
+        var secretVariableNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var v in _globalEnvironment.Variables.Where(v => v.IsSecret))
+            secretVariableNames.Add(v.Name);
+        if (_activeEnvironment is not null)
+            foreach (var v in _activeEnvironment.Variables.Where(v => v.IsSecret))
+                secretVariableNames.Add(v.Name);
+
+        var secretValues = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var name in secretVariableNames)
+        {
+            if (env.Variables.TryGetValue(name, out var val) && !string.IsNullOrEmpty(val))
+                secretValues.Add(val);
+        }
+        CurlSecretValues = secretValues;
+
         ShowCurlDialog = true;
     }
 

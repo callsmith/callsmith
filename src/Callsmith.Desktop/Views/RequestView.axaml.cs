@@ -92,6 +92,7 @@ public partial class RequestView : UserControl
             if (!_trackedVm.ShowCurlDialog) return;
             var request = _trackedVm.CurlRequestSnapshot;
             var authMask = _trackedVm.CurlAuthMask;
+            var secretValues = _trackedVm.CurlSecretValues;
             // Reset immediately so the property change can fire again on re-open.
             _trackedVm.ShowCurlDialog = false;
             if (request is null) return;
@@ -99,7 +100,7 @@ public partial class RequestView : UserControl
             if (owner is null) return;
             var dialog = new CurlDialog
             {
-                DataContext = new CurlDialogViewModel(request, authMask)
+                DataContext = new CurlDialogViewModel(request, authMask, secretValues)
             };
             await dialog.ShowDialog(owner);
         }

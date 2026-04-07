@@ -6,21 +6,22 @@ namespace Callsmith.Desktop.ViewModels;
 
 /// <summary>
 /// View model for the cURL command dialog.
-/// Manages the auth-masking toggle and regenerates the command text on change.
+/// Manages the auth/secrets-masking toggle and regenerates the command text on change.
 /// </summary>
 public sealed partial class CurlDialogViewModel : ObservableObject
 {
     private readonly RequestModel _request;
     private readonly CurlAuthMaskInfo? _authMaskInfo;
+    private readonly IReadOnlySet<string> _secretValues;
 
     /// <summary>
-    /// True when the request contains detectable authentication that can be masked.
-    /// Drives the IsEnabled state of the "Include authentication" checkbox.
+    /// True when the request contains detectable authentication or secret environment
+    /// variables that can be masked. Drives the IsEnabled state of the checkbox.
     /// </summary>
     public bool HasAuthentication { get; }
 
     /// <summary>
-    /// When true, real credentials are shown in the cURL output.
+    /// When true, real credentials and secret values are shown in the cURL output.
     /// When false (default), they are replaced with placeholders.
     /// </summary>
     [ObservableProperty]
@@ -30,20 +31,26 @@ public sealed partial class CurlDialogViewModel : ObservableObject
     [ObservableProperty]
     private string _curlCommandText = string.Empty;
 
-    public CurlDialogViewModel(RequestModel request, CurlAuthMaskInfo? authMaskInfo)
+    public CurlDialogViewModel(
+        RequestModel request,
+        CurlAuthMaskInfo? authMaskInfo,
+        IReadOnlySet<string>? secretValues = null)
     {
         _request = request;
         _authMaskInfo = authMaskInfo;
+        _secretValues = secretValues ?? new HashSet<string>();
 
         HasAuthentication =
             request.Headers.ContainsKey(WellKnownHeaders.Authorization) ||
-            authMaskInfo is not null;
+            authMaskInfo is not null ||
+            _secretValues.Count > 0;
 
-        // Build initial text — mask auth by default when auth is present.
+        // Build initial text — mask auth/secrets by default when any masking is applicable.
         _curlCommandText = CurlCommandBuilder.Build(
             request,
             maskAuthentication: HasAuthentication,
-            authMaskInfo);
+            authMaskInfo,
+            _secretValues);
     }
 
     partial void OnIncludeAuthenticationChanged(bool value)
@@ -51,6 +58,7 @@ public sealed partial class CurlDialogViewModel : ObservableObject
         CurlCommandText = CurlCommandBuilder.Build(
             _request,
             maskAuthentication: HasAuthentication && !value,
-            _authMaskInfo);
+            _authMaskInfo,
+            _secretValues);
     }
 }
