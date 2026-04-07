@@ -2056,29 +2056,35 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 VariableSubstitutionService.SubstituteCollecting(
                     template, env.Variables, secretNames, bindings, mockGenerators: null);
 
+            void CollectAuthFields(AuthConfig auth)
+            {
+                Collect(auth.Token);
+                Collect(auth.Username);
+                Collect(auth.Password);
+                Collect(auth.ApiKeyName);
+                Collect(auth.ApiKeyValue);
+            }
+
             Collect(Url);
             foreach (var p in QueryParams.GetAllKv()) { Collect(p.Key); Collect(p.Value); }
             foreach (var p in Headers.GetAllKv())    { Collect(p.Key); Collect(p.Value); }
             Collect(Body);
             foreach (var p in FormParams.GetAllKv())  { Collect(p.Key); Collect(p.Value); }
             foreach (var p in PathParams.GetEnabledPairs()) Collect(p.Value);
-            Collect(AuthToken);
-            Collect(AuthUsername);
-            Collect(AuthPassword);
-            Collect(AuthApiKeyName);
-            Collect(AuthApiKeyValue);
+            CollectAuthFields(new AuthConfig
+            {
+                Token = string.IsNullOrEmpty(AuthToken) ? null : AuthToken,
+                Username = string.IsNullOrEmpty(AuthUsername) ? null : AuthUsername,
+                Password = string.IsNullOrEmpty(AuthPassword) ? null : AuthPassword,
+                ApiKeyName = string.IsNullOrEmpty(AuthApiKeyName) ? null : AuthApiKeyName,
+                ApiKeyValue = string.IsNullOrEmpty(AuthApiKeyValue) ? null : AuthApiKeyValue,
+            });
 
             // When auth is inherited, the request's own auth fields are not used for sending.
             // Collect variable bindings from the effective (inherited) auth fields so that
             // the Resolved view can correctly substitute any {{tokens}} in the auth config.
             if (AuthType == AuthConfig.AuthTypes.Inherit && effectiveAuth is not null)
-            {
-                Collect(effectiveAuth.Token);
-                Collect(effectiveAuth.Username);
-                Collect(effectiveAuth.Password);
-                Collect(effectiveAuth.ApiKeyName);
-                Collect(effectiveAuth.ApiKeyValue);
-            }
+                CollectAuthFields(effectiveAuth);
 
             // Deduplicate — same token may appear in multiple fields.
             var dedupedBindings = bindings
