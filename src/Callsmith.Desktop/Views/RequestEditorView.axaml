@@ -247,7 +247,7 @@
                     Padding="12,4"
                     FontSize="11"
                     CornerRadius="3"/>
-              <Button Content="Close without saving"
+              <Button Content="Discard"
                       Command="{Binding ConfirmCloseWithoutSavingCommand}"
                       Background="#6c2020"
                       Foreground="White"

@@ -911,9 +911,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             p => p.Key,
             p => VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value);
         var baseUrl = QueryStringHelper.GetBaseUrl(snapshot.Url);
-        var resolvedUrl = PathTemplateHelper.ApplyPathParams(baseUrl, resolvedPathParams);
-        // Substitute any remaining {{variable}} tokens in the URL (e.g. {{baseUrl}}/api/users).
-        resolvedUrl = VariableSubstitutionService.Substitute(resolvedUrl, vars) ?? resolvedUrl;
+        var resolvedUrl = VariableSubstitutionService.Substitute(baseUrl, vars) ?? baseUrl;
 
         // Resolve query params — only include enabled entries.
         var resolvedQueryParams = snapshot.QueryParams
@@ -1000,12 +998,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 var enabledParams = resolvedQueryParams
                     .Select(p => new KeyValuePair<string, string>(p.Key, p.Value))
                     .ToList();
-                Url = enabledParams.Count > 0
-                    ? QueryStringHelper.AppendQueryParams(resolvedUrl, enabledParams)
-                    : resolvedUrl;
+                Url = resolvedUrl;
                 QueryParams.LoadFrom(resolvedQueryParams);
-                // Path params are already resolved into the URL; no {param} tokens remain.
-                SyncPathParamsWithUrl(resolvedUrl, new Dictionary<string, string>());
+                SyncPathParamsWithUrl(resolvedUrl, resolvedPathParams);
             }
             finally
             {
