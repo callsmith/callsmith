@@ -5,6 +5,7 @@ using Callsmith.Core.Abstractions;
 using Callsmith.Core.Bruno;
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
+using Callsmith.Desktop.Controls;
 using Callsmith.Desktop.Messages;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -22,7 +23,9 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     IRecipient<CollectionRefreshRequestedMessage>,
     IRecipient<RequestSavedMessage>,
     IRecipient<ActiveTabChangedMessage>,
-    IRecipient<RevealRequestMessage>
+    IRecipient<RevealRequestMessage>,
+    IRecipient<EnvironmentChangedMessage>,
+    IRecipient<GlobalEnvironmentChangedMessage>
 {
     private readonly ICollectionService _collectionService;
     private readonly IRecentCollectionsService _recentCollectionsService;
@@ -30,6 +33,9 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     private readonly ICollectionPreferencesService _preferencesService;
     private readonly IHistoryService _historyService;
     private readonly ILogger<CollectionsViewModel> _logger;
+
+    private EnvironmentModel? _activeEnvironment;
+    private EnvironmentModel _globalEnvironment = new() { FilePath = string.Empty, Name = "Global", Variables = [], EnvironmentId = Guid.NewGuid() };
 
     // Cancels any in-flight LoadCollectionAsync when a newer one starts.
     private CancellationTokenSource? _loadCts;
@@ -207,6 +213,24 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         ApplyActiveState();
     }
 
+    /// <summary>
+    /// Called when the active environment changes. Stores the latest environment so
+    /// its variables can be offered as autocomplete suggestions in the folder settings dialog.
+    /// </summary>
+    public void Receive(EnvironmentChangedMessage message)
+    {
+        _activeEnvironment = message.Value;
+    }
+
+    /// <summary>
+    /// Called when the global environment changes. Stores the latest global environment so
+    /// its variables can be offered as autocomplete suggestions in the folder settings dialog.
+    /// </summary>
+    public void Receive(GlobalEnvironmentChangedMessage message)
+    {
+        _globalEnvironment = message.Value;
+    }
+
     // -------------------------------------------------------------------------
     // Open folder / refresh
     // -------------------------------------------------------------------------
@@ -278,7 +302,28 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     public void OpenFolderSettings(CollectionTreeItemViewModel node)
     {
         ArgumentNullException.ThrowIfNull(node);
-        PendingFolderSettings = new FolderSettingsViewModel(node, _collectionService);
+        PendingFolderSettings = new FolderSettingsViewModel(node, _collectionService, BuildEnvVarSuggestions());
+    }
+
+    /// <summary>
+    /// Builds the merged global + active environment variable suggestion list.
+    /// Used to populate autocomplete in the folder settings dialog.
+    /// Global variables are loaded first; active environment variables take precedence
+    /// and override global variables with the same name.
+    /// </summary>
+    private IReadOnlyList<EnvVarSuggestion> BuildEnvVarSuggestions()
+    {
+        var merged = new Dictionary<string, EnvironmentVariable>(StringComparer.Ordinal);
+        foreach (var v in _globalEnvironment.Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
+            merged[v.Name] = v;
+        if (_activeEnvironment is not null)
+            foreach (var v in _activeEnvironment.Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
+                merged[v.Name] = v;
+
+        return merged.Values
+            .OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(v => new EnvVarSuggestion(v.Name, v.IsSecret ? "\u2022\u2022\u2022\u2022\u2022" : v.Value))
+            .ToList();
     }
 
     /// <summary>
