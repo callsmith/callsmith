@@ -13,16 +13,16 @@
 
     <!-- Column headers -->
     <Grid IsVisible="{Binding Items.Count}"
-          ColumnDefinitions="28,*,*,28"
+          ColumnDefinitions="24,28,*,*,28"
           Margin="0,4,0,4">
-      <TextBlock Grid.Column="1"
+      <TextBlock Grid.Column="2"
                  Text="Key"
                  Foreground="#888"
                  FontSize="10"
                  FontWeight="SemiBold"
                  LetterSpacing="1"
                  Margin="6,0"/>
-      <TextBlock Grid.Column="2"
+      <TextBlock Grid.Column="3"
                  Text="Value"
                  Foreground="#888"
                  FontSize="10"
@@ -34,12 +34,22 @@
     <!-- Rows + add button (add appears where the new row will be inserted) -->
     <ScrollViewer VerticalScrollBarVisibility="Auto">
       <StackPanel>
-        <ItemsControl ItemsSource="{Binding Items}">
+        <ItemsControl x:Name="ItemRows" ItemsSource="{Binding Items}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:KeyValueItemViewModel">
-              <Grid ColumnDefinitions="28,*,*,28" Margin="0,2">
+              <Grid ColumnDefinitions="24,28,*,*,28" Margin="0,2">
 
-                <CheckBox Grid.Column="0"
+                <!-- Drag handle -->
+                <TextBlock Grid.Column="0"
+                           Text="⠿"
+                           Foreground="#555"
+                           FontSize="14"
+                           Padding="2,4,4,4"
+                           VerticalAlignment="Center"
+                           ToolTip.Tip="Drag to reorder"
+                           Cursor="Hand"/>
+
+                <CheckBox Grid.Column="1"
                           IsChecked="{Binding IsEnabled}"
                           IsVisible="{Binding ShowEnabledToggle}"
                           VerticalAlignment="Center"
@@ -48,7 +58,7 @@
                 <!-- ── Key column: plain OR pill-aware ───────────────────── -->
 
                 <!-- Plain text key (path params, form body — no pill support) -->
-                <TextBox Grid.Column="1"
+                <TextBox Grid.Column="2"
                          Text="{Binding Key}"
                          Watermark="key"
                          FontSize="12"
@@ -63,7 +73,7 @@
                          controls:EnvVarCompletion.Suggestions="{Binding SuggestionNames}"/>
 
                 <!-- Pill-capable plain key (headers, query params — pills enabled, no segments yet) -->
-                <TextBox Grid.Column="1"
+                <TextBox Grid.Column="2"
                          Text="{Binding KeyField.Text}"
                          Watermark="key"
                          FontSize="12"
@@ -85,7 +95,7 @@
                 </TextBox>
 
                 <!-- Pill view for key (headers, query params — when segments are present) -->
-                <Border Grid.Column="1"
+                <Border Grid.Column="2"
                         Background="#2d2d30"
                         BorderBrush="#4ec9b0"
                         BorderThickness="1"
@@ -185,7 +195,7 @@
                 <!-- ── Value column: plain input OR pill view ──────────────── -->
 
                 <!-- Plain text input (no dynamic segments) -->
-                <TextBox Grid.Column="2"
+                <TextBox Grid.Column="3"
                          Text="{Binding ValueField.Text}"
                          Watermark="value"
                          FontSize="12"
@@ -209,7 +219,7 @@
                 </TextBox>
 
                 <!-- Pill view (active when the value contains dynamic/mock segments) -->
-                <Border Grid.Column="2"
+                <Border Grid.Column="3"
                         Background="#2d2d30"
                         BorderBrush="#4ec9b0"
                         BorderThickness="1"
@@ -341,7 +351,7 @@
                   </Grid>
                 </Border>
 
-                <Button Grid.Column="3"
+                <Button Grid.Column="4"
                         Content="×"
                         Command="{Binding DeleteCommand}"
                         IsVisible="{Binding ShowDeleteButton}"
