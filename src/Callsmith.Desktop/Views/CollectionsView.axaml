@@ -16,10 +16,10 @@
     <Style Selector="TreeViewItem">
       <Setter Property="Padding" Value="4,2"/>
     </Style>
-    <!-- Two-way IsExpanded sync — keeps CollectionTreeItemViewModel.IsExpanded in
-         step with the TreeViewItem UI control so expansion state can be persisted. -->
+    <!-- Two-way IsExpanded sync and description tooltip for request rows -->
     <Style Selector="TreeViewItem" x:DataType="vm:CollectionTreeItemViewModel">
       <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+      <Setter Property="ToolTip.Tip" Value="{Binding Description}"/>
     </Style>
 
     <!-- Tree node label: default appearance -->

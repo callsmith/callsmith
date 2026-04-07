@@ -55,6 +55,12 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
     public string? MethodName => Request?.Method.Method;
 
     /// <summary>
+    /// Optional description for request nodes, shown as a tooltip in the tree.
+    /// Null for folder nodes or requests with no description set.
+    /// </summary>
+    public string? Description => Request?.Description?.Trim();
+
+    /// <summary>
     /// Abbreviated method label used in the sidebar pill.
     /// Long verbs are shortened so the pill stays compact; the full name is used everywhere else.
     /// </summary>
@@ -112,6 +118,7 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
         Request = updated;
         OnPropertyChanged(nameof(MethodName));
         OnPropertyChanged(nameof(MethodPillLabel));
+        OnPropertyChanged(nameof(Description));
     }
 
     /// <summary>Applies a folder rename, updating path and display name.</summary>

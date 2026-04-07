@@ -746,6 +746,19 @@
             </ScrollViewer>
           </TabItem>
 
+          <TabItem Header="Info">
+            <ScrollViewer Margin="0,8" VerticalScrollBarVisibility="Auto">
+              <StackPanel Spacing="6">
+                <TextBlock Text="Description" Foreground="#888" FontSize="11"/>
+                <TextBox Text="{Binding Description, Mode=TwoWay}"
+                         Watermark="Add a description for this request…"
+                         Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"
+                         Padding="8,6" AcceptsReturn="True" TextWrapping="Wrap"
+                         MinHeight="120" MaxHeight="400" FontSize="12"/>
+              </StackPanel>
+            </ScrollViewer>
+          </TabItem>
+
         </TabControl>
 
         <!-- Row 1: Send error -->

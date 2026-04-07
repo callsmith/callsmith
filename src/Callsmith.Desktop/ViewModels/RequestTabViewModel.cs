@@ -162,6 +162,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [ObservableProperty] private bool _showAuthApiKeyValue = false;
     [ObservableProperty] private string _authApiKeyIn = AuthConfig.ApiKeyLocations.Header;
 
+    /// <summary>Optional human-readable description for this request (shown in the Info tab).</summary>
+    [ObservableProperty]
+    private string? _description;
+
     /// <summary>Segmented field for the bearer token (supports pill rendering of dynamic tokens).</summary>
     public SegmentedValueFieldViewModel AuthTokenField { get; }
 
@@ -863,6 +867,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             AuthApiKeyValue = req.Auth.ApiKeyValue ?? string.Empty;
             AuthApiKeyValueField.LoadFromText(AuthApiKeyValue);
             AuthApiKeyIn = req.Auth.ApiKeyIn;
+            Description = req.Description;
             Response = null;
             IsResponseFromHistory = false;
             HistoryResponseDate = null;
@@ -1636,7 +1641,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             Method = new HttpMethod(SelectedMethod),
             Url = Url,
             RequestId = _sourceRequest.RequestId ?? Guid.NewGuid(),
-            Description = _sourceRequest.Description,
+            Description = string.IsNullOrWhiteSpace(Description) ? null : Description,
             Headers = Headers.GetAllKv(),
             PathParams = PathParams.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
             QueryParams = QueryParams.GetAllKv(),
