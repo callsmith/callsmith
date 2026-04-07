@@ -1,5 +1,6 @@
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
+using Callsmith.Desktop.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -46,6 +47,12 @@ public sealed partial class FolderSettingsViewModel : ObservableObject
     [ObservableProperty]
     private string? _errorMessage;
 
+    /// <summary>
+    /// Autocomplete suggestions for environment variable names.
+    /// Bound to all auth text boxes so the user can type {{ and pick a variable.
+    /// </summary>
+    public IReadOnlyList<EnvVarSuggestion> EnvVarSuggestions { get; }
+
     // -------------------------------------------------------------------------
     // Derived visibility
     // -------------------------------------------------------------------------
@@ -81,7 +88,8 @@ public sealed partial class FolderSettingsViewModel : ObservableObject
     /// </summary>
     public FolderSettingsViewModel(
         CollectionTreeItemViewModel node,
-        ICollectionService collectionService)
+        ICollectionService collectionService,
+        IReadOnlyList<EnvVarSuggestion>? envVarSuggestions = null)
     {
         ArgumentNullException.ThrowIfNull(node);
         ArgumentNullException.ThrowIfNull(collectionService);
@@ -89,6 +97,8 @@ public sealed partial class FolderSettingsViewModel : ObservableObject
         _collectionService = collectionService;
         _folderPath = node.FolderPath ?? string.Empty;
         _folderName = node.Name;
+
+        EnvVarSuggestions = envVarSuggestions ?? [];
 
         // Pre-load current auth from the folder model.
         var auth = node.FolderAuth ?? new AuthConfig();

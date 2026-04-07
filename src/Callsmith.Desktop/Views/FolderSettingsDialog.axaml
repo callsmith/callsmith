@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Callsmith.Desktop.ViewModels"
+        xmlns:controls="using:Callsmith.Desktop.Controls"
         x:Class="Callsmith.Desktop.Views.FolderSettingsDialog"
         x:DataType="vm:FolderSettingsViewModel"
         Title="Folder Settings"
@@ -68,7 +69,8 @@
                  BorderBrush="#555"
                  Padding="8,6"
                  FontFamily="Consolas,Menlo,monospace"
-                 FontSize="12"/>
+                 FontSize="12"
+                 controls:EnvVarCompletion.Suggestions="{Binding EnvVarSuggestions}"/>
       </Grid>
     </StackPanel>
 
@@ -88,7 +90,8 @@
                  BorderBrush="#555"
                  Padding="8,6"
                  FontFamily="Consolas,Menlo,monospace"
-                 FontSize="12"/>
+                 FontSize="12"
+                 controls:EnvVarCompletion.Suggestions="{Binding EnvVarSuggestions}"/>
       </Grid>
       <Grid ColumnDefinitions="110,10,*,8,Auto">
         <TextBlock Grid.Column="0"
@@ -106,7 +109,8 @@
                  Padding="8,6"
                  FontFamily="Consolas,Menlo,monospace"
                  FontSize="12"
-                 IsVisible="{Binding ShowAuthPassword, Converter={x:Static BoolConverters.Not}}"/>
+                 IsVisible="{Binding ShowAuthPassword, Converter={x:Static BoolConverters.Not}}"
+                 controls:EnvVarCompletion.Suggestions="{Binding EnvVarSuggestions}"/>
         <TextBox Grid.Column="2"
                  Text="{Binding AuthPassword, Mode=TwoWay}"
                  Watermark="password"
@@ -116,7 +120,8 @@
                  Padding="8,6"
                  FontFamily="Consolas,Menlo,monospace"
                  FontSize="12"
-                 IsVisible="{Binding ShowAuthPassword}"/>
+                 IsVisible="{Binding ShowAuthPassword}"
+                 controls:EnvVarCompletion.Suggestions="{Binding EnvVarSuggestions}"/>
         <ToggleButton Grid.Column="4"
                       IsChecked="{Binding ShowAuthPassword, Mode=TwoWay}"
                       Background="Transparent"
@@ -153,7 +158,8 @@
                  BorderBrush="#555"
                  Padding="8,6"
                  FontFamily="Consolas,Menlo,monospace"
-                 FontSize="12"/>
+                 FontSize="12"
+                 controls:EnvVarCompletion.Suggestions="{Binding EnvVarSuggestions}"/>
       </Grid>
       <Grid ColumnDefinitions="110,10,*,8,Auto">
         <TextBlock Grid.Column="0"
@@ -171,7 +177,8 @@
                  Padding="8,6"
                  FontFamily="Consolas,Menlo,monospace"
                  FontSize="12"
-                 IsVisible="{Binding ShowAuthApiKeyValue, Converter={x:Static BoolConverters.Not}}"/>
+                 IsVisible="{Binding ShowAuthApiKeyValue, Converter={x:Static BoolConverters.Not}}"
+                 controls:EnvVarCompletion.Suggestions="{Binding EnvVarSuggestions}"/>
         <TextBox Grid.Column="2"
                  Text="{Binding AuthApiKeyValue, Mode=TwoWay}"
                  Watermark="key value…"
@@ -181,7 +188,8 @@
                  Padding="8,6"
                  FontFamily="Consolas,Menlo,monospace"
                  FontSize="12"
-                 IsVisible="{Binding ShowAuthApiKeyValue}"/>
+                 IsVisible="{Binding ShowAuthApiKeyValue}"
+                 controls:EnvVarCompletion.Suggestions="{Binding EnvVarSuggestions}"/>
         <ToggleButton Grid.Column="4"
                       IsChecked="{Binding ShowAuthApiKeyValue, Mode=TwoWay}"
                       Background="Transparent"
