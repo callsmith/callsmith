@@ -396,13 +396,126 @@ public sealed class BrunoCollectionService : ICollectionService
         }
     }
 
-    // Folder-level auth is a Callsmith-native feature; Bruno has its own auth scheme.
-    public Task SaveFolderAuthAsync(string folderPath, AuthConfig auth, CancellationToken ct = default) =>
-        Task.CompletedTask;
+    public async Task SaveFolderAuthAsync(string folderPath, AuthConfig auth, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(folderPath);
+        ArgumentNullException.ThrowIfNull(auth);
 
-    // Bruno collections don't use the Callsmith inherit hierarchy; return None.
-    public Task<AuthConfig> ResolveEffectiveAuthAsync(string requestFilePath, CancellationToken ct = default) =>
-        Task.FromResult(new AuthConfig { AuthType = AuthConfig.AuthTypes.None });
+        var metaFilePath = BruMetaFilePath(folderPath);
+
+        // Persist Basic auth password in local secret storage — never write a literal value to the
+        // .bru file.  Use the same keying scheme as request files (path relative to root).
+        if (auth.AuthType == AuthConfig.AuthTypes.Basic && !string.IsNullOrEmpty(_currentRoot))
+        {
+            await _secrets
+                .SetSecretAsync(
+                    _currentRoot,
+                    ISecretStorageService.AuthNamespace,
+                    GetAuthSecretKey(metaFilePath),
+                    auth.Password ?? string.Empty,
+                    ct)
+                .ConfigureAwait(false);
+        }
+
+        BruDocument? existing = null;
+        if (File.Exists(metaFilePath))
+        {
+            try
+            {
+                var text = await File.ReadAllTextAsync(metaFilePath, ct).ConfigureAwait(false);
+                existing = BruParser.Parse(text);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not re-read '{Path}' for round-trip; starting fresh", metaFilePath);
+            }
+        }
+
+        var blocks = existing is not null ? new List<BruBlock>(existing.Blocks) : new List<BruBlock>();
+        UpdateFolderAuthBlocks(blocks, auth, existing);
+
+        var content = BruWriter.Write(blocks, existing?.LineEnding ?? "\n");
+        await File.WriteAllTextAsync(metaFilePath, content, ct).ConfigureAwait(false);
+        _logger.LogDebug("Saved Bruno folder auth for '{FolderPath}'", folderPath);
+    }
+
+    public Task<AuthConfig> ResolveEffectiveAuthAsync(string requestFilePath, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(requestFilePath);
+        return ResolveEffectiveAuthCoreAsync(requestFilePath, ct);
+    }
+
+    private async Task<AuthConfig> ResolveEffectiveAuthCoreAsync(string requestFilePath, CancellationToken ct)
+    {
+        var dir = Path.GetDirectoryName(requestFilePath);
+        if (string.IsNullOrEmpty(dir))
+            return new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
+
+        var root = string.IsNullOrEmpty(_currentRoot)
+            ? null
+            : Path.GetFullPath(_currentRoot);
+
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var fullDir = Path.GetFullPath(dir);
+            var isRoot = root is not null
+                && string.Equals(fullDir, root, StringComparison.OrdinalIgnoreCase);
+
+            var metaFilePath = BruMetaFilePath(dir);
+            var auth = ReadFolderBruAuth(metaFilePath);
+
+            if (auth.AuthType != AuthConfig.AuthTypes.Inherit)
+            {
+                // Inject locally-stored Basic auth password (same pattern as LoadRequestAsync).
+                if (auth.AuthType == AuthConfig.AuthTypes.Basic && !string.IsNullOrEmpty(_currentRoot))
+                {
+                    var stored = await _secrets
+                        .GetSecretAsync(
+                            _currentRoot,
+                            ISecretStorageService.AuthNamespace,
+                            GetAuthSecretKey(metaFilePath),
+                            ct)
+                        .ConfigureAwait(false);
+                    if (stored is not null || auth.Password is not null)
+                    {
+                        auth = new AuthConfig
+                        {
+                            AuthType = auth.AuthType,
+                            Username = auth.Username,
+                            Password = stored ?? auth.Password,
+                        };
+                    }
+                }
+                return auth;
+            }
+
+            if (isRoot)
+                return new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
+
+            var parent = Path.GetDirectoryName(dir);
+            if (parent is null || string.Equals(parent, dir, StringComparison.OrdinalIgnoreCase))
+                return new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
+
+            dir = parent;
+        }
+    }
+
+    /// <summary>
+    /// Returns the path to the Bruno meta file for <paramref name="folderPath"/>:
+    /// <c>collection.bru</c> when the folder is the collection root, <c>folder.bru</c> otherwise.
+    /// </summary>
+    private string BruMetaFilePath(string folderPath)
+    {
+        var isRoot = !string.IsNullOrEmpty(_currentRoot)
+            && string.Equals(
+                Path.GetFullPath(folderPath),
+                Path.GetFullPath(_currentRoot),
+                StringComparison.OrdinalIgnoreCase);
+        var fileName = isRoot ? "collection.bru" : "folder.bru";
+        return Path.Combine(folderPath, fileName);
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Private — folder traversal
@@ -492,6 +605,12 @@ public sealed class BrunoCollectionService : ICollectionService
             .Concat(requestsWithSeq.Select(r => Path.GetFileName(r.Request.FilePath)))
             .ToList();
 
+        // Read auth from collection.bru (root) or folder.bru (sub-folder).
+        var metaBruPath = isRoot
+            ? Path.Combine(folderPath, "collection.bru")
+            : Path.Combine(folderPath, "folder.bru");
+        var folderAuth = ReadFolderBruAuth(metaBruPath);
+
         return new CollectionFolder
         {
             FolderPath = folderPath,
@@ -499,6 +618,7 @@ public sealed class BrunoCollectionService : ICollectionService
             Requests = sortedRequests,
             SubFolders = subFolders,
             ItemOrder = itemOrder,
+            Auth = folderAuth,
         };
     }
 
@@ -690,6 +810,7 @@ public sealed class BrunoCollectionService : ICollectionService
 
     private static AuthConfig BuildAuth(BruDocument doc, string authType, string? basicPasswordOverride = null) => authType switch
     {
+        AuthConfig.AuthTypes.Inherit => new AuthConfig { AuthType = AuthConfig.AuthTypes.Inherit },
         AuthConfig.AuthTypes.Bearer => new AuthConfig
         {
             AuthType = AuthConfig.AuthTypes.Bearer,
@@ -701,6 +822,13 @@ public sealed class BrunoCollectionService : ICollectionService
             Username = doc.GetValue("auth:basic", "username"),
             // Prefer injected secret; fall back to file value (migration path for existing files).
             Password = basicPasswordOverride ?? doc.GetValue("auth:basic", "password"),
+        },
+        AuthConfig.AuthTypes.ApiKey => new AuthConfig
+        {
+            AuthType = AuthConfig.AuthTypes.ApiKey,
+            ApiKeyName = doc.GetValue("auth:apikey", "key"),
+            ApiKeyValue = doc.GetValue("auth:apikey", "value"),
+            ApiKeyIn = MapBrunoApiKeyPlacement(doc.GetValue("auth:apikey", "placement") ?? "header"),
         },
         _ => new AuthConfig { AuthType = AuthConfig.AuthTypes.None },
     };
@@ -730,6 +858,8 @@ public sealed class BrunoCollectionService : ICollectionService
     {
         "bearer" => AuthConfig.AuthTypes.Bearer,
         "basic" => AuthConfig.AuthTypes.Basic,
+        "apikey" => AuthConfig.AuthTypes.ApiKey,
+        "inherit" => AuthConfig.AuthTypes.Inherit,
         _ => AuthConfig.AuthTypes.None,
     };
 
@@ -737,7 +867,21 @@ public sealed class BrunoCollectionService : ICollectionService
     {
         AuthConfig.AuthTypes.Bearer => "bearer",
         AuthConfig.AuthTypes.Basic => "basic",
+        AuthConfig.AuthTypes.ApiKey => "apikey",
+        AuthConfig.AuthTypes.Inherit => "inherit",
         _ => "none",
+    };
+
+    private static string MapBrunoApiKeyPlacement(string brunoPlacement) => brunoPlacement switch
+    {
+        "queryparams" => AuthConfig.ApiKeyLocations.Query,
+        _ => AuthConfig.ApiKeyLocations.Header,
+    };
+
+    private static string MapCallsmithApiKeyPlacementToBruno(string callsmithPlacement) => callsmithPlacement switch
+    {
+        AuthConfig.ApiKeyLocations.Query => "queryparams",
+        _ => "header",
     };
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -970,7 +1114,7 @@ public sealed class BrunoCollectionService : ICollectionService
     }
 
     /// <summary>
-    /// Updates or removes auth blocks (<c>auth:bearer</c> / <c>auth:basic</c>) in-place.
+    /// Updates or removes auth blocks (<c>auth:bearer</c> / <c>auth:basic</c> / <c>auth:apikey</c>) in-place.
     /// </summary>
     private static void UpdateAuthBlockInPlace(
         List<BruBlock> blocks, CollectionRequest request, BruDocument? existing, string bruMethod)
@@ -981,6 +1125,7 @@ public sealed class BrunoCollectionService : ICollectionService
         {
             case AuthConfig.AuthTypes.Bearer:
                 RemoveBlock(blocks, "auth:basic");
+                RemoveBlock(blocks, "auth:apikey");
                 var bearerBlock = new BruBlock("auth:bearer");
                 bearerBlock.Items.Add(new BruKv("token", request.Auth.Token ?? string.Empty));
                 SetOrInsertAfter(blocks, "auth:bearer", bearerBlock, bruMethod);
@@ -988,6 +1133,7 @@ public sealed class BrunoCollectionService : ICollectionService
 
             case AuthConfig.AuthTypes.Basic:
                 RemoveBlock(blocks, "auth:bearer");
+                RemoveBlock(blocks, "auth:apikey");
                 var basicBlock = new BruBlock("auth:basic");
                 basicBlock.Items.Add(new BruKv("username", request.Auth.Username ?? string.Empty));
                 // Password is stored in local secret storage — never write a literal value to the
@@ -999,9 +1145,21 @@ public sealed class BrunoCollectionService : ICollectionService
                 SetOrInsertAfter(blocks, "auth:basic", basicBlock, bruMethod);
                 break;
 
+            case AuthConfig.AuthTypes.ApiKey:
+                RemoveBlock(blocks, "auth:bearer");
+                RemoveBlock(blocks, "auth:basic");
+                var apiKeyBlock = new BruBlock("auth:apikey");
+                apiKeyBlock.Items.Add(new BruKv("key", request.Auth.ApiKeyName ?? string.Empty));
+                apiKeyBlock.Items.Add(new BruKv("value", request.Auth.ApiKeyValue ?? string.Empty));
+                apiKeyBlock.Items.Add(new BruKv("placement",
+                    MapCallsmithApiKeyPlacementToBruno(request.Auth.ApiKeyIn)));
+                SetOrInsertAfter(blocks, "auth:apikey", apiKeyBlock, bruMethod);
+                break;
+
             default:
                 RemoveBlock(blocks, "auth:bearer");
                 RemoveBlock(blocks, "auth:basic");
+                RemoveBlock(blocks, "auth:apikey");
                 break;
         }
     }
@@ -1092,6 +1250,79 @@ public sealed class BrunoCollectionService : ICollectionService
             meta.Items[idx] = nameKv;
         else
             meta.Items.Insert(0, nameKv);
+    }
+
+    /// <summary>
+    /// Reads the auth configuration from a Bruno meta file (<c>folder.bru</c> or
+    /// <c>collection.bru</c>).  Returns <see cref="AuthConfig.AuthTypes.Inherit"/> when the
+    /// file is absent or cannot be parsed.
+    /// </summary>
+    private static AuthConfig ReadFolderBruAuth(string filePath)
+    {
+        if (!File.Exists(filePath))
+            return new AuthConfig { AuthType = AuthConfig.AuthTypes.Inherit };
+        try
+        {
+            var text = File.ReadAllText(filePath);
+            var doc = BruParser.Parse(text);
+            var mode = doc.GetValue("auth", "mode") ?? "inherit";
+            var authType = MapBrunoAuthType(mode);
+            return BuildAuth(doc, authType);
+        }
+        catch
+        {
+            return new AuthConfig { AuthType = AuthConfig.AuthTypes.Inherit };
+        }
+    }
+
+    /// <summary>
+    /// Writes/updates the <c>auth</c> mode block and the corresponding auth detail block
+    /// (<c>auth:bearer</c>, <c>auth:basic</c>, or <c>auth:apikey</c>) in <paramref name="blocks"/>.
+    /// All other blocks are left unchanged so that non-auth content is not perturbed.
+    /// </summary>
+    private static void UpdateFolderAuthBlocks(
+        List<BruBlock> blocks, AuthConfig auth, BruDocument? existing)
+    {
+        var bruMode = MapCallsmithAuthType(auth.AuthType);
+
+        // Update/set the auth mode block.
+        var authModeBlock = new BruBlock("auth");
+        authModeBlock.Items.Add(new BruKv("mode", bruMode));
+        SetOrInsertAfter(blocks, "auth", authModeBlock, "meta");
+
+        // Remove all auth detail blocks first, then re-add the active one below.
+        RemoveBlock(blocks, "auth:bearer");
+        RemoveBlock(blocks, "auth:basic");
+        RemoveBlock(blocks, "auth:apikey");
+
+        switch (auth.AuthType)
+        {
+            case AuthConfig.AuthTypes.Bearer:
+                var bearerBlock = new BruBlock("auth:bearer");
+                bearerBlock.Items.Add(new BruKv("token", auth.Token ?? string.Empty));
+                SetOrInsertAfter(blocks, "auth:bearer", bearerBlock, "auth");
+                break;
+
+            case AuthConfig.AuthTypes.Basic:
+                var basicBlock = new BruBlock("auth:basic");
+                basicBlock.Items.Add(new BruKv("username", auth.Username ?? string.Empty));
+                // Never write a literal password to the file.  Preserve any existing
+                // {{variable}} reference so Bruno users are not broken.
+                var existingPw = existing?.GetValue("auth:basic", "password") ?? string.Empty;
+                var pwToWrite = IsEnvVarRef(existingPw) ? existingPw : string.Empty;
+                basicBlock.Items.Add(new BruKv("password", pwToWrite));
+                SetOrInsertAfter(blocks, "auth:basic", basicBlock, "auth");
+                break;
+
+            case AuthConfig.AuthTypes.ApiKey:
+                var apiKeyBlock = new BruBlock("auth:apikey");
+                apiKeyBlock.Items.Add(new BruKv("key", auth.ApiKeyName ?? string.Empty));
+                apiKeyBlock.Items.Add(new BruKv("value", auth.ApiKeyValue ?? string.Empty));
+                apiKeyBlock.Items.Add(new BruKv("placement",
+                    MapCallsmithApiKeyPlacementToBruno(auth.ApiKeyIn)));
+                SetOrInsertAfter(blocks, "auth:apikey", apiKeyBlock, "auth");
+                break;
+        }
     }
 
     /// <summary>
