@@ -1514,4 +1514,515 @@ public sealed class BrunoCollectionServiceTests : IDisposable
         Assert.Contains("vars:post-response {", written);
         Assert.Contains("  jwt-token: res.body.token", written);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Bruno auth inheritance
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task LoadRequest_InheritAuth_ReturnsInheritType()
+    {
+        WriteFile("req.bru", BruFileWithAuth("req", "get", "https://example.com", "inherit", seq: 1));
+        var filePath = Path.Combine(_root, "req.bru");
+
+        var req = await _sut.LoadRequestAsync(filePath);
+
+        Assert.Equal(AuthConfig.AuthTypes.Inherit, req.Auth.AuthType);
+    }
+
+    [Fact]
+    public async Task LoadRequest_ApiKeyAuth_ReturnsApiKeyConfig()
+    {
+        const string bru = """
+            meta {
+              name: api
+              type: http
+              seq: 1
+            }
+
+            get {
+              url: https://example.com
+              body: none
+              auth: apikey
+            }
+
+            auth:apikey {
+              key: x-api-key
+              value: {{api-key}}
+              placement: header
+            }
+            """;
+        WriteFile("api.bru", bru);
+        var filePath = Path.Combine(_root, "api.bru");
+
+        var req = await _sut.LoadRequestAsync(filePath);
+
+        Assert.Equal(AuthConfig.AuthTypes.ApiKey, req.Auth.AuthType);
+        Assert.Equal("x-api-key", req.Auth.ApiKeyName);
+        Assert.Equal("{{api-key}}", req.Auth.ApiKeyValue);
+        Assert.Equal(AuthConfig.ApiKeyLocations.Header, req.Auth.ApiKeyIn);
+    }
+
+    [Fact]
+    public async Task LoadRequest_ApiKeyAuth_QueryPlacement_MapsCorrectly()
+    {
+        const string bru = """
+            meta {
+              name: api
+              type: http
+              seq: 1
+            }
+
+            get {
+              url: https://example.com
+              body: none
+              auth: apikey
+            }
+
+            auth:apikey {
+              key: x-api-key
+              value: {{api-key}}
+              placement: queryparams
+            }
+            """;
+        WriteFile("api.bru", bru);
+        var filePath = Path.Combine(_root, "api.bru");
+
+        var req = await _sut.LoadRequestAsync(filePath);
+
+        Assert.Equal(AuthConfig.ApiKeyLocations.Query, req.Auth.ApiKeyIn);
+    }
+
+    [Fact]
+    public async Task SaveRequest_ApiKeyAuth_WritesApiKeyBlock()
+    {
+        await _sut.OpenFolderAsync(_root);
+
+        var filePath = Path.Combine(_root, "api.bru");
+        var request = new CollectionRequest
+        {
+            FilePath = filePath,
+            Name = "api",
+            Method = System.Net.Http.HttpMethod.Get,
+            Url = "https://example.com",
+            Auth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.ApiKey,
+                ApiKeyName = "x-api-key",
+                ApiKeyValue = "{{api-key}}",
+                ApiKeyIn = AuthConfig.ApiKeyLocations.Header,
+            },
+        };
+
+        await _sut.SaveRequestAsync(request);
+
+        var content = await File.ReadAllTextAsync(filePath);
+        Assert.Contains("auth: apikey", content);
+        Assert.Contains("auth:apikey {", content);
+        Assert.Contains("key: x-api-key", content);
+        Assert.Contains("value: {{api-key}}", content);
+        Assert.Contains("placement: header", content);
+    }
+
+    [Fact]
+    public async Task SaveRequest_ApiKeyAuth_QueryPlacement_WritesQueryparams()
+    {
+        await _sut.OpenFolderAsync(_root);
+
+        var filePath = Path.Combine(_root, "api.bru");
+        var request = new CollectionRequest
+        {
+            FilePath = filePath,
+            Name = "api",
+            Method = System.Net.Http.HttpMethod.Get,
+            Url = "https://example.com",
+            Auth = new AuthConfig
+            {
+                AuthType = AuthConfig.AuthTypes.ApiKey,
+                ApiKeyName = "key",
+                ApiKeyValue = "val",
+                ApiKeyIn = AuthConfig.ApiKeyLocations.Query,
+            },
+        };
+
+        await _sut.SaveRequestAsync(request);
+
+        var content = await File.ReadAllTextAsync(filePath);
+        Assert.Contains("placement: queryparams", content);
+    }
+
+    [Fact]
+    public async Task SaveRequest_SwitchFromApiKeyToBearer_RemovesApiKeyBlock()
+    {
+        const string existing = """
+            meta {
+              name: api
+              type: http
+              seq: 1
+            }
+
+            get {
+              url: https://example.com
+              body: none
+              auth: apikey
+            }
+
+            auth:apikey {
+              key: x-api-key
+              value: {{api-key}}
+              placement: header
+            }
+            """;
+        WriteFile("api.bru", existing);
+        await _sut.OpenFolderAsync(_root);
+
+        var filePath = Path.Combine(_root, "api.bru");
+        var loaded = await _sut.LoadRequestAsync(filePath);
+        var updated = new CollectionRequest
+        {
+            FilePath = loaded.FilePath,
+            Name = loaded.Name,
+            Method = loaded.Method,
+            Url = loaded.Url,
+            Auth = new AuthConfig { AuthType = AuthConfig.AuthTypes.Bearer, Token = "tok" },
+        };
+
+        await _sut.SaveRequestAsync(updated);
+
+        var content = await File.ReadAllTextAsync(filePath);
+        Assert.DoesNotContain("auth:apikey", content);
+        Assert.Contains("auth:bearer", content);
+    }
+
+    [Fact]
+    public async Task OpenFolder_LoadsAuthFromCollectionBru()
+    {
+        const string collectionBru = """
+            meta {
+              name: My Collection
+            }
+
+            auth {
+              mode: bearer
+            }
+
+            auth:bearer {
+              token: {{token}}
+            }
+            """;
+        WriteFile("collection.bru", collectionBru);
+
+        var folder = await _sut.OpenFolderAsync(_root);
+
+        Assert.Equal(AuthConfig.AuthTypes.Bearer, folder.Auth.AuthType);
+        Assert.Equal("{{token}}", folder.Auth.Token);
+    }
+
+    [Fact]
+    public async Task OpenFolder_SubFolder_LoadsAuthFromFolderBru()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "sub"));
+        WriteFile("sub/folder.bru", """
+            meta {
+              name: sub
+            }
+
+            auth {
+              mode: basic
+            }
+
+            auth:basic {
+              username: admin
+              password: {{password}}
+            }
+            """);
+
+        var folder = await _sut.OpenFolderAsync(_root);
+
+        var sub = Assert.Single(folder.SubFolders);
+        Assert.Equal(AuthConfig.AuthTypes.Basic, sub.Auth.AuthType);
+        Assert.Equal("admin", sub.Auth.Username);
+    }
+
+    [Fact]
+    public async Task OpenFolder_NoCollectionBru_FolderAuthDefaultsToInherit()
+    {
+        WriteFile("req.bru", BruFile("req", "get", "https://example.com", seq: 1));
+
+        var folder = await _sut.OpenFolderAsync(_root);
+
+        Assert.Equal(AuthConfig.AuthTypes.Inherit, folder.Auth.AuthType);
+    }
+
+    [Fact]
+    public async Task OpenFolder_LoadsApiKeyAuthFromCollectionBru()
+    {
+        WriteFile("collection.bru", """
+            meta {
+              name: My Collection
+            }
+
+            auth {
+              mode: apikey
+            }
+
+            auth:apikey {
+              key: x-api-key
+              value: {{api-key}}
+              placement: header
+            }
+            """);
+
+        var folder = await _sut.OpenFolderAsync(_root);
+
+        Assert.Equal(AuthConfig.AuthTypes.ApiKey, folder.Auth.AuthType);
+        Assert.Equal("x-api-key", folder.Auth.ApiKeyName);
+        Assert.Equal("{{api-key}}", folder.Auth.ApiKeyValue);
+        Assert.Equal(AuthConfig.ApiKeyLocations.Header, folder.Auth.ApiKeyIn);
+    }
+
+    [Fact]
+    public async Task ResolveEffectiveAuth_RequestInherit_ResolvesFromCollectionBru()
+    {
+        WriteFile("collection.bru", """
+            meta {
+              name: My Collection
+            }
+
+            auth {
+              mode: bearer
+            }
+
+            auth:bearer {
+              token: {{token}}
+            }
+            """);
+        WriteFile("req.bru", BruFileWithAuth("req", "get", "https://example.com", "inherit", seq: 1));
+
+        await _sut.OpenFolderAsync(_root);
+        var requestPath = Path.Combine(_root, "req.bru");
+
+        var auth = await _sut.ResolveEffectiveAuthAsync(requestPath);
+
+        Assert.Equal(AuthConfig.AuthTypes.Bearer, auth.AuthType);
+        Assert.Equal("{{token}}", auth.Token);
+    }
+
+    [Fact]
+    public async Task ResolveEffectiveAuth_WalksUpFromSubFolder()
+    {
+        WriteFile("collection.bru", """
+            meta {
+              name: My Collection
+            }
+
+            auth {
+              mode: bearer
+            }
+
+            auth:bearer {
+              token: root-token
+            }
+            """);
+        Directory.CreateDirectory(Path.Combine(_root, "sub"));
+        WriteFile("sub/folder.bru", "meta {\n  name: sub\n}\n");
+        WriteFile("sub/req.bru", BruFileWithAuth("req", "get", "https://example.com", "inherit", seq: 1));
+
+        await _sut.OpenFolderAsync(_root);
+        var requestPath = Path.Combine(_root, "sub", "req.bru");
+
+        var auth = await _sut.ResolveEffectiveAuthAsync(requestPath);
+
+        Assert.Equal(AuthConfig.AuthTypes.Bearer, auth.AuthType);
+        Assert.Equal("root-token", auth.Token);
+    }
+
+    [Fact]
+    public async Task ResolveEffectiveAuth_SubFolderOverridesRoot()
+    {
+        WriteFile("collection.bru", """
+            meta {
+              name: My Collection
+            }
+
+            auth {
+              mode: bearer
+            }
+
+            auth:bearer {
+              token: root-token
+            }
+            """);
+        Directory.CreateDirectory(Path.Combine(_root, "sub"));
+        WriteFile("sub/folder.bru", """
+            meta {
+              name: sub
+            }
+
+            auth {
+              mode: bearer
+            }
+
+            auth:bearer {
+              token: sub-token
+            }
+            """);
+        WriteFile("sub/req.bru", BruFileWithAuth("req", "get", "https://example.com", "inherit", seq: 1));
+
+        await _sut.OpenFolderAsync(_root);
+        var requestPath = Path.Combine(_root, "sub", "req.bru");
+
+        var auth = await _sut.ResolveEffectiveAuthAsync(requestPath);
+
+        Assert.Equal(AuthConfig.AuthTypes.Bearer, auth.AuthType);
+        Assert.Equal("sub-token", auth.Token);
+    }
+
+    [Fact]
+    public async Task ResolveEffectiveAuth_NoAuthAnywhere_ReturnsNone()
+    {
+        WriteFile("collection.bru", "meta {\n  name: col\n}\n");
+        WriteFile("req.bru", BruFileWithAuth("req", "get", "https://example.com", "inherit", seq: 1));
+
+        await _sut.OpenFolderAsync(_root);
+        var requestPath = Path.Combine(_root, "req.bru");
+
+        var auth = await _sut.ResolveEffectiveAuthAsync(requestPath);
+
+        Assert.Equal(AuthConfig.AuthTypes.None, auth.AuthType);
+    }
+
+    [Fact]
+    public async Task ResolveEffectiveAuth_ApiKeyAtCollectionLevel_ReturnsApiKey()
+    {
+        WriteFile("collection.bru", """
+            meta {
+              name: My Collection
+            }
+
+            auth {
+              mode: apikey
+            }
+
+            auth:apikey {
+              key: x-api-key
+              value: {{api-key}}
+              placement: queryparams
+            }
+            """);
+        WriteFile("req.bru", BruFileWithAuth("req", "get", "https://example.com", "inherit", seq: 1));
+
+        await _sut.OpenFolderAsync(_root);
+        var requestPath = Path.Combine(_root, "req.bru");
+
+        var auth = await _sut.ResolveEffectiveAuthAsync(requestPath);
+
+        Assert.Equal(AuthConfig.AuthTypes.ApiKey, auth.AuthType);
+        Assert.Equal("x-api-key", auth.ApiKeyName);
+        Assert.Equal("{{api-key}}", auth.ApiKeyValue);
+        Assert.Equal(AuthConfig.ApiKeyLocations.Query, auth.ApiKeyIn);
+    }
+
+    [Fact]
+    public async Task SaveFolderAuth_WritesAuthToCollectionBru_ForRoot()
+    {
+        await _sut.OpenFolderAsync(_root);
+
+        await _sut.SaveFolderAuthAsync(_root, new AuthConfig
+        {
+            AuthType = AuthConfig.AuthTypes.Bearer,
+            Token = "{{my-token}}",
+        });
+
+        var content = await File.ReadAllTextAsync(Path.Combine(_root, "collection.bru"));
+        Assert.Contains("mode: bearer", content);
+        Assert.Contains("auth:bearer {", content);
+        Assert.Contains("token: {{my-token}}", content);
+    }
+
+    [Fact]
+    public async Task SaveFolderAuth_WritesAuthToFolderBru_ForSubFolder()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "sub"));
+        await _sut.OpenFolderAsync(_root);
+
+        var subPath = Path.Combine(_root, "sub");
+        await _sut.SaveFolderAuthAsync(subPath, new AuthConfig
+        {
+            AuthType = AuthConfig.AuthTypes.ApiKey,
+            ApiKeyName = "Authorization",
+            ApiKeyValue = "{{key}}",
+            ApiKeyIn = AuthConfig.ApiKeyLocations.Header,
+        });
+
+        var content = await File.ReadAllTextAsync(Path.Combine(subPath, "folder.bru"));
+        Assert.Contains("mode: apikey", content);
+        Assert.Contains("auth:apikey {", content);
+        Assert.Contains("key: Authorization", content);
+        Assert.Contains("value: {{key}}", content);
+        Assert.Contains("placement: header", content);
+    }
+
+    [Fact]
+    public async Task SaveFolderAuth_PreservesExistingMetaContent()
+    {
+        WriteFile("collection.bru", """
+            meta {
+              name: My Collection
+            }
+
+            auth {
+              mode: none
+            }
+            """);
+        await _sut.OpenFolderAsync(_root);
+
+        await _sut.SaveFolderAuthAsync(_root, new AuthConfig
+        {
+            AuthType = AuthConfig.AuthTypes.Bearer,
+            Token = "tok",
+        });
+
+        var content = await File.ReadAllTextAsync(Path.Combine(_root, "collection.bru"));
+        // meta block should still be present
+        Assert.Contains("name: My Collection", content);
+        // auth should be updated
+        Assert.Contains("mode: bearer", content);
+    }
+
+    [Fact]
+    public async Task SaveFolderAuth_RoundTrip_ReflectedInOpenFolder()
+    {
+        await _sut.OpenFolderAsync(_root);
+        await _sut.SaveFolderAuthAsync(_root, new AuthConfig
+        {
+            AuthType = AuthConfig.AuthTypes.Bearer,
+            Token = "{{root-token}}",
+        });
+
+        // Re-open to verify the written file is read back correctly.
+        var folder = await _sut.OpenFolderAsync(_root);
+
+        Assert.Equal(AuthConfig.AuthTypes.Bearer, folder.Auth.AuthType);
+        Assert.Equal("{{root-token}}", folder.Auth.Token);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Helpers (auth-specific)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static string BruFileWithAuth(string name, string method, string url, string authMode, int seq) =>
+        $$"""
+        meta {
+          name: {{name}}
+          type: http
+          seq: {{seq}}
+        }
+
+        {{method}} {
+          url: {{url}}
+          body: none
+          auth: {{authMode}}
+        }
+        """;
 }
