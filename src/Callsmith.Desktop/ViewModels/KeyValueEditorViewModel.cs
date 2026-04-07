@@ -115,6 +115,19 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
             Items.Add(CreateItem(kv.Key, kv.Value, kv.IsEnabled));
     }
 
+    /// <summary>
+    /// Moves <paramref name="item"/> to <paramref name="targetIndex"/> in the
+    /// <see cref="Items"/> list immediately during drag.
+    /// </summary>
+    public void MoveItem(KeyValueItemViewModel item, int targetIndex)
+    {
+        var currentIndex = Items.IndexOf(item);
+        if (currentIndex < 0 || currentIndex == targetIndex) return;
+        if (targetIndex < 0 || targetIndex >= Items.Count) return;
+
+        Items.Move(currentIndex, targetIndex);
+    }
+
     /// <summary>Returns all enabled rows that have a non-empty key.</summary>
     public IEnumerable<KeyValuePair<string, string>> GetEnabledPairs()
         => Items
