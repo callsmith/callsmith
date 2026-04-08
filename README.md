@@ -229,7 +229,6 @@ Coming next:
 - 📊 Response diff viewer — compare any two history entries side by side
 - 🔌 WebSocket and gRPC transports
 - ⚙️ Settings screen (timeout, font size, proxy, theme override)
-- 📦 Windows installer and macOS `.app` bundle
 
 ---
 
