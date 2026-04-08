@@ -1,147 +1,164 @@
-# Callsmith
+# 🔨 Callsmith
 
-Postman made API testing mainstream. It also normalized slow startup, cloud push, and Electron memory overhead.
+**A fast, local-first HTTP client built for developers who care about their tools.**
 
-Callsmith is the alternative for developers who want raw speed, local-first control, and architecture they can trust.
+No accounts. No cloud sync. No browser runtime dressed up as a desktop app. Just a
+native, keyboard-friendly API client that gets out of your way and lets you work.
 
-If you are using Postman, Bruno, or Insomnia today, this is built to make switching feel obvious.
+> ⚠️ Pre-release — core features are implemented and stable. The project is actively
+> developed. Feedback and contributions are welcome.
 
-Most API clients now ship mandatory platform changes that can break local collections, lock cloud workflows, or degrade UI behavior without warning. Callsmith does not auto-update. What you download is exactly what you run until you choose to install a newer version.
+---
 
-## Why Switch
+## ✨ Why Callsmith?
 
-### Postman users
+### ⚡ Actually fast. Actually native.
 
-Postman is powerful, but many teams pay for that power with UI lag, account-first workflows, and cloud-centric defaults.
+Callsmith is compiled C# running on .NET 10, rendered by Avalonia's Skia pipeline
+directly on the OS. It starts in under a second, uses a fraction of the RAM you're
+used to, and never stutters under a large response body. This is what a desktop app
+is supposed to feel like.
 
-Callsmith gives you:
+### 🔍 Find anything instantly — `Ctrl+P` and `Alt+R`
 
-- Native desktop performance on .NET 10 (not a browser runtime app pretending to be desktop)
-- Local-first operation: no account, no API key, no mandatory cloud sync
-- Filesystem-native collections that work with git workflows naturally
-- Full request/response visibility in one screen without tab-juggling
+Open the **command palette** with `Ctrl+P` to jump to any request, switch
+environments, or run any action without touching the mouse. Already editing a request
+and lost track of where it lives in the tree? Hit `Alt+R` to instantly reveal and
+highlight it in the sidebar. These aren't afterthoughts — they're the primary
+navigation model.
 
-### Bruno users
+### 📋 Everything visible, nothing hidden
 
-Bruno got one major thing right: local files.
+The request editor and the response viewer are always on screen together. Headers,
+query params, and path params all live on the same **Params** tab — no clicking
+between tabs to check whether you set that `Content-Type` header. The resolved URL
+(after variable substitution) is always visible below the URL bar. You can see the
+full picture of a request at a glance.
 
-Callsmith keeps that filesystem-native philosophy and pushes deeper into a strongly typed architecture:
+The layout is flexible too: drag the split between request and response to wherever
+works for you, resize the sidebar, and go horizontal or vertical depending on your
+screen and workflow.
 
-- C# domain model and service abstractions in a dedicated Core layer
-- Clean separation: Desktop UI, Core logic, Data persistence
-- More polished split-pane workflow UI focused on high-speed request/response iteration
-- More advanced environment variable handling: multi-environment switching, secret masking, and runtime substitution across URL, headers, and body
-- Test-first core services (xUnit + FluentAssertions + NSubstitute)
-- Native HttpClient transport layer with protocol registry design for future expansion
+### 🌍 Environments that keep you safe
 
-### Insomnia users
+Color-code your environments so **dev, staging, and production are visually distinct**
+at all times. Reorder them however makes sense to your team. Switch with a single click
+from the toolbar. The active environment name is always visible — you will never
+accidentally fire a production request because you forgot to switch back.
 
-Insomnia built an early reputation as a strong developer-first tool, but many teams feel quality and core feature depth slipped as the product became more corporatized.
+**Environments are dynamic, not static.** A variable can hold a plain value, a
+mocked data pattern, a JSONPath extraction from a prior response, or the result of a
+chained request. You don't need pre/post-request scripts to thread auth tokens between
+calls — you just describe what value you want, and Callsmith resolves it at send time.
+Variables are substituted across the URL, every header, and the full request body.
+Secret variables are masked in the UI and never written to history in plaintext.
 
-Callsmith is the reset: local-first, performance-focused, and engineered around developer workflows instead of platform lock-in.
+### 📜 Request history as a first-class feature
 
-Callsmith currently includes:
+Every request you send is recorded automatically — timestamp, method, URL, request
+headers and body, response status, response headers, response body, elapsed time, and
+the collection and request it came from.
 
-- Working Insomnia v5 collection import
-- Environment + sub-environment import support
-- Variable syntax normalization to Callsmith format
-- A migration path to local, versionable collection files
+This isn't a log dump. It's a **searchable, filterable archive**:
 
-## What You Get Today
+- Filter by status code or range (`>= 400`, `= 200`)
+- Filter by date range
+- Filter by response body content
+- Filter by header name/value (`X-Correlation-Id = abc123`)
+- Filter by request or collection name
+- Combine multiple filters at once
 
-These are implemented now, not wishlist items:
+Click any entry to open the full request and response in a read-only detail view —
+including the exact headers and body *as sent*, not just as configured. Re-send any
+historical request with one click. You will never lose a request that worked, even
+if you forgot to save it to a collection.
 
-- HTTP methods: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
-- Native request editor with method, URL, headers, query params, path params, body, and auth
-- Body modes: none, JSON, plain text, XML, form-urlencoded, multipart
-- Auth modes: none, Bearer, Basic, API key (header/query)
-- Full response panel with status, elapsed time, size, headers, and body
-- Filesystem-native collections and folder tree
-- Open folder as collection, recent collections, rename/create/delete requests and folders
-- Disk change watching (external edits reflected without restart)
-- Unsaved-change guard + keyboard-first save flow
-- Environment management with static variables and secret masking
-- Variable substitution in URL, headers, and body
-- Insomnia import support
+### 🗂️ Collections that live on your filesystem
 
-## Current Keyboard Shortcuts
+A Callsmith collection is just a folder. Requests are plain files on disk. Open a
+folder, start working. Commit to git, share with teammates, diff in your code review
+tool — no export step, no proprietary binary format, no workspace lock-in.
 
-These shortcuts are implemented now in the current desktop app.
+Collections are watched for external changes too. Edit a file in your code editor or
+pull new files from git, and the sidebar updates without a restart.
+
+**Already using Bruno?** Import your Bruno collections directly. Postman and Insomnia
+collections import too — including environments, sub-environments, nested folders, and
+variable syntax normalization to Callsmith format.
+
+### 🏗️ An architecture you can trust
+
+Callsmith is built in three clean layers: **Core** (pure C# business logic, no UI
+references), **Data** (SQLite persistence via EF Core), and **Desktop** (Avalonia UI
+shell). The core engine is fully operable from tests or a future CLI with zero UI
+involvement.
+
+The HTTP engine is built on `System.Net.Http.HttpClient` behind a transport
+abstraction — gRPC and WebSocket transports will slot in without changing the request
+pipeline or the UI. Every layer has unit tests.
+
+---
+
+## 🎯 What You Get Today
+
+All of these are implemented now, not roadmap items:
+
+| Feature | Details |
+|---|---|
+| 🌐 HTTP methods | GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS |
+| 📝 Request editor | Method, URL, headers, query params, path params, body, auth — all on one screen |
+| 📦 Body types | None, JSON, plain text, XML, YAML, form-urlencoded, multipart, binary file |
+| 🔐 Auth types | None, Bearer token, Basic, API key (header or query param) |
+| ✅ Response viewer | Status, elapsed time, size, headers, syntax-highlighted body |
+| 📁 Collections | Filesystem-native, git-friendly, watched for external changes |
+| 🌍 Environments | Color-coded, reorderable, dynamic variables, secret masking |
+| 🔗 Request chaining | Pass values between requests using JSONPath/XPath extraction |
+| 📜 Request history | Full archive, multi-filter search, re-send from history |
+| 📥 Collection import | Postman v2.1, Insomnia v5, Bruno — environments included |
+| ⌨️ Keyboard-first | `Ctrl+P` palette, `Alt+R` reveal, `Ctrl+Enter` send, `Ctrl+S` save |
+| 🔄 Live disk sync | External edits and git pulls reflected without restart |
+
+---
+
+## ⌨️ Keyboard Shortcuts
 
 ### Global
 
 | Shortcut | Action |
 |---|---|
-| Ctrl+S | Save current context (environment editor when open, otherwise active request tab) |
-| Ctrl+P | Open command palette |
-| Ctrl+Enter | Send request |
-| Alt+R | Reveal active request in collections |
+| `Ctrl+P` | Open command palette — jump to any request or action |
+| `Alt+R` | Reveal active request in the collections sidebar |
+| `Ctrl+Enter` | Send request |
+| `Ctrl+S` | Save current context (active request tab or environment editor) |
 
 ### Collections Tree
 
 | Shortcut | Action |
 |---|---|
-| F2 | Rename selected request/folder |
-| Delete | Delete selected request/folder |
-| Enter | Confirm rename/create dialog |
-| Escape | Cancel rename/create dialog |
+| `F2` | Rename selected request or folder |
+| `Delete` | Delete selected request or folder |
+| `Enter` | Confirm rename or create dialog |
+| `Escape` | Cancel rename or create dialog |
 
 ### Command Palette
 
 | Shortcut | Action |
 |---|---|
-| Up / Down | Move selection |
-| Enter | Execute selected command |
-| Escape | Close palette |
+| `↑` / `↓` | Move selection |
+| `Enter` | Execute selected command |
+| `Escape` | Close palette |
 
-### Environment Variable Completion Popup
+### Environment Variable Completion
 
 | Shortcut | Action |
 |---|---|
-| Up / Down | Move suggestion selection |
-| Enter / Tab | Insert selected variable |
-| Escape | Close suggestion popup |
+| `↑` / `↓` | Move suggestion selection |
+| `Enter` / `Tab` | Insert selected variable |
+| `Escape` | Close suggestion popup |
 
-## The Technical Bet (And Why It Matters)
+---
 
-Callsmith is intentionally opinionated about engineering quality.
-
-| Layer | Choice | Why this is better for developers |
-|---|---|---|
-| Runtime | C# 13 / .NET 10 (LTS) | Native performance profile, mature tooling, predictable memory behavior |
-| Desktop UI | Avalonia UI | One native codebase for Windows, macOS, Linux |
-| HTTP Engine | System.Net.Http.HttpClient | Battle-tested .NET networking stack, no wrapper magic |
-| Architecture | Core + Desktop + Data layering | Business logic remains testable and UI-agnostic |
-| Persistence | SQLite via EF Core + filesystem collections | Local control, git-friendly request files, structured data where needed |
-| Serialization | System.Text.Json | Fast built-in serializer with zero external lock-in |
-| Testing | xUnit + FluentAssertions + NSubstitute | Reliable unit testing around core behaviors |
-
-This stack is not trendy for the sake of trend. It is chosen to keep the app fast, deterministic, and maintainable as features grow.
-
-## Head-to-Head Snapshot
-
-| Concern | Callsmith | Typical pain in legacy API clients |
-|---|---|---|
-| Startup and responsiveness | Native .NET desktop app | Electron/web-runtime overhead |
-| UI workflow polish | Full request+response visibility in one coordinated view | More tab/context switching and less cohesive editing flow |
-| Update control | No auto-update; you choose when to install a newer version | Mandatory or surprise platform changes that can disrupt workflows |
-| Data ownership | Local-first by default | Account/cloud-first pressure |
-| Environment variables | Secrets-aware variables with runtime substitution and environment swapping | Simpler variable models with less end-to-end request resolution support |
-| Team workflow | Filesystem-native collections, git-friendly | Proprietary workspace friction |
-| Architecture transparency | Clear layered codebase in C# | Mixed UI/business logic and harder local extension paths |
-| Offline use | Fully usable offline | Features increasingly tied to online services |
-
-## Roadmap Highlights
-
-Planned next:
-
-- Deep searchable request history with advanced filters
-- Response viewer upgrades (tree/raw toggles, format improvements, diffs)
-- OpenAPI import
-- WebSocket and gRPC transports
-- Dynamic script/chained variables
-
-## Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
 
@@ -151,16 +168,16 @@ Planned next:
 ### Run Locally
 
 ```bash
-git clone https://github.com/yourname/callsmith
+git clone https://github.com/callsmith/callsmith
 cd callsmith
 dotnet restore
 dotnet run --project src/Callsmith.Desktop
 ```
 
-### Build a Distributable
+### Build a Self-Contained Executable
 
 ```bash
-# Windows (x64) - self-contained single executable
+# Windows (x64)
 dotnet publish src/Callsmith.Desktop -r win-x64 -c Release --self-contained
 
 # macOS (Apple Silicon)
@@ -170,7 +187,25 @@ dotnet publish src/Callsmith.Desktop -r osx-arm64 -c Release --self-contained
 dotnet publish src/Callsmith.Desktop -r linux-x64 -c Release --self-contained
 ```
 
-## Project Structure
+The output is a single, self-contained binary. No .NET installation required on the
+target machine.
+
+---
+
+## 🗺️ Roadmap
+
+Coming next:
+
+- 🌲 Syntax-highlighted JSON tree viewer with collapsible nodes + raw toggle
+- 📊 Response diff viewer — compare any two history entries side by side
+- 🌐 OpenAPI / Swagger import — generate request files from a spec
+- 🔌 WebSocket and gRPC transports
+- ⚙️ Settings screen (timeout, font size, proxy, theme override)
+- 📦 Windows installer and macOS `.app` bundle
+
+---
+
+## 🔧 Project Structure
 
 ```
 callsmith/
@@ -188,8 +223,10 @@ callsmith/
 └── TODO.md                       # Prioritized feature backlog
 ```
 
-## Contributing
+---
 
-See [AGENTS.md](./AGENTS.md) for how AI agents should work in this codebase.
+## 🤝 Contributing
+
+See [AGENTS.md](./AGENTS.md) for AI agent development instructions.
 See [CONVENTIONS.md](./CONVENTIONS.md) for coding standards.
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for system design decisions.
