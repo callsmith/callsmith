@@ -29,7 +29,7 @@
     </Design.DataContext>
 
     <!-- Root layout: sidebar | main content -->
-    <Grid ColumnDefinitions="280,6,*">
+    <Grid x:Name="MainGrid" ColumnDefinitions="280,6,*">
 
         <!-- ================================================================
              Left sidebar — Collections (only when a collection is open)
@@ -40,7 +40,8 @@
         </Panel>
 
         <!-- Splitter — hidden alongside the sidebar and when no collection is open -->
-        <GridSplitter Grid.Column="1"
+        <GridSplitter x:Name="SidebarSplitter"
+                      Grid.Column="1"
                       ResizeDirection="Columns"
                       Background="#4a4a4a"
                       HorizontalAlignment="Stretch"

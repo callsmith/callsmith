@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.IO;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Platform.Storage;
@@ -17,6 +18,7 @@ public partial class RequestView : UserControl
     {
         InitializeComponent();
         CopyPreviewUrlButton.Click += OnCopyPreviewUrlClicked;
+        ContentSplitter.PointerReleased += OnContentSplitterPointerReleased;
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -31,7 +33,7 @@ public partial class RequestView : UserControl
         if (_trackedVm is not null)
         {
             _trackedVm.PropertyChanged += OnViewModelPropertyChanged;
-            ApplyLayout(_trackedVm.IsHorizontalLayout);
+            ApplyLayout(_trackedVm.IsHorizontalLayout, _trackedVm.SplitterPosition);
 
             // Inject the platform file picker callback — the ViewModel has no Avalonia reference.
             _trackedVm.OpenFilePickerFunc = async (ct) =>
@@ -57,7 +59,11 @@ public partial class RequestView : UserControl
 
         if (e.PropertyName == nameof(RequestTabViewModel.IsHorizontalLayout))
         {
-            ApplyLayout(_trackedVm.IsHorizontalLayout);
+            ApplyLayout(_trackedVm.IsHorizontalLayout, _trackedVm.SplitterPosition);
+        }
+        else if (e.PropertyName == nameof(RequestTabViewModel.SplitterPosition))
+        {
+            ApplySplitterPosition(_trackedVm.IsHorizontalLayout, _trackedVm.SplitterPosition);
         }
         else if (e.PropertyName == nameof(RequestTabViewModel.ShowSaveAsPanel))
         {
@@ -109,8 +115,10 @@ public partial class RequestView : UserControl
     /// <summary>
     /// Rearranges <see cref="ContentGrid"/> children between vertical (stacked) and
     /// horizontal (side-by-side) layout without duplicating any AXAML content.
+    /// If <paramref name="splitterPosition"/> is provided it is applied as a pixel size
+    /// for the first panel instead of the default star-ratio.
     /// </summary>
-    private void ApplyLayout(bool isHorizontal)
+    private void ApplyLayout(bool isHorizontal, double? splitterPosition = null)
     {
         if (isHorizontal)
         {
@@ -128,6 +136,9 @@ public partial class RequestView : UserControl
 
             Grid.SetRow(ResponsePanel, 0);
             Grid.SetColumn(ResponsePanel, 2);
+
+            if (splitterPosition.HasValue)
+                ContentGrid.ColumnDefinitions[0].Width = new GridLength(splitterPosition.Value, GridUnitType.Pixel);
         }
         else
         {
@@ -145,7 +156,35 @@ public partial class RequestView : UserControl
 
             Grid.SetRow(ResponsePanel, 2);
             Grid.SetColumn(ResponsePanel, 0);
+
+            if (splitterPosition.HasValue)
+                ContentGrid.RowDefinitions[0].Height = new GridLength(splitterPosition.Value, GridUnitType.Pixel);
         }
+    }
+
+    /// <summary>
+    /// Applies a saved pixel position to the already-arranged grid without re-running the
+    /// full layout rearrangement (used when only the position changes, not the orientation).
+    /// </summary>
+    private void ApplySplitterPosition(bool isHorizontal, double? splitterPosition)
+    {
+        if (!splitterPosition.HasValue) return;
+        if (isHorizontal && ContentGrid.ColumnDefinitions.Count > 0)
+            ContentGrid.ColumnDefinitions[0].Width = new GridLength(splitterPosition.Value, GridUnitType.Pixel);
+        else if (!isHorizontal && ContentGrid.RowDefinitions.Count > 0)
+            ContentGrid.RowDefinitions[0].Height = new GridLength(splitterPosition.Value, GridUnitType.Pixel);
+    }
+
+    private void OnContentSplitterPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_trackedVm is null) return;
+        var vm = _trackedVm;
+        var isHorizontal = vm.IsHorizontalLayout;
+        var pos = isHorizontal
+            ? RequestConfigPanel.Bounds.Width
+            : RequestConfigPanel.Bounds.Height;
+        if (pos > 0)
+            vm.SplitterChangedCallback?.Invoke(pos);
     }
 
     private async void OnCopyPreviewUrlClicked(object? sender, RoutedEventArgs e)

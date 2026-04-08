@@ -1,3 +1,4 @@
+using Callsmith.Core.Abstractions;
 using Callsmith.Desktop.Messages;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -13,6 +14,7 @@ namespace Callsmith.Desktop.ViewModels;
 public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly IMessenger _messenger;
+    private readonly IAppPreferencesService? _appPreferencesService;
 
     public CollectionsViewModel Collections { get; }
     public RequestEditorViewModel RequestEditor { get; }
@@ -39,6 +41,12 @@ public partial class MainWindowViewModel : ViewModelBase
     /// </summary>
     public bool IsSidebarVisible => Collections.HasCollection && !Environment.IsAnyEditorOpen;
 
+    /// <summary>
+    /// Saved pixel width of the left sidebar column, or null if the default should be used.
+    /// Loaded asynchronously when the app starts; exposed for the view to apply and update.
+    /// </summary>
+    internal double? RequestTreeSplitterPosition { get; private set; }
+
     public MainWindowViewModel(
         CollectionsViewModel collections,
         RequestEditorViewModel requestEditor,
@@ -46,7 +54,8 @@ public partial class MainWindowViewModel : ViewModelBase
         EnvironmentEditorViewModel environmentEditor,
         CommandPaletteViewModel commandPalette,
         HistoryPanelViewModel historyPanel,
-        IMessenger messenger)
+        IMessenger messenger,
+        IAppPreferencesService? appPreferencesService = null)
     {
         ArgumentNullException.ThrowIfNull(collections);
         ArgumentNullException.ThrowIfNull(requestEditor);
@@ -56,6 +65,7 @@ public partial class MainWindowViewModel : ViewModelBase
         ArgumentNullException.ThrowIfNull(historyPanel);
         ArgumentNullException.ThrowIfNull(messenger);
         _messenger = messenger;
+        _appPreferencesService = appPreferencesService;
         Collections = collections;
         RequestEditor = requestEditor;
         Environment = environment;
@@ -91,6 +101,27 @@ public partial class MainWindowViewModel : ViewModelBase
             else
                 recipient.HistoryPanel.OpenGlobal();
         });
+
+        if (_appPreferencesService is not null)
+            _ = LoadPreferencesAsync();
+    }
+
+    private async Task LoadPreferencesAsync()
+    {
+        var prefs = await _appPreferencesService!.LoadAsync().ConfigureAwait(false);
+        RequestTreeSplitterPosition = prefs.RequestTreeSplitterPosition;
+        OnPropertyChanged(nameof(RequestTreeSplitterPosition));
+    }
+
+    /// <summary>
+    /// Called by the view when the user finishes dragging the sidebar splitter.
+    /// Persists the new pixel width so it can be restored on next launch.
+    /// </summary>
+    internal void OnRequestTreeSplitterMoved(double width)
+    {
+        RequestTreeSplitterPosition = width;
+        if (_appPreferencesService is not null)
+            _ = _appPreferencesService.UpdateAsync(p => p with { RequestTreeSplitterPosition = width });
     }
 
     /// <summary>
