@@ -103,7 +103,7 @@ happen with the tools you're probably using now.
 
 Callsmith has no auto-update mechanism. Download the version you want, run it, and
 upgrade when *you* decide to. Every release is a self-contained binary that works
-exactly the same on day one as it will a year from now. Breaking updates are a choice
+exactly the same on day one as it will a year from now. Updates are a choice
 you make, not something that happens to you overnight.
 
 The same goes for features. Callsmith is open source and every feature it ships is
