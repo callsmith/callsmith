@@ -28,6 +28,8 @@ public partial class HistoryPanelView : UserControl
 
         if (HistoryEntryContextMenu is { } menu)
             menu.Opening += OnHistoryEntryContextMenuOpening;
+
+        DetailContentSplitter.PointerReleased += OnDetailSplitterPointerReleased;
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -42,7 +44,7 @@ public partial class HistoryPanelView : UserControl
         if (_trackedVm is not null)
         {
             _trackedVm.PropertyChanged += OnViewModelPropertyChanged;
-            ApplyDetailLayout(_trackedVm.IsHorizontalDetailLayout);
+            ApplyDetailLayout(_trackedVm.IsHorizontalDetailLayout, _trackedVm.HistoryDetailSplitterPosition);
 
             // Inject the platform save-file callback — the ViewModel has no Avalonia reference.
             _trackedVm.SaveFileFunc = async (bytes, suggestedName, ct) =>
@@ -66,15 +68,18 @@ public partial class HistoryPanelView : UserControl
             // this event may arrive on a thread-pool thread. Grid manipulation must
             // happen on the UI thread, so always dispatch there.
             var isHorizontal = _trackedVm.IsHorizontalDetailLayout;
-            Dispatcher.UIThread.Post(() => ApplyDetailLayout(isHorizontal));
+            var position = _trackedVm.HistoryDetailSplitterPosition;
+            Dispatcher.UIThread.Post(() => ApplyDetailLayout(isHorizontal, position));
         }
     }
 
     /// <summary>
     /// Rearranges <see cref="DetailContentGrid"/> children between horizontal
     /// (side-by-side) and vertical (stacked) layout without duplicating AXAML content.
+    /// If <paramref name="splitterPosition"/> is provided it is applied as a pixel size
+    /// for the first panel instead of the default star-ratio.
     /// </summary>
-    private void ApplyDetailLayout(bool isHorizontal)
+    private void ApplyDetailLayout(bool isHorizontal, double? splitterPosition = null)
     {
         if (isHorizontal)
         {
@@ -92,6 +97,9 @@ public partial class HistoryPanelView : UserControl
 
             Grid.SetRow(DetailResponsePanel, 0);
             Grid.SetColumn(DetailResponsePanel, 2);
+
+            if (splitterPosition.HasValue)
+                DetailContentGrid.ColumnDefinitions[0].Width = new GridLength(splitterPosition.Value, GridUnitType.Pixel);
         }
         else
         {
@@ -109,7 +117,25 @@ public partial class HistoryPanelView : UserControl
 
             Grid.SetRow(DetailResponsePanel, 2);
             Grid.SetColumn(DetailResponsePanel, 0);
+
+            if (splitterPosition.HasValue)
+                DetailContentGrid.RowDefinitions[0].Height = new GridLength(splitterPosition.Value, GridUnitType.Pixel);
         }
+    }
+
+    private void OnDetailSplitterPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_trackedVm is null) return;
+        var vm = _trackedVm;
+        var isHorizontal = vm.IsHorizontalDetailLayout;
+        Dispatcher.UIThread.Post(() =>
+        {
+            var pos = isHorizontal
+                ? DetailRequestPanel.Bounds.Width
+                : DetailRequestPanel.Bounds.Height;
+            if (pos > 0)
+                vm.OnDetailSplitterMoved(pos);
+        });
     }
     
     private const double LoadMoreTriggerDistance = 240d;

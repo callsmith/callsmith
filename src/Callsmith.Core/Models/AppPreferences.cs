@@ -21,4 +21,26 @@ public sealed record AppPreferences
     /// Defaults to true (horizontal) when the preference has never been saved.
     /// </summary>
     public bool IsHorizontalRequestEditorLayout { get; init; } = true;
+
+    /// <summary>
+    /// Pixel width of the left sidebar (request tree) column.
+    /// Null means the default width is used.
+    /// </summary>
+    public double? RequestTreeSplitterPosition { get; init; }
+
+    /// <summary>
+    /// Pixel size of the first panel in the history detail view.
+    /// When <see cref="IsHorizontalHistoryDetailLayout"/> is true this is the left panel width (x).
+    /// When false it is the top panel height (y).
+    /// Null means the default ratio is used.
+    /// </summary>
+    public double? HistoryDetailSplitterPosition { get; init; }
+
+    /// <summary>
+    /// Pixel size of the first panel in the request editor view.
+    /// When <see cref="IsHorizontalRequestEditorLayout"/> is true this is the left panel width (x).
+    /// When false it is the top panel height (y).
+    /// Null means the default ratio is used.
+    /// </summary>
+    public double? RequestEditorSplitterPosition { get; init; }
 }

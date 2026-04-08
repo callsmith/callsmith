@@ -247,7 +247,27 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     {
         var prefs = await _appPreferencesService!.LoadAsync().ConfigureAwait(false);
         _preferencesLoaded = true;
+        _historyDetailSplitterPosition = prefs.HistoryDetailSplitterPosition;
         IsHorizontalDetailLayout = prefs.IsHorizontalHistoryDetailLayout;
+    }
+
+    /// <summary>
+    /// Pixel size of the first panel in the history detail view (width when horizontal, height when vertical).
+    /// Null means the default 45 % ratio has not been overridden.
+    /// </summary>
+    internal double? HistoryDetailSplitterPosition => _historyDetailSplitterPosition;
+
+    private double? _historyDetailSplitterPosition;
+
+    /// <summary>
+    /// Called by the view when the user finishes dragging the detail-panel splitter.
+    /// Persists the new pixel size so it can be restored on next launch.
+    /// </summary>
+    internal void OnDetailSplitterMoved(double position)
+    {
+        _historyDetailSplitterPosition = position;
+        if (_appPreferencesService is not null)
+            _ = _appPreferencesService.UpdateAsync(p => p with { HistoryDetailSplitterPosition = position });
     }
 
     partial void OnPendingDeleteEntryChanged(HistoryEntryRowViewModel? value)

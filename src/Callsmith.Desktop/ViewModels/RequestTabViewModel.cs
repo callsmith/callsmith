@@ -323,11 +323,26 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private bool _isHorizontalLayout = true;
 
     /// <summary>
+    /// Pixel size of the request-config panel (width when horizontal, height when vertical).
+    /// Null means the default 45 % ratio has not been overridden.
+    /// Applied by <see cref="RequestEditorViewModel"/> when a tab is built.
+    /// </summary>
+    [ObservableProperty]
+    private double? _splitterPosition;
+
+    /// <summary>
     /// Optional callback invoked when the user changes the layout via
     /// <see cref="ToggleLayoutCommand"/>. Wired by <see cref="RequestEditorViewModel"/>
     /// to persist the choice and sync all other open tabs.
     /// </summary>
     internal Action<bool>? LayoutChangedCallback { get; set; }
+
+    /// <summary>
+    /// Optional callback invoked when the user finishes dragging the splitter.
+    /// Wired by <see cref="RequestEditorViewModel"/> to persist the position and
+    /// sync all other open tabs.
+    /// </summary>
+    internal Action<double>? SplitterChangedCallback { get; set; }
 
     partial void OnIsHorizontalLayoutChanged(bool value) => LayoutChangedCallback?.Invoke(value);
 
