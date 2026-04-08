@@ -202,7 +202,7 @@
     <!-- ======================================================================
          Main body: list (left) + detail (right) — outer split is resizable
          ====================================================================== -->
-    <Grid Grid.Row="2" ColumnDefinitions="320,5,*">
+    <Grid Grid.Row="2" x:Name="HistoryMainGrid" ColumnDefinitions="320,5,*">
 
       <!-- ────────────────────────────────────────────────────────────────────
            Left: history list
@@ -385,6 +385,7 @@
 
       <!-- vertical separator — resizable -->
       <GridSplitter Grid.Column="1"
+                    x:Name="HistoryListSplitter"
                     Background="#333"
                     ResizeDirection="Columns"
                     HorizontalAlignment="Stretch"

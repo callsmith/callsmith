@@ -323,11 +323,37 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private bool _isHorizontalLayout = true;
 
     /// <summary>
+    /// Saved fraction (0.0–1.0) of the available width allocated to the request-config panel
+    /// when the layout is horizontal.
+    /// Null means the default 0.45 ratio has not been overridden.
+    /// Applied by <see cref="RequestEditorViewModel"/> when a tab is built.
+    /// </summary>
+    [ObservableProperty]
+    private double? _horizontalSplitterPosition;
+
+    /// <summary>
+    /// Saved fraction (0.0–1.0) of the available height allocated to the request-config panel
+    /// when the layout is vertical.
+    /// Null means the default 0.45 ratio has not been overridden.
+    /// Applied by <see cref="RequestEditorViewModel"/> when a tab is built.
+    /// </summary>
+    [ObservableProperty]
+    private double? _verticalSplitterPosition;
+
+    /// <summary>
     /// Optional callback invoked when the user changes the layout via
     /// <see cref="ToggleLayoutCommand"/>. Wired by <see cref="RequestEditorViewModel"/>
     /// to persist the choice and sync all other open tabs.
     /// </summary>
     internal Action<bool>? LayoutChangedCallback { get; set; }
+
+    /// <summary>
+    /// Optional callback invoked when the user finishes dragging the splitter.
+    /// Receives the new pixel position and the current orientation (true = horizontal).
+    /// Wired by <see cref="RequestEditorViewModel"/> to persist the position and
+    /// sync all other open tabs.
+    /// </summary>
+    internal Action<double, bool>? SplitterChangedCallback { get; set; }
 
     partial void OnIsHorizontalLayoutChanged(bool value) => LayoutChangedCallback?.Invoke(value);
 
@@ -764,7 +790,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(BodyLanguage) or nameof(ResponseLanguage) or
                 nameof(ShowDynamicValueConfig) or nameof(ShowMockDataConfig) or
                 nameof(ShowCurlDialog) or
-                nameof(IsHorizontalLayout))
+                nameof(IsHorizontalLayout) or
+                nameof(HorizontalSplitterPosition) or
+                nameof(VerticalSplitterPosition))
                 return;
             HasUnsavedChanges = true;
         };

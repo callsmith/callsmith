@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.IO;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Platform.Storage;
@@ -17,6 +18,7 @@ public partial class RequestView : UserControl
     {
         InitializeComponent();
         CopyPreviewUrlButton.Click += OnCopyPreviewUrlClicked;
+        ContentSplitter.AddHandler(PointerReleasedEvent, OnContentSplitterPointerReleased, handledEventsToo: true);
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -31,7 +33,10 @@ public partial class RequestView : UserControl
         if (_trackedVm is not null)
         {
             _trackedVm.PropertyChanged += OnViewModelPropertyChanged;
-            ApplyLayout(_trackedVm.IsHorizontalLayout);
+            var pos = _trackedVm.IsHorizontalLayout
+                ? _trackedVm.HorizontalSplitterPosition
+                : _trackedVm.VerticalSplitterPosition;
+            ApplyLayout(_trackedVm.IsHorizontalLayout, pos);
 
             // Inject the platform file picker callback — the ViewModel has no Avalonia reference.
             _trackedVm.OpenFilePickerFunc = async (ct) =>
@@ -57,7 +62,20 @@ public partial class RequestView : UserControl
 
         if (e.PropertyName == nameof(RequestTabViewModel.IsHorizontalLayout))
         {
-            ApplyLayout(_trackedVm.IsHorizontalLayout);
+            var pos = _trackedVm.IsHorizontalLayout
+                ? _trackedVm.HorizontalSplitterPosition
+                : _trackedVm.VerticalSplitterPosition;
+            ApplyLayout(_trackedVm.IsHorizontalLayout, pos);
+        }
+        else if (e.PropertyName == nameof(RequestTabViewModel.HorizontalSplitterPosition))
+        {
+            if (_trackedVm.IsHorizontalLayout)
+                ApplySplitterPosition(isHorizontal: true, _trackedVm.HorizontalSplitterPosition);
+        }
+        else if (e.PropertyName == nameof(RequestTabViewModel.VerticalSplitterPosition))
+        {
+            if (!_trackedVm.IsHorizontalLayout)
+                ApplySplitterPosition(isHorizontal: false, _trackedVm.VerticalSplitterPosition);
         }
         else if (e.PropertyName == nameof(RequestTabViewModel.ShowSaveAsPanel))
         {
@@ -109,8 +127,10 @@ public partial class RequestView : UserControl
     /// <summary>
     /// Rearranges <see cref="ContentGrid"/> children between vertical (stacked) and
     /// horizontal (side-by-side) layout without duplicating any AXAML content.
+    /// If <paramref name="splitterFraction"/> is provided it is applied as a proportional
+    /// star-ratio for the first panel instead of the default 0.45 ratio.
     /// </summary>
-    private void ApplyLayout(bool isHorizontal)
+    private void ApplyLayout(bool isHorizontal, double? splitterFraction = null)
     {
         if (isHorizontal)
         {
@@ -128,6 +148,13 @@ public partial class RequestView : UserControl
 
             Grid.SetRow(ResponsePanel, 0);
             Grid.SetColumn(ResponsePanel, 2);
+
+            if (splitterFraction.HasValue)
+            {
+                var f = splitterFraction.Value;
+                ContentGrid.ColumnDefinitions[0].Width = new GridLength(f, GridUnitType.Star);
+                ContentGrid.ColumnDefinitions[2].Width = new GridLength(1 - f, GridUnitType.Star);
+            }
         }
         else
         {
@@ -145,7 +172,46 @@ public partial class RequestView : UserControl
 
             Grid.SetRow(ResponsePanel, 2);
             Grid.SetColumn(ResponsePanel, 0);
+
+            if (splitterFraction.HasValue)
+            {
+                var f = splitterFraction.Value;
+                ContentGrid.RowDefinitions[0].Height = new GridLength(f, GridUnitType.Star);
+                ContentGrid.RowDefinitions[2].Height = new GridLength(1 - f, GridUnitType.Star);
+            }
         }
+    }
+
+    /// <summary>
+    /// Applies a saved fraction to the already-arranged grid without re-running the
+    /// full layout rearrangement (used when only the position changes, not the orientation).
+    /// </summary>
+    private void ApplySplitterPosition(bool isHorizontal, double? splitterFraction)
+    {
+        if (!splitterFraction.HasValue) return;
+        var f = splitterFraction.Value;
+        if (isHorizontal && ContentGrid.ColumnDefinitions.Count >= 3)
+        {
+            ContentGrid.ColumnDefinitions[0].Width = new GridLength(f, GridUnitType.Star);
+            ContentGrid.ColumnDefinitions[2].Width = new GridLength(1 - f, GridUnitType.Star);
+        }
+        else if (!isHorizontal && ContentGrid.RowDefinitions.Count >= 3)
+        {
+            ContentGrid.RowDefinitions[0].Height = new GridLength(f, GridUnitType.Star);
+            ContentGrid.RowDefinitions[2].Height = new GridLength(1 - f, GridUnitType.Star);
+        }
+    }
+
+    private void OnContentSplitterPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_trackedVm is null) return;
+        var vm = _trackedVm;
+        var isHorizontal = vm.IsHorizontalLayout;
+        var firstSize = isHorizontal ? RequestConfigPanel.Bounds.Width : RequestConfigPanel.Bounds.Height;
+        var secondSize = isHorizontal ? ResponsePanel.Bounds.Width : ResponsePanel.Bounds.Height;
+        var total = firstSize + secondSize;
+        if (total > 0)
+            vm.SplitterChangedCallback?.Invoke(firstSize / total, isHorizontal);
     }
 
     private async void OnCopyPreviewUrlClicked(object? sender, RoutedEventArgs e)

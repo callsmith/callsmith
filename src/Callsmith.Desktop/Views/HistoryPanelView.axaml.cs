@@ -28,6 +28,9 @@ public partial class HistoryPanelView : UserControl
 
         if (HistoryEntryContextMenu is { } menu)
             menu.Opening += OnHistoryEntryContextMenuOpening;
+
+        DetailContentSplitter.AddHandler(PointerReleasedEvent, OnDetailSplitterPointerReleased, handledEventsToo: true);
+        HistoryListSplitter.AddHandler(PointerReleasedEvent, OnListSplitterPointerReleased, handledEventsToo: true);
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -42,7 +45,11 @@ public partial class HistoryPanelView : UserControl
         if (_trackedVm is not null)
         {
             _trackedVm.PropertyChanged += OnViewModelPropertyChanged;
-            ApplyDetailLayout(_trackedVm.IsHorizontalDetailLayout);
+            var frac = _trackedVm.IsHorizontalDetailLayout
+                ? _trackedVm.HistoryDetailHorizontalSplitterFraction
+                : _trackedVm.HistoryDetailVerticalSplitterFraction;
+            ApplyDetailLayout(_trackedVm.IsHorizontalDetailLayout, frac);
+            ApplyListSplitterFraction(_trackedVm.HistoryListSplitterFraction);
 
             // Inject the platform save-file callback — the ViewModel has no Avalonia reference.
             _trackedVm.SaveFileFunc = async (bytes, suggestedName, ct) =>
@@ -60,21 +67,33 @@ public partial class HistoryPanelView : UserControl
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(HistoryPanelViewModel.IsHorizontalDetailLayout) && _trackedVm is not null)
+        if (_trackedVm is null) return;
+
+        if (e.PropertyName == nameof(HistoryPanelViewModel.IsHorizontalDetailLayout))
         {
             // Preferences are loaded asynchronously with ConfigureAwait(false), so
             // this event may arrive on a thread-pool thread. Grid manipulation must
             // happen on the UI thread, so always dispatch there.
             var isHorizontal = _trackedVm.IsHorizontalDetailLayout;
-            Dispatcher.UIThread.Post(() => ApplyDetailLayout(isHorizontal));
+            var frac = isHorizontal
+                ? _trackedVm.HistoryDetailHorizontalSplitterFraction
+                : _trackedVm.HistoryDetailVerticalSplitterFraction;
+            Dispatcher.UIThread.Post(() => ApplyDetailLayout(isHorizontal, frac));
+        }
+        else if (e.PropertyName == nameof(HistoryPanelViewModel.HistoryListSplitterFraction))
+        {
+            var frac = _trackedVm.HistoryListSplitterFraction;
+            Dispatcher.UIThread.Post(() => ApplyListSplitterFraction(frac));
         }
     }
 
     /// <summary>
     /// Rearranges <see cref="DetailContentGrid"/> children between horizontal
     /// (side-by-side) and vertical (stacked) layout without duplicating AXAML content.
+    /// If <paramref name="splitterFraction"/> is provided it is applied as a proportional
+    /// star-ratio for the first panel instead of the default 0.45 ratio.
     /// </summary>
-    private void ApplyDetailLayout(bool isHorizontal)
+    private void ApplyDetailLayout(bool isHorizontal, double? splitterFraction = null)
     {
         if (isHorizontal)
         {
@@ -92,6 +111,13 @@ public partial class HistoryPanelView : UserControl
 
             Grid.SetRow(DetailResponsePanel, 0);
             Grid.SetColumn(DetailResponsePanel, 2);
+
+            if (splitterFraction.HasValue)
+            {
+                var f = splitterFraction.Value;
+                DetailContentGrid.ColumnDefinitions[0].Width = new GridLength(f, GridUnitType.Star);
+                DetailContentGrid.ColumnDefinitions[2].Width = new GridLength(1 - f, GridUnitType.Star);
+            }
         }
         else
         {
@@ -109,7 +135,29 @@ public partial class HistoryPanelView : UserControl
 
             Grid.SetRow(DetailResponsePanel, 2);
             Grid.SetColumn(DetailResponsePanel, 0);
+
+            if (splitterFraction.HasValue)
+            {
+                var f = splitterFraction.Value;
+                DetailContentGrid.RowDefinitions[0].Height = new GridLength(f, GridUnitType.Star);
+                DetailContentGrid.RowDefinitions[2].Height = new GridLength(1 - f, GridUnitType.Star);
+            }
         }
+    }
+
+    private void OnDetailSplitterPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_trackedVm is null) return;
+        var vm = _trackedVm;
+        var isHorizontal = vm.IsHorizontalDetailLayout;
+        Dispatcher.UIThread.Post(() =>
+        {
+            var firstSize = isHorizontal ? DetailRequestPanel.Bounds.Width : DetailRequestPanel.Bounds.Height;
+            var secondSize = isHorizontal ? DetailResponsePanel.Bounds.Width : DetailResponsePanel.Bounds.Height;
+            var total = firstSize + secondSize;
+            if (total > 0)
+                vm.OnDetailSplitterMoved(firstSize / total, isHorizontal);
+        });
     }
     
     private const double LoadMoreTriggerDistance = 240d;
@@ -220,6 +268,30 @@ public partial class HistoryPanelView : UserControl
             item.Foreground = Brushes.IndianRed;
         item.Click += (_, _) => onClick();
         return item;
+    }
+
+    private void ApplyListSplitterFraction(double? fraction)
+    {
+        if (!fraction.HasValue) return;
+        if (HistoryMainGrid.ColumnDefinitions.Count < 3) return;
+        var f = fraction.Value;
+        HistoryMainGrid.ColumnDefinitions[0].Width = new GridLength(f, GridUnitType.Star);
+        HistoryMainGrid.ColumnDefinitions[2].Width = new GridLength(1 - f, GridUnitType.Star);
+    }
+
+    private void OnListSplitterPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_trackedVm is null) return;
+        var vm = _trackedVm;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (HistoryMainGrid.ColumnDefinitions.Count < 3) return;
+            var left = HistoryMainGrid.ColumnDefinitions[0].ActualWidth;
+            var right = HistoryMainGrid.ColumnDefinitions[2].ActualWidth;
+            var total = left + right;
+            if (total > 0)
+                vm.OnListSplitterMoved(left / total);
+        });
     }
 
 }
