@@ -45,7 +45,7 @@ public partial class MainWindow : Window
     {
         if (!fraction.HasValue) return;
         if (MainGrid.ColumnDefinitions.Count < 3) return;
-        var f = Math.Clamp(fraction.Value, 0.05, 0.95);
+        var f = fraction.Value;
         MainGrid.ColumnDefinitions[0].Width = new GridLength(f, GridUnitType.Star);
         MainGrid.ColumnDefinitions[2].Width = new GridLength(1 - f, GridUnitType.Star);
     }

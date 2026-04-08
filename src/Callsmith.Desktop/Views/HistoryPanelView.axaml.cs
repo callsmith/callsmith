@@ -114,7 +114,7 @@ public partial class HistoryPanelView : UserControl
 
             if (splitterFraction.HasValue)
             {
-                var f = Math.Clamp(splitterFraction.Value, 0.05, 0.95);
+                var f = splitterFraction.Value;
                 DetailContentGrid.ColumnDefinitions[0].Width = new GridLength(f, GridUnitType.Star);
                 DetailContentGrid.ColumnDefinitions[2].Width = new GridLength(1 - f, GridUnitType.Star);
             }
@@ -138,7 +138,7 @@ public partial class HistoryPanelView : UserControl
 
             if (splitterFraction.HasValue)
             {
-                var f = Math.Clamp(splitterFraction.Value, 0.05, 0.95);
+                var f = splitterFraction.Value;
                 DetailContentGrid.RowDefinitions[0].Height = new GridLength(f, GridUnitType.Star);
                 DetailContentGrid.RowDefinitions[2].Height = new GridLength(1 - f, GridUnitType.Star);
             }
@@ -274,7 +274,7 @@ public partial class HistoryPanelView : UserControl
     {
         if (!fraction.HasValue) return;
         if (HistoryMainGrid.ColumnDefinitions.Count < 3) return;
-        var f = Math.Clamp(fraction.Value, 0.05, 0.95);
+        var f = fraction.Value;
         HistoryMainGrid.ColumnDefinitions[0].Width = new GridLength(f, GridUnitType.Star);
         HistoryMainGrid.ColumnDefinitions[2].Width = new GridLength(1 - f, GridUnitType.Star);
     }

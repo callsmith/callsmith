@@ -151,7 +151,7 @@ public partial class RequestView : UserControl
 
             if (splitterFraction.HasValue)
             {
-                var f = Math.Clamp(splitterFraction.Value, 0.05, 0.95);
+                var f = splitterFraction.Value;
                 ContentGrid.ColumnDefinitions[0].Width = new GridLength(f, GridUnitType.Star);
                 ContentGrid.ColumnDefinitions[2].Width = new GridLength(1 - f, GridUnitType.Star);
             }
@@ -175,7 +175,7 @@ public partial class RequestView : UserControl
 
             if (splitterFraction.HasValue)
             {
-                var f = Math.Clamp(splitterFraction.Value, 0.05, 0.95);
+                var f = splitterFraction.Value;
                 ContentGrid.RowDefinitions[0].Height = new GridLength(f, GridUnitType.Star);
                 ContentGrid.RowDefinitions[2].Height = new GridLength(1 - f, GridUnitType.Star);
             }
@@ -189,7 +189,7 @@ public partial class RequestView : UserControl
     private void ApplySplitterPosition(bool isHorizontal, double? splitterFraction)
     {
         if (!splitterFraction.HasValue) return;
-        var f = Math.Clamp(splitterFraction.Value, 0.05, 0.95);
+        var f = splitterFraction.Value;
         if (isHorizontal && ContentGrid.ColumnDefinitions.Count >= 3)
         {
             ContentGrid.ColumnDefinitions[0].Width = new GridLength(f, GridUnitType.Star);
