@@ -29,11 +29,10 @@ navigation model.
 
 ### 📋 Everything visible, nothing hidden
 
-The request editor and the response viewer are always on screen together. Headers,
-query params, and path params all live on the same **Params** tab — no clicking
-between tabs to check whether you set that `Content-Type` header. The resolved URL
-(after variable substitution) is always visible below the URL bar. You can see the
-full picture of a request at a glance.
+The request editor and the response viewer are always visible together. Headers,
+query params, and path params all live on the same **Params** tab — no separate tabs
+to juggle for each. The resolved URL (after variable substitution) is always visible
+below the URL bar.
 
 The layout is flexible too: drag the split between request and response to wherever
 works for you, resize the sidebar, and go horizontal or vertical depending on your
@@ -91,7 +90,7 @@ files on disk without any friction or format negotiation.
 **Switching from Postman or Insomnia, or have an OpenAPI/Swagger spec?** Import it as
 a new collection or merge it into an existing one. When a new version of a spec ships,
 import it additively — new endpoints appear alongside your existing requests without
-touching your saved edits, chained variables, or custom environments. No more manually
+touching your saved edits, dynamic variables, or custom environments. No more manually
 merging collections or stomping on work to pick up an upstream change.
 
 ### 🏗️ An architecture you can trust
@@ -114,13 +113,13 @@ All of these are implemented now, not roadmap items:
 | Feature | Details |
 |---|---|
 | 🌐 HTTP methods | GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS |
-| 📝 Request editor | Method, URL, headers, query params, path params, body, auth — all on one screen |
+| 📝 Request editor | Method, URL, headers, query params, path params, body, auth |
 | 📦 Body types | None, JSON, plain text, XML, YAML, form-urlencoded, multipart, binary file |
 | 🔐 Auth types | None, Bearer token, Basic, API key (header or query param) |
 | ✅ Response viewer | Status, elapsed time, size, headers, syntax-highlighted body |
 | 📁 Collections | Filesystem-native, git-friendly, watched for external changes |
 | 🌍 Environments | Color-coded, reorderable, dynamic variables, secret masking |
-| 🔗 Request chaining | Pass values between requests using JSONPath/XPath extraction |
+| 🔁 Dynamic variables | Extract values from prior responses via JSONPath, XPath, or regex |
 | 📜 Request history | Full archive, multi-filter search, re-send from history |
 | 📥 Collection import | Postman v2.1, Insomnia v5, OpenAPI/Swagger — create new or merge into existing |
 | 🗂️ Native Bruno support | Open Bruno collection folders directly — no import or conversion needed |
