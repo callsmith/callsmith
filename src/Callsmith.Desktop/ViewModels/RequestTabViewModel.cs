@@ -790,7 +790,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(BodyLanguage) or nameof(ResponseLanguage) or
                 nameof(ShowDynamicValueConfig) or nameof(ShowMockDataConfig) or
                 nameof(ShowCurlDialog) or
-                nameof(IsHorizontalLayout))
+                nameof(IsHorizontalLayout) or
+                nameof(HorizontalSplitterPosition) or
+                nameof(VerticalSplitterPosition))
                 return;
             HasUnsavedChanges = true;
         };
