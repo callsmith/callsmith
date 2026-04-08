@@ -149,13 +149,15 @@ All of these are implemented now, not roadmap items:
 
 ## ⌨️ Keyboard Shortcuts
 
-### Global
+### Request Editor
 
 | Shortcut | Action |
 |---|---|
 | `Ctrl+P` | Open command palette — fuzzy-search and jump to any request |
 | `Alt+R` | Reveal active request in the collections sidebar |
 | `Ctrl+Enter` | Send request |
+| `Ctrl+H` | Navigate to history, scoped to current request |
+| `Ctrl+Shift+H` | Navigate to global history |
 | `Ctrl+S` | Save current context (active request tab or environment editor) |
 
 ### Collections Tree
