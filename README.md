@@ -93,6 +93,19 @@ import it additively — new endpoints appear alongside your existing requests w
 touching your saved edits, dynamic variables, or custom environments. No more manually
 merging collections or stomping on work to pick up an upstream change.
 
+### 🛡️ You control when you upgrade
+
+Most API clients update themselves silently in the background. That works fine —
+until it doesn't. Corporate IT blocks the update check and the app breaks at launch.
+A new version ships with a regression that corrupts your collection. A "minor" update
+quietly removes the feature your whole team depends on. These are real things that
+happen with the tools you're probably using now.
+
+Callsmith has no auto-update mechanism. Download the version you want, run it, and
+upgrade when *you* decide to. Every release is a self-contained binary that works
+exactly the same on day one as it will a year from now. Breaking updates are a choice
+you make, not something that happens to you overnight.
+
 ### 🏗️ An architecture you can trust
 
 Callsmith is built in three clean layers: **Core** (pure C# business logic, no UI
