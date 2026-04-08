@@ -29,18 +29,26 @@ public sealed record AppPreferences
     public double? RequestTreeSplitterPosition { get; init; }
 
     /// <summary>
-    /// Pixel size of the first panel in the history detail view.
-    /// When <see cref="IsHorizontalHistoryDetailLayout"/> is true this is the left panel width (x).
-    /// When false it is the top panel height (y).
+    /// Pixel width of the left (request) panel when the history detail view is in horizontal layout.
     /// Null means the default ratio is used.
     /// </summary>
-    public double? HistoryDetailSplitterPosition { get; init; }
+    public double? HistoryDetailHorizontalSplitterPosition { get; init; }
 
     /// <summary>
-    /// Pixel size of the first panel in the request editor view.
-    /// When <see cref="IsHorizontalRequestEditorLayout"/> is true this is the left panel width (x).
-    /// When false it is the top panel height (y).
+    /// Pixel height of the top (request) panel when the history detail view is in vertical layout.
     /// Null means the default ratio is used.
     /// </summary>
-    public double? RequestEditorSplitterPosition { get; init; }
+    public double? HistoryDetailVerticalSplitterPosition { get; init; }
+
+    /// <summary>
+    /// Pixel width of the left (request config) panel when the request editor is in horizontal layout.
+    /// Null means the default ratio is used.
+    /// </summary>
+    public double? RequestEditorHorizontalSplitterPosition { get; init; }
+
+    /// <summary>
+    /// Pixel height of the top (request config) panel when the request editor is in vertical layout.
+    /// Null means the default ratio is used.
+    /// </summary>
+    public double? RequestEditorVerticalSplitterPosition { get; init; }
 }

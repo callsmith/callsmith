@@ -41,7 +41,8 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private bool _restoringTabs;
     private bool _appPrefsLoaded;
     private bool _isHorizontalLayout = true;
-    private double? _requestEditorSplitterPosition;
+    private double? _requestEditorHorizontalSplitterPosition;
+    private double? _requestEditorVerticalSplitterPosition;
 
     // -------------------------------------------------------------------------
     // Observable state
@@ -413,7 +414,8 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         tab.SetEnvironment(_activeEnvironment);
         tab.SetGlobalEnvironment(_globalEnvironment);
         tab.IsHorizontalLayout = _isHorizontalLayout;
-        tab.SplitterPosition = _requestEditorSplitterPosition;
+        tab.HorizontalSplitterPosition = _requestEditorHorizontalSplitterPosition;
+        tab.VerticalSplitterPosition = _requestEditorVerticalSplitterPosition;
 
         tab.LayoutChangedCallback = isHorizontal =>
         {
@@ -424,12 +426,20 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             _ = PersistLayoutAsync();
         };
 
-        tab.SplitterChangedCallback = position =>
+        tab.SplitterChangedCallback = (position, isHorizontal) =>
         {
-            _requestEditorSplitterPosition = position;
+            if (isHorizontal)
+                _requestEditorHorizontalSplitterPosition = position;
+            else
+                _requestEditorVerticalSplitterPosition = position;
             // Sync all other tabs so their splitter position is consistent.
             foreach (var other in Tabs.Where(t => t != tab))
-                other.SplitterPosition = position;
+            {
+                if (isHorizontal)
+                    other.HorizontalSplitterPosition = position;
+                else
+                    other.VerticalSplitterPosition = position;
+            }
             _ = PersistSplitterPositionAsync();
         };
 
@@ -512,9 +522,14 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private async Task PersistSplitterPositionAsync()
     {
         if (_appPreferencesService is null) return;
-        var position = _requestEditorSplitterPosition;
+        var h = _requestEditorHorizontalSplitterPosition;
+        var v = _requestEditorVerticalSplitterPosition;
         await _appPreferencesService.UpdateAsync(
-            p => p with { RequestEditorSplitterPosition = position }).ConfigureAwait(false);
+            p => p with
+            {
+                RequestEditorHorizontalSplitterPosition = h,
+                RequestEditorVerticalSplitterPosition = v
+            }).ConfigureAwait(false);
     }
 
     private async Task UpdateAvailableFoldersAsync(string collectionPath)
@@ -607,7 +622,8 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
                 {
                     _appPrefsLoaded = true;
                     _isHorizontalLayout = appPrefs?.IsHorizontalRequestEditorLayout ?? true;
-                    _requestEditorSplitterPosition = appPrefs?.RequestEditorSplitterPosition;
+                    _requestEditorHorizontalSplitterPosition = appPrefs?.RequestEditorHorizontalSplitterPosition;
+                    _requestEditorVerticalSplitterPosition = appPrefs?.RequestEditorVerticalSplitterPosition;
                 }
 
                 RequestTabViewModel? tabToActivate = null;

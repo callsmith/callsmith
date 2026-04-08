@@ -13,7 +13,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        SidebarSplitter.PointerReleased += OnSidebarSplitterPointerReleased;
+        SidebarSplitter.AddHandler(PointerReleasedEvent, OnSidebarSplitterPointerReleased, handledEventsToo: true);
     }
 
     protected override void OnDataContextChanged(EventArgs e)

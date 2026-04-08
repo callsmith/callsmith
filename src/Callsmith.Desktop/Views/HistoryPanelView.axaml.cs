@@ -29,7 +29,7 @@ public partial class HistoryPanelView : UserControl
         if (HistoryEntryContextMenu is { } menu)
             menu.Opening += OnHistoryEntryContextMenuOpening;
 
-        DetailContentSplitter.PointerReleased += OnDetailSplitterPointerReleased;
+        DetailContentSplitter.AddHandler(PointerReleasedEvent, OnDetailSplitterPointerReleased, handledEventsToo: true);
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -44,7 +44,10 @@ public partial class HistoryPanelView : UserControl
         if (_trackedVm is not null)
         {
             _trackedVm.PropertyChanged += OnViewModelPropertyChanged;
-            ApplyDetailLayout(_trackedVm.IsHorizontalDetailLayout, _trackedVm.HistoryDetailSplitterPosition);
+            var pos = _trackedVm.IsHorizontalDetailLayout
+                ? _trackedVm.HistoryDetailHorizontalSplitterPosition
+                : _trackedVm.HistoryDetailVerticalSplitterPosition;
+            ApplyDetailLayout(_trackedVm.IsHorizontalDetailLayout, pos);
 
             // Inject the platform save-file callback — the ViewModel has no Avalonia reference.
             _trackedVm.SaveFileFunc = async (bytes, suggestedName, ct) =>
@@ -68,8 +71,10 @@ public partial class HistoryPanelView : UserControl
             // this event may arrive on a thread-pool thread. Grid manipulation must
             // happen on the UI thread, so always dispatch there.
             var isHorizontal = _trackedVm.IsHorizontalDetailLayout;
-            var position = _trackedVm.HistoryDetailSplitterPosition;
-            Dispatcher.UIThread.Post(() => ApplyDetailLayout(isHorizontal, position));
+            var pos = isHorizontal
+                ? _trackedVm.HistoryDetailHorizontalSplitterPosition
+                : _trackedVm.HistoryDetailVerticalSplitterPosition;
+            Dispatcher.UIThread.Post(() => ApplyDetailLayout(isHorizontal, pos));
         }
     }
 
@@ -134,7 +139,7 @@ public partial class HistoryPanelView : UserControl
                 ? DetailRequestPanel.Bounds.Width
                 : DetailRequestPanel.Bounds.Height;
             if (pos > 0)
-                vm.OnDetailSplitterMoved(pos);
+                vm.OnDetailSplitterMoved(pos, isHorizontal);
         });
     }
     

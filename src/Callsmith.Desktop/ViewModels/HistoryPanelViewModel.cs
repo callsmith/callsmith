@@ -247,27 +247,46 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     {
         var prefs = await _appPreferencesService!.LoadAsync().ConfigureAwait(false);
         _preferencesLoaded = true;
-        _historyDetailSplitterPosition = prefs.HistoryDetailSplitterPosition;
+        _historyDetailHorizontalSplitterPosition = prefs.HistoryDetailHorizontalSplitterPosition;
+        _historyDetailVerticalSplitterPosition = prefs.HistoryDetailVerticalSplitterPosition;
         IsHorizontalDetailLayout = prefs.IsHorizontalHistoryDetailLayout;
     }
 
     /// <summary>
-    /// Pixel size of the first panel in the history detail view (width when horizontal, height when vertical).
+    /// Pixel width of the left panel in the history detail horizontal view.
     /// Null means the default 45 % ratio has not been overridden.
     /// </summary>
-    internal double? HistoryDetailSplitterPosition => _historyDetailSplitterPosition;
+    internal double? HistoryDetailHorizontalSplitterPosition => _historyDetailHorizontalSplitterPosition;
 
-    private double? _historyDetailSplitterPosition;
+    /// <summary>
+    /// Pixel height of the top panel in the history detail vertical view.
+    /// Null means the default 45 % ratio has not been overridden.
+    /// </summary>
+    internal double? HistoryDetailVerticalSplitterPosition => _historyDetailVerticalSplitterPosition;
+
+    private double? _historyDetailHorizontalSplitterPosition;
+    private double? _historyDetailVerticalSplitterPosition;
 
     /// <summary>
     /// Called by the view when the user finishes dragging the detail-panel splitter.
     /// Persists the new pixel size so it can be restored on next launch.
     /// </summary>
-    internal void OnDetailSplitterMoved(double position)
+    internal void OnDetailSplitterMoved(double position, bool isHorizontal)
     {
-        _historyDetailSplitterPosition = position;
+        if (isHorizontal)
+            _historyDetailHorizontalSplitterPosition = position;
+        else
+            _historyDetailVerticalSplitterPosition = position;
         if (_appPreferencesService is not null)
-            _ = _appPreferencesService.UpdateAsync(p => p with { HistoryDetailSplitterPosition = position });
+        {
+            var h = _historyDetailHorizontalSplitterPosition;
+            var v = _historyDetailVerticalSplitterPosition;
+            _ = _appPreferencesService.UpdateAsync(p => p with
+            {
+                HistoryDetailHorizontalSplitterPosition = h,
+                HistoryDetailVerticalSplitterPosition = v
+            });
+        }
     }
 
     partial void OnPendingDeleteEntryChanged(HistoryEntryRowViewModel? value)

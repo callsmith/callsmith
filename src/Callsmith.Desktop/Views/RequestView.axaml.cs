@@ -18,7 +18,7 @@ public partial class RequestView : UserControl
     {
         InitializeComponent();
         CopyPreviewUrlButton.Click += OnCopyPreviewUrlClicked;
-        ContentSplitter.PointerReleased += OnContentSplitterPointerReleased;
+        ContentSplitter.AddHandler(PointerReleasedEvent, OnContentSplitterPointerReleased, handledEventsToo: true);
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -33,7 +33,10 @@ public partial class RequestView : UserControl
         if (_trackedVm is not null)
         {
             _trackedVm.PropertyChanged += OnViewModelPropertyChanged;
-            ApplyLayout(_trackedVm.IsHorizontalLayout, _trackedVm.SplitterPosition);
+            var pos = _trackedVm.IsHorizontalLayout
+                ? _trackedVm.HorizontalSplitterPosition
+                : _trackedVm.VerticalSplitterPosition;
+            ApplyLayout(_trackedVm.IsHorizontalLayout, pos);
 
             // Inject the platform file picker callback — the ViewModel has no Avalonia reference.
             _trackedVm.OpenFilePickerFunc = async (ct) =>
@@ -59,11 +62,20 @@ public partial class RequestView : UserControl
 
         if (e.PropertyName == nameof(RequestTabViewModel.IsHorizontalLayout))
         {
-            ApplyLayout(_trackedVm.IsHorizontalLayout, _trackedVm.SplitterPosition);
+            var pos = _trackedVm.IsHorizontalLayout
+                ? _trackedVm.HorizontalSplitterPosition
+                : _trackedVm.VerticalSplitterPosition;
+            ApplyLayout(_trackedVm.IsHorizontalLayout, pos);
         }
-        else if (e.PropertyName == nameof(RequestTabViewModel.SplitterPosition))
+        else if (e.PropertyName == nameof(RequestTabViewModel.HorizontalSplitterPosition))
         {
-            ApplySplitterPosition(_trackedVm.IsHorizontalLayout, _trackedVm.SplitterPosition);
+            if (_trackedVm.IsHorizontalLayout)
+                ApplySplitterPosition(isHorizontal: true, _trackedVm.HorizontalSplitterPosition);
+        }
+        else if (e.PropertyName == nameof(RequestTabViewModel.VerticalSplitterPosition))
+        {
+            if (!_trackedVm.IsHorizontalLayout)
+                ApplySplitterPosition(isHorizontal: false, _trackedVm.VerticalSplitterPosition);
         }
         else if (e.PropertyName == nameof(RequestTabViewModel.ShowSaveAsPanel))
         {
@@ -184,7 +196,7 @@ public partial class RequestView : UserControl
             ? RequestConfigPanel.Bounds.Width
             : RequestConfigPanel.Bounds.Height;
         if (pos > 0)
-            vm.SplitterChangedCallback?.Invoke(pos);
+            vm.SplitterChangedCallback?.Invoke(pos, isHorizontal);
     }
 
     private async void OnCopyPreviewUrlClicked(object? sender, RoutedEventArgs e)
