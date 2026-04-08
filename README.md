@@ -120,6 +120,7 @@ All of these are implemented now, not roadmap items:
 | 📁 Collections | Filesystem-native, git-friendly, watched for external changes |
 | 🌍 Environments | Color-coded, reorderable, dynamic variables, secret masking |
 | 🔁 Dynamic variables | Extract values from prior responses via JSONPath, XPath, or regex |
+| 🎲 Mock data editor | Rich built-in generator for names, emails, UUIDs, dates, numbers, addresses, lorem ipsum, and more |
 | 📜 Request history | Full archive, multi-filter search, re-send from history |
 | 📥 Collection import | Postman v2.1, Insomnia v5, OpenAPI/Swagger — create new or merge into existing |
 | 🗂️ Native Bruno support | Open Bruno collection folders directly — no import or conversion needed |
