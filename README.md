@@ -106,6 +106,11 @@ upgrade when *you* decide to. Every release is a self-contained binary that work
 exactly the same on day one as it will a year from now. Breaking updates are a choice
 you make, not something that happens to you overnight.
 
+The same goes for features. Callsmith is open source and every feature it ships is
+available to everyone — no free tier, no Pro plan, no Enterprise edition. The dynamic
+variables, history search, environment management, and collection import tools you see
+in the docs are the same ones you get when you download it. Nothing is locked.
+
 ### 🏗️ An architecture you can trust
 
 Callsmith is built in three clean layers: **Core** (pure C# business logic, no UI
