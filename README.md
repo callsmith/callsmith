@@ -21,11 +21,12 @@ is supposed to feel like.
 
 ### 🔍 Find anything instantly — `Ctrl+P` and `Alt+R`
 
-Open the **command palette** with `Ctrl+P` to jump to any request, switch
-environments, or run any action without touching the mouse. Already editing a request
-and lost track of where it lives in the tree? Hit `Alt+R` to instantly reveal and
-highlight it in the sidebar. These aren't afterthoughts — they're the primary
-navigation model.
+Open the **command palette** with `Ctrl+P` to fuzzy-search every request in your
+collection and jump to it instantly — without touching the mouse. Start typing a name,
+partial path, or even just a few letters with the dashes and underscores removed, and
+the right request surfaces immediately. Already editing a request and lost track of
+where it lives in the tree? Hit `Alt+R` to instantly reveal and highlight it in the
+sidebar. These aren't afterthoughts — they're the primary navigation model.
 
 ### 📋 Everything visible, nothing hidden
 
@@ -82,9 +83,16 @@ tool — no export step, no proprietary binary format, no workspace lock-in.
 Collections are watched for external changes too. Edit a file in your code editor or
 pull new files from git, and the sidebar updates without a restart.
 
-**Already using Bruno?** Import your Bruno collections directly. Postman and Insomnia
-collections import too — including environments, sub-environments, nested folders, and
-variable syntax normalization to Callsmith format.
+**Already using Bruno?** You don't need to import or convert a thing. Just point
+Callsmith at your existing Bruno collection folder — it reads `.bru` files natively.
+Your teammates keep using Bruno, you use Callsmith, and everyone works off the same
+files on disk without any friction or format negotiation.
+
+**Switching from Postman or Insomnia, or have an OpenAPI/Swagger spec?** Import it as
+a new collection or merge it into an existing one. When a new version of a spec ships,
+import it additively — new endpoints appear alongside your existing requests without
+touching your saved edits, chained variables, or custom environments. No more manually
+merging collections or stomping on work to pick up an upstream change.
 
 ### 🏗️ An architecture you can trust
 
@@ -114,7 +122,8 @@ All of these are implemented now, not roadmap items:
 | 🌍 Environments | Color-coded, reorderable, dynamic variables, secret masking |
 | 🔗 Request chaining | Pass values between requests using JSONPath/XPath extraction |
 | 📜 Request history | Full archive, multi-filter search, re-send from history |
-| 📥 Collection import | Postman v2.1, Insomnia v5, Bruno — environments included |
+| 📥 Collection import | Postman v2.1, Insomnia v5, OpenAPI/Swagger — create new or merge into existing |
+| 🗂️ Native Bruno support | Open Bruno collection folders directly — no import or conversion needed |
 | ⌨️ Keyboard-first | `Ctrl+P` palette, `Alt+R` reveal, `Ctrl+Enter` send, `Ctrl+S` save |
 | 🔄 Live disk sync | External edits and git pulls reflected without restart |
 
@@ -126,7 +135,7 @@ All of these are implemented now, not roadmap items:
 
 | Shortcut | Action |
 |---|---|
-| `Ctrl+P` | Open command palette — jump to any request or action |
+| `Ctrl+P` | Open command palette — fuzzy-search and jump to any request |
 | `Alt+R` | Reveal active request in the collections sidebar |
 | `Ctrl+Enter` | Send request |
 | `Ctrl+S` | Save current context (active request tab or environment editor) |
@@ -198,7 +207,6 @@ Coming next:
 
 - 🌲 Syntax-highlighted JSON tree viewer with collapsible nodes + raw toggle
 - 📊 Response diff viewer — compare any two history entries side by side
-- 🌐 OpenAPI / Swagger import — generate request files from a spec
 - 🔌 WebSocket and gRPC transports
 - ⚙️ Settings screen (timeout, font size, proxy, theme override)
 - 📦 Windows installer and macOS `.app` bundle
