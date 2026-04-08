@@ -51,4 +51,10 @@ public sealed record AppPreferences
     /// Null means the default ratio is used.
     /// </summary>
     public double? RequestEditorVerticalSplitterPosition { get; init; }
+
+    /// <summary>
+    /// Pixel width of the history-list panel (left side of the history screen).
+    /// Null means the default 320 px fixed width is used.
+    /// </summary>
+    public double? HistoryListSplitterPosition { get; init; }
 }

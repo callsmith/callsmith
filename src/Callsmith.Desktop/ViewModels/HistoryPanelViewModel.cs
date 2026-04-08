@@ -249,7 +249,12 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         _preferencesLoaded = true;
         _historyDetailHorizontalSplitterPosition = prefs.HistoryDetailHorizontalSplitterPosition;
         _historyDetailVerticalSplitterPosition = prefs.HistoryDetailVerticalSplitterPosition;
+        _historyListSplitterPosition = prefs.HistoryListSplitterPosition;
         IsHorizontalDetailLayout = prefs.IsHorizontalHistoryDetailLayout;
+        // Always notify so the view applies persisted positions even when the
+        // layout flag didn't change from its default value.
+        OnPropertyChanged(nameof(IsHorizontalDetailLayout));
+        OnPropertyChanged(nameof(HistoryListSplitterPosition));
     }
 
     /// <summary>
@@ -264,8 +269,15 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     /// </summary>
     internal double? HistoryDetailVerticalSplitterPosition => _historyDetailVerticalSplitterPosition;
 
+    /// <summary>
+    /// Pixel width of the history-list panel (left side of the history screen).
+    /// Null means the default 320 px fixed width is used.
+    /// </summary>
+    internal double? HistoryListSplitterPosition => _historyListSplitterPosition;
+
     private double? _historyDetailHorizontalSplitterPosition;
     private double? _historyDetailVerticalSplitterPosition;
+    private double? _historyListSplitterPosition;
 
     /// <summary>
     /// Called by the view when the user finishes dragging the detail-panel splitter.
@@ -287,6 +299,17 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                 HistoryDetailVerticalSplitterPosition = v
             });
         }
+    }
+
+    /// <summary>
+    /// Called by the view when the user finishes dragging the history-list/detail splitter.
+    /// Persists the new pixel width so it can be restored on next launch.
+    /// </summary>
+    internal void OnListSplitterMoved(double width)
+    {
+        _historyListSplitterPosition = width;
+        if (_appPreferencesService is not null)
+            _ = _appPreferencesService.UpdateAsync(p => p with { HistoryListSplitterPosition = width });
     }
 
     partial void OnPendingDeleteEntryChanged(HistoryEntryRowViewModel? value)

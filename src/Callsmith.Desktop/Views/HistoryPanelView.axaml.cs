@@ -30,6 +30,7 @@ public partial class HistoryPanelView : UserControl
             menu.Opening += OnHistoryEntryContextMenuOpening;
 
         DetailContentSplitter.AddHandler(PointerReleasedEvent, OnDetailSplitterPointerReleased, handledEventsToo: true);
+        HistoryListSplitter.AddHandler(PointerReleasedEvent, OnListSplitterPointerReleased, handledEventsToo: true);
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -48,6 +49,7 @@ public partial class HistoryPanelView : UserControl
                 ? _trackedVm.HistoryDetailHorizontalSplitterPosition
                 : _trackedVm.HistoryDetailVerticalSplitterPosition;
             ApplyDetailLayout(_trackedVm.IsHorizontalDetailLayout, pos);
+            ApplyListSplitterPosition(_trackedVm.HistoryListSplitterPosition);
 
             // Inject the platform save-file callback — the ViewModel has no Avalonia reference.
             _trackedVm.SaveFileFunc = async (bytes, suggestedName, ct) =>
@@ -65,7 +67,9 @@ public partial class HistoryPanelView : UserControl
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(HistoryPanelViewModel.IsHorizontalDetailLayout) && _trackedVm is not null)
+        if (_trackedVm is null) return;
+
+        if (e.PropertyName == nameof(HistoryPanelViewModel.IsHorizontalDetailLayout))
         {
             // Preferences are loaded asynchronously with ConfigureAwait(false), so
             // this event may arrive on a thread-pool thread. Grid manipulation must
@@ -75,6 +79,11 @@ public partial class HistoryPanelView : UserControl
                 ? _trackedVm.HistoryDetailHorizontalSplitterPosition
                 : _trackedVm.HistoryDetailVerticalSplitterPosition;
             Dispatcher.UIThread.Post(() => ApplyDetailLayout(isHorizontal, pos));
+        }
+        else if (e.PropertyName == nameof(HistoryPanelViewModel.HistoryListSplitterPosition))
+        {
+            var pos = _trackedVm.HistoryListSplitterPosition;
+            Dispatcher.UIThread.Post(() => ApplyListSplitterPosition(pos));
         }
     }
 
@@ -251,6 +260,27 @@ public partial class HistoryPanelView : UserControl
             item.Foreground = Brushes.IndianRed;
         item.Click += (_, _) => onClick();
         return item;
+    }
+
+    private void ApplyListSplitterPosition(double? position)
+    {
+        if (!position.HasValue) return;
+        if (HistoryMainGrid.ColumnDefinitions.Count > 0)
+            HistoryMainGrid.ColumnDefinitions[0].Width = new GridLength(position.Value, GridUnitType.Pixel);
+    }
+
+    private void OnListSplitterPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_trackedVm is null) return;
+        var vm = _trackedVm;
+        Dispatcher.UIThread.Post(() =>
+        {
+            var width = HistoryMainGrid.ColumnDefinitions.Count > 0
+                ? HistoryMainGrid.ColumnDefinitions[0].ActualWidth
+                : 0;
+            if (width > 0)
+                vm.OnListSplitterMoved(width);
+        });
     }
 
 }
