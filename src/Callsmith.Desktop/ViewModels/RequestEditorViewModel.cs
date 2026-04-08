@@ -432,13 +432,14 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
                 _requestEditorHorizontalSplitterPosition = position;
             else
                 _requestEditorVerticalSplitterPosition = position;
-            // Sync all other tabs so their splitter position is consistent.
-            foreach (var other in Tabs.Where(t => t != tab))
+            // Sync all tabs (including this one) so the position is always current
+            // and restores correctly when the user toggles orientation.
+            foreach (var t in Tabs)
             {
                 if (isHorizontal)
-                    other.HorizontalSplitterPosition = position;
+                    t.HorizontalSplitterPosition = position;
                 else
-                    other.VerticalSplitterPosition = position;
+                    t.VerticalSplitterPosition = position;
             }
             _ = PersistSplitterPositionAsync();
         };
