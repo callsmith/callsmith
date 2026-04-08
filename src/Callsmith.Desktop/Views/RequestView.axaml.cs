@@ -127,10 +127,10 @@ public partial class RequestView : UserControl
     /// <summary>
     /// Rearranges <see cref="ContentGrid"/> children between vertical (stacked) and
     /// horizontal (side-by-side) layout without duplicating any AXAML content.
-    /// If <paramref name="splitterPosition"/> is provided it is applied as a pixel size
-    /// for the first panel instead of the default star-ratio.
+    /// If <paramref name="splitterFraction"/> is provided it is applied as a proportional
+    /// star-ratio for the first panel instead of the default 0.45 ratio.
     /// </summary>
-    private void ApplyLayout(bool isHorizontal, double? splitterPosition = null)
+    private void ApplyLayout(bool isHorizontal, double? splitterFraction = null)
     {
         if (isHorizontal)
         {
@@ -149,8 +149,12 @@ public partial class RequestView : UserControl
             Grid.SetRow(ResponsePanel, 0);
             Grid.SetColumn(ResponsePanel, 2);
 
-            if (splitterPosition.HasValue)
-                ContentGrid.ColumnDefinitions[0].Width = new GridLength(splitterPosition.Value, GridUnitType.Pixel);
+            if (splitterFraction.HasValue)
+            {
+                var f = Math.Clamp(splitterFraction.Value, 0.05, 0.95);
+                ContentGrid.ColumnDefinitions[0].Width = new GridLength(f, GridUnitType.Star);
+                ContentGrid.ColumnDefinitions[2].Width = new GridLength(1 - f, GridUnitType.Star);
+            }
         }
         else
         {
@@ -169,22 +173,33 @@ public partial class RequestView : UserControl
             Grid.SetRow(ResponsePanel, 2);
             Grid.SetColumn(ResponsePanel, 0);
 
-            if (splitterPosition.HasValue)
-                ContentGrid.RowDefinitions[0].Height = new GridLength(splitterPosition.Value, GridUnitType.Pixel);
+            if (splitterFraction.HasValue)
+            {
+                var f = Math.Clamp(splitterFraction.Value, 0.05, 0.95);
+                ContentGrid.RowDefinitions[0].Height = new GridLength(f, GridUnitType.Star);
+                ContentGrid.RowDefinitions[2].Height = new GridLength(1 - f, GridUnitType.Star);
+            }
         }
     }
 
     /// <summary>
-    /// Applies a saved pixel position to the already-arranged grid without re-running the
+    /// Applies a saved fraction to the already-arranged grid without re-running the
     /// full layout rearrangement (used when only the position changes, not the orientation).
     /// </summary>
-    private void ApplySplitterPosition(bool isHorizontal, double? splitterPosition)
+    private void ApplySplitterPosition(bool isHorizontal, double? splitterFraction)
     {
-        if (!splitterPosition.HasValue) return;
-        if (isHorizontal && ContentGrid.ColumnDefinitions.Count > 0)
-            ContentGrid.ColumnDefinitions[0].Width = new GridLength(splitterPosition.Value, GridUnitType.Pixel);
-        else if (!isHorizontal && ContentGrid.RowDefinitions.Count > 0)
-            ContentGrid.RowDefinitions[0].Height = new GridLength(splitterPosition.Value, GridUnitType.Pixel);
+        if (!splitterFraction.HasValue) return;
+        var f = Math.Clamp(splitterFraction.Value, 0.05, 0.95);
+        if (isHorizontal && ContentGrid.ColumnDefinitions.Count >= 3)
+        {
+            ContentGrid.ColumnDefinitions[0].Width = new GridLength(f, GridUnitType.Star);
+            ContentGrid.ColumnDefinitions[2].Width = new GridLength(1 - f, GridUnitType.Star);
+        }
+        else if (!isHorizontal && ContentGrid.RowDefinitions.Count >= 3)
+        {
+            ContentGrid.RowDefinitions[0].Height = new GridLength(f, GridUnitType.Star);
+            ContentGrid.RowDefinitions[2].Height = new GridLength(1 - f, GridUnitType.Star);
+        }
     }
 
     private void OnContentSplitterPointerReleased(object? sender, PointerReleasedEventArgs e)
@@ -192,11 +207,11 @@ public partial class RequestView : UserControl
         if (_trackedVm is null) return;
         var vm = _trackedVm;
         var isHorizontal = vm.IsHorizontalLayout;
-        var pos = isHorizontal
-            ? RequestConfigPanel.Bounds.Width
-            : RequestConfigPanel.Bounds.Height;
-        if (pos > 0)
-            vm.SplitterChangedCallback?.Invoke(pos, isHorizontal);
+        var firstSize = isHorizontal ? RequestConfigPanel.Bounds.Width : RequestConfigPanel.Bounds.Height;
+        var secondSize = isHorizontal ? ResponsePanel.Bounds.Width : ResponsePanel.Bounds.Height;
+        var total = firstSize + secondSize;
+        if (total > 0)
+            vm.SplitterChangedCallback?.Invoke(firstSize / total, isHorizontal);
     }
 
     private async void OnCopyPreviewUrlClicked(object? sender, RoutedEventArgs e)

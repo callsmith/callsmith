@@ -41,8 +41,8 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private bool _restoringTabs;
     private bool _appPrefsLoaded;
     private bool _isHorizontalLayout = true;
-    private double? _requestEditorHorizontalSplitterPosition;
-    private double? _requestEditorVerticalSplitterPosition;
+    private double? _requestEditorHorizontalSplitterFraction;
+    private double? _requestEditorVerticalSplitterFraction;
 
     // -------------------------------------------------------------------------
     // Observable state
@@ -414,8 +414,8 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         tab.SetEnvironment(_activeEnvironment);
         tab.SetGlobalEnvironment(_globalEnvironment);
         tab.IsHorizontalLayout = _isHorizontalLayout;
-        tab.HorizontalSplitterPosition = _requestEditorHorizontalSplitterPosition;
-        tab.VerticalSplitterPosition = _requestEditorVerticalSplitterPosition;
+        tab.HorizontalSplitterPosition = _requestEditorHorizontalSplitterFraction;
+        tab.VerticalSplitterPosition = _requestEditorVerticalSplitterFraction;
 
         tab.LayoutChangedCallback = isHorizontal =>
         {
@@ -426,20 +426,20 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             _ = PersistLayoutAsync();
         };
 
-        tab.SplitterChangedCallback = (position, isHorizontal) =>
+        tab.SplitterChangedCallback = (fraction, isHorizontal) =>
         {
             if (isHorizontal)
-                _requestEditorHorizontalSplitterPosition = position;
+                _requestEditorHorizontalSplitterFraction = fraction;
             else
-                _requestEditorVerticalSplitterPosition = position;
-            // Sync all tabs (including this one) so the position is always current
+                _requestEditorVerticalSplitterFraction = fraction;
+            // Sync all tabs (including this one) so the fraction is always current
             // and restores correctly when the user toggles orientation.
             foreach (var t in Tabs)
             {
                 if (isHorizontal)
-                    t.HorizontalSplitterPosition = position;
+                    t.HorizontalSplitterPosition = fraction;
                 else
-                    t.VerticalSplitterPosition = position;
+                    t.VerticalSplitterPosition = fraction;
             }
             _ = PersistSplitterPositionAsync();
         };
@@ -523,13 +523,13 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private async Task PersistSplitterPositionAsync()
     {
         if (_appPreferencesService is null) return;
-        var h = _requestEditorHorizontalSplitterPosition;
-        var v = _requestEditorVerticalSplitterPosition;
+        var h = _requestEditorHorizontalSplitterFraction;
+        var v = _requestEditorVerticalSplitterFraction;
         await _appPreferencesService.UpdateAsync(
             p => p with
             {
-                RequestEditorHorizontalSplitterPosition = h,
-                RequestEditorVerticalSplitterPosition = v
+                RequestEditorHorizontalSplitterFraction = h,
+                RequestEditorVerticalSplitterFraction = v
             }).ConfigureAwait(false);
     }
 
@@ -623,8 +623,8 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
                 {
                     _appPrefsLoaded = true;
                     _isHorizontalLayout = appPrefs?.IsHorizontalRequestEditorLayout ?? true;
-                    _requestEditorHorizontalSplitterPosition = appPrefs?.RequestEditorHorizontalSplitterPosition;
-                    _requestEditorVerticalSplitterPosition = appPrefs?.RequestEditorVerticalSplitterPosition;
+                    _requestEditorHorizontalSplitterFraction = appPrefs?.RequestEditorHorizontalSplitterFraction;
+                    _requestEditorVerticalSplitterFraction = appPrefs?.RequestEditorVerticalSplitterFraction;
                 }
 
                 RequestTabViewModel? tabToActivate = null;

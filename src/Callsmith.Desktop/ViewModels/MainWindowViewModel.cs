@@ -42,10 +42,11 @@ public partial class MainWindowViewModel : ViewModelBase
     public bool IsSidebarVisible => Collections.HasCollection && !Environment.IsAnyEditorOpen;
 
     /// <summary>
-    /// Saved pixel width of the left sidebar column, or null if the default should be used.
+    /// Saved fraction (0.0–1.0) of the total width allocated to the left sidebar column.
+    /// Null means the default is used.
     /// Loaded asynchronously when the app starts; exposed for the view to apply and update.
     /// </summary>
-    internal double? RequestTreeSplitterPosition { get; private set; }
+    internal double? RequestTreeSplitterFraction { get; private set; }
 
     public MainWindowViewModel(
         CollectionsViewModel collections,
@@ -109,19 +110,19 @@ public partial class MainWindowViewModel : ViewModelBase
     private async Task LoadPreferencesAsync()
     {
         var prefs = await _appPreferencesService!.LoadAsync().ConfigureAwait(false);
-        RequestTreeSplitterPosition = prefs.RequestTreeSplitterPosition;
-        OnPropertyChanged(nameof(RequestTreeSplitterPosition));
+        RequestTreeSplitterFraction = prefs.RequestTreeSplitterFraction;
+        OnPropertyChanged(nameof(RequestTreeSplitterFraction));
     }
 
     /// <summary>
     /// Called by the view when the user finishes dragging the sidebar splitter.
-    /// Persists the new pixel width so it can be restored on next launch.
+    /// Persists the new fraction so it can be restored on next launch.
     /// </summary>
-    internal void OnRequestTreeSplitterMoved(double width)
+    internal void OnRequestTreeSplitterMoved(double fraction)
     {
-        RequestTreeSplitterPosition = width;
+        RequestTreeSplitterFraction = fraction;
         if (_appPreferencesService is not null)
-            _ = _appPreferencesService.UpdateAsync(p => p with { RequestTreeSplitterPosition = width });
+            _ = _appPreferencesService.UpdateAsync(p => p with { RequestTreeSplitterFraction = fraction });
     }
 
     /// <summary>

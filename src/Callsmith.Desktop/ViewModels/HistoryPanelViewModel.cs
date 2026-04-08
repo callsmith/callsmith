@@ -247,69 +247,69 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     {
         var prefs = await _appPreferencesService!.LoadAsync().ConfigureAwait(false);
         _preferencesLoaded = true;
-        _historyDetailHorizontalSplitterPosition = prefs.HistoryDetailHorizontalSplitterPosition;
-        _historyDetailVerticalSplitterPosition = prefs.HistoryDetailVerticalSplitterPosition;
-        _historyListSplitterPosition = prefs.HistoryListSplitterPosition;
+        _historyDetailHorizontalSplitterFraction = prefs.HistoryDetailHorizontalSplitterFraction;
+        _historyDetailVerticalSplitterFraction = prefs.HistoryDetailVerticalSplitterFraction;
+        _historyListSplitterFraction = prefs.HistoryListSplitterFraction;
         IsHorizontalDetailLayout = prefs.IsHorizontalHistoryDetailLayout;
-        // Always notify so the view applies persisted positions even when the
+        // Always notify so the view applies persisted fractions even when the
         // layout flag didn't change from its default value.
         OnPropertyChanged(nameof(IsHorizontalDetailLayout));
-        OnPropertyChanged(nameof(HistoryListSplitterPosition));
+        OnPropertyChanged(nameof(HistoryListSplitterFraction));
     }
 
     /// <summary>
-    /// Pixel width of the left panel in the history detail horizontal view.
-    /// Null means the default 45 % ratio has not been overridden.
+    /// Fraction (0.0–1.0) of the available width occupied by the left panel in the
+    /// history detail horizontal view. Null means the default 0.45 ratio is used.
     /// </summary>
-    internal double? HistoryDetailHorizontalSplitterPosition => _historyDetailHorizontalSplitterPosition;
+    internal double? HistoryDetailHorizontalSplitterFraction => _historyDetailHorizontalSplitterFraction;
 
     /// <summary>
-    /// Pixel height of the top panel in the history detail vertical view.
-    /// Null means the default 45 % ratio has not been overridden.
+    /// Fraction (0.0–1.0) of the available height occupied by the top panel in the
+    /// history detail vertical view. Null means the default 0.45 ratio is used.
     /// </summary>
-    internal double? HistoryDetailVerticalSplitterPosition => _historyDetailVerticalSplitterPosition;
+    internal double? HistoryDetailVerticalSplitterFraction => _historyDetailVerticalSplitterFraction;
 
     /// <summary>
-    /// Pixel width of the history-list panel (left side of the history screen).
-    /// Null means the default 320 px fixed width is used.
+    /// Fraction (0.0–1.0) of the total width occupied by the history-list panel.
+    /// Null means the default ratio is used.
     /// </summary>
-    internal double? HistoryListSplitterPosition => _historyListSplitterPosition;
+    internal double? HistoryListSplitterFraction => _historyListSplitterFraction;
 
-    private double? _historyDetailHorizontalSplitterPosition;
-    private double? _historyDetailVerticalSplitterPosition;
-    private double? _historyListSplitterPosition;
+    private double? _historyDetailHorizontalSplitterFraction;
+    private double? _historyDetailVerticalSplitterFraction;
+    private double? _historyListSplitterFraction;
 
     /// <summary>
     /// Called by the view when the user finishes dragging the detail-panel splitter.
-    /// Persists the new pixel size so it can be restored on next launch.
+    /// Persists the new fraction so it can be restored on next launch.
     /// </summary>
-    internal void OnDetailSplitterMoved(double position, bool isHorizontal)
+    internal void OnDetailSplitterMoved(double fraction, bool isHorizontal)
     {
         if (isHorizontal)
-            _historyDetailHorizontalSplitterPosition = position;
+            _historyDetailHorizontalSplitterFraction = fraction;
         else
-            _historyDetailVerticalSplitterPosition = position;
+            _historyDetailVerticalSplitterFraction = fraction;
         if (_appPreferencesService is not null)
         {
-            var h = _historyDetailHorizontalSplitterPosition;
-            var v = _historyDetailVerticalSplitterPosition;
+            var h = _historyDetailHorizontalSplitterFraction;
+            var v = _historyDetailVerticalSplitterFraction;
             _ = _appPreferencesService.UpdateAsync(p => p with
             {
-                HistoryDetailHorizontalSplitterPosition = h,
-                HistoryDetailVerticalSplitterPosition = v
+                HistoryDetailHorizontalSplitterFraction = h,
+                HistoryDetailVerticalSplitterFraction = v
             });
         }
     }
 
     /// <summary>
     /// Called by the view when the user finishes dragging the history-list/detail splitter.
-    /// Persists the new pixel width so it can be restored on next launch.
+    /// Persists the new fraction so it can be restored on next launch.
     /// </summary>
-    internal void OnListSplitterMoved(double width)
+    internal void OnListSplitterMoved(double fraction)
     {
-        _historyListSplitterPosition = width;
+        _historyListSplitterFraction = fraction;
         if (_appPreferencesService is not null)
-            _ = _appPreferencesService.UpdateAsync(p => p with { HistoryListSplitterPosition = width });
+            _ = _appPreferencesService.UpdateAsync(p => p with { HistoryListSplitterFraction = fraction });
     }
 
     partial void OnPendingDeleteEntryChanged(HistoryEntryRowViewModel? value)

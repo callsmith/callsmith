@@ -323,16 +323,18 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private bool _isHorizontalLayout = true;
 
     /// <summary>
-    /// Saved pixel width of the request-config panel when the layout is horizontal.
-    /// Null means the default 45 % ratio has not been overridden.
+    /// Saved fraction (0.0–1.0) of the available width allocated to the request-config panel
+    /// when the layout is horizontal.
+    /// Null means the default 0.45 ratio has not been overridden.
     /// Applied by <see cref="RequestEditorViewModel"/> when a tab is built.
     /// </summary>
     [ObservableProperty]
     private double? _horizontalSplitterPosition;
 
     /// <summary>
-    /// Saved pixel height of the request-config panel when the layout is vertical.
-    /// Null means the default 45 % ratio has not been overridden.
+    /// Saved fraction (0.0–1.0) of the available height allocated to the request-config panel
+    /// when the layout is vertical.
+    /// Null means the default 0.45 ratio has not been overridden.
     /// Applied by <see cref="RequestEditorViewModel"/> when a tab is built.
     /// </summary>
     [ObservableProperty]

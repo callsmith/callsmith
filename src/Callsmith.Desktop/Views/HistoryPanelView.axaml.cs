@@ -45,11 +45,11 @@ public partial class HistoryPanelView : UserControl
         if (_trackedVm is not null)
         {
             _trackedVm.PropertyChanged += OnViewModelPropertyChanged;
-            var pos = _trackedVm.IsHorizontalDetailLayout
-                ? _trackedVm.HistoryDetailHorizontalSplitterPosition
-                : _trackedVm.HistoryDetailVerticalSplitterPosition;
-            ApplyDetailLayout(_trackedVm.IsHorizontalDetailLayout, pos);
-            ApplyListSplitterPosition(_trackedVm.HistoryListSplitterPosition);
+            var frac = _trackedVm.IsHorizontalDetailLayout
+                ? _trackedVm.HistoryDetailHorizontalSplitterFraction
+                : _trackedVm.HistoryDetailVerticalSplitterFraction;
+            ApplyDetailLayout(_trackedVm.IsHorizontalDetailLayout, frac);
+            ApplyListSplitterFraction(_trackedVm.HistoryListSplitterFraction);
 
             // Inject the platform save-file callback — the ViewModel has no Avalonia reference.
             _trackedVm.SaveFileFunc = async (bytes, suggestedName, ct) =>
@@ -75,25 +75,25 @@ public partial class HistoryPanelView : UserControl
             // this event may arrive on a thread-pool thread. Grid manipulation must
             // happen on the UI thread, so always dispatch there.
             var isHorizontal = _trackedVm.IsHorizontalDetailLayout;
-            var pos = isHorizontal
-                ? _trackedVm.HistoryDetailHorizontalSplitterPosition
-                : _trackedVm.HistoryDetailVerticalSplitterPosition;
-            Dispatcher.UIThread.Post(() => ApplyDetailLayout(isHorizontal, pos));
+            var frac = isHorizontal
+                ? _trackedVm.HistoryDetailHorizontalSplitterFraction
+                : _trackedVm.HistoryDetailVerticalSplitterFraction;
+            Dispatcher.UIThread.Post(() => ApplyDetailLayout(isHorizontal, frac));
         }
-        else if (e.PropertyName == nameof(HistoryPanelViewModel.HistoryListSplitterPosition))
+        else if (e.PropertyName == nameof(HistoryPanelViewModel.HistoryListSplitterFraction))
         {
-            var pos = _trackedVm.HistoryListSplitterPosition;
-            Dispatcher.UIThread.Post(() => ApplyListSplitterPosition(pos));
+            var frac = _trackedVm.HistoryListSplitterFraction;
+            Dispatcher.UIThread.Post(() => ApplyListSplitterFraction(frac));
         }
     }
 
     /// <summary>
     /// Rearranges <see cref="DetailContentGrid"/> children between horizontal
     /// (side-by-side) and vertical (stacked) layout without duplicating AXAML content.
-    /// If <paramref name="splitterPosition"/> is provided it is applied as a pixel size
-    /// for the first panel instead of the default star-ratio.
+    /// If <paramref name="splitterFraction"/> is provided it is applied as a proportional
+    /// star-ratio for the first panel instead of the default 0.45 ratio.
     /// </summary>
-    private void ApplyDetailLayout(bool isHorizontal, double? splitterPosition = null)
+    private void ApplyDetailLayout(bool isHorizontal, double? splitterFraction = null)
     {
         if (isHorizontal)
         {
@@ -112,8 +112,12 @@ public partial class HistoryPanelView : UserControl
             Grid.SetRow(DetailResponsePanel, 0);
             Grid.SetColumn(DetailResponsePanel, 2);
 
-            if (splitterPosition.HasValue)
-                DetailContentGrid.ColumnDefinitions[0].Width = new GridLength(splitterPosition.Value, GridUnitType.Pixel);
+            if (splitterFraction.HasValue)
+            {
+                var f = Math.Clamp(splitterFraction.Value, 0.05, 0.95);
+                DetailContentGrid.ColumnDefinitions[0].Width = new GridLength(f, GridUnitType.Star);
+                DetailContentGrid.ColumnDefinitions[2].Width = new GridLength(1 - f, GridUnitType.Star);
+            }
         }
         else
         {
@@ -132,8 +136,12 @@ public partial class HistoryPanelView : UserControl
             Grid.SetRow(DetailResponsePanel, 2);
             Grid.SetColumn(DetailResponsePanel, 0);
 
-            if (splitterPosition.HasValue)
-                DetailContentGrid.RowDefinitions[0].Height = new GridLength(splitterPosition.Value, GridUnitType.Pixel);
+            if (splitterFraction.HasValue)
+            {
+                var f = Math.Clamp(splitterFraction.Value, 0.05, 0.95);
+                DetailContentGrid.RowDefinitions[0].Height = new GridLength(f, GridUnitType.Star);
+                DetailContentGrid.RowDefinitions[2].Height = new GridLength(1 - f, GridUnitType.Star);
+            }
         }
     }
 
@@ -144,11 +152,11 @@ public partial class HistoryPanelView : UserControl
         var isHorizontal = vm.IsHorizontalDetailLayout;
         Dispatcher.UIThread.Post(() =>
         {
-            var pos = isHorizontal
-                ? DetailRequestPanel.Bounds.Width
-                : DetailRequestPanel.Bounds.Height;
-            if (pos > 0)
-                vm.OnDetailSplitterMoved(pos, isHorizontal);
+            var firstSize = isHorizontal ? DetailRequestPanel.Bounds.Width : DetailRequestPanel.Bounds.Height;
+            var secondSize = isHorizontal ? DetailResponsePanel.Bounds.Width : DetailResponsePanel.Bounds.Height;
+            var total = firstSize + secondSize;
+            if (total > 0)
+                vm.OnDetailSplitterMoved(firstSize / total, isHorizontal);
         });
     }
     
@@ -262,11 +270,13 @@ public partial class HistoryPanelView : UserControl
         return item;
     }
 
-    private void ApplyListSplitterPosition(double? position)
+    private void ApplyListSplitterFraction(double? fraction)
     {
-        if (!position.HasValue) return;
-        if (HistoryMainGrid.ColumnDefinitions.Count > 0)
-            HistoryMainGrid.ColumnDefinitions[0].Width = new GridLength(position.Value, GridUnitType.Pixel);
+        if (!fraction.HasValue) return;
+        if (HistoryMainGrid.ColumnDefinitions.Count < 3) return;
+        var f = Math.Clamp(fraction.Value, 0.05, 0.95);
+        HistoryMainGrid.ColumnDefinitions[0].Width = new GridLength(f, GridUnitType.Star);
+        HistoryMainGrid.ColumnDefinitions[2].Width = new GridLength(1 - f, GridUnitType.Star);
     }
 
     private void OnListSplitterPointerReleased(object? sender, PointerReleasedEventArgs e)
@@ -275,11 +285,12 @@ public partial class HistoryPanelView : UserControl
         var vm = _trackedVm;
         Dispatcher.UIThread.Post(() =>
         {
-            var width = HistoryMainGrid.ColumnDefinitions.Count > 0
-                ? HistoryMainGrid.ColumnDefinitions[0].ActualWidth
-                : 0;
-            if (width > 0)
-                vm.OnListSplitterMoved(width);
+            if (HistoryMainGrid.ColumnDefinitions.Count < 3) return;
+            var left = HistoryMainGrid.ColumnDefinitions[0].ActualWidth;
+            var right = HistoryMainGrid.ColumnDefinitions[2].ActualWidth;
+            var total = left + right;
+            if (total > 0)
+                vm.OnListSplitterMoved(left / total);
         });
     }
 

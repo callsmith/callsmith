@@ -28,24 +28,26 @@ public partial class MainWindow : Window
         if (_trackedVm is not null)
         {
             _trackedVm.PropertyChanged += OnViewModelPropertyChanged;
-            ApplySidebarPosition(_trackedVm.RequestTreeSplitterPosition);
+            ApplySidebarFraction(_trackedVm.RequestTreeSplitterFraction);
         }
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainWindowViewModel.RequestTreeSplitterPosition) && _trackedVm is not null)
+        if (e.PropertyName == nameof(MainWindowViewModel.RequestTreeSplitterFraction) && _trackedVm is not null)
         {
-            var position = _trackedVm.RequestTreeSplitterPosition;
-            Dispatcher.UIThread.Post(() => ApplySidebarPosition(position));
+            var fraction = _trackedVm.RequestTreeSplitterFraction;
+            Dispatcher.UIThread.Post(() => ApplySidebarFraction(fraction));
         }
     }
 
-    private void ApplySidebarPosition(double? position)
+    private void ApplySidebarFraction(double? fraction)
     {
-        if (!position.HasValue) return;
-        if (MainGrid.ColumnDefinitions.Count > 0)
-            MainGrid.ColumnDefinitions[0].Width = new GridLength(position.Value, GridUnitType.Pixel);
+        if (!fraction.HasValue) return;
+        if (MainGrid.ColumnDefinitions.Count < 3) return;
+        var f = Math.Clamp(fraction.Value, 0.05, 0.95);
+        MainGrid.ColumnDefinitions[0].Width = new GridLength(f, GridUnitType.Star);
+        MainGrid.ColumnDefinitions[2].Width = new GridLength(1 - f, GridUnitType.Star);
     }
 
     private void OnSidebarSplitterPointerReleased(object? sender, PointerReleasedEventArgs e)
@@ -54,9 +56,12 @@ public partial class MainWindow : Window
         var vm = _trackedVm;
         Dispatcher.UIThread.Post(() =>
         {
-            var width = MainGrid.ColumnDefinitions.Count > 0 ? MainGrid.ColumnDefinitions[0].ActualWidth : 0;
-            if (width > 0)
-                vm.OnRequestTreeSplitterMoved(width);
+            if (MainGrid.ColumnDefinitions.Count < 3) return;
+            var left = MainGrid.ColumnDefinitions[0].ActualWidth;
+            var right = MainGrid.ColumnDefinitions[2].ActualWidth;
+            var total = left + right;
+            if (total > 0)
+                vm.OnRequestTreeSplitterMoved(left / total);
         });
     }
 }
