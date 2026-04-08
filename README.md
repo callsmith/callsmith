@@ -22,11 +22,10 @@ is supposed to feel like.
 ### 🔍 Find anything instantly — `Ctrl+P` and `Alt+R`
 
 Open the **command palette** with `Ctrl+P` to fuzzy-search every request in your
-collection and jump to it instantly — without touching the mouse. Start typing a name,
-partial path, or even just a few letters with the dashes and underscores removed, and
-the right request surfaces immediately. Already editing a request and lost track of
-where it lives in the tree? Hit `Alt+R` to instantly reveal and highlight it in the
-sidebar. These aren't afterthoughts — they're the primary navigation model.
+collection and jump to it instantly — without touching the mouse. Already editing a
+request and lost track of where it lives in the tree? Hit `Alt+R` to instantly reveal
+and highlight it in the sidebar. These aren't afterthoughts — they're the primary
+navigation model.
 
 ### 📋 Everything visible, nothing hidden
 
@@ -48,11 +47,12 @@ from the toolbar. The active environment name is always visible — you will nev
 accidentally fire a production request because you forgot to switch back.
 
 **Environments are dynamic, not static.** A variable can hold a plain value, a
-mocked data pattern, a JSONPath extraction from a prior response, or the result of a
-chained request. You don't need pre/post-request scripts to thread auth tokens between
-calls — you just describe what value you want, and Callsmith resolves it at send time.
-Variables are substituted across the URL, every header, and the full request body.
-Secret variables are masked in the UI and never written to history in plaintext.
+mocked data pattern, or an extraction from a prior response — JSONPath, XPath, and
+regex are all supported. You don't need pre/post-request scripts to thread auth tokens
+between calls — you just describe what value you want, and Callsmith resolves it at
+send time. Variables are substituted across the URL, every header, and the full
+request body. Secret variables are masked in the UI and never written to history in
+plaintext.
 
 ### 📜 Request history as a first-class feature
 
