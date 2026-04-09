@@ -222,4 +222,72 @@ public sealed class RequestEditorViewModelTransientTabTests
         sut.Tabs.Should().HaveCount(2);
         sut.Tabs.Should().Contain(permanentTab);
     }
+
+    // ─── Command palette: open as permanent ──────────────────────────────────
+
+    [Fact]
+    public void ReceiveRequestSelected_OpenAsPermanent_OpensTabAsPermanent()
+    {
+        var sut = BuildSut();
+        var req = MakeRequest(@"/col/a.callsmith", "Alpha");
+
+        sut.Receive(new RequestSelectedMessage(req, openAsPermanent: true));
+
+        sut.Tabs.Should().HaveCount(1);
+        sut.Tabs[0].IsTransient.Should().BeFalse("command palette opens requests as permanent tabs");
+    }
+
+    [Fact]
+    public void ReceiveRequestSelected_OpenAsPermanent_DoesNotReplaceExistingTransientTab()
+    {
+        var sut = BuildSut();
+        var reqA = MakeRequest(@"/col/a.callsmith", "Alpha");
+        var reqB = MakeRequest(@"/col/b.callsmith", "Beta");
+
+        // Open a transient tab via sidebar click.
+        sut.Receive(new RequestSelectedMessage(reqA));
+        var transientTab = sut.Tabs[0];
+        transientTab.IsTransient.Should().BeTrue();
+
+        // Open a different request from the command palette.
+        sut.Receive(new RequestSelectedMessage(reqB, openAsPermanent: true));
+
+        sut.Tabs.Should().HaveCount(2, "the transient tab should NOT be displaced by a command palette open");
+        sut.Tabs.Should().Contain(transientTab);
+        transientTab.IsTransient.Should().BeTrue("the original transient tab should remain transient");
+        sut.Tabs.Single(t => t != transientTab).IsTransient.Should().BeFalse("the command palette tab should be permanent");
+    }
+
+    [Fact]
+    public void ReceiveRequestSelected_OpenAsPermanent_FocusesExistingTabIfAlreadyOpen()
+    {
+        var sut = BuildSut();
+        var req = MakeRequest(@"/col/a.callsmith", "Alpha");
+
+        // Open once via sidebar (transient), then via command palette.
+        sut.Receive(new RequestSelectedMessage(req));
+        sut.Receive(new RequestSelectedMessage(req, openAsPermanent: true));
+
+        sut.Tabs.Should().HaveCount(1, "should focus the existing tab, not open a second one");
+    }
+
+    [Fact]
+    public void OpeningTransientTab_AfterCommandPaletteOpen_DoesNotClosePermanentCommandPaletteTab()
+    {
+        var sut = BuildSut();
+        var reqA = MakeRequest(@"/col/a.callsmith", "Alpha");
+        var reqB = MakeRequest(@"/col/b.callsmith", "Beta");
+
+        // Open from command palette first (permanent tab).
+        sut.Receive(new RequestSelectedMessage(reqA, openAsPermanent: true));
+        var permanentTab = sut.Tabs[0];
+
+        // Then click a different request in the sidebar (transient tab).
+        sut.Receive(new RequestSelectedMessage(reqB));
+
+        sut.Tabs.Should().HaveCount(2, "the permanent command palette tab should remain open");
+        sut.Tabs.Should().Contain(permanentTab);
+        permanentTab.IsTransient.Should().BeFalse();
+        sut.Tabs.Single(t => t != permanentTab).IsTransient.Should().BeTrue();
+    }
 }

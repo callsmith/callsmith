@@ -128,7 +128,7 @@ public sealed partial class CommandPaletteViewModel : ViewModelBase
         {
             // Re-load from disk so secrets are available (same pattern as CollectionsViewModel).
             var request = await _collectionService.LoadRequestAsync(result.Request.FilePath, ct);
-            _messenger.Send(new RequestSelectedMessage(request));
+            _messenger.Send(new RequestSelectedMessage(request, openAsPermanent: true));
             _messenger.Send(new RevealRequestMessage(result.Request.FilePath));
         }
         catch (OperationCanceledException)
