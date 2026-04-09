@@ -379,7 +379,12 @@ public partial class CollectionsView : UserControl
 
     private async void OnTreePointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        _isPointerDown = false;
+        // Do NOT clear _isPointerDown here. PointerReleased fires before the Tapped event,
+        // and Tapped causes selection/focus changes that trigger further BringIntoView calls.
+        // We post the reset at Background priority so it executes after all pending input
+        // events (including Tapped and any tree updates it causes) have been processed.
+        _ = Dispatcher.UIThread.InvokeAsync(() => _isPointerDown = false, DispatcherPriority.Background);
+
         if (_draggedNode is not null && _dropTargetFolder is not null && DataContext is CollectionsViewModel vm)
         {
             if (!_draggedNode.IsFolder && _draggedNode.Parent != _dropTargetFolder)
