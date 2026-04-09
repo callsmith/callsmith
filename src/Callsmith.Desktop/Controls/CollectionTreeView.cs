@@ -16,6 +16,11 @@ namespace Callsmith.Desktop.Controls;
 /// </summary>
 public sealed class CollectionTreeView : TreeView
 {
+    // Avalonia 11 uses the runtime type to look up theme styles. Without this override
+    // the Fluent theme cannot find a style for CollectionTreeView and applies no template,
+    // making the control invisible.
+    protected override Type StyleKeyOverride => typeof(TreeView);
+
     public CollectionTreeView()
     {
         AddHandler(RequestBringIntoViewEvent, OnRequestBringIntoView, RoutingStrategies.Bubble);
