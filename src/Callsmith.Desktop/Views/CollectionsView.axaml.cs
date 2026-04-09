@@ -17,6 +17,7 @@ public partial class CollectionsView : UserControl
     private Border? _previousDropIndicator;        // insertion line indicator
     private Point _dragStartPoint;
     private bool _isDragging;
+    private bool _isPointerDown;
     private const double DragThreshold = 6.0;
     private int _dropInsertIndex = -1;
 
@@ -35,6 +36,12 @@ public partial class CollectionsView : UserControl
         CollectionTree.AddHandler(InputElement.PointerMovedEvent, OnTreePointerMoved, moveRelease, handledEventsToo: true);
         CollectionTree.AddHandler(InputElement.PointerReleasedEvent, OnTreePointerReleased, moveRelease, handledEventsToo: true);
         CollectionTree.AddHandler(InputElement.PointerCaptureLostEvent, OnTreePointerCaptureLost, RoutingStrategies.Direct);
+
+        // Suppress the automatic scroll-into-view that fires when the TreeView selects an
+        // item on pointer-down. Without this, clicking a tree item when the tree is scrolled
+        // horizontally causes the ScrollViewer to jump (centering the item) before the Tapped
+        // event fires, which consumes the first click without executing any action.
+        CollectionTree.AddHandler(RequestBringIntoViewEvent, OnTreeRequestBringIntoView, RoutingStrategies.Bubble);
     }
 
     // -------------------------------------------------------------------------
@@ -211,6 +218,7 @@ public partial class CollectionsView : UserControl
 
     private void OnTreePointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        _isPointerDown = true;
         _draggedNode = null;
         _dropTargetFolder = null;
         _dropInsertIndex = -1;
@@ -371,6 +379,7 @@ public partial class CollectionsView : UserControl
 
     private async void OnTreePointerReleased(object? sender, PointerReleasedEventArgs e)
     {
+        _isPointerDown = false;
         if (_draggedNode is not null && _dropTargetFolder is not null && DataContext is CollectionsViewModel vm)
         {
             if (!_draggedNode.IsFolder && _draggedNode.Parent != _dropTargetFolder)
@@ -408,12 +417,26 @@ public partial class CollectionsView : UserControl
 
     private void OnTreePointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
     {
+        _isPointerDown = false;
         ClearDropVisuals();
         _draggedNode = null;
         _dropTargetFolder = null;
         _dropInsertIndex = -1;
         _isDragging = false;
         CollectionTree.Cursor = Cursor.Default;
+    }
+
+    private void OnTreeRequestBringIntoView(object? sender, RequestBringIntoViewEventArgs e)
+    {
+        // Suppress automatic scroll-into-view while the pointer is held down. Avalonia's
+        // TreeView selects (and focuses) an item on pointer-press, which triggers a
+        // BringIntoView call. When the tree is scrolled horizontally, that call causes the
+        // ScrollViewer to jump before the Tapped event fires, meaning the first click is
+        // consumed by the scroll and a second click is required. Blocking BringIntoView
+        // during pointer interactions prevents the jump; explicit calls from RevealRequest
+        // and keyboard navigation are unaffected because _isPointerDown is false then.
+        if (_isPointerDown)
+            e.Handled = true;
     }
 
     private void ClearDropVisuals()
