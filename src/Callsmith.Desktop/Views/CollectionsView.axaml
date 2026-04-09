@@ -257,6 +257,7 @@
         <Grid IsVisible="{Binding HasCollection}"
           Margin="0,4,0,0">
         <TreeView x:Name="CollectionTree"
+          AutoScrollToSelectedItem="false"
           ItemsSource="{Binding TreeRoots}"
           Background="Transparent">
       <TreeView.ItemTemplate>
