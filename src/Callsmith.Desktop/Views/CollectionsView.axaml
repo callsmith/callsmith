@@ -260,7 +260,7 @@
         <controls:CollectionTreeView x:Name="CollectionTree"
           ItemsSource="{Binding TreeRoots}"
           Background="Transparent">
-      <TreeView.ItemTemplate>
+      <controls:CollectionTreeView.ItemTemplate>
         <TreeDataTemplate ItemsSource="{Binding Children}"
                           x:DataType="vm:CollectionTreeItemViewModel">
 
@@ -321,12 +321,12 @@
           </Panel>
 
         </TreeDataTemplate>
-      </TreeView.ItemTemplate>
+      </controls:CollectionTreeView.ItemTemplate>
 
       <!-- Context menu bound in code-behind to avoid AXAML binding complexity -->
-      <TreeView.ContextMenu>
+      <controls:CollectionTreeView.ContextMenu>
         <ContextMenu x:Name="TreeContextMenu"/>
-      </TreeView.ContextMenu>
+      </controls:CollectionTreeView.ContextMenu>
 
         </controls:CollectionTreeView>
 
