@@ -20,7 +20,7 @@ public sealed class RequestSelectedMessage(CollectionRequest request, bool openA
 {
     /// <summary>
     /// When <see langword="true"/> the editor should open the request as a permanent tab,
-    /// bypassing the transient-tab behaviour used for sidebar single-clicks.
+    /// bypassing the transient-tab behavior used for sidebar single-clicks.
     /// </summary>
     public bool OpenAsPermanent { get; } = openAsPermanent;
 }

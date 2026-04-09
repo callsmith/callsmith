@@ -274,7 +274,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Opens the selected request in a tab. When <paramref name="message"/>.<see cref="RequestSelectedMessage.OpenAsPermanent"/>
+    /// Opens the selected request in a tab. When <see cref="RequestSelectedMessage.OpenAsPermanent"/>
     /// is <see langword="false"/> (the default, used for sidebar clicks) the tab is transient and replaces
     /// any previous transient tab. When <see langword="true"/> (used by the command palette) the tab is
     /// opened as a permanent tab and the existing transient tab is left untouched.
