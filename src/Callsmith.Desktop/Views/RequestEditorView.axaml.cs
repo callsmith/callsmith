@@ -100,6 +100,14 @@ public partial class RequestEditorView : UserControl
             {
                 if (border.DataContext is RequestTabViewModel tab)
                 {
+                    // Double-click on a transient tab promotes it to a permanent tab.
+                    if (e.ClickCount >= 2 && tab.IsTransient)
+                    {
+                        tab.PromoteFromTransient();
+                        e.Handled = true;
+                        return;
+                    }
+
                     vm.SelectTabCommand.Execute(tab);
                     _draggedTab = tab;
                     _dragStartPoint = e.GetPosition(TabStrip);

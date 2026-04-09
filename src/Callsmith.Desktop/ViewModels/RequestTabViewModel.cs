@@ -65,6 +65,14 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private bool _isActive;
 
     /// <summary>
+    /// True when this tab was opened by clicking a request in the sidebar and has not yet
+    /// been promoted to a permanent tab. A transient tab is replaced automatically when
+    /// another request is clicked from the sidebar.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isTransient;
+
+    /// <summary>
     /// True for tabs that have never been saved to disk.
     /// Cleared once the user completes Save As.
     /// </summary>
@@ -769,7 +777,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         {
             if (_loading || _saving || _sourceRequest is null) return;
             if (e.PropertyName is
-                nameof(HasUnsavedChanges) or nameof(IsNew) or nameof(IsActive) or nameof(TabTitle) or
+                nameof(HasUnsavedChanges) or nameof(IsNew) or nameof(IsActive) or nameof(IsTransient) or nameof(TabTitle) or
                 nameof(TabIsDirty) or nameof(SaveButtonLabel) or nameof(ShowRevertButton) or
                 nameof(SourceFilePath) or
                 nameof(ShowSaveAsPanel) or nameof(SaveAsName) or nameof(SaveAsFolderPath) or
@@ -828,6 +836,16 @@ public sealed partial class RequestTabViewModel : ObservableObject
     // -------------------------------------------------------------------------
     // Public API called by RequestEditorViewModel
     // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Promotes this tab from transient to permanent. Called when the user double-clicks
+    /// the tab, makes any change to the request, or sends the request.
+    /// </summary>
+    internal void PromoteFromTransient()
+    {
+        if (!IsTransient) return;
+        IsTransient = false;
+    }
 
     /// <summary>Loads a saved request into this tab.</summary>
     public void LoadRequest(CollectionRequest req)
@@ -1362,6 +1380,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(Url)) return;
 
+        // Sending a request promotes the tab from transient to permanent.
+        PromoteFromTransient();
+
         IsSending = true;
         Response = null;
         ErrorMessage = null;
@@ -1773,6 +1794,12 @@ public sealed partial class RequestTabViewModel : ObservableObject
     // -------------------------------------------------------------------------
     // URL <-> param sync
     // -------------------------------------------------------------------------
+
+    partial void OnHasUnsavedChangesChanged(bool value)
+    {
+        // Any unsaved change promotes a transient tab to a permanent one.
+        if (value) PromoteFromTransient();
+    }
 
     partial void OnUrlChanged(string value)
     {

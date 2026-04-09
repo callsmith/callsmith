@@ -78,6 +78,12 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private RequestTabViewModel? _bulkClosePreferredActiveTab;
     private bool _bulkCloseInProgress;
 
+    /// <summary>
+    /// The current transient tab, if any. Set when a request is opened from the sidebar.
+    /// Automatically closed when a new sidebar request is selected, unless the tab was promoted.
+    /// </summary>
+    private RequestTabViewModel? _transientTab;
+
     private IReadOnlyList<string> _availableRequestNames = [];
 
     public bool HasTabs => Tabs.Count > 0;
@@ -268,13 +274,14 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Opens the selected request in a new tab, or focuses it if already open.
+    /// Opens the selected request in a new transient tab, or focuses it if already open.
+    /// If there is an existing transient tab that has not been promoted, it is closed first.
     /// </summary>
     public void Receive(RequestSelectedMessage message)
     {
         var incoming = message.Value;
 
-        // If this request is already open in a tab, just focus that tab.
+        // If this request is already open in any tab (transient or permanent), just focus it.
         var existing = Tabs.FirstOrDefault(t =>
             !t.IsNew &&
             string.Equals(t.SourceFilePath, incoming.FilePath, StringComparison.OrdinalIgnoreCase));
@@ -285,7 +292,17 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             return;
         }
 
+        // Close the previous transient tab if it has not been promoted to a permanent tab.
+        // Tabs.Contains check is a defensive guard: the tab may have already been closed by
+        // other code paths (e.g., the underlying file being deleted). IsTransient ensures we
+        // only auto-close tabs the user has not intentionally promoted via edit or double-click.
+        if (_transientTab is not null && Tabs.Contains(_transientTab) && _transientTab.IsTransient)
+            RemoveTab(_transientTab);
+        _transientTab = null;
+
         var tab = BuildTab(incoming);
+        tab.IsTransient = true;
+        _transientTab = tab;
         Tabs.Add(tab);
         ActiveTab = tab;
     }
@@ -380,6 +397,9 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     {
         var idx = Tabs.IndexOf(tab);
         Tabs.Remove(tab);
+
+        if (_transientTab == tab)
+            _transientTab = null;
 
         if (ActiveTab == tab)
         {

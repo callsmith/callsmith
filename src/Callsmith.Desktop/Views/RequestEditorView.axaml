@@ -81,6 +81,11 @@
       <Setter Property="Background" Value="#3a3a3a"/>
     </Style>
 
+    <!-- Transient tab title renders in italic -->
+    <Style Selector="Border.tab-chip.transient TextBlock.tab-title">
+      <Setter Property="FontStyle" Value="Italic"/>
+    </Style>
+
   </UserControl.Styles>
 
   <DockPanel>
@@ -113,6 +118,7 @@
                 <Border x:Name="TabChip"
                         Classes="tab-chip"
                         Classes.active="{Binding IsActive}"
+                        Classes.transient="{Binding IsTransient}"
                         BorderBrush="#333"
                         BorderThickness="0,0,1,0"
                         MinWidth="140"
