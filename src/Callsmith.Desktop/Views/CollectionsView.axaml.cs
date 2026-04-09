@@ -422,7 +422,12 @@ public partial class CollectionsView : UserControl
 
     private void OnTreePointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
     {
-        _isPointerDown = false;
+        // PointerCaptureLost fires synchronously when pointer.Capture(null) is called inside
+        // EndDrag, which is invoked from OnTreePointerReleased — before Tapped fires. Clearing
+        // _isPointerDown here would defeat the deferred reset posted in OnTreePointerReleased.
+        // Use the same Background-priority deferral so the flag stays true until after Tapped
+        // (and any BringIntoView calls it triggers) has been fully processed.
+        _ = Dispatcher.UIThread.InvokeAsync(() => _isPointerDown = false, DispatcherPriority.Background);
         ClearDropVisuals();
         _draggedNode = null;
         _dropTargetFolder = null;
