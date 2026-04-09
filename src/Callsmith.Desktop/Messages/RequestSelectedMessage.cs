@@ -5,9 +5,22 @@ using CommunityToolkit.Mvvm.Messaging.Messages;
 namespace Callsmith.Desktop.Messages;
 
 /// <summary>
-/// Published by <see cref="ViewModels.CollectionsViewModel"/> when the user selects
-/// a request in the sidebar tree.
-/// Received by <see cref="ViewModels.RequestEditorViewModel"/> to populate or open a tab.
+/// Published when the user selects a request — either from the sidebar tree or the
+/// command palette. Received by <see cref="ViewModels.RequestEditorViewModel"/> to
+/// populate or open a tab.
 /// </summary>
-public sealed class RequestSelectedMessage(CollectionRequest request)
-    : ValueChangedMessage<CollectionRequest>(request);
+/// <param name="request">The request to open.</param>
+/// <param name="openAsPermanent">
+/// When <see langword="true"/> the tab is opened as a permanent (non-transient) tab
+/// and the existing transient tab is not replaced. Used when opening from the command
+/// palette, where the user has intentionally chosen a request to work with.
+/// </param>
+public sealed class RequestSelectedMessage(CollectionRequest request, bool openAsPermanent = false)
+    : ValueChangedMessage<CollectionRequest>(request)
+{
+    /// <summary>
+    /// When <see langword="true"/> the editor should open the request as a permanent tab,
+    /// bypassing the transient-tab behaviour used for sidebar single-clicks.
+    /// </summary>
+    public bool OpenAsPermanent { get; } = openAsPermanent;
+}

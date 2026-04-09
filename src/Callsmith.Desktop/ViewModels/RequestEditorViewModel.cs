@@ -274,8 +274,11 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Opens the selected request in a new transient tab, or focuses it if already open.
-    /// If there is an existing transient tab that has not been promoted, it is closed first.
+    /// Opens the selected request in a tab. When <paramref name="message"/>.<see cref="RequestSelectedMessage.OpenAsPermanent"/>
+    /// is <see langword="false"/> (the default, used for sidebar clicks) the tab is transient and replaces
+    /// any previous transient tab. When <see langword="true"/> (used by the command palette) the tab is
+    /// opened as a permanent tab and the existing transient tab is left untouched.
+    /// If the request is already open in any tab, that tab is focused instead.
     /// </summary>
     public void Receive(RequestSelectedMessage message)
     {
@@ -292,6 +295,16 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             return;
         }
 
+        if (message.OpenAsPermanent)
+        {
+            // Command-palette selection: open as a permanent (non-transient) tab.
+            // Do not displace the existing transient tab — they are independent.
+            var tab = BuildTab(incoming);
+            Tabs.Add(tab);
+            ActiveTab = tab;
+            return;
+        }
+
         // Close the previous transient tab if it has not been promoted to a permanent tab.
         // Tabs.Contains check is a defensive guard: the tab may have already been closed by
         // other code paths (e.g., the underlying file being deleted). IsTransient ensures we
@@ -300,11 +313,11 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             RemoveTab(_transientTab);
         _transientTab = null;
 
-        var tab = BuildTab(incoming);
-        tab.IsTransient = true;
-        _transientTab = tab;
-        Tabs.Add(tab);
-        ActiveTab = tab;
+        var newTab = BuildTab(incoming);
+        newTab.IsTransient = true;
+        _transientTab = newTab;
+        Tabs.Add(newTab);
+        ActiveTab = newTab;
     }
 
     public void Receive(EnvironmentChangedMessage message)
