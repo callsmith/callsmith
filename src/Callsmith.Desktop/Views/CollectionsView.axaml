@@ -3,6 +3,7 @@
              xmlns:vm="using:Callsmith.Desktop.ViewModels"
              xmlns:conv="using:Callsmith.Desktop.Converters"
              xmlns:views="using:Callsmith.Desktop.Views"
+             xmlns:controls="using:Callsmith.Desktop.Controls"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="750"
@@ -256,7 +257,7 @@
         <!-- ── Tree view ── -->
         <Grid IsVisible="{Binding HasCollection}"
           Margin="0,4,0,0">
-        <TreeView x:Name="CollectionTree"
+        <controls:CollectionTreeView x:Name="CollectionTree"
           ItemsSource="{Binding TreeRoots}"
           Background="Transparent">
       <TreeView.ItemTemplate>
@@ -327,7 +328,7 @@
         <ContextMenu x:Name="TreeContextMenu"/>
       </TreeView.ContextMenu>
 
-        </TreeView>
+        </controls:CollectionTreeView>
 
         <!-- Bottom insertion indicator for dropping after the last visible item. -->
         <Border x:Name="TreeBottomDropIndicator"
