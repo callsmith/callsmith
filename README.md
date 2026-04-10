@@ -158,6 +158,8 @@ All of these are implemented now, not roadmap items:
 | `Ctrl+Enter` | Send request |
 | `Ctrl+H` | Navigate to history, scoped to current request |
 | `Ctrl+Shift+H` | Navigate to global history |
+| `Ctrl+T` | Create a new tab |
+| `Ctrl+W` | Close current tab |
 | `Ctrl+S` | Save current context (active request tab or environment editor) |
 
 ### Collections Tree
