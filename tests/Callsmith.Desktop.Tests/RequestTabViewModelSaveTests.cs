@@ -751,11 +751,19 @@ public sealed class RequestTabViewModelSaveTests
     {
         for (var attempt = 0; attempt < 300; attempt++)
         {
-            // Pump queued Dispatcher work so ViewModel callbacks posted to UI thread run in tests.
+            // Pump UI queue when possible so Dispatcher.Post work from the ViewModel
+            // can run in headless tests. Ignore transient suspension windows.
             if (Dispatcher.UIThread.CheckAccess())
-                Dispatcher.UIThread.RunJobs();
-            else
-                await Dispatcher.UIThread.InvokeAsync(static () => Dispatcher.UIThread.RunJobs());
+            {
+                try
+                {
+                    Dispatcher.UIThread.RunJobs();
+                }
+                catch (InvalidOperationException)
+                {
+                    // Dispatcher processing can be briefly suspended; retry.
+                }
+            }
 
             if (condition())
                 return;

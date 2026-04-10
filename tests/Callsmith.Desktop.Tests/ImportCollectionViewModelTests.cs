@@ -433,7 +433,7 @@ public sealed class ImportCollectionViewModelTests
 
         await sut.ImportCommand.ExecuteAsync(null);
 
-        var expectedTarget = Path.Combine("/my/collection", "Orders/Internal");
+        var expectedTarget = Path.GetFullPath(Path.Combine("/my/collection", "Orders/Internal"));
         await svc.Received(1).ImportIntoCollectionAsync(
             "/fake/file.yaml",
             "/my/collection",
@@ -702,7 +702,7 @@ public sealed class ImportCollectionViewModelTests
 
         await sut.ImportCommand.ExecuteAsync(null);
 
-        var expectedTarget = Path.Combine("/col", "Orders");
+        var expectedTarget = Path.GetFullPath(Path.Combine("/col", "Orders"));
         await svc.Received(1).ImportIntoCollectionAsync(
             "/a.yaml", "/col", expectedTarget, Arg.Any<CancellationToken>());
         await svc.Received(1).ImportIntoCollectionAsync(
