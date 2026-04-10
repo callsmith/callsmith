@@ -109,4 +109,35 @@ public sealed class MainWindowViewModelTests
 
         sut.Environment.IsEditorOpen.Should().BeFalse();
     }
+
+    [Fact]
+    public void CloseCurrentTab_WhenMainEditorIsActive_StartsCloseFlowForActiveTab()
+    {
+        var sut = BuildSut();
+        sut.Collections.HasCollection = true;
+        sut.RequestEditor.NewTab();
+
+        sut.RequestEditor.Tabs.Count.Should().Be(1);
+
+        sut.CloseCurrentTabCommand.Execute(null);
+
+        sut.RequestEditor.ShowCloseWithoutSavingDialog.Should().BeTrue();
+        sut.RequestEditor.Tabs.Count.Should().Be(1);
+        sut.RequestEditor.ActiveTab.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void CloseCurrentTab_WhenHistoryPanelIsOpen_DoesNotCloseActiveTab()
+    {
+        var sut = BuildSut();
+        sut.Collections.HasCollection = true;
+        sut.RequestEditor.NewTab();
+        sut.HistoryPanel.IsOpen = true;
+
+        sut.CloseCurrentTabCommand.Execute(null);
+
+        sut.RequestEditor.ShowCloseWithoutSavingDialog.Should().BeFalse();
+        sut.RequestEditor.Tabs.Count.Should().Be(1);
+        sut.RequestEditor.ActiveTab.Should().NotBeNull();
+    }
 }

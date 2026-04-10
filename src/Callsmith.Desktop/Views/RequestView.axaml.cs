@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using Callsmith.Desktop.ViewModels;
 
 namespace Callsmith.Desktop.Views;
@@ -13,6 +14,7 @@ namespace Callsmith.Desktop.Views;
 public partial class RequestView : UserControl
 {
     private RequestTabViewModel? _trackedVm;
+    private readonly HashSet<Guid> _urlFocusAppliedTabIds = [];
 
     public RequestView()
     {
@@ -37,6 +39,7 @@ public partial class RequestView : UserControl
                 ? _trackedVm.HorizontalSplitterPosition
                 : _trackedVm.VerticalSplitterPosition;
             ApplyLayout(_trackedVm.IsHorizontalLayout, pos);
+            TryFocusUrlForNewUnsavedTab(_trackedVm);
 
             // Inject the platform file picker callback — the ViewModel has no Avalonia reference.
             _trackedVm.OpenFilePickerFunc = async (ct) =>
@@ -54,6 +57,21 @@ public partial class RequestView : UserControl
                 return (ms.ToArray(), files[0].Name, displayPath);
             };
         }
+    }
+
+    private void TryFocusUrlForNewUnsavedTab(RequestTabViewModel vm)
+    {
+        if (!vm.IsNew) return;
+        if (!_urlFocusAppliedTabIds.Add(vm.TabId)) return;
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!ReferenceEquals(DataContext, vm)) return;
+            if (!vm.IsNew) return;
+
+            UrlTextBox.Focus();
+            UrlTextBox.SelectAll();
+        }, DispatcherPriority.Input);
     }
 
     private async void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)

@@ -54,7 +54,7 @@
               </DataTemplate>
             </ComboBox.ItemTemplate>
           </ComboBox>
-          <TextBox Grid.Column="2"
+          <TextBox x:Name="UrlTextBox" Grid.Column="2"
                    Text="{Binding Url}"
                    Watermark="https://api.example.com/endpoint"
                    FontSize="13" Foreground="#d4d4d4" Background="#3c3c3c"

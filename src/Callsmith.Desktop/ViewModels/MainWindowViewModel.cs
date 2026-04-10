@@ -151,6 +151,33 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Ctrl+T handler: opens a new request tab only when the main request editor is active.
+    /// </summary>
+    [RelayCommand]
+    private void NewTab()
+    {
+        if (Environment.IsAnyEditorOpen) return;
+        if (HistoryPanel.IsOpen) return;
+        if (!Collections.HasCollection) return;
+
+        RequestEditor.NewTabCommand.Execute(null);
+    }
+
+    /// <summary>
+    /// Ctrl+W handler: closes the currently active request tab when the main request editor is active.
+    /// </summary>
+    [RelayCommand]
+    private void CloseCurrentTab()
+    {
+        if (Environment.IsAnyEditorOpen) return;
+        if (HistoryPanel.IsOpen) return;
+        if (!Collections.HasCollection) return;
+
+        if (RequestEditor.ActiveTab?.CloseCommand.CanExecute(null) == true)
+            RequestEditor.ActiveTab.CloseCommand.Execute(null);
+    }
+
+    /// <summary>
     /// Ctrl+E handler: opens the environment configuration screen from the main editor view.
     /// </summary>
     [RelayCommand]

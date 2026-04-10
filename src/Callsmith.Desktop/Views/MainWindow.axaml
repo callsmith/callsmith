@@ -16,6 +16,8 @@
          otherwise falls through to the active request tab. -->
     <Window.KeyBindings>
         <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}"/>
+        <KeyBinding Gesture="Ctrl+T" Command="{Binding NewTabCommand}"/>
+        <KeyBinding Gesture="Ctrl+W" Command="{Binding CloseCurrentTabCommand}"/>
         <KeyBinding Gesture="Ctrl+P" Command="{Binding OpenCommandPaletteCommand}"/>
         <KeyBinding Gesture="Ctrl+E" Command="{Binding OpenEnvironmentConfigurationCommand}"/>
         <KeyBinding Gesture="Ctrl+H" Command="{Binding OpenActiveRequestHistoryCommand}"/>
