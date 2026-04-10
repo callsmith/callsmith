@@ -26,8 +26,12 @@ public sealed class SyntaxEditor : TextEditor
     private static readonly IHighlightingDefinition? TextHighlighting;
     private static readonly IHighlightingDefinition? YamlHighlighting;
     private bool _updatingText;
+    private bool _isInitialized;
     private FoldingManager? _foldingManager;
     private XmlFoldingStrategy? _xmlFoldingStrategy;
+    private JsonFoldingStrategy? _jsonFoldingStrategy;
+    private HtmlFoldingStrategy? _htmlFoldingStrategy;
+    private YamlFoldingStrategy? _yamlFoldingStrategy;
 
     static SyntaxEditor()
     {
@@ -107,8 +111,6 @@ public sealed class SyntaxEditor : TextEditor
         TextArea.SelectionBrush = new SolidColorBrush(Color.Parse("#264f78"));
         TextArea.CaretBrush = new SolidColorBrush(Color.Parse("#aeafad"));
 
-        _foldingManager = FoldingManager.Install(TextArea);
-
         // Prevent the parent ScrollViewer from jumping when the user clicks or
         // selects text inside this editor. AvaloniaEdit manages its own internal
         // scrolling; the RequestBringIntoView event bubbling up to an ancestor
@@ -118,6 +120,10 @@ public sealed class SyntaxEditor : TextEditor
 
         // Propagate document text changes back to our StyledProperty.
         base.TextChanged += OnEditorTextChanged;
+
+        _isInitialized = true;
+        InstallFoldingManagerIfPossible();
+        UpdateFoldings();
     }
 
     // ── Sync handlers ──────────────────────────────────────────────────────
@@ -153,21 +159,82 @@ public sealed class SyntaxEditor : TextEditor
                     base.Text = text;
             }
             finally { _updatingText = false; }
+
+            // Bound updates (for example, the Format button) can bypass our
+            // TextChanged folding update path while _updatingText is true.
+            // Recompute foldings explicitly after syncing the editor text.
+            UpdateFoldings();
+        }
+        else if (change.Property == DocumentProperty)
+        {
+            if (!_isInitialized)
+                return;
+
+            // A FoldingManager instance is bound to a specific document.
+            // Reinstall it whenever the document instance changes.
+            if (_foldingManager is not null)
+                FoldingManager.Uninstall(_foldingManager);
+
+            InstallFoldingManagerIfPossible();
+            UpdateFoldings();
         }
         else if (change.Property == LanguageProperty)
         {
             var lang = change.GetNewValue<string>();
             SyntaxHighlighting = ResolveHighlighting(lang);
-            _xmlFoldingStrategy = lang?.ToLowerInvariant() == "xml" ? new XmlFoldingStrategy() : null;
+            var normalizedLanguage = lang?.ToLowerInvariant();
+            _xmlFoldingStrategy = normalizedLanguage == "xml" ? new XmlFoldingStrategy() : null;
+            _jsonFoldingStrategy = normalizedLanguage == "json" ? new JsonFoldingStrategy() : null;
+            _htmlFoldingStrategy = normalizedLanguage == "html" ? new HtmlFoldingStrategy() : null;
+            _yamlFoldingStrategy = normalizedLanguage == "yaml" ? new YamlFoldingStrategy() : null;
             UpdateFoldings();
         }
     }
 
     private void UpdateFoldings()
     {
-        if (_foldingManager is null || _xmlFoldingStrategy is null) return;
-        try { _xmlFoldingStrategy.UpdateFoldings(_foldingManager, Document); }
+        if (_foldingManager is null) return;
+
+        try
+        {
+            if (_xmlFoldingStrategy is not null)
+            {
+                _xmlFoldingStrategy.UpdateFoldings(_foldingManager, Document);
+                return;
+            }
+
+            if (_jsonFoldingStrategy is not null)
+            {
+                _jsonFoldingStrategy.UpdateFoldings(_foldingManager, Document);
+                return;
+            }
+
+            if (_htmlFoldingStrategy is not null)
+            {
+                _htmlFoldingStrategy.UpdateFoldings(_foldingManager, Document);
+                return;
+            }
+
+            if (_yamlFoldingStrategy is not null)
+            {
+                _yamlFoldingStrategy.UpdateFoldings(_foldingManager, Document);
+                return;
+            }
+
+            _foldingManager.UpdateFoldings([], -1);
+        }
         catch { /* ignore malformed/incomplete document */ }
+    }
+
+    private void InstallFoldingManagerIfPossible()
+    {
+        if (Document is null || TextArea.Document is null)
+        {
+            _foldingManager = null;
+            return;
+        }
+
+        _foldingManager = FoldingManager.Install(TextArea);
     }
 
     private static IHighlightingDefinition? ResolveHighlighting(string? language) =>

@@ -2,6 +2,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Callsmith.Desktop.App"
              xmlns:local="using:Callsmith.Desktop"
+             xmlns:avaloniaEdit="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
+             xmlns:folding="clr-namespace:AvaloniaEdit.Folding;assembly=AvaloniaEdit"
              RequestedThemeVariant="Dark">
              <!-- Force native Fluent dark theme for consistent desktop UX. -->
 
@@ -17,6 +19,13 @@
         </Style>
         <Style Selector="MenuItem">
             <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="avaloniaEdit|TextEditor">
+            <!-- Replace bright default white folding boxes with subtle dark/accent markers. -->
+            <Setter Property="folding:FoldingMargin.FoldingMarkerBrush" Value="#7A8A9A"/>
+            <Setter Property="folding:FoldingMargin.FoldingMarkerBackgroundBrush" Value="#1E2A34"/>
+            <Setter Property="folding:FoldingMargin.SelectedFoldingMarkerBrush" Value="#9EC2FF"/>
+            <Setter Property="folding:FoldingMargin.SelectedFoldingMarkerBackgroundBrush" Value="#27456A"/>
         </Style>
     </Application.Styles>
 </Application>
