@@ -309,6 +309,29 @@ public sealed class HttpTransportTests
             .Should().Contain(p => p.Name == "boundary");
     }
 
+    [Fact]
+    public async Task SendAsync_WithContentTypeInHeaders_AppliesContentTypeToContent()
+    {
+        // Regression test: when ContentType is null but the caller passes a "Content-Type"
+        // header in request.Headers, it must reach the outbound Content-Type header.
+        // Previously the header loop ran before content was set, so message.Content was null
+        // and the fallback TryAddWithoutValidation was a no-op, silently dropping the header.
+        var handler = new StubHandler(HttpStatusCode.OK);
+        var transport = CreateTransport(handler);
+        var request = new RequestModel
+        {
+            Method = HttpMethod.Post,
+            Url = "https://example.com",
+            Body = """{"key":1}""",
+            ContentType = null,
+            Headers = new Dictionary<string, string> { ["Content-Type"] = "application/json" },
+        };
+
+        await transport.SendAsync(request);
+
+        handler.LastRequest!.Content!.Headers.ContentType?.MediaType.Should().Be("application/json");
+    }
+
     // ---------------------------------------------------------------------------
     // SendAsync — cancellation
     // ---------------------------------------------------------------------------

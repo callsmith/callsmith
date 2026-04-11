@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace Callsmith.Core.Helpers;
 
 /// <summary>
@@ -16,7 +18,15 @@ public static class AppDataPaths
     /// </summary>
     public static string GetCallsmithAppDataDirectory()
     {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        // On macOS, Environment.SpecialFolder.ApplicationData maps to ~/.config, but the
+        // conventional macOS location is ~/Library/Application Support, which is exposed
+        // via SpecialFolder.LocalApplicationData. Mirror the same logic used in
+        // CallsmithDbContext so that Core services (secrets, preferences, meta) and the
+        // Data layer all resolve to the same base directory.
+        var appData = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+            ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+            : Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+
         var dir = Path.Combine(appData, "Callsmith");
         Directory.CreateDirectory(dir);
         return dir;

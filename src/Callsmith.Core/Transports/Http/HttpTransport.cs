@@ -139,13 +139,6 @@ public sealed class HttpTransport : ITransport, IDisposable
     {
         var message = new HttpRequestMessage(request.Method, request.Url);
 
-        foreach (var (key, value) in request.Headers)
-        {
-            // Content headers must be set on the content, not the request.
-            if (!message.Headers.TryAddWithoutValidation(key, value))
-                message.Content?.Headers.TryAddWithoutValidation(key, value);
-        }
-
         if (request.BodyBytes is not null)
         {
             message.Content = new ByteArrayContent(request.BodyBytes);
@@ -167,6 +160,28 @@ public sealed class HttpTransport : ITransport, IDisposable
 
             if (request.ContentType is not null)
                 message.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(request.ContentType);
+        }
+
+        // Apply user-specified headers after content is set so that content headers
+        // (e.g. Content-Type) can be forwarded to message.Content.Headers. If the loop ran
+        // before content was assigned, message.Content would still be null and the fallback
+        // TryAddWithoutValidation call would be a no-op, silently dropping the header.
+        foreach (var (key, value) in request.Headers)
+        {
+            // Content-Type is a content header; it must be set on the content object, not the
+            // request. Detect it before calling TryAddWithoutValidation because that method
+            // returns true even for content-only headers in .NET 10 (bypassing validation),
+            // which would cause us to skip the content assignment.
+            if (string.Equals(key, "Content-Type", StringComparison.OrdinalIgnoreCase))
+            {
+                if (message.Content is not null)
+                    message.Content.Headers.ContentType =
+                        System.Net.Http.Headers.MediaTypeHeaderValue.Parse(value);
+                continue;
+            }
+
+            if (!message.Headers.TryAddWithoutValidation(key, value))
+                message.Content?.Headers.TryAddWithoutValidation(key, value);
         }
 
         return message;
