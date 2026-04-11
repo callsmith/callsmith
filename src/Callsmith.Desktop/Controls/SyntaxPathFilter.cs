@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Linq;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Xml;
 using System.Xml.Linq;
@@ -274,6 +275,7 @@ internal static class SyntaxPathFilter
             JsonValueKind.Object or JsonValueKind.Array => JsonSerializer.Serialize(element, new JsonSerializerOptions
             {
                 WriteIndented = true,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
             }),
             _ => element.GetRawText(),
         };
