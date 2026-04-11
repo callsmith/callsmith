@@ -103,6 +103,8 @@ public partial class MainWindowViewModel : ViewModelBase
                 recipient.HistoryPanel.OpenGlobal();
         });
 
+        Collections.TriggerStartupLoad();
+
         if (_appPreferencesService is not null)
             _ = LoadPreferencesAsync();
     }

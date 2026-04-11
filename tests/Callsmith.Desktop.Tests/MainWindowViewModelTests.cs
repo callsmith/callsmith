@@ -1,4 +1,5 @@
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.Models;
 using Callsmith.Core.Services;
 using Callsmith.Desktop.ViewModels;
 using CommunityToolkit.Mvvm.Messaging;
@@ -14,6 +15,8 @@ namespace Callsmith.Desktop.Tests;
 public sealed class MainWindowViewModelTests
 {
     // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    private const string FakeCollectionPath = @"C:\collections\my-api";
 
     private static MainWindowViewModel BuildSut()
     {
@@ -51,6 +54,70 @@ public sealed class MainWindowViewModelTests
         return new MainWindowViewModel(
             collections, requestEditor, environment, environmentEditor,
             commandPalette, historyPanel, messenger);
+    }
+
+    [Fact]
+    public async Task Constructor_WhenRecentCollectionExists_TriggersStartupLoadAfterEnvironmentRecipientExists()
+    {
+        var messenger = new WeakReferenceMessenger();
+        var collectionService = Substitute.For<ICollectionService>();
+        var recentCollectionsService = Substitute.For<IRecentCollectionsService>();
+        var importService = Substitute.For<ICollectionImportService>();
+        var preferencesService = Substitute.For<ICollectionPreferencesService>();
+        var historyService = Substitute.For<IHistoryService>();
+        var transportRegistry = Substitute.For<ITransportRegistry>();
+        var environmentService = Substitute.For<IEnvironmentService>();
+        var dynamicEvaluator = Substitute.For<IDynamicVariableEvaluator>();
+        var environmentsLoaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        collectionService.OpenFolderAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new CollectionFolder { Name = "root", FolderPath = FakeCollectionPath, Requests = [], SubFolders = [] });
+
+        recentCollectionsService.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns([FakeCollectionPath]);
+
+        preferencesService.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new CollectionPreferences { ExpandedFolderPaths = [] });
+
+        historyService.SetCollectionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        environmentService.ListEnvironmentsAsync(FakeCollectionPath, Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                environmentsLoaded.TrySetResult();
+                return Task.FromResult<IReadOnlyList<Callsmith.Core.Models.EnvironmentModel>>([]);
+            });
+
+        var collections = new CollectionsViewModel(
+            collectionService, recentCollectionsService, importService, preferencesService,
+            historyService, messenger, NullLogger<CollectionsViewModel>.Instance);
+
+        var requestEditor = new RequestEditorViewModel(
+            transportRegistry, collectionService, preferencesService, dynamicEvaluator,
+            new EnvironmentMergeService(dynamicEvaluator),
+            messenger, NullLogger<RequestEditorViewModel>.Instance,
+            historyService: historyService);
+
+        var environment = new EnvironmentViewModel(
+            environmentService, preferencesService, messenger,
+            NullLogger<EnvironmentViewModel>.Instance);
+
+        var environmentEditor = new EnvironmentEditorViewModel(
+            environmentService, collectionService, dynamicEvaluator, messenger,
+            NullLogger<EnvironmentEditorViewModel>.Instance);
+
+        var commandPalette = new CommandPaletteViewModel(collectionService, messenger);
+        var historyPanel = new HistoryPanelViewModel(historyService);
+
+        _ = new MainWindowViewModel(
+            collections, requestEditor, environment, environmentEditor,
+            commandPalette, historyPanel, messenger);
+
+        await environmentsLoaded.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await environmentService.Received()
+            .ListEnvironmentsAsync(FakeCollectionPath, Arg.Any<CancellationToken>());
     }
 
     // ─── OpenCommandPalette guard tests ──────────────────────────────────────

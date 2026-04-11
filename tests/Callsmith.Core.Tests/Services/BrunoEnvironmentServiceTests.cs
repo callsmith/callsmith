@@ -130,6 +130,40 @@ public sealed class BrunoEnvironmentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task LoadEnvironmentAsync_WhenMetaMissingId_PersistsGeneratedEnvironmentId()
+    {
+        var envDir = Path.Combine(_root, "environments");
+        Directory.CreateDirectory(envDir);
+        var filePath = Path.Combine(envDir, "Dev.bru");
+        File.WriteAllText(filePath, VarsFile("base-url: https://dev.example.com/"));
+
+        var loaded = await _sut.LoadEnvironmentAsync(filePath);
+        var meta = await RealMeta().LoadAsync(_root);
+
+        Assert.True(meta.EnvironmentIds.TryGetValue("Dev.bru", out var persistedId));
+        Assert.Equal(loaded.EnvironmentId, persistedId);
+    }
+
+    [Fact]
+    public async Task ListEnvironmentsAsync_WhenMetaMissingIds_PersistsGeneratedEnvironmentIds()
+    {
+        var envDir = Path.Combine(_root, "environments");
+        Directory.CreateDirectory(envDir);
+        File.WriteAllText(Path.Combine(envDir, "Dev.bru"), VarsFile("base-url: https://dev.example.com/"));
+        File.WriteAllText(Path.Combine(envDir, "Prod.bru"), VarsFile("base-url: https://prod.example.com/"));
+
+        var environments = await _sut.ListEnvironmentsAsync(_root);
+        var meta = await RealMeta().LoadAsync(_root);
+
+        Assert.Equal(2, environments.Count);
+        Assert.True(meta.EnvironmentIds.TryGetValue("Dev.bru", out var devId));
+        Assert.True(meta.EnvironmentIds.TryGetValue("Prod.bru", out var prodId));
+        Assert.True(meta.GlobalEnvironmentId.HasValue);
+        Assert.Equal(environments.Single(e => e.Name == "Dev").EnvironmentId, devId);
+        Assert.Equal(environments.Single(e => e.Name == "Prod").EnvironmentId, prodId);
+    }
+
+    [Fact]
     public async Task SaveEnvironmentAsync_PreservesDisabledVarsOnRoundTrip()
     {
         var envDir = Path.Combine(_root, "environments");
@@ -305,6 +339,16 @@ public sealed class BrunoEnvironmentServiceTests : IDisposable
         var loaded = await _sut.LoadGlobalEnvironmentAsync(_root);
 
         Assert.Equal("Dev", loaded.GlobalPreviewEnvironmentName);
+    }
+
+    [Fact]
+    public async Task LoadGlobalEnvironmentAsync_WhenMetaMissingId_PersistsGeneratedGlobalEnvironmentId()
+    {
+        var loaded = await _sut.LoadGlobalEnvironmentAsync(_root);
+        var meta = await RealMeta().LoadAsync(_root);
+
+        Assert.True(meta.GlobalEnvironmentId.HasValue);
+        Assert.Equal(loaded.EnvironmentId, meta.GlobalEnvironmentId.Value);
     }
 
     [Fact]

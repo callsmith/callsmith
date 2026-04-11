@@ -139,6 +139,8 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     [ObservableProperty]
     private FolderSettingsViewModel? _pendingFolderSettings;
 
+    private bool _startupLoadTriggered;
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
@@ -165,8 +167,14 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         _historyService = historyService;
         _logger = logger;
         IsActive = true;
+    }
 
-        // Load recent collections in background (non-critical)
+    public void TriggerStartupLoad()
+    {
+        if (_startupLoadTriggered)
+            return;
+
+        _startupLoadTriggered = true;
         _ = LoadRecentCollectionsAsync();
     }
 

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Helpers;
@@ -14,6 +15,8 @@ namespace Callsmith.Core.Services;
 /// </summary>
 public sealed class FileSystemBrunoCollectionMetaService : IBrunoCollectionMetaService
 {
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> FileLocks = new(StringComparer.OrdinalIgnoreCase);
+
     private readonly string _storeDirectory;
     private readonly ILogger<FileSystemBrunoCollectionMetaService> _logger;
 
@@ -43,22 +46,25 @@ public sealed class FileSystemBrunoCollectionMetaService : IBrunoCollectionMetaS
         ArgumentNullException.ThrowIfNull(collectionFolderPath);
 
         var path = GetMetaFilePath(collectionFolderPath);
-        if (!File.Exists(path))
-            return new BrunoCollectionMeta();
+        return await WithFileLockAsync(path, async () =>
+        {
+            if (!File.Exists(path))
+                return new BrunoCollectionMeta();
 
-        try
-        {
-            await using var stream = File.OpenRead(path);
-            return await JsonSerializer
-                       .DeserializeAsync<BrunoCollectionMeta>(stream, CallsmithJsonOptions.Default, ct)
-                       .ConfigureAwait(false)
-                   ?? new BrunoCollectionMeta();
-        }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
-        {
-            _logger.LogWarning(ex, "Could not read Bruno collection meta at '{Path}'", path);
-            return new BrunoCollectionMeta();
-        }
+            try
+            {
+                await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                return await JsonSerializer
+                           .DeserializeAsync<BrunoCollectionMeta>(stream, CallsmithJsonOptions.Default, ct)
+                           .ConfigureAwait(false)
+                       ?? new BrunoCollectionMeta();
+            }
+            catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+            {
+                _logger.LogWarning(ex, "Could not read Bruno collection meta at '{Path}'", path);
+                return new BrunoCollectionMeta();
+            }
+        }, ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -70,15 +76,53 @@ public sealed class FileSystemBrunoCollectionMetaService : IBrunoCollectionMetaS
 
         var path = GetMetaFilePath(collectionFolderPath);
 
+        await WithFileLockAsync(path, async () =>
+        {
+            try
+            {
+                Directory.CreateDirectory(_storeDirectory);
+
+                var tempPath = path + ".tmp";
+                await using (var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    await JsonSerializer.SerializeAsync(stream, meta, CallsmithJsonOptions.Default, ct).ConfigureAwait(false);
+                    await stream.FlushAsync(ct).ConfigureAwait(false);
+                }
+
+                File.Move(tempPath, path, overwrite: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogWarning(ex, "Could not write Bruno collection meta at '{Path}'", path);
+            }
+        }, ct).ConfigureAwait(false);
+    }
+
+    private static async Task<T> WithFileLockAsync<T>(string path, Func<Task<T>> action, CancellationToken ct)
+    {
+        var gate = FileLocks.GetOrAdd(path, static _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            Directory.CreateDirectory(_storeDirectory);
-            await using var stream = File.Open(path, FileMode.Create, FileAccess.Write);
-            await JsonSerializer.SerializeAsync(stream, meta, CallsmithJsonOptions.Default, ct).ConfigureAwait(false);
+            return await action().ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        finally
         {
-            _logger.LogWarning(ex, "Could not write Bruno collection meta at '{Path}'", path);
+            gate.Release();
+        }
+    }
+
+    private static async Task WithFileLockAsync(string path, Func<Task> action, CancellationToken ct)
+    {
+        var gate = FileLocks.GetOrAdd(path, static _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await action().ConfigureAwait(false);
+        }
+        finally
+        {
+            gate.Release();
         }
     }
 

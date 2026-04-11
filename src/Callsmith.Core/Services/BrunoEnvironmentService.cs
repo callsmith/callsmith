@@ -49,13 +49,15 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
     {
         ArgumentNullException.ThrowIfNull(collectionFolderPath);
 
+        // Load meta once to apply ordering and colors without per-file overhead.
+        var meta = await _meta.LoadAsync(collectionFolderPath, ct).ConfigureAwait(false);
+        meta = await EnsureGlobalEnvironmentIdAsync(collectionFolderPath, meta, ct).ConfigureAwait(false);
+
         var envFolder = GetEnvFolder(collectionFolderPath);
         if (!Directory.Exists(envFolder)) return [];
 
-        // Load meta once to apply ordering and colors without per-file overhead.
-        var meta = await _meta.LoadAsync(collectionFolderPath, ct).ConfigureAwait(false);
-
         var results = new List<EnvironmentModel>();
+        Dictionary<string, Guid>? generatedIds = null;
         foreach (var filePath in Directory.EnumerateFiles(envFolder, "*.bru", SearchOption.TopDirectoryOnly)
                      .Where(p => !IsGlobalEnvironmentFile(p)))
         {
@@ -65,6 +67,12 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
                 var fileName = Path.GetFileName(filePath);
                 var color = meta.EnvironmentColors.TryGetValue(fileName, out var c) ? c : null;
                 var id = meta.EnvironmentIds.TryGetValue(fileName, out var g) ? g : Guid.NewGuid();
+                if (!meta.EnvironmentIds.ContainsKey(fileName))
+                {
+                    generatedIds ??= new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+                    generatedIds[fileName] = id;
+                }
+
                 var env = await LoadEnvironmentCoreAsync(filePath, id, ct).ConfigureAwait(false);
                 results.Add(env with { Color = color });
             }
@@ -73,6 +81,9 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
                 _logger.LogWarning(ex, "Skipping unreadable Bruno environment file: {File}", filePath);
             }
         }
+
+        if (generatedIds is not null)
+            meta = await SaveEnvironmentIdsAsync(collectionFolderPath, meta, generatedIds, ct).ConfigureAwait(false);
 
         results.Sort(static (a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
         return ApplyMetaOrder(results, meta.EnvironmentOrder);
@@ -103,8 +114,15 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
         ArgumentNullException.ThrowIfNull(filePath);
         var collectionPath = GetCollectionFolderPath(filePath);
         var meta = await _meta.LoadAsync(collectionPath, ct).ConfigureAwait(false);
+        meta = await EnsureGlobalEnvironmentIdAsync(collectionPath, meta, ct).ConfigureAwait(false);
         var fileName = Path.GetFileName(filePath);
         var id = meta.EnvironmentIds.TryGetValue(fileName, out var g) ? g : Guid.NewGuid();
+        if (!meta.EnvironmentIds.ContainsKey(fileName))
+            await SaveEnvironmentIdsAsync(collectionPath, meta, new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase)
+            {
+                [fileName] = id,
+            }, ct).ConfigureAwait(false);
+
         var model = await LoadEnvironmentCoreAsync(filePath, id, ct).ConfigureAwait(false);
         var color = meta.EnvironmentColors.TryGetValue(fileName, out var c) ? c : null;
         return model with { Color = color };
@@ -142,6 +160,68 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
 
         var model = new EnvironmentModel { FilePath = filePath, Name = name, Variables = variables, EnvironmentId = environmentId };
         return model with { Variables = await InjectSecretsAsync(model, ct).ConfigureAwait(false) };
+    }
+
+    private async Task<BrunoCollectionMeta> SaveEnvironmentIdsAsync(
+        string collectionPath,
+        BrunoCollectionMeta meta,
+        IReadOnlyDictionary<string, Guid> ids,
+        CancellationToken ct)
+    {
+        if (ids.Count == 0)
+            return meta;
+
+        var mergedIds = new Dictionary<string, Guid>(meta.EnvironmentIds, StringComparer.OrdinalIgnoreCase);
+        var changed = false;
+
+        foreach (var pair in ids)
+        {
+            if (mergedIds.TryGetValue(pair.Key, out var existingId) && existingId == pair.Value)
+                continue;
+
+            mergedIds[pair.Key] = pair.Value;
+            changed = true;
+        }
+
+        if (!changed)
+            return meta;
+
+        var updatedMeta = new BrunoCollectionMeta
+        {
+            EnvironmentOrder = meta.EnvironmentOrder,
+            EnvironmentColors = meta.EnvironmentColors,
+            EnvironmentIds = mergedIds,
+            GlobalVariables = meta.GlobalVariables,
+            GlobalSecretVariables = meta.GlobalSecretVariables,
+            GlobalEnvironmentId = meta.GlobalEnvironmentId,
+            GlobalPreviewEnvironmentName = meta.GlobalPreviewEnvironmentName,
+        };
+
+        await _meta.SaveAsync(collectionPath, updatedMeta, ct).ConfigureAwait(false);
+        return updatedMeta;
+    }
+
+    private async Task<BrunoCollectionMeta> EnsureGlobalEnvironmentIdAsync(
+        string collectionPath,
+        BrunoCollectionMeta meta,
+        CancellationToken ct)
+    {
+        if (meta.GlobalEnvironmentId.HasValue)
+            return meta;
+
+        var updatedMeta = new BrunoCollectionMeta
+        {
+            EnvironmentOrder = meta.EnvironmentOrder,
+            EnvironmentColors = meta.EnvironmentColors,
+            EnvironmentIds = meta.EnvironmentIds,
+            GlobalVariables = meta.GlobalVariables,
+            GlobalSecretVariables = meta.GlobalSecretVariables,
+            GlobalEnvironmentId = Guid.NewGuid(),
+            GlobalPreviewEnvironmentName = meta.GlobalPreviewEnvironmentName,
+        };
+
+        await _meta.SaveAsync(collectionPath, updatedMeta, ct).ConfigureAwait(false);
+        return updatedMeta;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -517,7 +597,8 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
             GlobalEnvironmentFileName + EnvironmentFileExtension);
 
         var meta = await _meta.LoadAsync(collectionFolderPath, ct).ConfigureAwait(false);
-        var globalId = meta.GlobalEnvironmentId ?? Guid.NewGuid();
+        meta = await EnsureGlobalEnvironmentIdAsync(collectionFolderPath, meta, ct).ConfigureAwait(false);
+        var globalId = meta.GlobalEnvironmentId!.Value;
 
         if (meta.GlobalVariables.Count == 0 && meta.GlobalSecretVariables.Count == 0)
             return new EnvironmentModel

@@ -172,4 +172,36 @@ public sealed class EnvironmentViewModelTests
         sut.SelectedDropdownItem.Should().NotBeNull();
         sut.SelectedDropdownItem.Name.Should().Be("(no environment)");
     }
+
+    [Fact]
+    public async Task CollectionOpened_TriggersEnvironmentListLoad()
+    {
+        var service = Substitute.For<IEnvironmentService>();
+        var prefsService = Substitute.For<ICollectionPreferencesService>();
+        var messenger = new WeakReferenceMessenger();
+        var environmentsLoaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                environmentsLoaded.TrySetResult();
+                return Task.FromResult<IReadOnlyList<EnvironmentModel>>([]);
+            });
+
+        prefsService.LoadAsync(CollectionPath, Arg.Any<CancellationToken>())
+            .Returns(new CollectionPreferences());
+        prefsService.UpdateAsync(
+                CollectionPath,
+                Arg.Any<Func<CollectionPreferences, CollectionPreferences>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        _ = BuildSut(service, prefsService, messenger);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await environmentsLoaded.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await service.Received(1)
+            .ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>());
+    }
 }
