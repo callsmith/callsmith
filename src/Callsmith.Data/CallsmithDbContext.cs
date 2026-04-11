@@ -31,14 +31,6 @@ public sealed class CallsmithDbContext : DbContext
     }
 
     /// <summary>
-    /// Returns the platform-appropriate path for the Callsmith SQLite database file.
-    /// </summary>
-    public static string GetDbPath()
-    {
-        return Path.Combine(GetAppDataDirectory(), "Callsmith", "data.db");
-    }
-
-    /// <summary>
     /// Returns the platform-appropriate path for the collection-specific SQLite database file.
     /// The database file is named after a SHA-256 hash of the normalised collection folder path,
     /// stored under <c>%APPDATA%\Callsmith\history\</c>.

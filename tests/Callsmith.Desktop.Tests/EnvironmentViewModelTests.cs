@@ -165,8 +165,16 @@ public sealed class EnvironmentViewModelTests
         // Simulate a transient UI state where ComboBox selection was cleared to null.
         sut.SelectedDropdownItem = null!;
 
+        // Watch for SelectedDropdownItem to be restored by the async load.
+        var selectionRestored = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        sut.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(EnvironmentViewModel.SelectedDropdownItem))
+                selectionRestored.TrySetResult();
+        };
+
         messenger.Send(new CollectionOpenedMessage(CollectionPath));
-        await Task.Delay(100);
+        await selectionRestored.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
         sut.ActiveEnvironment.Should().BeNull();
         sut.SelectedDropdownItem.Should().NotBeNull();

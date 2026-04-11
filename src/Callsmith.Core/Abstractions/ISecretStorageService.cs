@@ -14,6 +14,13 @@ public interface ISecretStorageService
     public const string AuthNamespace = "__auth__";
 
     /// <summary>
+    /// Namespace used for storing folder-level auth credentials (Basic password and API key value).
+    /// Folder-level auth is keyed by the SHA-256 hash of the folder path; sensitive values are
+    /// never written to <c>_meta.json</c> so they are not committed to version control.
+    /// </summary>
+    public const string FolderAuthNamespace = "__folder_auth__";
+
+    /// <summary>
     /// Returns the stored secret value for <paramref name="variableName"/> in the specified
     /// environment, or <see langword="null"/> if no value has been saved yet.
     /// </summary>

@@ -95,6 +95,20 @@ public sealed class BrunoCollectionService : ICollectionService
             }
         }
 
+        if (request.Auth.AuthType == AuthConfig.AuthTypes.Bearer && !string.IsNullOrEmpty(_currentRoot))
+        {
+            // Prefer the secret-stored value; fall back to whatever is in the file (migration path).
+            // Only inject when the stored value is non-empty — empty means nothing has been saved yet.
+            var stored = await _secrets
+                .GetSecretAsync(_currentRoot, ISecretStorageService.AuthNamespace, GetAuthSecretKey(filePath), ct)
+                .ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(stored))
+            {
+                request = DocToRequest(doc, filePath, bearerTokenOverride: stored)
+                    ?? request;
+            }
+        }
+
         return request;
     }
 
@@ -135,6 +149,20 @@ public sealed class BrunoCollectionService : ICollectionService
                     ISecretStorageService.AuthNamespace,
                     GetAuthSecretKey(request.FilePath),
                     request.Auth.Password ?? string.Empty,
+                    ct)
+                .ConfigureAwait(false);
+        }
+
+        // Persist bearer token locally so it is never written into the collection file.
+        // Bearer tokens are long-lived credentials that must not be committed to version control.
+        if (request.Auth.AuthType == AuthConfig.AuthTypes.Bearer && !string.IsNullOrEmpty(_currentRoot))
+        {
+            await _secrets
+                .SetSecretAsync(
+                    _currentRoot,
+                    ISecretStorageService.AuthNamespace,
+                    GetAuthSecretKey(request.FilePath),
+                    request.Auth.Token ?? string.Empty,
                     ct)
                 .ConfigureAwait(false);
         }
@@ -403,18 +431,34 @@ public sealed class BrunoCollectionService : ICollectionService
 
         var metaFilePath = BruMetaFilePath(folderPath);
 
-        // Persist Basic auth password in local secret storage — never write a literal value to the
-        // .bru file.  Use the same keying scheme as request files (path relative to root).
-        if (auth.AuthType == AuthConfig.AuthTypes.Basic && !string.IsNullOrEmpty(_currentRoot))
+        // Persist credentials in local secret storage — never write literal values to the .bru file.
+        // Use the same keying scheme as request files (path relative to root).
+        if (!string.IsNullOrEmpty(_currentRoot))
         {
-            await _secrets
-                .SetSecretAsync(
-                    _currentRoot,
-                    ISecretStorageService.AuthNamespace,
-                    GetAuthSecretKey(metaFilePath),
-                    auth.Password ?? string.Empty,
-                    ct)
-                .ConfigureAwait(false);
+            var secretKey = GetAuthSecretKey(metaFilePath);
+            if (auth.AuthType is not AuthConfig.AuthTypes.Basic
+                    and not AuthConfig.AuthTypes.Bearer)
+            {
+                // Auth cleared or switched to a type that has no secret — remove any stored secret.
+                await _secrets.DeleteSecretAsync(
+                    _currentRoot, ISecretStorageService.AuthNamespace, secretKey, ct)
+                    .ConfigureAwait(false);
+            }
+            else if (auth.AuthType == AuthConfig.AuthTypes.Basic)
+            {
+                await _secrets
+                    .SetSecretAsync(_currentRoot, ISecretStorageService.AuthNamespace, secretKey,
+                        auth.Password ?? string.Empty, ct)
+                    .ConfigureAwait(false);
+            }
+            else if (auth.AuthType == AuthConfig.AuthTypes.Bearer)
+            {
+                // Bearer tokens are long-lived credentials that must not be committed to version control.
+                await _secrets
+                    .SetSecretAsync(_currentRoot, ISecretStorageService.AuthNamespace, secretKey,
+                        auth.Token ?? string.Empty, ct)
+                    .ConfigureAwait(false);
+            }
         }
 
         BruDocument? existing = null;
@@ -443,6 +487,63 @@ public sealed class BrunoCollectionService : ICollectionService
     {
         ArgumentNullException.ThrowIfNull(requestFilePath);
         return ResolveEffectiveAuthCoreAsync(requestFilePath, ct);
+    }
+
+    public async Task<AuthConfig> LoadFolderAuthAsync(string folderPath, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(folderPath);
+
+        var metaFilePath = BruMetaFilePath(folderPath);
+        var auth = ReadFolderBruAuth(metaFilePath);
+
+        if (auth.AuthType == AuthConfig.AuthTypes.Inherit)
+            return auth;
+
+        // Inject locally-stored Basic auth password.
+        if (auth.AuthType == AuthConfig.AuthTypes.Basic && !string.IsNullOrEmpty(_currentRoot))
+        {
+            var stored = await _secrets
+                .GetSecretAsync(
+                    _currentRoot,
+                    ISecretStorageService.AuthNamespace,
+                    GetAuthSecretKey(metaFilePath),
+                    ct)
+                .ConfigureAwait(false);
+            // Only inject when the stored value is non-empty — empty means nothing has been saved yet.
+            var password = !string.IsNullOrEmpty(stored) ? stored : auth.Password;
+            if (password is not null)
+            {
+                auth = new AuthConfig
+                {
+                    AuthType = auth.AuthType,
+                    Username = auth.Username,
+                    Password = password,
+                };
+            }
+        }
+
+        // Inject locally-stored bearer token.
+        if (auth.AuthType == AuthConfig.AuthTypes.Bearer && !string.IsNullOrEmpty(_currentRoot))
+        {
+            var stored = await _secrets
+                .GetSecretAsync(
+                    _currentRoot,
+                    ISecretStorageService.AuthNamespace,
+                    GetAuthSecretKey(metaFilePath),
+                    ct)
+                .ConfigureAwait(false);
+            // Only inject when the stored value is non-empty — empty means nothing has been saved yet.
+            if (!string.IsNullOrEmpty(stored))
+            {
+                auth = new AuthConfig
+                {
+                    AuthType = auth.AuthType,
+                    Token = stored,
+                };
+            }
+        }
+
+        return auth;
     }
 
     private async Task<AuthConfig> ResolveEffectiveAuthCoreAsync(string requestFilePath, CancellationToken ct)
@@ -490,6 +591,28 @@ public sealed class BrunoCollectionService : ICollectionService
                         };
                     }
                 }
+
+                // Inject locally-stored bearer token (same pattern as LoadRequestAsync).
+                if (auth.AuthType == AuthConfig.AuthTypes.Bearer && !string.IsNullOrEmpty(_currentRoot))
+                {
+                    var stored = await _secrets
+                        .GetSecretAsync(
+                            _currentRoot,
+                            ISecretStorageService.AuthNamespace,
+                            GetAuthSecretKey(metaFilePath),
+                            ct)
+                        .ConfigureAwait(false);
+                    // Only inject when the stored value is non-empty — empty means nothing has been saved yet.
+                    if (!string.IsNullOrEmpty(stored))
+                    {
+                        auth = new AuthConfig
+                        {
+                            AuthType = auth.AuthType,
+                            Token = stored,
+                        };
+                    }
+                }
+
                 return auth;
             }
 
@@ -686,7 +809,7 @@ public sealed class BrunoCollectionService : ICollectionService
     //  Private — BruDocument ↔ CollectionRequest mapping
     // ─────────────────────────────────────────────────────────────────────────
 
-    private CollectionRequest? DocToRequest(BruDocument doc, string filePath, string? basicPasswordOverride = null)
+    private CollectionRequest? DocToRequest(BruDocument doc, string filePath, string? basicPasswordOverride = null, string? bearerTokenOverride = null)
     {
         var meta = doc.Find("meta");
         if (meta is null) return null;
@@ -728,7 +851,7 @@ public sealed class BrunoCollectionService : ICollectionService
         var allBodyContents = BuildAllBodyContents(doc);
         var formParams = BuildFormParams(doc, bodyType);
         var authType = MapBrunoAuthType(bruAuthType);
-        var auth = BuildAuth(doc, authType, basicPasswordOverride);
+        var auth = BuildAuth(doc, authType, basicPasswordOverride, bearerTokenOverride);
 
         // params:path block — load enabled values into PathParams so the UI can edit them.
         var pathParamsBlock = doc.Find("params:path");
@@ -812,13 +935,14 @@ public sealed class BrunoCollectionService : ICollectionService
             .ToList();
     }
 
-    private static AuthConfig BuildAuth(BruDocument doc, string authType, string? basicPasswordOverride = null) => authType switch
+    private static AuthConfig BuildAuth(BruDocument doc, string authType, string? basicPasswordOverride = null, string? bearerTokenOverride = null) => authType switch
     {
         AuthConfig.AuthTypes.Inherit => new AuthConfig { AuthType = AuthConfig.AuthTypes.Inherit },
         AuthConfig.AuthTypes.Bearer => new AuthConfig
         {
             AuthType = AuthConfig.AuthTypes.Bearer,
-            Token = doc.GetValue("auth:bearer", "token"),
+            // Prefer injected secret; fall back to file value (migration path for existing files).
+            Token = bearerTokenOverride ?? doc.GetValue("auth:bearer", "token"),
         },
         AuthConfig.AuthTypes.Basic => new AuthConfig
         {
@@ -1133,7 +1257,19 @@ public sealed class BrunoCollectionService : ICollectionService
                 RemoveBlock(blocks, "auth:basic");
                 RemoveBlock(blocks, "auth:apikey");
                 var bearerBlock = new BruBlock("auth:bearer");
-                bearerBlock.Items.Add(new BruKv("token", request.Auth.Token ?? string.Empty));
+                // Write env-var references to the file; suppress literal values (stored in secret storage).
+                // Also preserve any existing env-var reference if the new value is empty.
+                // Bruno users whose token is stored as an env-var ({{myVar}}) are not broken.
+                var newToken = request.Auth.Token ?? string.Empty;
+                var existingToken = existing?.GetValue("auth:bearer", "token") ?? string.Empty;
+                string tokenToWrite;
+                if (IsEnvVarRef(newToken))
+                    tokenToWrite = newToken;
+                else if (IsEnvVarRef(existingToken))
+                    tokenToWrite = existingToken;
+                else
+                    tokenToWrite = string.Empty;
+                bearerBlock.Items.Add(new BruKv("token", tokenToWrite));
                 SetOrInsertAfter(blocks, "auth:bearer", bearerBlock, bruMethod);
                 break;
 
@@ -1305,7 +1441,19 @@ public sealed class BrunoCollectionService : ICollectionService
         {
             case AuthConfig.AuthTypes.Bearer:
                 var bearerBlock = new BruBlock("auth:bearer");
-                bearerBlock.Items.Add(new BruKv("token", auth.Token ?? string.Empty));
+                // Write env-var references to the file; suppress literal values (stored in secret storage).
+                // Also preserve any existing env-var reference if the new value is empty.
+                // Bruno users whose token is stored as an env-var ({{myVar}}) are not broken.
+                var newToken = auth.Token ?? string.Empty;
+                var existingToken = existing?.GetValue("auth:bearer", "token") ?? string.Empty;
+                string tokenToWrite;
+                if (IsEnvVarRef(newToken))
+                    tokenToWrite = newToken;
+                else if (IsEnvVarRef(existingToken))
+                    tokenToWrite = existingToken;
+                else
+                    tokenToWrite = string.Empty;
+                bearerBlock.Items.Add(new BruKv("token", tokenToWrite));
                 SetOrInsertAfter(blocks, "auth:bearer", bearerBlock, "auth");
                 break;
 

@@ -1,6 +1,7 @@
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
+using Microsoft.Extensions.Logging;
 
 namespace Callsmith.Core.Services;
 
@@ -14,10 +15,14 @@ namespace Callsmith.Core.Services;
 public sealed class EnvironmentMergeService : IEnvironmentMergeService
 {
     private readonly IDynamicVariableEvaluator? _evaluator;
+    private readonly ILogger<EnvironmentMergeService> _logger;
 
-    public EnvironmentMergeService(IDynamicVariableEvaluator? evaluator = null)
+    public EnvironmentMergeService(
+        IDynamicVariableEvaluator? evaluator = null,
+        ILogger<EnvironmentMergeService>? logger = null)
     {
         _evaluator = evaluator;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<EnvironmentMergeService>.Instance;
     }
 
     /// <inheritdoc/>
@@ -149,9 +154,14 @@ public sealed class EnvironmentMergeService : IEnvironmentMergeService
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
-            // If evaluation fails, continue with static values so the request still sends.
+            // Dynamic variable evaluation failed (e.g. network error, deserialization failure).
+            // Log the exception so it is observable, then fall back to static values so the
+            // request still sends rather than surfacing an opaque error to the user.
+            _logger.LogWarning(ex,
+                "Dynamic variable evaluation failed for '{CollectionFolderPath}'; falling back to static values.",
+                collectionFolderPath);
             return new ResolvedEnvironment { Variables = merged };
         }
     }

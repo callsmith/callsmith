@@ -24,6 +24,12 @@ public sealed class RoutingCollectionService : ICollectionService
     private readonly BrunoCollectionService _brunoService;
     private readonly FileSystemCollectionService _callsmithService;
 
+    // Intentional singleton mutable state: the application supports exactly one open
+    // collection at a time (per the current feature set). These fields are updated by
+    // OpenFolderAsync and are read by all subsequent operations on the same collection.
+    // Thread-safety is not required because all collection operations are dispatched from
+    // the UI thread and Callsmith is a single-user desktop app. If multi-collection or
+    // concurrent access is ever added, these must become per-call context parameters.
     private bool _isBruno;
     private string _currentRoot = string.Empty;
 
@@ -97,6 +103,9 @@ public sealed class RoutingCollectionService : ICollectionService
 
     public Task SaveFolderAuthAsync(string folderPath, AuthConfig auth, CancellationToken ct = default) =>
         ServiceForFolder(folderPath).SaveFolderAuthAsync(folderPath, auth, ct);
+
+    public Task<AuthConfig> LoadFolderAuthAsync(string folderPath, CancellationToken ct = default) =>
+        ServiceForFolder(folderPath).LoadFolderAuthAsync(folderPath, ct);
 
     public Task<AuthConfig> ResolveEffectiveAuthAsync(string requestFilePath, CancellationToken ct = default) =>
         ServiceForFile(requestFilePath).ResolveEffectiveAuthAsync(requestFilePath, ct);

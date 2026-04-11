@@ -997,6 +997,10 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         }
         catch (Exception ex)
         {
+            // Debug level is intentional: a preview failure (e.g. transient network error
+            // while the user is typing) is not a user-visible application error — the UI
+            // already shows the "failed" state on the affected variable rows. Logging at
+            // Warning would generate noise for expected transient failures during editing.
             _logger.LogDebug(ex, "Dynamic variable preview failed");
             foreach (var variable in variables)
                 env.ApplySingleResponseBodyPreview(variable.Name, null, failed: true);

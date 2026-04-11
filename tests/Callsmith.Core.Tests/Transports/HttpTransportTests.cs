@@ -101,6 +101,25 @@ public sealed class HttpTransportTests
         response.BodySizeBytes.Should().Be(0);
     }
 
+    [Fact]
+    public async Task SendAsync_WithUnknownCharset_FallsBackToUtf8AndDoesNotThrow()
+    {
+        // Arrange — a legal HTTP response whose Content-Type specifies a charset that
+        // .NET cannot resolve.  Prior to the fix this would throw ArgumentException and
+        // surface as a transport error even though the HTTP exchange succeeded.
+        const string body = "hello";
+        var handler = new CustomContentTypeHandler(HttpStatusCode.OK, body,
+            contentType: "text/plain; charset=unknown-8bit");
+        var transport = CreateTransport(handler);
+
+        // Act — must not throw
+        var response = await transport.SendAsync(GetRequest());
+
+        // Assert — body decoded via UTF-8 fallback
+        response.Body.Should().Be(body);
+        response.StatusCode.Should().Be(200);
+    }
+
     // ---------------------------------------------------------------------------
     // SendAsync — response headers
     // ---------------------------------------------------------------------------
@@ -352,6 +371,25 @@ public sealed class HttpTransportTests
         {
             await Task.Delay(Timeout.Infinite, ct);
             return new HttpResponseMessage(HttpStatusCode.OK);
+        }
+    }
+
+    /// <summary>
+    /// Returns a response whose Content-Type is set verbatim (including custom charsets).
+    /// </summary>
+    private sealed class CustomContentTypeHandler(
+        HttpStatusCode statusCode,
+        string body,
+        string contentType) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken ct)
+        {
+            var bytes = System.Text.Encoding.UTF8.GetBytes(body);
+            var content = new ByteArrayContent(bytes);
+            content.Headers.TryAddWithoutValidation("Content-Type", contentType);
+            var response = new HttpResponseMessage(statusCode) { Content = content };
+            return Task.FromResult(response);
         }
     }
 }

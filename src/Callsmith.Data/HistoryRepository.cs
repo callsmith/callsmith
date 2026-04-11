@@ -28,6 +28,12 @@ public sealed class HistoryRepository : IHistoryService
     private const string HistoryTableName = "HistoryEntries";
 
     private readonly SemaphoreSlim _schemaLock = new(1, 1);
+    // Tracks which database files have already been schema-checked in the current process
+    // lifetime. HistoryRepository is registered as a singleton; the user may switch between
+    // multiple collections in one session, each backed by its own SQLite file. The set is
+    // append-only (paths are never removed), so in the rare case that a database file is
+    // deleted and recreated mid-session the schema check will not re-run. This is accepted
+    // as an unlikely edge case; a full re-run requires restarting the application.
     private readonly ConcurrentDictionary<string, byte> _checkedDbPaths = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly IHistoryEncryptionService _encryption;
@@ -565,6 +571,16 @@ public sealed class HistoryRepository : IHistoryService
         {
             if (_checkedDbPaths.ContainsKey(dbPath)) return;
 
+            // Manual schema migration instead of EF Core Migrations:
+            // History databases are per-collection and created on first use. EF Core Migrations
+            // require a single canonical migrations table and do not compose well with
+            // per-user, per-collection SQLite files distributed across arbitrary directories.
+            // Instead we use EnsureCreated to create the initial schema and ALTER TABLE
+            // statements to add columns introduced in later versions. This approach is
+            // append-only (columns are never dropped or renamed) which makes it safe and simple.
+            // If a full schema overhaul is ever needed, a versioned migration table should be
+            // introduced at that point.
+
             await db.Database.EnsureCreatedAsync(ct);
 
             var connection = db.Database.GetDbConnection();
@@ -734,12 +750,21 @@ public sealed class HistoryRepository : IHistoryService
 
     private async Task BackfillSearchTextAsync(CallsmithDbContext db, CancellationToken ct)
     {
-        var rows = await db.HistoryEntries
-            .Where(e => e.RequestSearchText == "" || e.ResponseSearchText == "")
-            .ToListAsync(ct);
+        // Process in batches to avoid loading an unbounded number of rows into memory.
+        // A user with months of history could have tens of thousands of rows needing backfill.
+        const int batchSize = 200;
 
-        if (rows.Count == 0)
-            return;
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var rows = await db.HistoryEntries
+                .Where(e => e.RequestSearchText == "" || e.ResponseSearchText == "")
+                .Take(batchSize)
+                .ToListAsync(ct);
+
+            if (rows.Count == 0)
+                return;
 
         foreach (var row in rows)
         {
@@ -782,6 +807,7 @@ public sealed class HistoryRepository : IHistoryService
         }
 
         await db.SaveChangesAsync(ct);
+        }
     }
 
     private static string BuildRequestSearchText(HistoryEntry entry)

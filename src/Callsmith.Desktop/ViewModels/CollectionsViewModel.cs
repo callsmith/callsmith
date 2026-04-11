@@ -305,12 +305,38 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     /// <summary>
     /// Opens the folder settings modal dialog for the given folder node.
     /// The view observes <see cref="PendingFolderSettings"/> and shows the window.
+    /// Sensitive auth credentials (password, API key value) are loaded from local secret
+    /// storage before the dialog is shown so the fields are pre-populated.
     /// </summary>
     [RelayCommand]
-    public void OpenFolderSettings(CollectionTreeItemViewModel node)
+    public async Task OpenFolderSettingsAsync(CollectionTreeItemViewModel node, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(node);
-        PendingFolderSettings = new FolderSettingsViewModel(node, _collectionService, BuildEnvVarSuggestions());
+
+        // Load the folder's own auth including sensitive secrets before opening the dialog.
+        // Without this, the password / API key value fields would be blank (secrets are never
+        // written to the _meta.json file and are therefore absent from node.FolderAuth).
+        if (!string.IsNullOrEmpty(node.FolderPath))
+        {
+            try
+            {
+                var auth = await _collectionService.LoadFolderAuthAsync(node.FolderPath, ct)
+                    .ConfigureAwait(false);
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                    node.UpdateFolderAuth(auth));
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not load folder auth for '{FolderPath}'", node.FolderPath);
+            }
+        }
+
+        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+            PendingFolderSettings = new FolderSettingsViewModel(node, _collectionService, BuildEnvVarSuggestions()));
     }
 
     /// <summary>

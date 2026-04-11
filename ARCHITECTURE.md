@@ -65,24 +65,44 @@ The heart of the application. Pure C#, no framework dependencies.
 ```
 Callsmith.Core/
 ├── Models/               # Domain model classes
-│   ├── RequestModel.cs          # Transport-agnostic request (method/verb, URL, headers, body)
+│   ├── RequestModel.cs          # Transport-agnostic request (method, URL, headers, body)
 │   ├── ResponseModel.cs         # Transport-agnostic response (status, headers, body, timing)
-│   ├── CollectionFolder.cs
-│   ├── AppEnvironment.cs        # "Environment" is a reserved name in .NET
-│   └── EnvironmentVariable.cs
+│   ├── CollectionRequest.cs     # A saved request (with file path, auth config, etc.)
+│   ├── CollectionFolder.cs      # A folder of saved requests
+│   ├── EnvironmentModel.cs      # Named set of variables ("Environment" is reserved in .NET)
+│   ├── EnvironmentVariable.cs   # A single variable (static, dynamic, mock-data, etc.)
+│   ├── HistoryEntry.cs
+│   └── AuthConfig.cs            # Auth configuration for a request or folder
 ├── Abstractions/         # Service interfaces
 │   ├── ITransport.cs            # Core abstraction — sends a request, returns a response
-│   ├── ICollectionService.cs
-│   ├── IEnvironmentService.cs
-│   └── IHistoryService.cs
+│   ├── ICollectionService.cs    # Manages request collections (CRUD, auth, ordering)
+│   ├── IEnvironmentService.cs   # Manages environments (CRUD)
+│   ├── IEnvironmentMergeService.cs # Three-layer env merge (global + active + dynamic)
+│   ├── IHistoryService.cs
+│   ├── ISecretStorageService.cs # Per-user AES-GCM encrypted local secret store
+│   ├── IDynamicVariableEvaluator.cs
+│   └── ICollectionImportService.cs
 ├── Services/             # Implementations of the above interfaces
-│   ├── CollectionService.cs
-│   ├── EnvironmentService.cs
-│   └── HistoryService.cs
+│   ├── FileSystemCollectionService.cs   # .callsmith file format
+│   ├── BrunoCollectionService.cs        # Bruno (.bru) file format
+│   ├── RoutingCollectionService.cs      # Delegates to File or Bruno based on collection type
+│   ├── FileSystemEnvironmentService.cs
+│   ├── BrunoEnvironmentService.cs
+│   ├── RoutingEnvironmentService.cs
+│   ├── EnvironmentMergeService.cs
+│   ├── FileSystemSecretStorageService.cs
+│   ├── AesSecretEncryptionService.cs
+│   ├── CollectionImportService.cs
+│   ├── DynamicVariableEvaluatorService.cs
+│   ├── VariableSubstitutionService.cs
+│   └── RecentCollectionsService.cs
+├── Helpers/              # Internal utilities
+│   ├── AesGcmEncryption.cs  # Shared AES-256-GCM encrypt/decrypt/key-management
+│   ├── FileSystemHelper.cs
+│   └── ResponseFormatter.cs
 └── Transports/           # ITransport implementations, one per protocol
     └── Http/
         ├── HttpTransport.cs     # ITransport implementation using HttpClient
-        ├── HttpClientFactory.cs
         └── Handlers/
             └── TimingHandler.cs # Measures response time
 ```
@@ -118,13 +138,10 @@ Persistence layer. Implements the interfaces defined in Core.
 
 ```
 Callsmith.Data/
-├── CallsmithDbContext.cs
-├── Entities/             # EF Core entity classes (NOT the same as Core models)
-│   └── HistoryEntity.cs
-├── Repositories/         # Implement Core service interfaces
-│   └── HistoryRepository.cs
-├── Mappings/             # Map between EF entities and Core domain models
-└── Migrations/           # EF Core generated migrations
+├── CallsmithDbContext.cs    # EF Core DbContext (SQLite)
+├── HistoryEntryEntity.cs    # EF Core entity (NOT the same as Core's HistoryEntry)
+├── HistoryRepository.cs     # Implements IHistoryService; includes manual schema migration
+└── AesHistoryEncryptionService.cs  # AES-256-GCM at-rest encryption for history secrets
 ```
 
 > **Note:** Collections and environments are stored as plain files on disk
@@ -134,11 +151,14 @@ Callsmith.Data/
 
 **Database location at runtime:**
 
+History is stored in a per-collection SQLite database keyed by a SHA-256 hash of
+the collection folder path:
+
 | OS | Path |
 |---|---|
-| Windows | `%APPDATA%\Callsmith\data.db` |
-| macOS | `~/Library/Application Support/Callsmith/data.db` |
-| Linux | `~/.config/Callsmith/data.db` |
+| Windows | `%APPDATA%\Callsmith\history\<hash>.db` |
+| macOS | `~/Library/Application Support/Callsmith/history/<hash>.db` |
+| Linux | `~/.config/Callsmith/history/<hash>.db` |
 
 ### Callsmith.Desktop
 
@@ -147,21 +167,27 @@ The Avalonia UI shell. Wires everything together.
 ```
 Callsmith.Desktop/
 ├── App.axaml / App.axaml.cs     # Application entry, DI container setup
-├── MainWindow.axaml             # Shell window with navigation sidebar
-├── Views/                       # AXAML view files
-│   ├── RequestView.axaml        # Main request/response pane
+├── MainWindow.axaml             # Shell window with tab bar and navigation sidebar
+├── Views/                       # AXAML view files (one per ViewModel)
 │   ├── CollectionsView.axaml    # Left-panel collections tree
-│   ├── EnvironmentsView.axaml   # Environment editor
-│   └── HistoryView.axaml        # Request history panel
+│   ├── EnvironmentEditorView.axaml
+│   ├── EnvironmentSelectorView.axaml
+│   ├── HistoryPanelView.axaml
+│   ├── FolderSettingsDialog.axaml
+│   ├── ImportCollectionDialog.axaml
+│   ├── CommandPaletteView.axaml
+│   └── ...
 ├── ViewModels/                  # One ViewModel per View
 │   ├── MainWindowViewModel.cs
-│   ├── RequestViewModel.cs
+│   ├── RequestTabViewModel.cs   # Main request/response pane (per-tab)
 │   ├── CollectionsViewModel.cs
-│   ├── EnvironmentsViewModel.cs
-│   └── HistoryViewModel.cs
+│   ├── EnvironmentEditorViewModel.cs
+│   ├── HistoryPanelViewModel.cs
+│   ├── FolderSettingsViewModel.cs
+│   └── ...
 └── Controls/                    # Reusable custom Avalonia controls
-    ├── KeyValueEditor.axaml     # Generic key/value pair table (headers, params)
-    └── ResponseViewer.axaml     # Syntax-highlighted response body viewer
+    ├── SyntaxEditor.cs          # AvaloniaEdit-based syntax-highlighted editor
+    └── KeyValueEditor.axaml     # Generic key/value pair table (headers, params)
 ```
 
 ---

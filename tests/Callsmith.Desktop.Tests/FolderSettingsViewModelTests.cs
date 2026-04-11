@@ -2,6 +2,7 @@ using System.Net.Http;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
 using Callsmith.Desktop.ViewModels;
+using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -185,26 +186,30 @@ public sealed class FolderSettingsViewModelTests
     // ─── CollectionsViewModel integration ────────────────────────────────────
 
     [Fact]
-    public void OpenFolderSettings_SetsPendingFolderSettings()
+    public async Task OpenFolderSettings_SetsPendingFolderSettings()
     {
         var cs = Substitute.For<ICollectionService>();
+        cs.LoadFolderAuthAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+          .Returns(new AuthConfig { AuthType = AuthConfig.AuthTypes.Inherit });
         var sut = BuildCollectionsSut(cs);
 
         var node = MakeFolderNode();
-        sut.OpenFolderSettingsCommand.Execute(node);
+        await ((IAsyncRelayCommand<CollectionTreeItemViewModel>)sut.OpenFolderSettingsCommand).ExecuteAsync(node);
 
         sut.PendingFolderSettings.Should().NotBeNull();
         sut.PendingFolderSettings!.FolderName.Should().Be("folder");
     }
 
     [Fact]
-    public void OnFolderSettingsDialogClosed_ClearsPendingAndUpdatesNodeAuth()
+    public async Task OnFolderSettingsDialogClosed_ClearsPendingAndUpdatesNodeAuth()
     {
         var cs = Substitute.For<ICollectionService>();
+        cs.LoadFolderAuthAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+          .Returns(new AuthConfig { AuthType = AuthConfig.AuthTypes.Inherit });
         var sut = BuildCollectionsSut(cs);
 
         var node = MakeFolderNode();
-        sut.OpenFolderSettingsCommand.Execute(node);
+        await ((IAsyncRelayCommand<CollectionTreeItemViewModel>)sut.OpenFolderSettingsCommand).ExecuteAsync(node);
 
         var dialog = sut.PendingFolderSettings!;
         dialog.AuthType = AuthConfig.AuthTypes.Bearer;

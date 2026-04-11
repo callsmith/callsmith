@@ -31,6 +31,14 @@ public sealed class FileSystemCollectionService : ICollectionService
     public const string MetaFileName = "_meta.json";
 
     /// <summary>Folder names to exclude from collection scanning (case-insensitive).</summary>
+    /// <remarks>
+    /// This list is intentionally short: we only exclude folders whose presence inside a
+    /// collection directory would be very common yet are clearly non-request content. A longer
+    /// pattern-based exclusion list was considered and rejected — the cost of maintaining it
+    /// outweighs the benefit, and users can always keep unrelated content outside their
+    /// collection root. If performance becomes a concern for very deep trees, a file-system
+    /// watcher cache (rather than a full rescan) is the correct solution.
+    /// </remarks>
     private static readonly HashSet<string> ExcludedFolderNames = new(StringComparer.OrdinalIgnoreCase)
     {
         // Version control
@@ -65,6 +73,16 @@ public sealed class FileSystemCollectionService : ICollectionService
         ct.ThrowIfCancellationRequested();
 
         _currentRoot = Path.GetFullPath(folderPath);
+
+        // ReadFolder performs a synchronous recursive directory scan. This is intentional:
+        // - Collections are local filesystem directories (no network latency).
+        // - The sync I/O is offloaded to the thread pool via Task.Run so the UI thread is
+        //   never blocked.
+        // - A lazy/incremental load was considered but rejected at this stage: the tree view
+        //   requires the full file list for ordering and auth resolution, so a partial load
+        //   would only shift complexity without reducing total I/O.
+        // If profiling shows that very large collections (thousands of files) are slow to open,
+        // a FileSystemWatcher-based incremental update approach should be added at that point.
         var folder = await Task.Run(() => ReadFolder(folderPath), ct);
         _logger.LogDebug("Opened collection at '{FolderPath}'", folderPath);
 
@@ -118,7 +136,19 @@ public sealed class FileSystemCollectionService : ICollectionService
             apiKeyValue = stored ?? dto.AuthApiKeyValue;
         }
 
-        return DtoToRequest(dto, filePath, basicAuthPassword, apiKeyValue);
+        string? bearerToken = null;
+        if ((dto.AuthType ?? AuthConfig.AuthTypes.None) == AuthConfig.AuthTypes.Bearer
+            && !string.IsNullOrEmpty(_currentRoot))
+        {
+            // Prefer the secret-stored value; fall back to whatever is in the file (migration path).
+            // Only inject when the stored value is non-empty — empty means nothing has been saved yet.
+            var stored = await _secrets
+                .GetSecretAsync(_currentRoot, ISecretStorageService.AuthNamespace, requestKey, ct)
+                .ConfigureAwait(false);
+            bearerToken = !string.IsNullOrEmpty(stored) ? stored : dto.AuthToken;
+        }
+
+        return DtoToRequest(dto, filePath, basicAuthPassword, apiKeyValue, bearerToken);
     }
 
     /// <inheritdoc/>
@@ -159,6 +189,20 @@ public sealed class FileSystemCollectionService : ICollectionService
                     ISecretStorageService.AuthNamespace,
                     requestKey,
                     request.Auth.ApiKeyValue ?? string.Empty,
+                    ct)
+                .ConfigureAwait(false);
+        }
+
+        // Persist bearer token locally so it is never written into the collection file.
+        // Bearer tokens are long-lived credentials that must not be committed to version control.
+        if (request.Auth.AuthType == AuthConfig.AuthTypes.Bearer && !string.IsNullOrEmpty(_currentRoot))
+        {
+            await _secrets
+                .SetSecretAsync(
+                    _currentRoot,
+                    ISecretStorageService.AuthNamespace,
+                    requestKey,
+                    request.Auth.Token ?? string.Empty,
                     ct)
                 .ConfigureAwait(false);
         }
@@ -531,6 +575,44 @@ public sealed class FileSystemCollectionService : ICollectionService
         ArgumentNullException.ThrowIfNull(folderPath);
         ArgumentNullException.ThrowIfNull(auth);
 
+        // Always clean up any previously-stored folder auth secret when the type changes.
+        // This prevents stale credentials from lingering in secret storage.
+        if (!string.IsNullOrEmpty(_currentRoot))
+        {
+            var folderKey = FolderSecretKey(folderPath);
+            if (auth.AuthType is not AuthConfig.AuthTypes.Basic
+                    and not AuthConfig.AuthTypes.ApiKey
+                    and not AuthConfig.AuthTypes.Bearer)
+            {
+                // Auth cleared or switched to a type that has no secret — remove any stored secret.
+                await _secrets.DeleteSecretAsync(
+                    _currentRoot, ISecretStorageService.FolderAuthNamespace, folderKey, ct)
+                    .ConfigureAwait(false);
+            }
+            else if (auth.AuthType == AuthConfig.AuthTypes.Basic)
+            {
+                await _secrets.SetSecretAsync(
+                    _currentRoot, ISecretStorageService.FolderAuthNamespace, folderKey,
+                    auth.Password ?? string.Empty, ct)
+                    .ConfigureAwait(false);
+            }
+            else if (auth.AuthType == AuthConfig.AuthTypes.ApiKey)
+            {
+                await _secrets.SetSecretAsync(
+                    _currentRoot, ISecretStorageService.FolderAuthNamespace, folderKey,
+                    auth.ApiKeyValue ?? string.Empty, ct)
+                    .ConfigureAwait(false);
+            }
+            else if (auth.AuthType == AuthConfig.AuthTypes.Bearer)
+            {
+                // Bearer tokens are long-lived credentials that must not be committed to version control.
+                await _secrets.SetSecretAsync(
+                    _currentRoot, ISecretStorageService.FolderAuthNamespace, folderKey,
+                    auth.Token ?? string.Empty, ct)
+                    .ConfigureAwait(false);
+            }
+        }
+
         var metaFilePath = Path.Combine(folderPath, MetaFileName);
 
         // Read existing meta to preserve the order field.
@@ -554,48 +636,153 @@ public sealed class FileSystemCollectionService : ICollectionService
     }
 
     /// <inheritdoc/>
-    public Task<AuthConfig> ResolveEffectiveAuthAsync(
+    public async Task<AuthConfig> LoadFolderAuthAsync(
+        string folderPath, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(folderPath);
+
+        var metaFilePath = Path.Combine(folderPath, MetaFileName);
+        var meta = ReadMetaFile(metaFilePath);
+
+        if (meta.Auth.AuthType == AuthConfig.AuthTypes.Inherit)
+            return meta.Auth;
+
+        return await EnrichAuthWithSecretsAsync(meta.Auth, folderPath, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<AuthConfig> ResolveEffectiveAuthAsync(
         string requestFilePath, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(requestFilePath);
 
-        return Task.Run(() =>
+        var dir = Path.GetDirectoryName(requestFilePath);
+        if (string.IsNullOrEmpty(dir))
+            return new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
+
+        var root = string.IsNullOrEmpty(_currentRoot)
+            ? null
+            : Path.GetFullPath(_currentRoot);
+
+        while (true)
         {
-            var dir = Path.GetDirectoryName(requestFilePath);
-            if (string.IsNullOrEmpty(dir))
+            ct.ThrowIfCancellationRequested();
+
+            var metaPath = Path.Combine(dir, MetaFileName);
+            var meta = ReadMetaFile(metaPath);
+
+            if (meta.Auth.AuthType != AuthConfig.AuthTypes.Inherit)
+            {
+                // Enrich the resolved auth with sensitive values from secret storage.
+                return await EnrichAuthWithSecretsAsync(meta.Auth, dir, ct).ConfigureAwait(false);
+            }
+
+            // If we've reached (or passed) the collection root, stop.
+            var fullDir = Path.GetFullPath(dir);
+            if (root is not null && string.Equals(fullDir, root, StringComparison.OrdinalIgnoreCase))
                 return new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
 
-            var root = string.IsNullOrEmpty(_currentRoot)
-                ? null
-                : Path.GetFullPath(_currentRoot);
+            var parent = Path.GetDirectoryName(dir);
+            if (parent is null || string.Equals(parent, dir, StringComparison.OrdinalIgnoreCase))
+                return new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
 
-            while (true)
-            {
-                ct.ThrowIfCancellationRequested();
-
-                var metaPath = Path.Combine(dir, MetaFileName);
-                var meta = ReadMetaFile(metaPath);
-
-                if (meta.Auth.AuthType != AuthConfig.AuthTypes.Inherit)
-                    return meta.Auth;
-
-                // If we've reached (or passed) the collection root, stop.
-                var fullDir = Path.GetFullPath(dir);
-                if (root is not null && string.Equals(fullDir, root, StringComparison.OrdinalIgnoreCase))
-                    return new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
-
-                var parent = Path.GetDirectoryName(dir);
-                if (parent is null || string.Equals(parent, dir, StringComparison.OrdinalIgnoreCase))
-                    return new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
-
-                dir = parent;
-            }
-        }, ct);
+            dir = parent;
+        }
     }
 
     // -------------------------------------------------------------------------
     // Private — meta file helpers
     // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Returns a stable, opaque key used to address a folder's auth secret in
+    /// <see cref="ISecretStorageService"/>. Derived from the normalised absolute folder path.
+    /// </summary>
+    private static string FolderSecretKey(string folderPath) =>
+        FileSystemHelper.HashCollectionPath(folderPath);
+
+    /// <summary>
+    /// Returns a copy of <paramref name="auth"/> with the sensitive fields (password / API key
+    /// value) populated from local secret storage. Falls back to whatever value is in the auth
+    /// object itself (migration path for files written before this feature was introduced).
+    /// </summary>
+    private async Task<AuthConfig> EnrichAuthWithSecretsAsync(
+        AuthConfig auth, string folderPath, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(_currentRoot))
+            return auth;
+
+        var folderKey = FolderSecretKey(folderPath);
+
+        if (auth.AuthType == AuthConfig.AuthTypes.Basic)
+        {
+            var stored = await _secrets
+                .GetSecretAsync(_currentRoot, ISecretStorageService.FolderAuthNamespace, folderKey, ct)
+                .ConfigureAwait(false);
+            // Only inject when the stored value is non-empty — empty means nothing has been saved yet.
+            // Fall back to value in file (migration path for pre-upgrade _meta.json files).
+            var password = !string.IsNullOrEmpty(stored) ? stored : auth.Password;
+            if (password != auth.Password)
+            {
+                return new AuthConfig
+                {
+                    AuthType = auth.AuthType,
+                    Token = auth.Token,
+                    Username = auth.Username,
+                    Password = password,
+                    ApiKeyName = auth.ApiKeyName,
+                    ApiKeyValue = auth.ApiKeyValue,
+                    ApiKeyIn = auth.ApiKeyIn,
+                };
+            }
+        }
+        else if (auth.AuthType == AuthConfig.AuthTypes.ApiKey)
+        {
+            var stored = await _secrets
+                .GetSecretAsync(_currentRoot, ISecretStorageService.FolderAuthNamespace, folderKey, ct)
+                .ConfigureAwait(false);
+            // Only inject when the stored value is non-empty — empty means nothing has been saved yet.
+            // Fall back to value in file (migration path for pre-upgrade _meta.json files).
+            var apiKeyValue = !string.IsNullOrEmpty(stored) ? stored : auth.ApiKeyValue;
+            if (apiKeyValue != auth.ApiKeyValue)
+            {
+                return new AuthConfig
+                {
+                    AuthType = auth.AuthType,
+                    Token = auth.Token,
+                    Username = auth.Username,
+                    Password = auth.Password,
+                    ApiKeyName = auth.ApiKeyName,
+                    ApiKeyValue = apiKeyValue,
+                    ApiKeyIn = auth.ApiKeyIn,
+                };
+            }
+        }
+        else if (auth.AuthType == AuthConfig.AuthTypes.Bearer)
+        {
+            var stored = await _secrets
+                .GetSecretAsync(_currentRoot, ISecretStorageService.FolderAuthNamespace, folderKey, ct)
+                .ConfigureAwait(false);
+            // Only inject when the stored value is non-empty — empty means nothing has been saved yet.
+            // Fall back to value in file (migration path for pre-upgrade _meta.json files).
+            var token = !string.IsNullOrEmpty(stored) ? stored : auth.Token;
+            if (token != auth.Token)
+            {
+                return new AuthConfig
+                {
+                    AuthType = auth.AuthType,
+                    Token = token,
+                    Username = auth.Username,
+                    Password = auth.Password,
+                    ApiKeyName = auth.ApiKeyName,
+                    ApiKeyValue = auth.ApiKeyValue,
+                    ApiKeyIn = auth.ApiKeyIn,
+                };
+            }
+        }
+
+        return auth;
+    }
 
     private static FolderMetaDto BuildMetaDto(IReadOnlyList<string> order, AuthConfig auth)
     {
@@ -609,17 +796,14 @@ public sealed class FileSystemCollectionService : ICollectionService
             dto.Auth = new FolderMetaAuthDto
             {
                 Type = auth.AuthType,
-                Token = auth.Token,
+                // Bearer tokens are stored in local secret storage, never in the file.
+                Token = auth.AuthType == AuthConfig.AuthTypes.Bearer ? null : auth.Token,
                 Username = auth.Username,
                 ApiKeyName = auth.ApiKeyName,
                 ApiKeyIn = auth.ApiKeyIn == AuthConfig.ApiKeyLocations.Header ? null : auth.ApiKeyIn,
+                // Password and ApiKeyValue are stored in local secret storage, never in the file.
+                // See SaveFolderAuthAsync / LoadFolderAuthAsync.
             };
-
-            // Passwords are stored in plaintext in the meta file (same as request files).
-            if (auth.AuthType == AuthConfig.AuthTypes.Basic)
-                dto.Auth.Password = auth.Password;
-            if (auth.AuthType == AuthConfig.AuthTypes.ApiKey)
-                dto.Auth.ApiKeyValue = auth.ApiKeyValue;
         }
 
         return dto;
@@ -629,7 +813,7 @@ public sealed class FileSystemCollectionService : ICollectionService
     // Private — mapping between domain model and on-disk DTO
     // -------------------------------------------------------------------------
 
-    private static CollectionRequest DtoToRequest(RequestFileDto dto, string filePath, string? basicAuthPassword = null, string? apiKeyValue = null)
+    private static CollectionRequest DtoToRequest(RequestFileDto dto, string filePath, string? basicAuthPassword = null, string? apiKeyValue = null, string? bearerToken = null)
     {
         var rawUrl = dto.Url ?? string.Empty;
         
@@ -675,7 +859,7 @@ public sealed class FileSystemCollectionService : ICollectionService
             Auth = new AuthConfig
             {
                 AuthType = dto.AuthType ?? AuthConfig.AuthTypes.Inherit,
-                Token = dto.AuthToken,
+                Token = bearerToken ?? dto.AuthToken,
                 Username = dto.AuthUsername,
                 Password = basicAuthPassword ?? dto.AuthPassword,
                 ApiKeyName = dto.AuthApiKeyName,
@@ -719,7 +903,10 @@ public sealed class FileSystemCollectionService : ICollectionService
             AuthType = request.Auth.AuthType == AuthConfig.AuthTypes.Inherit
                 ? null
                 : request.Auth.AuthType,
-            AuthToken = request.Auth.Token,
+            // Bearer tokens are stored in local secret storage, never in the file.
+            AuthToken = request.Auth.AuthType == AuthConfig.AuthTypes.Bearer
+                ? null
+                : request.Auth.Token,
             AuthUsername = request.Auth.Username,
             // Basic auth passwords are stored in local secret storage, never in the file.
             AuthPassword = request.Auth.AuthType == AuthConfig.AuthTypes.Basic
