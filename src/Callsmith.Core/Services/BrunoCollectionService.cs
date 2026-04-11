@@ -509,13 +509,15 @@ public sealed class BrunoCollectionService : ICollectionService
                     GetAuthSecretKey(metaFilePath),
                     ct)
                 .ConfigureAwait(false);
-            if (stored is not null || auth.Password is not null)
+            // Only inject when the stored value is non-empty — empty means nothing has been saved yet.
+            var password = !string.IsNullOrEmpty(stored) ? stored : auth.Password;
+            if (password is not null)
             {
                 auth = new AuthConfig
                 {
                     AuthType = auth.AuthType,
                     Username = auth.Username,
-                    Password = stored ?? auth.Password,
+                    Password = password,
                 };
             }
         }
