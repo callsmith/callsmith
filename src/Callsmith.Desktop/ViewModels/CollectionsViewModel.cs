@@ -1241,10 +1241,19 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
             Task.Delay(600, ct).ContinueWith(t =>
             {
                 if (t.IsCanceled) return;
-                Dispatcher.UIThread.Post(async () =>
+                _ = Dispatcher.UIThread.InvokeAsync(async () =>
                 {
                     if (!ct.IsCancellationRequested)
-                        await LoadCollectionAsync(CollectionPath, retainExpansion: true);
+                    {
+                        try
+                        {
+                            await LoadCollectionAsync(CollectionPath, retainExpansion: true);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Error reloading collection after file system change.");
+                        }
+                    }
                 });
             }, TaskScheduler.Default);
         });

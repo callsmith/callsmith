@@ -76,6 +76,8 @@ public partial class RequestView : UserControl
 
     private async void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        try
+        {
         if (_trackedVm is null) return;
 
         if (e.PropertyName == nameof(RequestTabViewModel.IsHorizontalLayout))
@@ -139,6 +141,11 @@ public partial class RequestView : UserControl
                 DataContext = new CurlDialogViewModel(request, authMask, secretValues)
             };
             await dialog.ShowDialog(owner);
+        }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[RequestView] OnViewModelPropertyChanged error: {ex}");
         }
     }
 
