@@ -38,7 +38,7 @@ internal static class EnvironmentVariableSuggestionsHelper
         }
 
         return merged.Values
-            .OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(v => v.Name.Trim(), StringComparer.OrdinalIgnoreCase)
             .Select(v => new EnvVarSuggestion(v.Name.Trim(), v.IsSecret ? SecretMask : v.Value))
             .ToList();
     }
