@@ -758,55 +758,62 @@ public sealed class HistoryRepository : IHistoryService
         {
             ct.ThrowIfCancellationRequested();
 
+            // Only consider rows that genuinely need backfilling:
+            // - Request search text is always derivable, so any empty value needs a fill.
+            // - Response search text is only derivable when a response snapshot is stored;
+            //   rows with no response (ResponseSnapshotJson IS NULL) will always produce an
+            //   empty string from BuildResponseSearchText, so they must be excluded to avoid
+            //   an infinite retry loop.
             var rows = await db.HistoryEntries
-                .Where(e => e.RequestSearchText == "" || e.ResponseSearchText == "")
+                .Where(e => e.RequestSearchText == "" ||
+                            (e.ResponseSearchText == "" && e.ResponseSnapshotJson != null))
                 .Take(batchSize)
                 .ToListAsync(ct);
 
             if (rows.Count == 0)
                 return;
 
-        foreach (var row in rows)
-        {
-            ConfiguredRequestSnapshot? snapshot = null;
-            ResponseSnapshot? response = null;
-
-            try
+            foreach (var row in rows)
             {
-                snapshot = JsonSerializer.Deserialize<ConfiguredRequestSnapshot>(row.ConfiguredSnapshotJson, JsonOpts);
-            }
-            catch (JsonException) { }
+                ConfiguredRequestSnapshot? snapshot = null;
+                ResponseSnapshot? response = null;
 
-            if (row.ResponseSnapshotJson is not null)
-            {
                 try
                 {
-                    response = JsonSerializer.Deserialize<ResponseSnapshot>(row.ResponseSnapshotJson, JsonOpts);
+                    snapshot = JsonSerializer.Deserialize<ConfiguredRequestSnapshot>(row.ConfiguredSnapshotJson, JsonOpts);
                 }
                 catch (JsonException) { }
-            }
 
-            if (string.IsNullOrEmpty(row.RequestSearchText))
-            {
-                row.RequestSearchText = BuildRequestSearchText(new HistoryEntry
+                if (row.ResponseSnapshotJson is not null)
                 {
-                    Method = row.Method,
-                    ResolvedUrl = row.ResolvedUrl,
-                    RequestName = row.RequestName,
-                    EnvironmentName = row.EnvironmentName,
-                    ConfiguredSnapshot = snapshot ?? new ConfiguredRequestSnapshot
+                    try
+                    {
+                        response = JsonSerializer.Deserialize<ResponseSnapshot>(row.ResponseSnapshotJson, JsonOpts);
+                    }
+                    catch (JsonException) { }
+                }
+
+                if (string.IsNullOrEmpty(row.RequestSearchText))
+                {
+                    row.RequestSearchText = BuildRequestSearchText(new HistoryEntry
                     {
                         Method = row.Method,
-                        Url = row.ResolvedUrl,
-                    },
-                });
+                        ResolvedUrl = row.ResolvedUrl,
+                        RequestName = row.RequestName,
+                        EnvironmentName = row.EnvironmentName,
+                        ConfiguredSnapshot = snapshot ?? new ConfiguredRequestSnapshot
+                        {
+                            Method = row.Method,
+                            Url = row.ResolvedUrl,
+                        },
+                    });
+                }
+
+                if (string.IsNullOrEmpty(row.ResponseSearchText))
+                    row.ResponseSearchText = BuildResponseSearchText(response);
             }
 
-            if (string.IsNullOrEmpty(row.ResponseSearchText))
-                row.ResponseSearchText = BuildResponseSearchText(response);
-        }
-
-        await db.SaveChangesAsync(ct);
+            await db.SaveChangesAsync(ct);
         }
     }
 
