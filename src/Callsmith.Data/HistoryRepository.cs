@@ -734,12 +734,21 @@ public sealed class HistoryRepository : IHistoryService
 
     private async Task BackfillSearchTextAsync(CallsmithDbContext db, CancellationToken ct)
     {
-        var rows = await db.HistoryEntries
-            .Where(e => e.RequestSearchText == "" || e.ResponseSearchText == "")
-            .ToListAsync(ct);
+        // Process in batches to avoid loading an unbounded number of rows into memory.
+        // A user with months of history could have tens of thousands of rows needing backfill.
+        const int batchSize = 200;
 
-        if (rows.Count == 0)
-            return;
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var rows = await db.HistoryEntries
+                .Where(e => e.RequestSearchText == "" || e.ResponseSearchText == "")
+                .Take(batchSize)
+                .ToListAsync(ct);
+
+            if (rows.Count == 0)
+                return;
 
         foreach (var row in rows)
         {
@@ -782,6 +791,7 @@ public sealed class HistoryRepository : IHistoryService
         }
 
         await db.SaveChangesAsync(ct);
+        }
     }
 
     private static string BuildRequestSearchText(HistoryEntry entry)

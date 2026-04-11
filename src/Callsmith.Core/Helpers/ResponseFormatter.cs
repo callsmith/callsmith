@@ -15,6 +15,17 @@ namespace Callsmith.Core.Helpers;
 /// </summary>
 public static class ResponseFormatter
 {
+    // Cached to avoid allocating new options on every formatting call.
+    private static readonly JsonSerializerOptions IndentedJsonOptions = new()
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
+    private static readonly JsonDocumentOptions TrailingCommaDocOptions = new()
+    {
+        AllowTrailingCommas = true,
+    };
     /// <summary>
     /// Pretty-prints <paramref name="body"/> if the <paramref name="contentType"/> implies
     /// a known structured format (JSON, XML, YAML). Returns the original body unchanged when
@@ -50,12 +61,8 @@ public static class ResponseFormatter
         if (string.IsNullOrWhiteSpace(json)) return json;
         try
         {
-            using var doc = JsonDocument.Parse(json, new JsonDocumentOptions { AllowTrailingCommas = true });
-            return JsonSerializer.Serialize(doc.RootElement, new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-            });
+            using var doc = JsonDocument.Parse(json, TrailingCommaDocOptions);
+            return JsonSerializer.Serialize(doc.RootElement, IndentedJsonOptions);
         }
         catch (JsonException)
         {
