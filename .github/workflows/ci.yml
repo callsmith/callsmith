@@ -8,13 +8,12 @@ on:
 
 jobs:
   build-and-test:
-    name: Build & Test
-    # Ubuntu is sufficient for build validation and unit tests.
-    # Avalonia's rendering paths are platform-specific, but unit tests run
-    # headlessly with no rendering. UI/ViewModel tests will use
-    # Avalonia.Headless.XUnit, which also runs correctly on Linux.
-    # A multi-platform matrix can be added when platform-specific bugs appear.
-    runs-on: ubuntu-latest
+    name: Build & Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout

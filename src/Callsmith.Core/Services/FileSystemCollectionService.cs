@@ -31,6 +31,14 @@ public sealed class FileSystemCollectionService : ICollectionService
     public const string MetaFileName = "_meta.json";
 
     /// <summary>Folder names to exclude from collection scanning (case-insensitive).</summary>
+    /// <remarks>
+    /// This list is intentionally short: we only exclude folders whose presence inside a
+    /// collection directory would be very common yet are clearly non-request content. A longer
+    /// pattern-based exclusion list was considered and rejected — the cost of maintaining it
+    /// outweighs the benefit, and users can always keep unrelated content outside their
+    /// collection root. If performance becomes a concern for very deep trees, a file-system
+    /// watcher cache (rather than a full rescan) is the correct solution.
+    /// </remarks>
     private static readonly HashSet<string> ExcludedFolderNames = new(StringComparer.OrdinalIgnoreCase)
     {
         // Version control
@@ -65,6 +73,16 @@ public sealed class FileSystemCollectionService : ICollectionService
         ct.ThrowIfCancellationRequested();
 
         _currentRoot = Path.GetFullPath(folderPath);
+
+        // ReadFolder performs a synchronous recursive directory scan. This is intentional:
+        // - Collections are local filesystem directories (no network latency).
+        // - The sync I/O is offloaded to the thread pool via Task.Run so the UI thread is
+        //   never blocked.
+        // - A lazy/incremental load was considered but rejected at this stage: the tree view
+        //   requires the full file list for ordering and auth resolution, so a partial load
+        //   would only shift complexity without reducing total I/O.
+        // If profiling shows that very large collections (thousands of files) are slow to open,
+        // a FileSystemWatcher-based incremental update approach should be added at that point.
         var folder = await Task.Run(() => ReadFolder(folderPath), ct);
         _logger.LogDebug("Opened collection at '{FolderPath}'", folderPath);
 
