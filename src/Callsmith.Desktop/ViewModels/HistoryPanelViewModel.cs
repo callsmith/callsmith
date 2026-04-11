@@ -1276,7 +1276,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         if (snap is not null)
         {
             var contentType = TryGetContentType(snap.Headers);
-            responseLanguage = GetResponseLanguage(contentType);
+            responseLanguage = ResponseFormatter.GetLanguage(contentType);
             responseBody = ResponseFormatter.FormatBody(snap.Body, contentType);
             hasResponseBody = !string.IsNullOrWhiteSpace(snap.Body);
             var rh = new StringBuilder();
@@ -1321,17 +1321,6 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         return headers.TryGetValue(WellKnownHeaders.ContentType, out var value)
             ? value
             : null;
-    }
-
-    private static string GetResponseLanguage(string? contentType)
-    {
-        var ct = contentType ?? string.Empty;
-        if (ct.Contains("json", StringComparison.OrdinalIgnoreCase)) return "json";
-        if (ct.Contains("yaml", StringComparison.OrdinalIgnoreCase)) return "yaml";
-        if (ct.Contains("xml", StringComparison.OrdinalIgnoreCase) ||
-            ct.Contains("xhtml", StringComparison.OrdinalIgnoreCase)) return "xml";
-        if (ct.Contains("html", StringComparison.OrdinalIgnoreCase)) return "html";
-        return string.Empty;
     }
 
     private static string TrimTrailingBlankLines(string value)

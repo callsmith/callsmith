@@ -788,25 +788,15 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
     private IReadOnlyList<EnvVarSuggestion> BuildSuggestionsFor(EnvironmentListItemViewModel env)
     {
-        var merged = new Dictionary<string, EnvironmentVariable>(StringComparer.Ordinal);
-
+        IEnumerable<EnvironmentVariable>? globalVars = null;
         if (!env.IsGlobal)
         {
             var global = Environments.FirstOrDefault(item => item.IsGlobal);
             if (global is not null)
-            {
-                foreach (var variable in global.BuildModel().Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
-                    merged[variable.Name.Trim()] = variable;
-            }
+                globalVars = global.BuildModel().Variables;
         }
 
-        foreach (var variable in env.BuildModel().Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
-            merged[variable.Name.Trim()] = variable;
-
-        return merged.Values
-            .OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(v => new EnvVarSuggestion(v.Name.Trim(), v.IsSecret ? "\u2022\u2022\u2022\u2022\u2022" : v.Value))
-            .ToList();
+        return EnvironmentVariableSuggestionsHelper.Build(globalVars, env.BuildModel().Variables);
     }
 
     private void OnEnvironmentVariablesChanged(object? sender, EventArgs e)

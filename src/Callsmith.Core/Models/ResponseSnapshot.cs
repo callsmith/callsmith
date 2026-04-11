@@ -44,4 +44,20 @@ public sealed class ResponseSnapshot
             BodySizeBytes = response.BodySizeBytes,
             ElapsedMs = (long)response.Elapsed.TotalMilliseconds,
         };
+
+    /// <summary>
+    /// Reconstructs a <see cref="ResponseModel"/> from this snapshot.
+    /// <see cref="ResponseModel.BodyBytes"/> is re-encoded as UTF-8 from the stored body string.
+    /// </summary>
+    public ResponseModel ToResponseModel() =>
+        new()
+        {
+            StatusCode = StatusCode,
+            ReasonPhrase = ReasonPhrase,
+            Headers = Headers,
+            Body = Body,
+            BodyBytes = System.Text.Encoding.UTF8.GetBytes(Body ?? string.Empty),
+            FinalUrl = FinalUrl,
+            Elapsed = TimeSpan.FromMilliseconds(ElapsedMs),
+        };
 }

@@ -171,8 +171,14 @@ public static class HistorySentViewBuilder
     private static string? Substitute(string? template, IReadOnlyDictionary<string, string> vars) =>
         VariableSubstitutionService.Substitute(template, vars);
 
-    /// <summary>Mirrors the auth-injection logic applied at actual send time.</summary>
-    private static void ApplyAuthHeaders(
+    /// <summary>
+    /// Applies the auth configuration to <paramref name="headers"/> and <paramref name="url"/>
+    /// using variable substitution from <paramref name="vars"/>.
+    /// This is the canonical, non-collecting implementation of auth header injection — the same
+    /// algorithm used at actual send time, without variable-binding collection.
+    /// Used both internally by <see cref="Build"/> and by the cURL command preview.
+    /// </summary>
+    public static void ApplyAuthHeaders(
         AuthConfig auth,
         Dictionary<string, string> headers,
         IReadOnlyDictionary<string, string> vars,

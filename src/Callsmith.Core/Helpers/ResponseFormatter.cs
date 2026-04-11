@@ -113,6 +113,23 @@ public static class ResponseFormatter
     }
 
     /// <summary>
+    /// Returns the syntax-highlighting language identifier for a given
+    /// <paramref name="contentType"/> value (e.g. from a <c>Content-Type</c> header).
+    /// Returns <c>"json"</c>, <c>"yaml"</c>, <c>"xml"</c>, <c>"html"</c>, or an empty
+    /// string when the content type is unrecognised or <see langword="null"/>.
+    /// </summary>
+    public static string GetLanguage(string? contentType)
+    {
+        var ct = contentType ?? string.Empty;
+        if (ct.Contains("json", StringComparison.OrdinalIgnoreCase)) return "json";
+        if (ct.Contains("yaml", StringComparison.OrdinalIgnoreCase)) return "yaml";
+        if (ct.Contains("xml",  StringComparison.OrdinalIgnoreCase) ||
+            ct.Contains("xhtml", StringComparison.OrdinalIgnoreCase)) return "xml";
+        if (ct.Contains("html", StringComparison.OrdinalIgnoreCase)) return "html";
+        return string.Empty;
+    }
+
+    /// <summary>
     /// Attempts to pretty-print <paramref name="yaml"/> as normalised, block-style YAML.
     /// Returns <c>null</c> if the input is not valid YAML.
     /// </summary>
