@@ -54,7 +54,46 @@ public sealed class FileSystemCollectionServiceFolderAuthTests : IDisposable
         var json = await File.ReadAllTextAsync(metaPath);
         json.Should().Contain("\"type\"");
         json.Should().Contain("bearer");
-        json.Should().Contain("tok-123");
+        // Token must NOT be written to the file — it is stored in secret storage.
+        json.Should().NotContain("tok-123");
+    }
+
+    [Fact]
+    public async Task SaveFolderAuthAsync_Bearer_DoesNotWriteTokenToMetaFile()
+    {
+        var root = _temp.CreateSubDirectory("col");
+        var sut = Sut(RealSecrets());
+        await sut.OpenFolderAsync(root);
+
+        await sut.SaveFolderAuthAsync(root, new AuthConfig
+        {
+            AuthType = AuthConfig.AuthTypes.Bearer,
+            Token = "supersecrettoken",
+        });
+
+        var metaPath = Path.Combine(root, "_meta.json");
+        var json = await File.ReadAllTextAsync(metaPath);
+        json.Should().NotContain("supersecrettoken");
+        json.Should().Contain("bearer"); // auth type is not sensitive
+    }
+
+    [Fact]
+    public async Task LoadFolderAuthAsync_Bearer_ReturnsTokenFromSecrets()
+    {
+        var root = _temp.CreateSubDirectory("col");
+        var sut = Sut(RealSecrets());
+        await sut.OpenFolderAsync(root);
+
+        await sut.SaveFolderAuthAsync(root, new AuthConfig
+        {
+            AuthType = AuthConfig.AuthTypes.Bearer,
+            Token = "supersecrettoken",
+        });
+
+        var loaded = await sut.LoadFolderAuthAsync(root);
+
+        loaded.AuthType.Should().Be(AuthConfig.AuthTypes.Bearer);
+        loaded.Token.Should().Be("supersecrettoken");
     }
 
     [Fact]
@@ -99,7 +138,7 @@ public sealed class FileSystemCollectionServiceFolderAuthTests : IDisposable
         var folder = _temp.CreateSubDirectory("col");
         var sut = Sut();
 
-        // Save auth first.
+        // Save auth first (no real secrets needed — just checks the type survives order saves).
         await sut.SaveFolderAuthAsync(folder, new AuthConfig { AuthType = AuthConfig.AuthTypes.Bearer, Token = "tok" });
 
         // Now save order.
@@ -108,7 +147,8 @@ public sealed class FileSystemCollectionServiceFolderAuthTests : IDisposable
         var metaPath = Path.Combine(folder, "_meta.json");
         var json = await File.ReadAllTextAsync(metaPath);
         json.Should().Contain("bearer");
-        json.Should().Contain("tok");
+        // Token must NOT be written to the file (stored in secret storage).
+        json.Should().NotContain("tok");
         json.Should().Contain("req.callsmith");
     }
 
@@ -231,7 +271,7 @@ public sealed class FileSystemCollectionServiceFolderAuthTests : IDisposable
         var sub = Path.Combine(root, "sub");
         Directory.CreateDirectory(sub);
 
-        var sut = Sut();
+        var sut = Sut(RealSecrets());
         await sut.OpenFolderAsync(root);
 
         // Set bearer auth on root.

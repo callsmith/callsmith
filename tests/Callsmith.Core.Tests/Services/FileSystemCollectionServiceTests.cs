@@ -667,7 +667,10 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
     [Fact]
     public async Task SaveAndLoad_BearerAuth_RoundTrips()
     {
-        var folder = _temp.CreateSubDirectory("col");
+        var sut = Sut(RealSecrets());
+        var folder = _temp.CreateSubDirectory("col-bearer");
+        await sut.OpenFolderAsync(folder);
+
         var request = new CollectionRequest
         {
             FilePath = Path.Combine(folder, "req.callsmith"),
@@ -677,9 +680,13 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
             Auth = new AuthConfig { AuthType = AuthConfig.AuthTypes.Bearer, Token = "my-token" },
         };
 
-        await _sut.SaveRequestAsync(request);
-        var loaded = await _sut.LoadRequestAsync(request.FilePath);
+        await sut.SaveRequestAsync(request);
 
+        // The on-disk file must not contain the plain-text token.
+        var json = await File.ReadAllTextAsync(request.FilePath);
+        json.Should().NotContain("my-token");
+
+        var loaded = await sut.LoadRequestAsync(request.FilePath);
         loaded.Auth.AuthType.Should().Be(AuthConfig.AuthTypes.Bearer);
         loaded.Auth.Token.Should().Be("my-token");
     }

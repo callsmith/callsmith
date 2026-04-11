@@ -136,7 +136,19 @@ public sealed class FileSystemCollectionService : ICollectionService
             apiKeyValue = stored ?? dto.AuthApiKeyValue;
         }
 
-        return DtoToRequest(dto, filePath, basicAuthPassword, apiKeyValue);
+        string? bearerToken = null;
+        if ((dto.AuthType ?? AuthConfig.AuthTypes.None) == AuthConfig.AuthTypes.Bearer
+            && !string.IsNullOrEmpty(_currentRoot))
+        {
+            // Prefer the secret-stored value; fall back to whatever is in the file (migration path).
+            // Only inject when the stored value is non-empty — empty means nothing has been saved yet.
+            var stored = await _secrets
+                .GetSecretAsync(_currentRoot, ISecretStorageService.AuthNamespace, requestKey, ct)
+                .ConfigureAwait(false);
+            bearerToken = !string.IsNullOrEmpty(stored) ? stored : dto.AuthToken;
+        }
+
+        return DtoToRequest(dto, filePath, basicAuthPassword, apiKeyValue, bearerToken);
     }
 
     /// <inheritdoc/>
@@ -177,6 +189,20 @@ public sealed class FileSystemCollectionService : ICollectionService
                     ISecretStorageService.AuthNamespace,
                     requestKey,
                     request.Auth.ApiKeyValue ?? string.Empty,
+                    ct)
+                .ConfigureAwait(false);
+        }
+
+        // Persist bearer token locally so it is never written into the collection file.
+        // Bearer tokens are long-lived credentials that must not be committed to version control.
+        if (request.Auth.AuthType == AuthConfig.AuthTypes.Bearer && !string.IsNullOrEmpty(_currentRoot))
+        {
+            await _secrets
+                .SetSecretAsync(
+                    _currentRoot,
+                    ISecretStorageService.AuthNamespace,
+                    requestKey,
+                    request.Auth.Token ?? string.Empty,
                     ct)
                 .ConfigureAwait(false);
         }
@@ -555,7 +581,7 @@ public sealed class FileSystemCollectionService : ICollectionService
         {
             var folderKey = FolderSecretKey(folderPath);
             if (auth.AuthType is AuthConfig.AuthTypes.Inherit
-                or not (AuthConfig.AuthTypes.Basic or AuthConfig.AuthTypes.ApiKey))
+                or not (AuthConfig.AuthTypes.Basic or AuthConfig.AuthTypes.ApiKey or AuthConfig.AuthTypes.Bearer))
             {
                 // Auth cleared or switched to a type that has no secret — remove any stored secret.
                 await _secrets.DeleteSecretAsync(
@@ -574,6 +600,14 @@ public sealed class FileSystemCollectionService : ICollectionService
                 await _secrets.SetSecretAsync(
                     _currentRoot, ISecretStorageService.FolderAuthNamespace, folderKey,
                     auth.ApiKeyValue ?? string.Empty, ct)
+                    .ConfigureAwait(false);
+            }
+            else if (auth.AuthType == AuthConfig.AuthTypes.Bearer)
+            {
+                // Bearer tokens are long-lived credentials that must not be committed to version control.
+                await _secrets.SetSecretAsync(
+                    _currentRoot, ISecretStorageService.FolderAuthNamespace, folderKey,
+                    auth.Token ?? string.Empty, ct)
                     .ConfigureAwait(false);
             }
         }
@@ -684,8 +718,9 @@ public sealed class FileSystemCollectionService : ICollectionService
             var stored = await _secrets
                 .GetSecretAsync(_currentRoot, ISecretStorageService.FolderAuthNamespace, folderKey, ct)
                 .ConfigureAwait(false);
+            // Only inject when the stored value is non-empty — empty means nothing has been saved yet.
             // Fall back to value in file (migration path for pre-upgrade _meta.json files).
-            var password = stored ?? auth.Password;
+            var password = !string.IsNullOrEmpty(stored) ? stored : auth.Password;
             if (password != auth.Password)
             {
                 return new AuthConfig
@@ -705,8 +740,9 @@ public sealed class FileSystemCollectionService : ICollectionService
             var stored = await _secrets
                 .GetSecretAsync(_currentRoot, ISecretStorageService.FolderAuthNamespace, folderKey, ct)
                 .ConfigureAwait(false);
+            // Only inject when the stored value is non-empty — empty means nothing has been saved yet.
             // Fall back to value in file (migration path for pre-upgrade _meta.json files).
-            var apiKeyValue = stored ?? auth.ApiKeyValue;
+            var apiKeyValue = !string.IsNullOrEmpty(stored) ? stored : auth.ApiKeyValue;
             if (apiKeyValue != auth.ApiKeyValue)
             {
                 return new AuthConfig
@@ -717,6 +753,28 @@ public sealed class FileSystemCollectionService : ICollectionService
                     Password = auth.Password,
                     ApiKeyName = auth.ApiKeyName,
                     ApiKeyValue = apiKeyValue,
+                    ApiKeyIn = auth.ApiKeyIn,
+                };
+            }
+        }
+        else if (auth.AuthType == AuthConfig.AuthTypes.Bearer)
+        {
+            var stored = await _secrets
+                .GetSecretAsync(_currentRoot, ISecretStorageService.FolderAuthNamespace, folderKey, ct)
+                .ConfigureAwait(false);
+            // Only inject when the stored value is non-empty — empty means nothing has been saved yet.
+            // Fall back to value in file (migration path for pre-upgrade _meta.json files).
+            var token = !string.IsNullOrEmpty(stored) ? stored : auth.Token;
+            if (token != auth.Token)
+            {
+                return new AuthConfig
+                {
+                    AuthType = auth.AuthType,
+                    Token = token,
+                    Username = auth.Username,
+                    Password = auth.Password,
+                    ApiKeyName = auth.ApiKeyName,
+                    ApiKeyValue = auth.ApiKeyValue,
                     ApiKeyIn = auth.ApiKeyIn,
                 };
             }
@@ -737,7 +795,8 @@ public sealed class FileSystemCollectionService : ICollectionService
             dto.Auth = new FolderMetaAuthDto
             {
                 Type = auth.AuthType,
-                Token = auth.Token,
+                // Bearer tokens are stored in local secret storage, never in the file.
+                Token = auth.AuthType == AuthConfig.AuthTypes.Bearer ? null : auth.Token,
                 Username = auth.Username,
                 ApiKeyName = auth.ApiKeyName,
                 ApiKeyIn = auth.ApiKeyIn == AuthConfig.ApiKeyLocations.Header ? null : auth.ApiKeyIn,
@@ -753,7 +812,7 @@ public sealed class FileSystemCollectionService : ICollectionService
     // Private — mapping between domain model and on-disk DTO
     // -------------------------------------------------------------------------
 
-    private static CollectionRequest DtoToRequest(RequestFileDto dto, string filePath, string? basicAuthPassword = null, string? apiKeyValue = null)
+    private static CollectionRequest DtoToRequest(RequestFileDto dto, string filePath, string? basicAuthPassword = null, string? apiKeyValue = null, string? bearerToken = null)
     {
         var rawUrl = dto.Url ?? string.Empty;
         
@@ -799,7 +858,7 @@ public sealed class FileSystemCollectionService : ICollectionService
             Auth = new AuthConfig
             {
                 AuthType = dto.AuthType ?? AuthConfig.AuthTypes.Inherit,
-                Token = dto.AuthToken,
+                Token = bearerToken ?? dto.AuthToken,
                 Username = dto.AuthUsername,
                 Password = basicAuthPassword ?? dto.AuthPassword,
                 ApiKeyName = dto.AuthApiKeyName,
@@ -843,7 +902,10 @@ public sealed class FileSystemCollectionService : ICollectionService
             AuthType = request.Auth.AuthType == AuthConfig.AuthTypes.Inherit
                 ? null
                 : request.Auth.AuthType,
-            AuthToken = request.Auth.Token,
+            // Bearer tokens are stored in local secret storage, never in the file.
+            AuthToken = request.Auth.AuthType == AuthConfig.AuthTypes.Bearer
+                ? null
+                : request.Auth.Token,
             AuthUsername = request.Auth.Username,
             // Basic auth passwords are stored in local secret storage, never in the file.
             AuthPassword = request.Auth.AuthType == AuthConfig.AuthTypes.Basic
