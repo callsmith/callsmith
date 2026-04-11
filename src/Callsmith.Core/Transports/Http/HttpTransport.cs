@@ -98,7 +98,7 @@ public sealed class HttpTransport : ITransport, IDisposable
                 {
                     encoding = Encoding.GetEncoding(charset);
                 }
-                catch (ArgumentException)
+                catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
                 {
                     // An unknown or unsupported charset name is a legal HTTP response.
                     // Fall back to UTF-8 rather than surfacing a transport error for what
