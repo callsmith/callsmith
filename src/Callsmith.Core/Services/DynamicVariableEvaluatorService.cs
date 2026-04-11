@@ -12,8 +12,8 @@ namespace Callsmith.Core.Services;
 /// <summary>
 /// Evaluates dynamic environment variables (response-body and mock-data types) by
 /// executing referenced collection requests and extracting values from responses.
-/// Response-body results are cached on disk according to each variable's
-/// <see cref="DynamicFrequency"/> setting.
+/// Response-body results are cached on disk (AES-256-GCM encrypted) according to each
+/// variable's <see cref="DynamicFrequency"/> setting.
 /// <para>
 /// Cache location: <c>%LOCALAPPDATA%\Callsmith\dyncache\&lt;collection-hash&gt;.json</c>.
 /// </para>
@@ -22,6 +22,7 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
 {
     private readonly ICollectionService _collectionService;
     private readonly ITransportRegistry _transportRegistry;
+    private readonly ISecretEncryptionService _encryption;
     private readonly string _cacheDirectory;
     private readonly ILogger<DynamicVariableEvaluatorService> _logger;
 
@@ -31,8 +32,9 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
     public DynamicVariableEvaluatorService(
         ICollectionService collectionService,
         ITransportRegistry transportRegistry,
+        ISecretEncryptionService encryption,
         ILogger<DynamicVariableEvaluatorService> logger)
-        : this(collectionService, transportRegistry, GetDefaultCacheDirectory(), logger)
+        : this(collectionService, transportRegistry, encryption, GetDefaultCacheDirectory(), logger)
     {
     }
 
@@ -40,14 +42,17 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
     internal DynamicVariableEvaluatorService(
         ICollectionService collectionService,
         ITransportRegistry transportRegistry,
+        ISecretEncryptionService encryption,
         string cacheDirectory,
         ILogger<DynamicVariableEvaluatorService> logger)
     {
         ArgumentNullException.ThrowIfNull(collectionService);
         ArgumentNullException.ThrowIfNull(transportRegistry);
+        ArgumentNullException.ThrowIfNull(encryption);
         ArgumentNullException.ThrowIfNull(logger);
         _collectionService = collectionService;
         _transportRegistry = transportRegistry;
+        _encryption = encryption;
         _cacheDirectory = cacheDirectory;
         _logger = logger;
         Directory.CreateDirectory(cacheDirectory);
@@ -674,11 +679,27 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
 
         try
         {
-            await using var stream = File.OpenRead(path);
-            return await JsonSerializer.DeserializeAsync<DynCache>(stream, CallsmithJsonOptions.Default, ct)
-                       .ConfigureAwait(false) ?? new DynCache();
+            var fileContent = await File.ReadAllTextAsync(path, Encoding.UTF8, ct).ConfigureAwait(false);
+
+            string json;
+            if (fileContent.TrimStart().StartsWith('{'))
+            {
+                // Legacy plaintext format — will be re-encrypted on the next write.
+                // Standard Base64 output (A–Z, a–z, 0–9, +, /, =) never starts with '{',
+                // so there is no ambiguity with the encrypted format.
+                json = fileContent;
+            }
+            else
+            {
+                // Encrypted format: Base64-encoded AES-256-GCM ciphertext.
+                json = _encryption.Decrypt(fileContent.Trim());
+            }
+
+            return JsonSerializer.Deserialize<DynCache>(json, CallsmithJsonOptions.Default)
+                   ?? new DynCache();
         }
-        catch (Exception ex) when (ex is IOException or JsonException)
+        catch (Exception ex) when (ex is IOException or JsonException or CryptographicException
+                                       or UnauthorizedAccessException or FormatException)
         {
             _logger.LogDebug(ex, "Could not read dynamic variable cache at '{Path}'", path);
             return new DynCache();
@@ -691,8 +712,9 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
         var path = GetCacheFilePath(collectionFolderPath);
         try
         {
-            await using var stream = File.Open(path, FileMode.Create, FileAccess.Write);
-            await JsonSerializer.SerializeAsync(stream, cache, CallsmithJsonOptions.Default, ct).ConfigureAwait(false);
+            var json = JsonSerializer.Serialize(cache, CallsmithJsonOptions.Default);
+            var encrypted = _encryption.Encrypt(json);
+            await File.WriteAllTextAsync(path, encrypted, Encoding.UTF8, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

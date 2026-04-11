@@ -24,6 +24,7 @@ public sealed class DynamicVariableEvaluatorServiceTests : IDisposable
         new(
             _collectionService,
             _transportRegistry,
+            new AesSecretEncryptionService(Path.Combine(_temp.Path, "test-dyncache.key")),
             _temp.CreateSubDirectory("dyncache"),
             NullLogger<DynamicVariableEvaluatorService>.Instance);
 
@@ -284,5 +285,72 @@ public sealed class DynamicVariableEvaluatorServiceTests : IDisposable
         capturedModel.Should().NotBeNull();
         capturedModel!.Headers.Should().NotContainKey("Authorization",
             "when no parent provides auth and effective auth is None, no auth header should be added");
+    }
+
+    /// <summary>
+    /// Verifies that the cache file written to disk is AES-256-GCM encrypted and does
+    /// not contain the plain-text cached value. A second instance backed by the same key
+    /// file must be able to read it back, confirming the round-trip works.
+    /// </summary>
+    [Fact]
+    public async Task ResolveAsync_CacheFileIsEncryptedAtRest()
+    {
+        var requestId = Guid.NewGuid();
+        var request = MakeRequest("get-token", requestId);
+        var folder = MakeFolder(request);
+        var collectionPath = _temp.CreateSubDirectory("encrypted-cache-collection");
+
+        _collectionService.OpenFolderAsync(collectionPath, Arg.Any<CancellationToken>())
+            .Returns(folder);
+        _collectionService.LoadRequestAsync(request.FilePath, Arg.Any<CancellationToken>())
+            .Returns(request);
+        _transportRegistry.Resolve(Arg.Any<RequestModel>())
+            .Returns(_transport);
+        _transport.SendAsync(Arg.Any<RequestModel>(), Arg.Any<CancellationToken>())
+            .Returns(OkResponse("""{"token":"supersecrettoken"}"""));
+
+        var cacheDir = _temp.CreateSubDirectory("enc-dyncache");
+        var keyFile = Path.Combine(_temp.Path, "enc-dyncache.key");
+        var encryption = new AesSecretEncryptionService(keyFile);
+
+        var sut = new DynamicVariableEvaluatorService(
+            _collectionService,
+            _transportRegistry,
+            encryption,
+            cacheDir,
+            NullLogger<DynamicVariableEvaluatorService>.Instance);
+
+        // Populate the cache.
+        await sut.ResolveAsync(
+            collectionPath, "ns", [ResponseBodyVar("token", "get-token", DynamicFrequency.Never)],
+            new Dictionary<string, string>());
+
+        // The cache file must exist and must NOT contain the plain-text value.
+        var cacheFiles = Directory.GetFiles(cacheDir);
+        cacheFiles.Should().HaveCount(1, "one cache file per collection");
+
+        var raw = await File.ReadAllTextAsync(cacheFiles[0]);
+        raw.Should().NotContain("supersecrettoken",
+            "the cache value must be encrypted at rest");
+        raw.Should().NotStartWith("{",
+            "the cache file must be in AES-GCM encrypted format, not plaintext JSON");
+
+        // A second instance using the same key must be able to read the cached value back.
+        var sut2 = new DynamicVariableEvaluatorService(
+            _collectionService,
+            _transportRegistry,
+            new AesSecretEncryptionService(keyFile),
+            cacheDir,
+            NullLogger<DynamicVariableEvaluatorService>.Instance);
+
+        var variable = ResponseBodyVar("token", "get-token", DynamicFrequency.Never);
+        var result = await sut2.ResolveAsync(
+            collectionPath, "ns", [variable], new Dictionary<string, string>());
+
+        result.Variables.Should().ContainKey("token")
+            .WhoseValue.Should().Be("supersecrettoken",
+                "the encrypted cache must round-trip correctly");
+        // The second instance must NOT have made an HTTP call — it read from cache.
+        await _transport.Received(1).SendAsync(Arg.Any<RequestModel>(), Arg.Any<CancellationToken>());
     }
 }
