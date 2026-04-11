@@ -98,6 +98,9 @@ public sealed class RoutingCollectionService : ICollectionService
     public Task SaveFolderAuthAsync(string folderPath, AuthConfig auth, CancellationToken ct = default) =>
         ServiceForFolder(folderPath).SaveFolderAuthAsync(folderPath, auth, ct);
 
+    public Task<AuthConfig> LoadFolderAuthAsync(string folderPath, CancellationToken ct = default) =>
+        ServiceForFolder(folderPath).LoadFolderAuthAsync(folderPath, ct);
+
     public Task<AuthConfig> ResolveEffectiveAuthAsync(string requestFilePath, CancellationToken ct = default) =>
         ServiceForFile(requestFilePath).ResolveEffectiveAuthAsync(requestFilePath, ct);
 

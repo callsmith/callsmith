@@ -91,9 +91,27 @@ public sealed class HttpTransport : ITransport, IDisposable
 
             var bodyBytes = await httpResponse.Content.ReadAsByteArrayAsync(ct);
             var charset = httpResponse.Content.Headers.ContentType?.CharSet;
-            var encoding = charset is not null
-                ? Encoding.GetEncoding(charset)
-                : Encoding.UTF8;
+            Encoding encoding;
+            if (charset is not null)
+            {
+                try
+                {
+                    encoding = Encoding.GetEncoding(charset);
+                }
+                catch (ArgumentException)
+                {
+                    // An unknown or unsupported charset name is a legal HTTP response.
+                    // Fall back to UTF-8 rather than surfacing a transport error for what
+                    // is effectively a content-negotiation issue.
+                    _logger.LogDebug(
+                        "Unrecognised response charset '{Charset}'; falling back to UTF-8.", charset);
+                    encoding = Encoding.UTF8;
+                }
+            }
+            else
+            {
+                encoding = Encoding.UTF8;
+            }
             var bodyString = encoding.GetString(bodyBytes);
             var headers = ReadHeaders(httpResponse);
             var finalUrl = httpResponse.RequestMessage?.RequestUri?.ToString() ?? request.Url;

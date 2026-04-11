@@ -107,11 +107,23 @@ public interface ICollectionService
     /// Persists an authentication configuration for the specified folder in the folder's
     /// <c>_meta.json</c> file. Existing ordering information is preserved.
     /// Saving <see cref="AuthConfig.AuthTypes.Inherit"/> removes the auth entry from the file.
+    /// Sensitive values (Basic auth password, API key value) are stored in local secret storage,
+    /// never in the <c>_meta.json</c> file.
     /// </summary>
     /// <param name="folderPath">Absolute path to the folder.</param>
     /// <param name="auth">The auth configuration to persist.</param>
     /// <param name="ct">Cancellation token.</param>
     Task SaveFolderAuthAsync(string folderPath, AuthConfig auth, CancellationToken ct = default);
+
+    /// <summary>
+    /// Loads the authentication configuration set directly on the specified folder
+    /// (non-inherited), including sensitive values (password, API key) retrieved from local
+    /// secret storage. Returns an <see cref="AuthConfig"/> with
+    /// <see cref="AuthConfig.AuthTypes.Inherit"/> if no auth is configured on the folder.
+    /// </summary>
+    /// <param name="folderPath">Absolute path to the folder.</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<AuthConfig> LoadFolderAuthAsync(string folderPath, CancellationToken ct = default);
 
     /// <summary>
     /// Resolves the effective authentication configuration for a request by walking up the folder

@@ -16,8 +16,18 @@ public sealed class FileSystemCollectionServiceFolderAuthTests : IDisposable
 {
     private readonly TempDirectory _temp = new();
 
-    private FileSystemCollectionService Sut() =>
-        new(Substitute.For<ISecretStorageService>(), NullLogger<FileSystemCollectionService>.Instance);
+    /// <summary>No-op secrets for tests that do not exercise sensitive value storage.</summary>
+    private static ISecretStorageService NoOpSecrets() => Substitute.For<ISecretStorageService>();
+
+    /// <summary>Returns a real secrets service backed by a fresh temp sub-directory.</summary>
+    private FileSystemSecretStorageService RealSecrets() =>
+        new(
+            _temp.CreateSubDirectory("secrets-store"),
+            new AesSecretEncryptionService(System.IO.Path.Combine(_temp.Path, "secrets.key")),
+            NullLogger<FileSystemSecretStorageService>.Instance);
+
+    private FileSystemCollectionService Sut(ISecretStorageService? secrets = null) =>
+        new(secrets ?? NoOpSecrets(), NullLogger<FileSystemCollectionService>.Instance);
 
     public void Dispose() => _temp.Dispose();
 
@@ -102,25 +112,107 @@ public sealed class FileSystemCollectionServiceFolderAuthTests : IDisposable
         json.Should().Contain("req.callsmith");
     }
 
+    // -------------------------------------------------------------------------
+    // Sensitive credential security — password / API key value NOT in meta file
+    // -------------------------------------------------------------------------
+
     [Fact]
-    public async Task ReadFolder_LoadsAuthFromMeta()
+    public async Task SaveFolderAuthAsync_BasicAuth_DoesNotWritePasswordToMetaFile()
     {
         var root = _temp.CreateSubDirectory("col");
-        var sut = Sut();
+        var sut = Sut(RealSecrets());
         await sut.OpenFolderAsync(root);
 
         await sut.SaveFolderAuthAsync(root, new AuthConfig
         {
             AuthType = AuthConfig.AuthTypes.Basic,
             Username = "alice",
-            Password = "secret",
+            Password = "s3cr3t",
         });
 
-        var loaded = await sut.OpenFolderAsync(root);
+        // The meta file must NOT contain the password.
+        var metaPath = Path.Combine(root, "_meta.json");
+        var json = await File.ReadAllTextAsync(metaPath);
+        json.Should().NotContain("s3cr3t");
+        json.Should().Contain("alice"); // username is not sensitive
+    }
 
-        loaded.Auth.AuthType.Should().Be(AuthConfig.AuthTypes.Basic);
-        loaded.Auth.Username.Should().Be("alice");
-        loaded.Auth.Password.Should().Be("secret");
+    [Fact]
+    public async Task SaveFolderAuthAsync_ApiKey_DoesNotWriteApiKeyValueToMetaFile()
+    {
+        var root = _temp.CreateSubDirectory("col");
+        var sut = Sut(RealSecrets());
+        await sut.OpenFolderAsync(root);
+
+        await sut.SaveFolderAuthAsync(root, new AuthConfig
+        {
+            AuthType = AuthConfig.AuthTypes.ApiKey,
+            ApiKeyName = "X-Api-Key",
+            ApiKeyValue = "supersecretvalue",
+        });
+
+        var metaPath = Path.Combine(root, "_meta.json");
+        var json = await File.ReadAllTextAsync(metaPath);
+        json.Should().NotContain("supersecretvalue");
+        json.Should().Contain("X-Api-Key"); // key name is not sensitive
+    }
+
+    // -------------------------------------------------------------------------
+    // LoadFolderAuthAsync — enriches with secrets
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task LoadFolderAuthAsync_BasicAuth_ReturnsPasswordFromSecrets()
+    {
+        var root = _temp.CreateSubDirectory("col");
+        var sut = Sut(RealSecrets());
+        await sut.OpenFolderAsync(root);
+
+        await sut.SaveFolderAuthAsync(root, new AuthConfig
+        {
+            AuthType = AuthConfig.AuthTypes.Basic,
+            Username = "alice",
+            Password = "s3cr3t",
+        });
+
+        var loaded = await sut.LoadFolderAuthAsync(root);
+
+        loaded.AuthType.Should().Be(AuthConfig.AuthTypes.Basic);
+        loaded.Username.Should().Be("alice");
+        loaded.Password.Should().Be("s3cr3t");
+    }
+
+    [Fact]
+    public async Task LoadFolderAuthAsync_ApiKey_ReturnsApiKeyValueFromSecrets()
+    {
+        var root = _temp.CreateSubDirectory("col");
+        var sut = Sut(RealSecrets());
+        await sut.OpenFolderAsync(root);
+
+        await sut.SaveFolderAuthAsync(root, new AuthConfig
+        {
+            AuthType = AuthConfig.AuthTypes.ApiKey,
+            ApiKeyName = "X-Api-Key",
+            ApiKeyValue = "supersecretvalue",
+            ApiKeyIn = AuthConfig.ApiKeyLocations.Header,
+        });
+
+        var loaded = await sut.LoadFolderAuthAsync(root);
+
+        loaded.AuthType.Should().Be(AuthConfig.AuthTypes.ApiKey);
+        loaded.ApiKeyName.Should().Be("X-Api-Key");
+        loaded.ApiKeyValue.Should().Be("supersecretvalue");
+    }
+
+    [Fact]
+    public async Task LoadFolderAuthAsync_NoMeta_ReturnsInherit()
+    {
+        var root = _temp.CreateSubDirectory("col");
+        var sut = Sut();
+
+        var loaded = await sut.LoadFolderAuthAsync(root);
+
+        loaded.AuthType.Should().Be(AuthConfig.AuthTypes.Inherit);
     }
 
     // -------------------------------------------------------------------------
@@ -172,7 +264,7 @@ public sealed class FileSystemCollectionServiceFolderAuthTests : IDisposable
         var sub = Path.Combine(root, "sub");
         Directory.CreateDirectory(sub);
 
-        var sut = Sut();
+        var sut = Sut(RealSecrets());
         await sut.OpenFolderAsync(root);
 
         await sut.SaveFolderAuthAsync(root, new AuthConfig
@@ -194,6 +286,7 @@ public sealed class FileSystemCollectionServiceFolderAuthTests : IDisposable
 
         effective.AuthType.Should().Be(AuthConfig.AuthTypes.Basic);
         effective.Username.Should().Be("child-user");
+        effective.Password.Should().Be("child-pass");
     }
 
     [Fact]
@@ -255,7 +348,7 @@ public sealed class FileSystemCollectionServiceFolderAuthTests : IDisposable
     public async Task ResolveEffectiveAuth_ApiKey_RoundTrips()
     {
         var root = _temp.CreateSubDirectory("col");
-        var sut = Sut();
+        var sut = Sut(RealSecrets());
         await sut.OpenFolderAsync(root);
 
         await sut.SaveFolderAuthAsync(root, new AuthConfig
@@ -276,4 +369,39 @@ public sealed class FileSystemCollectionServiceFolderAuthTests : IDisposable
         effective.ApiKeyValue.Should().Be("my-api-key");
         effective.ApiKeyIn.Should().Be(AuthConfig.ApiKeyLocations.Header);
     }
+
+    // -------------------------------------------------------------------------
+    // Migration path — pre-upgrade files with plaintext password in meta
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ResolveEffectiveAuth_FallsBackToPlaintextPasswordInLegacyMetaFile()
+    {
+        // Simulate a pre-upgrade _meta.json that has a plaintext password.
+        var root = _temp.CreateSubDirectory("col");
+        var sut = Sut(RealSecrets()); // real secrets — but nothing stored yet
+        await sut.OpenFolderAsync(root);
+
+        // Write a legacy _meta.json that contains the password directly.
+        var metaPath = Path.Combine(root, "_meta.json");
+        await File.WriteAllTextAsync(metaPath, """
+            {
+              "auth": {
+                "type": "basic",
+                "username": "legacy-user",
+                "password": "legacy-pass"
+              }
+            }
+            """);
+
+        var requestPath = Path.Combine(root, "req.callsmith");
+        File.WriteAllText(requestPath, """{"method":"GET","url":"https://example.com"}""");
+
+        var effective = await sut.ResolveEffectiveAuthAsync(requestPath);
+
+        // The plaintext value in the file should be returned as a migration fallback.
+        effective.AuthType.Should().Be(AuthConfig.AuthTypes.Basic);
+        effective.Password.Should().Be("legacy-pass");
+    }
 }
+

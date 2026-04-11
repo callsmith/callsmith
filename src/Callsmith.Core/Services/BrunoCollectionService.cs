@@ -445,6 +445,40 @@ public sealed class BrunoCollectionService : ICollectionService
         return ResolveEffectiveAuthCoreAsync(requestFilePath, ct);
     }
 
+    public async Task<AuthConfig> LoadFolderAuthAsync(string folderPath, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(folderPath);
+
+        var metaFilePath = BruMetaFilePath(folderPath);
+        var auth = ReadFolderBruAuth(metaFilePath);
+
+        if (auth.AuthType == AuthConfig.AuthTypes.Inherit)
+            return auth;
+
+        // Inject locally-stored Basic auth password.
+        if (auth.AuthType == AuthConfig.AuthTypes.Basic && !string.IsNullOrEmpty(_currentRoot))
+        {
+            var stored = await _secrets
+                .GetSecretAsync(
+                    _currentRoot,
+                    ISecretStorageService.AuthNamespace,
+                    GetAuthSecretKey(metaFilePath),
+                    ct)
+                .ConfigureAwait(false);
+            if (stored is not null || auth.Password is not null)
+            {
+                auth = new AuthConfig
+                {
+                    AuthType = auth.AuthType,
+                    Username = auth.Username,
+                    Password = stored ?? auth.Password,
+                };
+            }
+        }
+
+        return auth;
+    }
+
     private async Task<AuthConfig> ResolveEffectiveAuthCoreAsync(string requestFilePath, CancellationToken ct)
     {
         var dir = Path.GetDirectoryName(requestFilePath);
