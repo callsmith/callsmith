@@ -371,6 +371,8 @@ public partial class CollectionsView : UserControl
 
     private async void OnTreePointerReleased(object? sender, PointerReleasedEventArgs e)
     {
+        try
+        {
         if (_draggedNode is not null && _dropTargetFolder is not null && DataContext is CollectionsViewModel vm)
         {
             if (!_draggedNode.IsFolder && _draggedNode.Parent != _dropTargetFolder)
@@ -404,6 +406,11 @@ public partial class CollectionsView : UserControl
         _dropTargetFolder = null;
         _dropInsertIndex = -1;
         EndDrag(e.Pointer);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[CollectionsView] OnTreePointerReleased error: {ex}");
+        }
     }
 
     private void OnTreePointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)

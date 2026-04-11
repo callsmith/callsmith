@@ -16,15 +16,22 @@ namespace Callsmith.Core.Models;
 /// persisting and decrypt it on demand via <see cref="Abstractions.IHistoryService.RevealSensitiveFieldsAsync"/>.
 /// </param>
 /// <param name="CiphertextValue">
-/// When an entry is loaded from the repository and <see cref="IsSecret"/> is
-/// <see langword="true"/>, this holds the raw ciphertext so that
+/// Repository-only artefact. When an entry is loaded from the repository and
+/// <see cref="IsSecret"/> is <see langword="true"/>, this holds the raw ciphertext so that
 /// <see cref="Abstractions.IHistoryService.RevealSensitiveFieldsAsync"/> can decrypt
 /// in memory without an additional database round-trip.
 /// <see langword="null"/> for non-secret bindings and for freshly-captured bindings
 /// that have not yet been persisted.
+/// <para>
+/// <b>Not a domain value.</b> Do not read or write this property outside of
+/// <c>Callsmith.Data</c>. It is exposed on the record only to avoid a separate DTO type;
+/// it is marked <see cref="System.ComponentModel.EditorBrowsableAttribute"/> Never so that
+/// IDE auto-complete hides it from application code.
+/// </para>
 /// </param>
 public sealed record VariableBinding(
 	string Token,
 	string ResolvedValue,
 	bool IsSecret,
+	[property: System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
 	string? CiphertextValue = null);

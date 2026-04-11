@@ -115,6 +115,8 @@ public partial class EnvironmentEditorView : UserControl
 
     private async void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        try
+        {
         if (e.PropertyName == nameof(EnvironmentEditorViewModel.ShowResponseBodyConfig))
         {
             if (_trackedVm is null || !_trackedVm.ShowResponseBodyConfig)
@@ -150,6 +152,11 @@ public partial class EnvironmentEditorView : UserControl
 
             await dialog.ShowDialog(owner);
             _trackedVm.OnMockDataConfigDialogClosed();
+        }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[EnvironmentEditorView] OnViewModelPropertyChanged error: {ex}");
         }
     }
 
@@ -211,10 +218,15 @@ public partial class EnvironmentEditorView : UserControl
     }
 
     private async void OnListPointerReleased(object? sender, PointerReleasedEventArgs e)
-        => await EndDragAsync(e.Pointer).ConfigureAwait(true);
+    {
+        try { await EndDragAsync(e.Pointer).ConfigureAwait(true); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[EnvironmentEditorView] OnListPointerReleased error: {ex}"); }
+    }
 
     private async void OnListPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
     {
+        try
+        {
         var shouldPersist = _environmentOrderChanged;
         _draggedItem = null;
         _isDragging = false;
@@ -223,6 +235,11 @@ public partial class EnvironmentEditorView : UserControl
 
         if (shouldPersist && DataContext is EnvironmentEditorViewModel vm)
             await vm.PersistEnvironmentOrderAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[EnvironmentEditorView] OnListPointerCaptureLost error: {ex}");
+        }
     }
 
     private async Task EndDragAsync(IPointer pointer)

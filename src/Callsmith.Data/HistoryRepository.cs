@@ -594,23 +594,18 @@ public sealed class HistoryRepository : IHistoryService
             if (connection.State != ConnectionState.Open)
                 await connection.OpenAsync(ct);
 
-            var hasSentAtUnixMs = false;
+            // Read all column names once; all subsequent checks are O(1) hash lookups.
+            var existingColumns = new HashSet<string>(StringComparer.Ordinal);
             await using (var pragma = connection.CreateCommand())
             {
+                // PRAGMA table_info result columns: cid, name, type, notnull, dflt_value, pk
                 pragma.CommandText = $"PRAGMA table_info('{HistoryTableName}');";
                 await using var reader = await pragma.ExecuteReaderAsync(ct);
                 while (await reader.ReadAsync(ct))
-                {
-                    // PRAGMA table_info result: cid, name, type, notnull, dflt_value, pk
-                    if (string.Equals(reader.GetString(1), "SentAtUnixMs", StringComparison.Ordinal))
-                    {
-                        hasSentAtUnixMs = true;
-                        break;
-                    }
-                }
+                    existingColumns.Add(reader.GetString(1));
             }
 
-            if (!hasSentAtUnixMs)
+            if (!existingColumns.Contains("SentAtUnixMs"))
             {
                 await using var alter = connection.CreateCommand();
                 alter.CommandText =
@@ -624,10 +619,7 @@ public sealed class HistoryRepository : IHistoryService
                 await backfill.ExecuteNonQueryAsync(ct);
             }
 
-            await EnsureSearchTextColumnsAsync(connection, ct);
-            await EnsureEnvironmentNameColumnAsync(connection, ct);
-            await EnsureEnvironmentIdColumnAsync(connection, ct);
-            await EnsureEnvironmentColorColumnAsync(connection, ct);
+            await EnsureColumnsAsync(connection, existingColumns, ct);
 
             await BackfillSearchTextAsync(db, ct);
 
@@ -644,113 +636,33 @@ public sealed class HistoryRepository : IHistoryService
         }
     }
 
-    private static async Task EnsureSearchTextColumnsAsync(System.Data.Common.DbConnection connection, CancellationToken ct)
+    private static async Task EnsureColumnsAsync(
+        System.Data.Common.DbConnection connection,
+        HashSet<string> existingColumns,
+        CancellationToken ct)
     {
-        var hasRequestSearchText = false;
-        var hasResponseSearchText = false;
+        // All missing-column checks use the already-read existingColumns set — no extra PRAGMA.
+        var pending = new List<string>();
 
-        await using (var pragma = connection.CreateCommand())
-        {
-            pragma.CommandText = $"PRAGMA table_info('{HistoryTableName}');";
-            await using var reader = await pragma.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
-            {
-                var name = reader.GetString(1);
-                if (string.Equals(name, nameof(HistoryEntryEntity.RequestSearchText), StringComparison.Ordinal))
-                    hasRequestSearchText = true;
-                else if (string.Equals(name, nameof(HistoryEntryEntity.ResponseSearchText), StringComparison.Ordinal))
-                    hasResponseSearchText = true;
-            }
-        }
+        if (!existingColumns.Contains(nameof(HistoryEntryEntity.RequestSearchText)))
+            pending.Add($"ALTER TABLE {HistoryTableName} ADD COLUMN RequestSearchText TEXT NOT NULL DEFAULT '';");
 
-        if (!hasRequestSearchText)
-        {
-            await using var alter = connection.CreateCommand();
-            alter.CommandText =
-                $"ALTER TABLE {HistoryTableName} ADD COLUMN RequestSearchText TEXT NOT NULL DEFAULT '';";
-            await alter.ExecuteNonQueryAsync(ct);
-        }
+        if (!existingColumns.Contains(nameof(HistoryEntryEntity.ResponseSearchText)))
+            pending.Add($"ALTER TABLE {HistoryTableName} ADD COLUMN ResponseSearchText TEXT NOT NULL DEFAULT '';");
 
-        if (!hasResponseSearchText)
+        if (!existingColumns.Contains(nameof(HistoryEntryEntity.EnvironmentName)))
+            pending.Add($"ALTER TABLE {HistoryTableName} ADD COLUMN EnvironmentName TEXT NULL;");
+
+        if (!existingColumns.Contains(nameof(HistoryEntryEntity.EnvironmentId)))
+            pending.Add($"ALTER TABLE {HistoryTableName} ADD COLUMN EnvironmentId TEXT NULL;");
+
+        if (!existingColumns.Contains(nameof(HistoryEntryEntity.EnvironmentColor)))
+            pending.Add($"ALTER TABLE {HistoryTableName} ADD COLUMN EnvironmentColor TEXT NULL;");
+
+        foreach (var sql in pending)
         {
             await using var alter = connection.CreateCommand();
-            alter.CommandText =
-                $"ALTER TABLE {HistoryTableName} ADD COLUMN ResponseSearchText TEXT NOT NULL DEFAULT '';";
-            await alter.ExecuteNonQueryAsync(ct);
-        }
-    }
-
-    private static async Task EnsureEnvironmentNameColumnAsync(System.Data.Common.DbConnection connection, CancellationToken ct)
-    {
-        var hasEnvironmentName = false;
-
-        await using var pragma = connection.CreateCommand();
-        pragma.CommandText = $"PRAGMA table_info('{HistoryTableName}');";
-        await using var reader = await pragma.ExecuteReaderAsync(ct);
-        while (await reader.ReadAsync(ct))
-        {
-            if (string.Equals(reader.GetString(1), nameof(HistoryEntryEntity.EnvironmentName), StringComparison.Ordinal))
-            {
-                hasEnvironmentName = true;
-                break;
-            }
-        }
-
-        if (!hasEnvironmentName)
-        {
-            await using var alter = connection.CreateCommand();
-            alter.CommandText =
-                $"ALTER TABLE {HistoryTableName} ADD COLUMN EnvironmentName TEXT NULL;";
-            await alter.ExecuteNonQueryAsync(ct);
-        }
-    }
-
-    private static async Task EnsureEnvironmentColorColumnAsync(System.Data.Common.DbConnection connection, CancellationToken ct)
-    {
-        var hasEnvironmentColor = false;
-
-        await using var pragma = connection.CreateCommand();
-        pragma.CommandText = $"PRAGMA table_info('{HistoryTableName}');";
-        await using var reader = await pragma.ExecuteReaderAsync(ct);
-        while (await reader.ReadAsync(ct))
-        {
-            if (string.Equals(reader.GetString(1), nameof(HistoryEntryEntity.EnvironmentColor), StringComparison.Ordinal))
-            {
-                hasEnvironmentColor = true;
-                break;
-            }
-        }
-
-        if (!hasEnvironmentColor)
-        {
-            await using var alter = connection.CreateCommand();
-            alter.CommandText =
-                $"ALTER TABLE {HistoryTableName} ADD COLUMN EnvironmentColor TEXT NULL;";
-            await alter.ExecuteNonQueryAsync(ct);
-        }
-    }
-
-    private static async Task EnsureEnvironmentIdColumnAsync(System.Data.Common.DbConnection connection, CancellationToken ct)
-    {
-        var hasEnvironmentId = false;
-
-        await using var pragma = connection.CreateCommand();
-        pragma.CommandText = $"PRAGMA table_info('{HistoryTableName}');";
-        await using var reader = await pragma.ExecuteReaderAsync(ct);
-        while (await reader.ReadAsync(ct))
-        {
-            if (string.Equals(reader.GetString(1), nameof(HistoryEntryEntity.EnvironmentId), StringComparison.Ordinal))
-            {
-                hasEnvironmentId = true;
-                break;
-            }
-        }
-
-        if (!hasEnvironmentId)
-        {
-            await using var alter = connection.CreateCommand();
-            alter.CommandText =
-                $"ALTER TABLE {HistoryTableName} ADD COLUMN EnvironmentId TEXT NULL;";
+            alter.CommandText = sql;
             await alter.ExecuteNonQueryAsync(ct);
         }
     }

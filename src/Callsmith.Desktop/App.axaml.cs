@@ -97,15 +97,15 @@ public partial class App : Application
         services.AddSingleton<ISecretStorageService, FileSystemSecretStorageService>();
 
         // Core -- import (extensible: register new importers here as formats are added)
-        // NOTE: always use the plain Callsmith services here — imports must produce Callsmith-format
-        // files regardless of which collection type is currently open in the routing services.
+        // Use the interface-based services; the routing wrapper delegates to the Callsmith-format
+        // implementations, so imports always produce Callsmith-format files.
         services.AddSingleton<ICollectionImporter, PostmanCollectionImporter>();
         services.AddSingleton<ICollectionImporter, InsomniaCollectionImporter>();
         services.AddSingleton<ICollectionImporter, OpenApiCollectionImporter>();
         services.AddSingleton<ICollectionImportService>(sp => new CollectionImportService(
             sp.GetServices<ICollectionImporter>(),
-            sp.GetRequiredService<FileSystemCollectionService>(),
-            sp.GetRequiredService<FileSystemEnvironmentService>(),
+            sp.GetRequiredService<ICollectionService>(),
+            sp.GetRequiredService<IEnvironmentService>(),
             sp.GetRequiredService<ILogger<CollectionImportService>>()));
 
         // History

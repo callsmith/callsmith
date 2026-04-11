@@ -726,6 +726,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _transportRegistry = transportRegistry;
         _collectionService = collectionService;
         _dynamicEvaluator = dynamicEvaluator;
+        // Fall back to a default instance so that callers that do not participate in DI
+        // (e.g. unit tests that only test URL/header logic) do not need to supply one.
+        // In production the DI container always injects the singleton.
         _mergeService = mergeService ?? new EnvironmentMergeService(dynamicEvaluator);
         _messenger = messenger;
         _requestClose = requestClose;
@@ -2206,10 +2209,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
             await _historyService!.RecordAsync(entry, CancellationToken.None);
         }
-        catch
+        catch (Exception ex)
         {
-            // History recording must never disrupt the request UX. Errors are swallowed here;
-            // the repository implementation is responsible for its own internal logging.
+            // History recording must never disrupt the request UX.
+            System.Diagnostics.Debug.WriteLine($"[RequestTabViewModel] Failed to record history: {ex}");
         }
     }
 
