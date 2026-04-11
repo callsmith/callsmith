@@ -436,8 +436,8 @@ public sealed class BrunoCollectionService : ICollectionService
         if (!string.IsNullOrEmpty(_currentRoot))
         {
             var secretKey = GetAuthSecretKey(metaFilePath);
-            if (auth.AuthType is AuthConfig.AuthTypes.Inherit
-                or not (AuthConfig.AuthTypes.Basic or AuthConfig.AuthTypes.Bearer))
+            if (auth.AuthType is not AuthConfig.AuthTypes.Basic
+                    and not AuthConfig.AuthTypes.Bearer)
             {
                 // Auth cleared or switched to a type that has no secret — remove any stored secret.
                 await _secrets.DeleteSecretAsync(

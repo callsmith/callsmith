@@ -580,8 +580,9 @@ public sealed class FileSystemCollectionService : ICollectionService
         if (!string.IsNullOrEmpty(_currentRoot))
         {
             var folderKey = FolderSecretKey(folderPath);
-            if (auth.AuthType is AuthConfig.AuthTypes.Inherit
-                or not (AuthConfig.AuthTypes.Basic or AuthConfig.AuthTypes.ApiKey or AuthConfig.AuthTypes.Bearer))
+            if (auth.AuthType is not AuthConfig.AuthTypes.Basic
+                    and not AuthConfig.AuthTypes.ApiKey
+                    and not AuthConfig.AuthTypes.Bearer)
             {
                 // Auth cleared or switched to a type that has no secret — remove any stored secret.
                 await _secrets.DeleteSecretAsync(
