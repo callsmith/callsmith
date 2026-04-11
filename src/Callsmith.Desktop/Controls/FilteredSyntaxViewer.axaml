@@ -15,17 +15,23 @@
             Background="#1e1e1e"
             BorderBrush="#343434"
             BorderThickness="0,0,0,1"
-            Padding="8,4,8,6"
+            Padding="8,6,8,6"
             IsVisible="False">
       <StackPanel Spacing="4">
-        <Grid MinHeight="28">
+        <Border x:Name="FilterTextBoxBorder"
+                BorderBrush="Transparent"
+                BorderThickness="1"
+                CornerRadius="4">
+        <Grid MinHeight="32">
           <TextBox x:Name="FilterTextBox"
                    Background="Transparent"
                    Foreground="#d4d4d4"
                    BorderThickness="0"
                    FontFamily="Consolas,Menlo,monospace"
                    FontSize="12"
-                   Padding="10,0,28,0"
+                   MinHeight="32"
+                   Padding="10,4,28,4"
+                   VerticalAlignment="Center"
                    VerticalContentAlignment="Center"
                    Watermark="Path"/>
           <Button x:Name="ClearButton"
@@ -34,6 +40,8 @@
                   Height="18"
                   HorizontalAlignment="Right"
                   VerticalAlignment="Center"
+                  HorizontalContentAlignment="Center"
+                  VerticalContentAlignment="Center"
                   Margin="0,0,6,0"
                   Background="Transparent"
                   Foreground="#8e8e8e"
@@ -44,6 +52,7 @@
                   IsVisible="False"
                   ToolTip.Tip="Clear path filter"/>
         </Grid>
+        </Border>
         <TextBlock x:Name="ErrorTextBlock"
                    Foreground="#f48771"
                    FontSize="11"

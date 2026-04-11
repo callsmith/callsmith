@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
 
 namespace Callsmith.Desktop.Controls;
 
@@ -15,6 +16,7 @@ public sealed partial class FilteredSyntaxViewer : UserControl
     private TextBox? _filterTextBox;
     private Button? _clearButton;
     private TextBlock? _errorTextBlock;
+    private Border? _filterTextBoxBorder;
     private Border? _filterBar;
     private SyntaxEditor? _editor;
 
@@ -56,6 +58,7 @@ public sealed partial class FilteredSyntaxViewer : UserControl
         _filterTextBox = this.FindControl<TextBox>(nameof(FilterTextBox));
         _clearButton = this.FindControl<Button>(nameof(ClearButton));
         _errorTextBlock = this.FindControl<TextBlock>(nameof(ErrorTextBlock));
+        _filterTextBoxBorder = this.FindControl<Border>(nameof(FilterTextBoxBorder));
         _filterBar = this.FindControl<Border>(nameof(FilterBar));
         _editor = this.FindControl<SyntaxEditor>(nameof(Editor));
 
@@ -96,7 +99,10 @@ public sealed partial class FilteredSyntaxViewer : UserControl
         }
 
         if (!enabled)
+        {
             ClearError();
+            SetFilteredState(isActive: false);
+        }
     }
 
     private void ApplyFilter()
@@ -109,6 +115,7 @@ public sealed partial class FilteredSyntaxViewer : UserControl
         if (!SupportsFiltering())
         {
             ClearError();
+            SetFilteredState(isActive: false);
             _editor.Text = Text;
             return;
         }
@@ -117,6 +124,7 @@ public sealed partial class FilteredSyntaxViewer : UserControl
         if (string.IsNullOrWhiteSpace(expression))
         {
             ClearError();
+            SetFilteredState(isActive: false);
             _editor.Text = Text;
             return;
         }
@@ -124,11 +132,13 @@ public sealed partial class FilteredSyntaxViewer : UserControl
         if (SyntaxPathFilter.TryTransform(Text, Language, expression, out var transformed, out var error))
         {
             ClearError();
+            SetFilteredState(isActive: true);
             _editor.Text = transformed;
             return;
         }
 
         ShowError(error);
+        SetFilteredState(isActive: false);
         _editor.Text = Text;
     }
 
@@ -152,5 +162,15 @@ public sealed partial class FilteredSyntaxViewer : UserControl
 
         _errorTextBlock.Text = string.Empty;
         _errorTextBlock.IsVisible = false;
+    }
+
+    private void SetFilteredState(bool isActive)
+    {
+        if (_filterTextBoxBorder is null)
+            return;
+
+        _filterTextBoxBorder.BorderBrush = isActive
+            ? new SolidColorBrush(Color.Parse("#ce9178"))
+            : new SolidColorBrush(Colors.Transparent);
     }
 }

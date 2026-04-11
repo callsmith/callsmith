@@ -16,6 +16,8 @@
         <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml"/>
         <Style Selector="Button">
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
         <Style Selector="MenuItem">
             <Setter Property="Cursor" Value="Hand"/>
