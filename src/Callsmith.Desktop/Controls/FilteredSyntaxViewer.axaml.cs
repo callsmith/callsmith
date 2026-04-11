@@ -13,10 +13,13 @@ public sealed partial class FilteredSyntaxViewer : UserControl
     public static readonly StyledProperty<string> LanguageProperty =
         AvaloniaProperty.Register<FilteredSyntaxViewer, string>(nameof(Language), string.Empty);
 
+    private const string JsonFilterLabel = "JSONPATH FILTER:";
+    private const string XmlFilterLabel = "XPATH FILTER:";
+
     private TextBox? _filterTextBox;
     private Button? _clearButton;
-    private TextBlock? _errorTextBlock;
-    private Border? _filterTextBoxBorder;
+    private TextBlock? _filterLabelTextBlock;
+    private TextBlock? _filterStatusTextBlock;
     private Border? _filterBar;
     private SyntaxEditor? _editor;
 
@@ -57,8 +60,8 @@ public sealed partial class FilteredSyntaxViewer : UserControl
     {
         _filterTextBox = this.FindControl<TextBox>(nameof(FilterTextBox));
         _clearButton = this.FindControl<Button>(nameof(ClearButton));
-        _errorTextBlock = this.FindControl<TextBlock>(nameof(ErrorTextBlock));
-        _filterTextBoxBorder = this.FindControl<Border>(nameof(FilterTextBoxBorder));
+        _filterLabelTextBlock = this.FindControl<TextBlock>(nameof(FilterLabelTextBlock));
+        _filterStatusTextBlock = this.FindControl<TextBlock>(nameof(FilterStatusTextBlock));
         _filterBar = this.FindControl<Border>(nameof(FilterBar));
         _editor = this.FindControl<SyntaxEditor>(nameof(Editor));
 
@@ -88,12 +91,15 @@ public sealed partial class FilteredSyntaxViewer : UserControl
         if (_filterBar is not null)
             _filterBar.IsVisible = enabled;
 
+        if (_filterLabelTextBlock is not null)
+            _filterLabelTextBlock.Text = GetFilterLabel();
+
         if (_filterTextBox is not null)
         {
             _filterTextBox.Watermark = NormalizeLanguage() switch
             {
-                "json" => "JSONPath filter (ex. $.library.books[*].author)",
-                "xml" => "XPath filter (ex. /library/books/book/author)",
+                "json" => "$.library.books[*].author",
+                "xml" => "/library/books/book/author",
                 _ => "Path",
             };
         }
@@ -101,7 +107,6 @@ public sealed partial class FilteredSyntaxViewer : UserControl
         if (!enabled)
         {
             ClearError();
-            SetFilteredState(isActive: false);
         }
     }
 
@@ -115,7 +120,6 @@ public sealed partial class FilteredSyntaxViewer : UserControl
         if (!SupportsFiltering())
         {
             ClearError();
-            SetFilteredState(isActive: false);
             _editor.Text = Text;
             return;
         }
@@ -124,21 +128,18 @@ public sealed partial class FilteredSyntaxViewer : UserControl
         if (string.IsNullOrWhiteSpace(expression))
         {
             ClearError();
-            SetFilteredState(isActive: false);
             _editor.Text = Text;
             return;
         }
 
         if (SyntaxPathFilter.TryTransform(Text, Language, expression, out var transformed, out var error))
         {
-            ClearError();
-            SetFilteredState(isActive: true);
+            ShowActive();
             _editor.Text = transformed;
             return;
         }
 
         ShowError(error);
-        SetFilteredState(isActive: false);
         _editor.Text = Text;
     }
 
@@ -146,31 +147,39 @@ public sealed partial class FilteredSyntaxViewer : UserControl
 
     private string NormalizeLanguage() => Language?.Trim().ToLowerInvariant() ?? string.Empty;
 
-    private void ShowError(string error)
+    private string GetFilterLabel() => NormalizeLanguage() switch
     {
-        if (_errorTextBlock is null)
+        "json" => JsonFilterLabel,
+        "xml" => XmlFilterLabel,
+        _ => "FILTER:",
+    };
+
+    private void ShowActive()
+    {
+        if (_filterStatusTextBlock is null)
             return;
 
-        _errorTextBlock.Text = error;
-        _errorTextBlock.IsVisible = !string.IsNullOrWhiteSpace(error);
+        _filterStatusTextBlock.Text = "Active";
+        _filterStatusTextBlock.Foreground = new SolidColorBrush(Color.Parse("#6a9955"));
+        _filterStatusTextBlock.FontWeight = FontWeight.Bold;
+    }
+
+    private void ShowError(string error)
+    {
+        if (_filterStatusTextBlock is null)
+            return;
+
+        _filterStatusTextBlock.Text = error;
+        _filterStatusTextBlock.Foreground = new SolidColorBrush(Color.Parse("#f48771"));
+        _filterStatusTextBlock.FontWeight = FontWeight.Normal;
     }
 
     private void ClearError()
     {
-        if (_errorTextBlock is null)
+        if (_filterStatusTextBlock is null)
             return;
 
-        _errorTextBlock.Text = string.Empty;
-        _errorTextBlock.IsVisible = false;
-    }
-
-    private void SetFilteredState(bool isActive)
-    {
-        if (_filterTextBoxBorder is null)
-            return;
-
-        _filterTextBoxBorder.BorderBrush = isActive
-            ? new SolidColorBrush(Color.Parse("#ce9178"))
-            : new SolidColorBrush(Colors.Transparent);
+        _filterStatusTextBlock.Text = string.Empty;
+        _filterStatusTextBlock.FontWeight = FontWeight.Normal;
     }
 }
