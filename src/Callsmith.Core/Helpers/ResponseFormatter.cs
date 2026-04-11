@@ -101,7 +101,7 @@ public static class ResponseFormatter
         try
         {
             var doc = XDocument.Parse(xml);
-            var body = doc.ToString();
+            var body = doc.ToString().Replace("\r\n", "\n");
             return doc.Declaration is { } decl
                 ? decl + "\n" + body
                 : body;
