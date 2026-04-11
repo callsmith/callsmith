@@ -581,6 +581,8 @@ public sealed class HistoryRepository : IHistoryService
             // If a full schema overhaul is ever needed, a versioned migration table should be
             // introduced at that point.
 
+            await db.Database.EnsureCreatedAsync(ct);
+
             var connection = db.Database.GetDbConnection();
             if (connection.State != ConnectionState.Open)
                 await connection.OpenAsync(ct);
