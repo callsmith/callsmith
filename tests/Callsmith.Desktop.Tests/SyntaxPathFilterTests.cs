@@ -1,5 +1,8 @@
 using Callsmith.Desktop.Controls;
 using FluentAssertions;
+using Avalonia.Controls;
+using Avalonia.Headless.XUnit;
+using Avalonia.Threading;
 
 namespace Callsmith.Desktop.Tests;
 
@@ -68,4 +71,43 @@ public sealed class SyntaxPathFilterTests
         transformed.Should().Be(xml);
         error.Should().StartWith("Invalid XPath");
     }
+
+      [AvaloniaFact]
+      public void FilteredSyntaxViewer_InvalidFilter_DoesNotShiftEditorPosition()
+      {
+        var viewer = new FilteredSyntaxViewer
+        {
+          Width = 640,
+          Height = 320,
+          Language = "json",
+          Text = """{ \"data\": [1, 2, 3] }""",
+        };
+
+        var window = new Window
+        {
+          Width = 800,
+          Height = 480,
+          Content = viewer,
+        };
+
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+
+        var editor = viewer.FindControl<SyntaxEditor>("Editor");
+        var filterTextBox = viewer.FindControl<TextBox>("FilterTextBox");
+    var filterStatusTextBlock = viewer.FindControl<TextBlock>("FilterStatusTextBlock");
+
+        editor.Should().NotBeNull();
+        filterTextBox.Should().NotBeNull();
+    filterStatusTextBlock.Should().NotBeNull();
+
+        var editorTopBefore = editor!.Bounds.Y;
+
+        filterTextBox!.Text = "data[0]";
+        Dispatcher.UIThread.RunJobs();
+
+    filterStatusTextBlock!.IsVisible.Should().BeTrue();
+    filterStatusTextBlock.Text.Should().Contain("must start with '$'");
+        editor.Bounds.Y.Should().Be(editorTopBefore);
+      }
 }
