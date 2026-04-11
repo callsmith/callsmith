@@ -594,9 +594,8 @@
                           CornerRadius="4"
                           Padding="10"
                           IsVisible="{Binding DetailHasResponseBody}">
-                    <controls:SyntaxEditor Text="{Binding DetailResponse}"
-                                           Language="{Binding DetailResponseLanguage}"
-                                           IsReadOnly="True"/>
+                    <controls:FilteredSyntaxViewer Text="{Binding DetailResponse}"
+                               Language="{Binding DetailResponseLanguage}"/>
                   </Border>
                   <TextBlock Text="No body returned for response"
                              Foreground="#666"

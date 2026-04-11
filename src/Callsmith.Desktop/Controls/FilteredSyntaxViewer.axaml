@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="using:Callsmith.Desktop.Controls"
+             mc:Ignorable="d"
+             d:DesignWidth="800"
+             d:DesignHeight="400"
+             x:Class="Callsmith.Desktop.Controls.FilteredSyntaxViewer">
+
+  <Grid RowDefinitions="Auto,*"
+        Background="#1e1e1e">
+    <Border x:Name="FilterBar"
+            Grid.Row="0"
+            Background="#1e1e1e"
+            BorderBrush="#343434"
+            BorderThickness="0,0,0,1"
+            Padding="8,4,8,6"
+            IsVisible="False">
+      <StackPanel Spacing="4">
+        <Grid MinHeight="28">
+          <TextBox x:Name="FilterTextBox"
+                   Background="Transparent"
+                   Foreground="#d4d4d4"
+                   BorderThickness="0"
+                   FontFamily="Consolas,Menlo,monospace"
+                   FontSize="12"
+                   Padding="10,0,28,0"
+                   VerticalContentAlignment="Center"
+                   Watermark="Path"/>
+          <Button x:Name="ClearButton"
+                  Content="×"
+                  Width="18"
+                  Height="18"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Center"
+                  Margin="0,0,6,0"
+                  Background="Transparent"
+                  Foreground="#8e8e8e"
+                  BorderThickness="0"
+                  Padding="0"
+                  FontSize="12"
+                  Focusable="False"
+                  IsVisible="False"
+                  ToolTip.Tip="Clear path filter"/>
+        </Grid>
+        <TextBlock x:Name="ErrorTextBlock"
+                   Foreground="#f48771"
+                   FontSize="11"
+                   TextWrapping="Wrap"
+                   IsVisible="False"/>
+      </StackPanel>
+    </Border>
+
+    <controls:SyntaxEditor x:Name="Editor"
+                           Grid.Row="1"
+                           IsReadOnly="True"/>
+  </Grid>
+</UserControl>
