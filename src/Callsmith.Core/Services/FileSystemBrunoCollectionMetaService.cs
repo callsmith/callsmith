@@ -13,9 +13,9 @@ namespace Callsmith.Core.Services;
 /// collection folder path. Nothing is written inside the Bruno collection folder, so the
 /// repo remains clean for Bruno desktop users.
 /// </summary>
-public sealed class FileSystemBrunoCollectionMetaService : IBrunoCollectionMetaService
+public sealed class FileSystemBrunoCollectionMetaService : IBrunoCollectionMetaService, IDisposable
 {
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> FileLocks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> FileLocks = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly string _storeDirectory;
     private readonly ILogger<FileSystemBrunoCollectionMetaService> _logger;
@@ -98,7 +98,7 @@ public sealed class FileSystemBrunoCollectionMetaService : IBrunoCollectionMetaS
         }, ct).ConfigureAwait(false);
     }
 
-    private static async Task<T> WithFileLockAsync<T>(string path, Func<Task<T>> action, CancellationToken ct)
+    private async Task<T> WithFileLockAsync<T>(string path, Func<Task<T>> action, CancellationToken ct)
     {
         var gate = FileLocks.GetOrAdd(path, static _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(ct).ConfigureAwait(false);
@@ -112,7 +112,7 @@ public sealed class FileSystemBrunoCollectionMetaService : IBrunoCollectionMetaS
         }
     }
 
-    private static async Task WithFileLockAsync(string path, Func<Task> action, CancellationToken ct)
+    private async Task WithFileLockAsync(string path, Func<Task> action, CancellationToken ct)
     {
         var gate = FileLocks.GetOrAdd(path, static _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(ct).ConfigureAwait(false);
@@ -133,5 +133,12 @@ public sealed class FileSystemBrunoCollectionMetaService : IBrunoCollectionMetaS
     {
         var fileName = FileSystemHelper.HashCollectionPath(collectionFolderPath) + ".json";
         return Path.Combine(_storeDirectory, fileName);
+    }
+
+    public void Dispose()
+    {
+        foreach (var semaphore in FileLocks.Values)
+            semaphore.Dispose();
+        FileLocks.Clear();
     }
 }

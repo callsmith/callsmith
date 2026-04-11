@@ -14,7 +14,7 @@ namespace Callsmith.Core.Services;
 /// This keeps personal preferences out of the collection folder and therefore out of
 /// version control.
 /// </summary>
-public sealed class FileSystemCollectionPreferencesService : ICollectionPreferencesService
+public sealed class FileSystemCollectionPreferencesService : ICollectionPreferencesService, IDisposable
 {
     // One semaphore per prefs file path so concurrent writers for different collections
     // do not block each other, but concurrent writers for the same collection queue up.
@@ -161,6 +161,13 @@ public sealed class FileSystemCollectionPreferencesService : ICollectionPreferen
     {
         var fileName = FileSystemHelper.HashCollectionPath(collectionFolderPath) + ".json";
         return Path.Combine(_storeDirectory, fileName);
+    }
+
+    public void Dispose()
+    {
+        foreach (var semaphore in _locks.Values)
+            semaphore.Dispose();
+        _locks.Clear();
     }
 }
 

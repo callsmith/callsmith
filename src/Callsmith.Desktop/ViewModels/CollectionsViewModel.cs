@@ -25,7 +25,8 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     IRecipient<ActiveTabChangedMessage>,
     IRecipient<RevealRequestMessage>,
     IRecipient<EnvironmentChangedMessage>,
-    IRecipient<GlobalEnvironmentChangedMessage>
+    IRecipient<GlobalEnvironmentChangedMessage>,
+    IDisposable
 {
     private readonly ICollectionService _collectionService;
     private readonly IRecentCollectionsService _recentCollectionsService;
@@ -1260,5 +1261,13 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         || filePath.Contains(
             Path.AltDirectorySeparatorChar + BrunoCollectionService.EnvironmentFolderName + Path.AltDirectorySeparatorChar,
             StringComparison.OrdinalIgnoreCase);
+
+    public void Dispose()
+    {
+        StopWatcher();
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+        _loadCts = null;
+    }
 }
 

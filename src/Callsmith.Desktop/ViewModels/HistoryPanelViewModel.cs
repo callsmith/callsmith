@@ -17,7 +17,7 @@ namespace Callsmith.Desktop.ViewModels;
 /// Drives the history panel: list of sent requests with filters,
 /// and detail view of the selected entry.
 /// </summary>
-public sealed partial class HistoryPanelViewModel : ObservableObject
+public sealed partial class HistoryPanelViewModel : ObservableObject, IDisposable
 {
     private const string AllEnvironmentsOption = "All environments";
     private const string NoEnvironmentOption = "(no environment)";
@@ -1415,6 +1415,13 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                 return "<secret>";
             return match.Value;
         });
+    }
+
+    public void Dispose()
+    {
+        _searchDebounceCts?.Cancel();
+        _searchDebounceCts?.Dispose();
+        _searchDebounceCts = null;
     }
 }
 

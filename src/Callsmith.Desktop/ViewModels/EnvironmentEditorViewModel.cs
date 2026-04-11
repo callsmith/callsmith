@@ -30,7 +30,8 @@ namespace Callsmith.Desktop.ViewModels;
 public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     IRecipient<CollectionOpenedMessage>,
     IRecipient<RequestRenamedMessage>,
-    IRecipient<OpenEnvironmentEditorMessage>
+    IRecipient<OpenEnvironmentEditorMessage>,
+    IDisposable
 {
     private readonly IEnvironmentService _environmentService;
     private readonly ICollectionService _collectionService;
@@ -339,6 +340,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         }
 
         _dynPreviewCts?.Cancel();
+        _dynPreviewCts?.Dispose();
         _dynPreviewCts = new CancellationTokenSource();
         _ = RefreshDynamicPreviewsAsync(SelectedEnvironment, _dynPreviewCts.Token);
     }
@@ -719,6 +721,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         RefreshSelectedEnvironmentSuggestions();
 
         _dynPreviewCts?.Cancel();
+        _dynPreviewCts?.Dispose();
         _dynPreviewCts = new CancellationTokenSource();
         if (value is not null)
             _ = RefreshDynamicPreviewsAsync(value, _dynPreviewCts.Token);
@@ -773,6 +776,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         if (SelectedEnvironment == globalEnv)
         {
             _dynPreviewCts?.Cancel();
+            _dynPreviewCts?.Dispose();
             _dynPreviewCts = new CancellationTokenSource();
             _ = RefreshDynamicPreviewsAsync(globalEnv, _dynPreviewCts.Token);
         }
@@ -816,6 +820,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         if (changed.IsGlobal || ReferenceEquals(changed, SelectedEnvironment))
         {
             _dynPreviewCts?.Cancel();
+            _dynPreviewCts?.Dispose();
             _dynPreviewCts = new CancellationTokenSource();
             _ = RefreshDynamicPreviewsAsync(SelectedEnvironment, _dynPreviewCts.Token);
         }
@@ -1344,6 +1349,13 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             names.AddRange(CollectRequestNames(sub, subPrefix));
         }
         return names;
+    }
+
+    public void Dispose()
+    {
+        _dynPreviewCts?.Cancel();
+        _dynPreviewCts?.Dispose();
+        _dynPreviewCts = null;
     }
 
 }
