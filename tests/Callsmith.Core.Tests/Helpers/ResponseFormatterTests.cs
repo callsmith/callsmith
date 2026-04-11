@@ -5,6 +5,66 @@ namespace Callsmith.Core.Tests.Helpers;
 
 public sealed class ResponseFormatterTests
 {
+    // ── GetLanguage ───────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("application/json")]
+    [InlineData("application/json; charset=utf-8")]
+    [InlineData("APPLICATION/JSON")]
+    [InlineData("text/json")]
+    public void GetLanguage_JsonContentType_ReturnsJson(string contentType)
+    {
+        ResponseFormatter.GetLanguage(contentType).Should().Be("json");
+    }
+
+    [Theory]
+    [InlineData("text/yaml")]
+    [InlineData("application/yaml")]
+    [InlineData("application/x-yaml")]
+    [InlineData("text/yaml; charset=utf-8")]
+    [InlineData("TEXT/YAML")]
+    public void GetLanguage_YamlContentType_ReturnsYaml(string contentType)
+    {
+        ResponseFormatter.GetLanguage(contentType).Should().Be("yaml");
+    }
+
+    [Theory]
+    [InlineData("application/xml")]
+    [InlineData("text/xml")]
+    [InlineData("application/xml; charset=utf-8")]
+    [InlineData("TEXT/XML")]
+    [InlineData("application/xhtml+xml")]
+    [InlineData("application/XHTML+XML")]
+    public void GetLanguage_XmlContentType_ReturnsXml(string contentType)
+    {
+        ResponseFormatter.GetLanguage(contentType).Should().Be("xml");
+    }
+
+    [Theory]
+    [InlineData("text/html")]
+    [InlineData("text/html; charset=utf-8")]
+    [InlineData("TEXT/HTML")]
+    public void GetLanguage_HtmlContentType_ReturnsHtml(string contentType)
+    {
+        ResponseFormatter.GetLanguage(contentType).Should().Be("html");
+    }
+
+    [Theory]
+    [InlineData("text/plain")]
+    [InlineData("application/octet-stream")]
+    [InlineData("image/png")]
+    [InlineData("")]
+    public void GetLanguage_UnrecognisedContentType_ReturnsEmpty(string contentType)
+    {
+        ResponseFormatter.GetLanguage(contentType).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void GetLanguage_NullContentType_ReturnsEmpty()
+    {
+        ResponseFormatter.GetLanguage(null).Should().BeEmpty();
+    }
+
     // ── TryFormatXml ──────────────────────────────────────────────────────────
 
     [Fact]

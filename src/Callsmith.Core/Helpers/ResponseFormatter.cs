@@ -35,21 +35,14 @@ public static class ResponseFormatter
     {
         if (string.IsNullOrWhiteSpace(body)) return body;
 
-        var ct = contentType?.ToLowerInvariant() ?? string.Empty;
-
-        if (ct.Contains("json"))
-            return TryFormatJson(body) ?? body;
-
-        if (ct.Contains("yaml"))
-            return TryFormatYaml(body) ?? body;
-
-        if (ct.Contains("xml") || ct.Contains("xhtml"))
-            return TryFormatXml(body) ?? body;
-
-        if (ct.Contains("html"))
-            return TryFormatHtml(body);
-
-        return body;
+        return GetLanguage(contentType) switch
+        {
+            "json" => TryFormatJson(body) ?? body,
+            "yaml" => TryFormatYaml(body) ?? body,
+            "xml"  => TryFormatXml(body) ?? body,
+            "html" => TryFormatHtml(body),
+            _      => body,
+        };
     }
 
     /// <summary>
@@ -110,6 +103,23 @@ public static class ResponseFormatter
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Returns the syntax-highlighting language identifier for a given
+    /// <paramref name="contentType"/> value (e.g. from a <c>Content-Type</c> header).
+    /// Returns <c>"json"</c>, <c>"yaml"</c>, <c>"xml"</c>, <c>"html"</c>, or an empty
+    /// string when the content type is unrecognised or <see langword="null"/>.
+    /// </summary>
+    public static string GetLanguage(string? contentType)
+    {
+        var ct = contentType ?? string.Empty;
+        if (ct.Contains("json", StringComparison.OrdinalIgnoreCase)) return "json";
+        if (ct.Contains("yaml", StringComparison.OrdinalIgnoreCase)) return "yaml";
+        if (ct.Contains("xml",  StringComparison.OrdinalIgnoreCase) ||
+            ct.Contains("xhtml", StringComparison.OrdinalIgnoreCase)) return "xml";
+        if (ct.Contains("html", StringComparison.OrdinalIgnoreCase)) return "html";
+        return string.Empty;
     }
 
     /// <summary>

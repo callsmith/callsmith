@@ -345,20 +345,8 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     /// Global variables are loaded first; active environment variables take precedence
     /// and override global variables with the same name.
     /// </summary>
-    private IReadOnlyList<EnvVarSuggestion> BuildEnvVarSuggestions()
-    {
-        var merged = new Dictionary<string, EnvironmentVariable>(StringComparer.Ordinal);
-        foreach (var v in _globalEnvironment.Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
-            merged[v.Name] = v;
-        if (_activeEnvironment is not null)
-            foreach (var v in _activeEnvironment.Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
-                merged[v.Name] = v;
-
-        return merged.Values
-            .OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(v => new EnvVarSuggestion(v.Name, v.IsSecret ? "\u2022\u2022\u2022\u2022\u2022" : v.Value))
-            .ToList();
-    }
+    private IReadOnlyList<EnvVarSuggestion> BuildEnvVarSuggestions() =>
+        EnvironmentVariableSuggestionsHelper.Build(_globalEnvironment.Variables, _activeEnvironment?.Variables);
 
     /// <summary>
     /// Called by the view after the folder settings dialog window is closed.

@@ -591,13 +591,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         get
         {
             if (Response is null) return string.Empty;
-            var ct = Response.Headers.TryGetValue(WellKnownHeaders.ContentType, out var v) ? v : string.Empty;
-            if (ct.Contains("json", StringComparison.OrdinalIgnoreCase)) return "json";
-            if (ct.Contains("yaml", StringComparison.OrdinalIgnoreCase)) return "yaml";
-            if (ct.Contains("xml",  StringComparison.OrdinalIgnoreCase) ||
-                ct.Contains("xhtml", StringComparison.OrdinalIgnoreCase)) return "xml";
-            if (ct.Contains("html", StringComparison.OrdinalIgnoreCase)) return "html";
-            return string.Empty;
+            var ct = Response.Headers.TryGetValue(WellKnownHeaders.ContentType, out var v) ? v : null;
+            return ResponseFormatter.GetLanguage(ct);
         }
     }
 
@@ -1196,17 +1191,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
     /// </summary>
     private void UpdateEnvSuggestions()
     {
-        // Merge: global vars first, active env overrides
-        var merged = new Dictionary<string, EnvironmentVariable>(StringComparer.Ordinal);
-        foreach (var v in _globalEnvironment.Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
-            merged[v.Name] = v;
-        if (_activeEnvironment is not null)
-            foreach (var v in _activeEnvironment.Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name)))
-                merged[v.Name] = v;
-
-        var suggestions = merged.Values
-            .Select(v => new EnvVarSuggestion(v.Name, v.IsSecret ? "\u2022\u2022\u2022\u2022\u2022" : v.Value))
-            .ToList();
+        var suggestions = EnvironmentVariableSuggestionsHelper.Build(
+            _globalEnvironment.Variables,
+            _activeEnvironment?.Variables);
 
         EnvVarNames = suggestions;
         Headers.SetSuggestions(suggestions);
@@ -1304,7 +1291,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         var headers = ResolveHeaders(Headers.GetEnabledPairs(), env.Variables);
 
         var effectiveAuth = await GetEffectiveAuthAsync(ct);
-        ApplyAuthHeaders(headers, requestUrl, env.Variables, out requestUrl, effectiveAuth);
+        HistorySentViewBuilder.ApplyAuthHeaders(effectiveAuth, headers, env.Variables, ref requestUrl);
 
         requestUrl = VariableSubstitutionService.Substitute(requestUrl, env) ?? requestUrl;
 
@@ -1961,6 +1948,11 @@ public sealed partial class RequestTabViewModel : ObservableObject
             ?? new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
     }
 
+    /// <summary>
+    /// Applies the auth configuration to <paramref name="headers"/> and <paramref name="url"/>
+    /// with variable-binding collection support for the send pipeline.
+    /// The non-collecting variant (for cURL preview) is <see cref="HistorySentViewBuilder.ApplyAuthHeaders"/>.
+    /// </summary>
     private static void ApplyAuthHeaders(
         Dictionary<string, string> headers,
         string requestUrl,
@@ -2074,16 +2066,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 return;
 
             var snapshot = latest.ResponseSnapshot;
-            var response = new ResponseModel
-            {
-                StatusCode = snapshot.StatusCode,
-                ReasonPhrase = snapshot.ReasonPhrase,
-                Headers = snapshot.Headers,
-                Body = snapshot.Body,
-                BodyBytes = System.Text.Encoding.UTF8.GetBytes(snapshot.Body ?? string.Empty),
-                FinalUrl = snapshot.FinalUrl,
-                Elapsed = TimeSpan.FromMilliseconds(snapshot.ElapsedMs),
-            };
+            var response = snapshot.ToResponseModel();
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
