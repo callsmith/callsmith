@@ -93,6 +93,9 @@ public partial class App : Application
         // Core -- environment variable suggestions used by completion UIs
         services.AddSingleton<IEnvironmentVariableSuggestionService, EnvironmentVariableSuggestionService>();
 
+        // Core -- request assembly (preparation of request models for sending)
+        services.AddSingleton<IRequestAssemblyService, RequestAssemblyService>();
+
         // Core -- collection preferences
         services.AddSingleton<ICollectionPreferencesService, FileSystemCollectionPreferencesService>();
 

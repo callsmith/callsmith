@@ -28,6 +28,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private readonly IDynamicVariableEvaluator? _dynamicEvaluator;
     private readonly IEnvironmentMergeService _mergeService;
     private readonly IEnvironmentVariableSuggestionService _environmentVariableSuggestionService;
+    private readonly IRequestAssemblyService _requestAssemblyService;
     private readonly IMessenger _messenger;
     private readonly Action<RequestTabViewModel> _requestClose;
     private Action<RequestTabViewModel>? _requestGlobalCloseGuard;
@@ -718,7 +719,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         IHistoryService? historyService = null,
         IEnvironmentService? environmentService = null,
         IEnvironmentMergeService? mergeService = null,
-        IEnvironmentVariableSuggestionService? environmentVariableSuggestionService = null)
+        IEnvironmentVariableSuggestionService? environmentVariableSuggestionService = null,
+        IRequestAssemblyService? requestAssemblyService = null)
     {
         ArgumentNullException.ThrowIfNull(transportRegistry);
         ArgumentNullException.ThrowIfNull(collectionService);
@@ -730,6 +732,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _dynamicEvaluator = dynamicEvaluator;
         _mergeService = mergeService ?? new EnvironmentMergeService(dynamicEvaluator);
         _environmentVariableSuggestionService = environmentVariableSuggestionService ?? new EnvironmentVariableSuggestionService();
+        _requestAssemblyService = requestAssemblyService ?? new RequestAssemblyService(collectionService, _mergeService);
         _messenger = messenger;
         _requestClose = requestClose;
         _historyService = historyService;
@@ -1380,92 +1383,60 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
         try
         {
-            var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, ct: ct);
-            var secretNames = BuildSecretVarNames();
-            var sentBindings = new List<VariableBinding>();
-
-            var headers = ResolveHeaders(Headers.GetEnabledPairs(), env.Variables, env.MockGenerators, secretNames, sentBindings);
-
-            var pathParamValues = PathParams.GetEnabledPairs()
-                .Where(p => !string.IsNullOrWhiteSpace(p.Value))
-                .ToDictionary(
-                    p => p.Key,
-                    p => VariableSubstitutionService.SubstituteCollecting(p.Value, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Value);
-
-            var requestUrl = PathTemplateHelper.ApplyPathParams(Url, pathParamValues);
-
-            // Substitute variables in query param keys/values BEFORE URL-encoding.
-            var substitutedQueryParams = QueryParams.GetEnabledPairs()
-                .Select(p => new KeyValuePair<string, string>(
-                    VariableSubstitutionService.SubstituteCollecting(p.Key, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Key,
-                    VariableSubstitutionService.SubstituteCollecting(p.Value, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Value))
-                .ToList();
-
-            requestUrl = QueryStringHelper.AppendQueryParams(requestUrl, substitutedQueryParams);
-
-            var effectiveAuth = await GetEffectiveAuthAsync(ct).ConfigureAwait(false);
-            ApplyAuthHeaders(headers, requestUrl, env.Variables, out requestUrl, effectiveAuth, env.MockGenerators, secretNames, sentBindings);
-
-            // Substitute any remaining {{tokens}} in the base URL / path.
-            requestUrl = VariableSubstitutionService.SubstituteCollecting(requestUrl, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? requestUrl;
-
-            var resolvedBody = SelectedBodyType is
-                CollectionRequest.BodyTypes.Json or CollectionRequest.BodyTypes.Xml or
-                CollectionRequest.BodyTypes.Yaml or CollectionRequest.BodyTypes.Text or
-                CollectionRequest.BodyTypes.Other
-                && !string.IsNullOrEmpty(Body)
-                ? VariableSubstitutionService.SubstituteCollecting(Body, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? Body
-                : null;
-
-            // For form-encoded bodies, build the URL-encoded string from FormParams.
-            if (SelectedBodyType == CollectionRequest.BodyTypes.Form)
+            // Build request assembly input from current ViewModel state.
+            var assemblyInput = new RequestAssemblyInput
             {
-                var formPairs = FormParams.GetEnabledPairs()
-                    .Select(p => new KeyValuePair<string, string>(
-                        VariableSubstitutionService.SubstituteCollecting(p.Key, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Key,
-                        VariableSubstitutionService.SubstituteCollecting(p.Value, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Value))
-                    .ToList();
-                if (formPairs.Count > 0)
-                    resolvedBody = string.Join("&",
-                        formPairs.Select(p =>
-                            Uri.EscapeDataString(p.Key) + "=" + Uri.EscapeDataString(p.Value)));
-            }
-
-            // For multipart bodies, collect form params for proper MultipartFormDataContent.
-            IReadOnlyList<KeyValuePair<string, string>>? multipartFormParams = null;
-            if (SelectedBodyType == CollectionRequest.BodyTypes.Multipart)
-            {
-                multipartFormParams = FormParams.GetEnabledPairs()
-                    .Select(p => new KeyValuePair<string, string>(
-                        VariableSubstitutionService.SubstituteCollecting(p.Key, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Key,
-                        VariableSubstitutionService.SubstituteCollecting(p.Value, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Value))
-                    .ToList();
-            }
-
-            // For file bodies, pass the loaded bytes directly.
-            byte[]? fileBodyBytes = SelectedBodyType == CollectionRequest.BodyTypes.File
-                ? _fileBodyBytes
-                : null;
-
-            var request = new RequestModel
-            {
-                Method = new HttpMethod(SelectedMethod),
-                Url = requestUrl,
-                Headers = headers,
-                Body = resolvedBody,
-                BodyBytes = fileBodyBytes,
-                MultipartFormParams = multipartFormParams,
-                ContentType = GetContentType(),
+                Method = SelectedMethod,
+                Url = Url,
+                Headers = Headers.GetEnabledPairs(),
+                PathParams = PathParams.GetEnabledPairs(),
+                QueryParams = QueryParams.GetEnabledPairs(),
+                BodyType = SelectedBodyType,
+                BodyText = Body,
+                FormParams = FormParams.GetEnabledPairs(),
+                FileBodyBytes = SelectedBodyType == CollectionRequest.BodyTypes.File ? _fileBodyBytes : null,
+                FileBodyName = SelectedBodyType == CollectionRequest.BodyTypes.File ? _fileBodyName : null,
+                Auth = new AuthConfig
+                {
+                    AuthType = AuthType,
+                    Token = string.IsNullOrEmpty(AuthToken) ? null : AuthToken,
+                    Username = string.IsNullOrEmpty(AuthUsername) ? null : AuthUsername,
+                    Password = string.IsNullOrEmpty(AuthPassword) ? null : AuthPassword,
+                    ApiKeyName = string.IsNullOrEmpty(AuthApiKeyName) ? null : AuthApiKeyName,
+                    ApiKeyValue = string.IsNullOrEmpty(AuthApiKeyValue) ? null : AuthApiKeyValue,
+                    ApiKeyIn = AuthApiKeyIn,
+                },
+                MockGenerators = null, // Will be resolved by service during merge.
             };
 
-            var transport = _transportRegistry.Resolve(request);
-            Response = await transport.SendAsync(request, ct);
+            // Assemble the request using the Core service.
+            var assembled = await _requestAssemblyService.AssembleAsync(
+                assemblyInput,
+                _globalEnvironment,
+                _activeEnvironment,
+                SourceFilePath,
+                ct);
+
+            // Send the assembled request.
+            var transport = _transportRegistry.Resolve(assembled.RequestModel);
+            Response = await transport.SendAsync(assembled.RequestModel, ct);
             IsResponseFromHistory = false;
             HistoryResponseDate = null;
-                var sentAt = DateTimeOffset.UtcNow - (Response?.Elapsed ?? TimeSpan.Zero);
 
-                if (_historyService is not null && Response is not null)
-                    _ = RecordHistoryAsync(env, Response, requestUrl, sentAt, effectiveAuth, sentBindings);
+            // Record to history if available.
+            var sentAt = DateTimeOffset.UtcNow - (Response?.Elapsed ?? TimeSpan.Zero);
+            if (_historyService is not null && Response is not null)
+            {
+                // Merge environment for history recording context.
+                var env = await _mergeService.MergeAsync(
+                    CollectionRootPath,
+                    _globalEnvironment,
+                    _activeEnvironment,
+                    ct: ct);
+
+                // Fire-and-forget history recording. Eventually should be awaited or queued.
+                _ = RecordHistoryAsync(env, Response, assembled.ResolvedUrl, sentAt, assembled.EffectiveAuth, assembled.VariableBindings);
+            }
 
             // If this is a saved request, update the dynamic variable cache for any
             // environment variables that reference this request, so subsequent resolutions
