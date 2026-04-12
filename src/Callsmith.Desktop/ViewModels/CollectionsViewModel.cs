@@ -1167,6 +1167,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
             _watcher.Created += OnWatcherEvent;
             _watcher.Deleted += OnWatcherEvent;
             _watcher.Renamed += OnWatcherEvent;
+            _watcher.Error += OnWatcherError;
         }
         catch (Exception ex)
         {
@@ -1214,6 +1215,21 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
 
             _ = DebouncedRefreshAsync(ct);
         });
+    }
+
+    private void OnWatcherError(object sender, ErrorEventArgs e)
+    {
+        _logger.LogWarning(e.GetException(), "FileSystemWatcher error for '{Path}'. Restarting watcher.", CollectionPath);
+
+        if (string.IsNullOrWhiteSpace(CollectionPath))
+            return;
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            StopWatcher();
+            StartWatcher(CollectionPath);
+            _ = DebouncedRefreshAsync(default);
+        }, DispatcherPriority.Background);
     }
 
     private async Task DebouncedRefreshAsync(CancellationToken ct)

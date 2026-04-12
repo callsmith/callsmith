@@ -300,7 +300,7 @@ public sealed class HistoryRepository : IHistoryService
             })
             .ToList();
 
-        return await Task.FromResult(entry with { VariableBindings = revealedBindings });
+        return entry with { VariableBindings = revealedBindings };
     }
 
     /// <inheritdoc/>

@@ -475,7 +475,8 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     }
 
     private async Task PersistRenamedRequestReferencesAsync(
-        IReadOnlyList<EnvironmentListItemViewModel> updatedEnvironments)
+        IReadOnlyList<EnvironmentListItemViewModel> updatedEnvironments,
+        CancellationToken ct = default)
     {
         foreach (var environment in updatedEnvironments)
         {
@@ -490,7 +491,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                     };
 
                     await _environmentService
-                        .SaveGlobalEnvironmentAsync(modelWithPreview, CancellationToken.None)
+                        .SaveGlobalEnvironmentAsync(modelWithPreview, ct)
                         .ConfigureAwait(true);
 
                     environment.MarkSaved(modelWithPreview);
@@ -499,7 +500,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 else
                 {
                     await _environmentService
-                        .SaveEnvironmentAsync(model, CancellationToken.None)
+                        .SaveEnvironmentAsync(model, ct)
                         .ConfigureAwait(true);
 
                     environment.MarkSaved(model);

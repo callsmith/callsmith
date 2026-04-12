@@ -141,7 +141,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
 
     /// <summary>Accepts the pending name and delegates disk rename to the parent ViewModel.</summary>
     [RelayCommand]
-    private async Task CommitRenameAsync()
+    private async Task CommitRenameAsync(CancellationToken ct = default)
     {
         var trimmed = PendingName.Trim();
 
@@ -160,7 +160,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         RenameError = string.Empty;
         IsRenaming = false;
 
-        await _onRenameCommit(this, trimmed, CancellationToken.None).ConfigureAwait(true);
+        await _onRenameCommit(this, trimmed, ct).ConfigureAwait(true);
     }
 
     /// <summary>Cancels inline rename without persisting changes.</summary>
@@ -175,17 +175,17 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
 
     /// <summary>Requests that the parent ViewModel deletes this environment.</summary>
     [RelayCommand(CanExecute = nameof(CanModify))]
-    private async Task DeleteAsync()
+    private async Task DeleteAsync(CancellationToken ct = default)
     {
-        await _onDeleteRequest(this, CancellationToken.None).ConfigureAwait(true);
+        await _onDeleteRequest(this, ct).ConfigureAwait(true);
     }
 
     /// <summary>Requests that the parent ViewModel clones this environment.</summary>
     [RelayCommand(CanExecute = nameof(CanClone))]
-    private async Task CloneAsync()
+    private async Task CloneAsync(CancellationToken ct = default)
     {
         if (_onCloneRequest is not null)
-            await _onCloneRequest(this, CancellationToken.None).ConfigureAwait(true);
+            await _onCloneRequest(this, ct).ConfigureAwait(true);
     }
 
     private bool CanModify => !IsGlobal;
