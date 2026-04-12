@@ -1434,8 +1434,13 @@ public sealed partial class RequestTabViewModel : ObservableObject
                     _activeEnvironment,
                     ct: ct);
 
-                // Fire-and-forget history recording. Eventually should be awaited or queued.
-                _ = RecordHistoryAsync(env, Response, assembled.ResolvedUrl, sentAt, assembled.EffectiveAuth, assembled.VariableBindings);
+                await RecordHistoryAsync(
+                    env,
+                    Response,
+                    assembled.ResolvedUrl,
+                    sentAt,
+                    assembled.EffectiveAuth,
+                    assembled.VariableBindings);
             }
 
             // If this is a saved request, update the dynamic variable cache for any
