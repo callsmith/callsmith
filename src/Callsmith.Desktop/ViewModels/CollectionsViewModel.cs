@@ -32,6 +32,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     private readonly ICollectionImportService _importService;
     private readonly ICollectionPreferencesService _preferencesService;
     private readonly IHistoryService _historyService;
+    private readonly ICollectionNamingService _collectionNamingService;
     private readonly IEnvironmentVariableSuggestionService _environmentVariableSuggestionService;
     private readonly ILogger<CollectionsViewModel> _logger;
 
@@ -152,9 +153,10 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         ICollectionImportService importService,
         ICollectionPreferencesService preferencesService,
         IHistoryService historyService,
-        IEnvironmentVariableSuggestionService? environmentVariableSuggestionService,
         IMessenger messenger,
-        ILogger<CollectionsViewModel> logger)
+        ILogger<CollectionsViewModel> logger,
+        ICollectionNamingService? collectionNamingService = null,
+        IEnvironmentVariableSuggestionService? environmentVariableSuggestionService = null)
         : base(messenger)
     {
         ArgumentNullException.ThrowIfNull(collectionService);
@@ -167,6 +169,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         _importService = importService;
         _preferencesService = preferencesService;
         _historyService = historyService;
+        _collectionNamingService = collectionNamingService ?? new CollectionNamingService();
         _environmentVariableSuggestionService = environmentVariableSuggestionService ?? new EnvironmentVariableSuggestionService();
         _logger = logger;
         IsActive = true;
@@ -570,7 +573,10 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     {
         if (!folder.IsFolder) return;
 
-        var finalName = PickUniqueRequestName(folder.FolderPath!, "New Request");
+        var finalName = await _collectionNamingService.PickUniqueRequestNameAsync(
+            folder.FolderPath!,
+            "New Request",
+            _collectionService.RequestFileExtension);
 
         _suppressWatcher = true;
         try
@@ -595,14 +601,16 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
 
     /// <summary>Opens the create-folder dialog with a unique default name.</summary>
     [RelayCommand]
-    public void CreateFolder(CollectionTreeItemViewModel folder)
+    public async Task CreateFolder(CollectionTreeItemViewModel folder)
     {
         if (!folder.IsFolder) return;
 
         _renameTargetNode = null;
         _renameParentFolder = folder;
         RenameDialogTitle = "New Folder";
-        RenameDialogValue = PickUniqueFolderName(folder.FolderPath!, "New Folder");
+        RenameDialogValue = await _collectionNamingService.PickUniqueFolderNameAsync(
+            folder.FolderPath!,
+            "New Folder");
         RenameDialogError = string.Empty;
         RenameDialogConfirmLabel = "Create";
         IsRenameDialogOpen = true;
@@ -988,25 +996,6 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         {
             _logger.LogWarning(ex, "Failed to update recent collections");
         }
-    }
-
-    private string PickUniqueRequestName(string folderPath, string baseName)
-    {
-        var ext = _collectionService.RequestFileExtension;
-        var name = baseName;
-        var counter = 1;
-        while (File.Exists(Path.Combine(folderPath, name + ext)))
-            name = $"{baseName} {++counter}";
-        return name;
-    }
-
-    private static string PickUniqueFolderName(string parentPath, string baseName)
-    {
-        var name = baseName;
-        var counter = 1;
-        while (Directory.Exists(Path.Combine(parentPath, name)))
-            name = $"{baseName} {++counter}";
-        return name;
     }
 
     private static bool IsAncestor(

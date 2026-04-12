@@ -5,7 +5,7 @@ namespace Callsmith.Core.Services;
 
 public sealed class EnvironmentVariableSuggestionService : IEnvironmentVariableSuggestionService
 {
-    private const string SecretMask = "*****";
+    private const string SecretMask = "\u2022\u2022\u2022\u2022\u2022";
 
     public IReadOnlyList<EnvironmentVariableSuggestion> Build(params IEnumerable<EnvironmentVariable>?[] layers)
     {

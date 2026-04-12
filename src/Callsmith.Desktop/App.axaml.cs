@@ -88,6 +88,7 @@ public partial class App : Application
 
         // Core -- environment variable merge (shared algorithm used by both send and preview)
         services.AddSingleton<IEnvironmentMergeService, EnvironmentMergeService>();
+        services.AddSingleton<ICollectionNamingService, CollectionNamingService>();
 
         // Core -- environment variable suggestions used by completion UIs
         services.AddSingleton<IEnvironmentVariableSuggestionService, EnvironmentVariableSuggestionService>();

@@ -26,7 +26,7 @@ public sealed class EnvironmentVariableSuggestionServiceTests
 
         result.Should().ContainEquivalentOf(new EnvironmentVariableSuggestion("baseUrl", "https://active.example"));
         result.Should().ContainEquivalentOf(new EnvironmentVariableSuggestion("region", "us-east-1"));
-        result.Should().ContainEquivalentOf(new EnvironmentVariableSuggestion("token", "*****"));
+        result.Should().ContainEquivalentOf(new EnvironmentVariableSuggestion("token", "\u2022\u2022\u2022\u2022\u2022"));
     }
 
     [Fact]
