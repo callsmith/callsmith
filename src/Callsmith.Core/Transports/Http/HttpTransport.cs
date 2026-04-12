@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.Helpers;
 using Callsmith.Core.Models;
 using Microsoft.Extensions.Logging;
 
@@ -138,12 +139,13 @@ public sealed class HttpTransport : ITransport, IDisposable
     private static HttpRequestMessage BuildHttpRequest(RequestModel request)
     {
         var message = new HttpRequestMessage(request.Method, request.Url);
+        var deferredContentHeaders = new List<KeyValuePair<string, string>>();
 
         foreach (var (key, value) in request.Headers)
         {
             // Content headers must be set on the content, not the request.
             if (!message.Headers.TryAddWithoutValidation(key, value))
-                message.Content?.Headers.TryAddWithoutValidation(key, value);
+                deferredContentHeaders.Add(new KeyValuePair<string, string>(key, value));
         }
 
         if (request.BodyBytes is not null)
@@ -167,6 +169,17 @@ public sealed class HttpTransport : ITransport, IDisposable
 
             if (request.ContentType is not null)
                 message.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(request.ContentType);
+        }
+
+        if (message.Content is not null)
+        {
+            foreach (var (key, value) in deferredContentHeaders)
+            {
+                if (key.Equals(WellKnownHeaders.ContentType, StringComparison.OrdinalIgnoreCase))
+                    message.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(value);
+                else
+                    message.Content.Headers.TryAddWithoutValidation(key, value);
+            }
         }
 
         return message;

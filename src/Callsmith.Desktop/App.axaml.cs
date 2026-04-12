@@ -96,6 +96,9 @@ public partial class App : Application
         // Core -- request assembly (preparation of request models for sending)
         services.AddSingleton<IRequestAssemblyService, RequestAssemblyService>();
 
+        // Core -- command palette request flattening + fuzzy filtering
+        services.AddSingleton<ICommandPaletteSearchService, CommandPaletteSearchService>();
+
         // Core -- collection preferences
         services.AddSingleton<ICollectionPreferencesService, FileSystemCollectionPreferencesService>();
 
