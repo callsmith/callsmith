@@ -98,7 +98,15 @@ public interface IHistoryService
     /// <see cref="VariableBinding.ResolvedValue"/> fields decrypted for in-memory use.
     /// The decrypted values are never written back to storage.
     /// </summary>
-    Task<HistoryEntry> RevealSensitiveFieldsAsync(HistoryEntry entry, CancellationToken ct = default);
+    /// <summary>
+    /// Returns a copy of <paramref name="entry"/> with <see cref="VariableBinding.CiphertextValue"/>
+    /// bindings decrypted into <see cref="VariableBinding.ResolvedValue"/> for on-screen display.
+    /// </summary>
+    /// <remarks>
+    /// This is a pure in-memory operation — no I/O occurs. The method signature uses
+    /// <see cref="ValueTask{TResult}"/> to avoid a heap allocation on the hot path.
+    /// </remarks>
+    ValueTask<HistoryEntry> RevealSensitiveFieldsAsync(HistoryEntry entry, CancellationToken ct = default);
 
     /// <summary>
     /// Permanently deletes a single history entry by surrogate id.

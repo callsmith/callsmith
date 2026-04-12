@@ -275,7 +275,7 @@ public sealed class HistoryRepository : IHistoryService
     }
 
     /// <inheritdoc/>
-    public async Task<HistoryEntry> RevealSensitiveFieldsAsync(
+    public ValueTask<HistoryEntry> RevealSensitiveFieldsAsync(
         HistoryEntry entry,
         CancellationToken ct = default)
     {
@@ -300,7 +300,7 @@ public sealed class HistoryRepository : IHistoryService
             })
             .ToList();
 
-        return await Task.FromResult(entry with { VariableBindings = revealedBindings });
+        return ValueTask.FromResult(entry with { VariableBindings = revealedBindings });
     }
 
     /// <inheritdoc/>

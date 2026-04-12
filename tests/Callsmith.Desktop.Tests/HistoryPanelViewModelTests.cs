@@ -662,7 +662,7 @@ public sealed class HistoryPanelViewModelTests
 
         var historyService = Substitute.For<IHistoryService>();
         historyService.RevealSensitiveFieldsAsync(originalEntry, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(revealedEntry));
+            .Returns(ValueTask.FromResult(revealedEntry));
 
         ResendFromHistoryMessage? receivedMessage = null;
         var messenger = new WeakReferenceMessenger();
@@ -854,7 +854,7 @@ public sealed class HistoryPanelViewModelTests
 
         var historyService = Substitute.For<IHistoryService>();
         historyService.RevealSensitiveFieldsAsync(Arg.Any<HistoryEntry>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(entry));
+            .Returns(ValueTask.FromResult(entry));
 
         var sut = new HistoryPanelViewModel(historyService);
         sut.SelectedEntry = new HistoryEntryRowViewModel(entry);

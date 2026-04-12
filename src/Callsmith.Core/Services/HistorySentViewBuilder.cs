@@ -76,9 +76,14 @@ public static class HistorySentViewBuilder
                 headers[h.Key] = h.Value;
         }
 
-        // 5. Apply auth headers (mirrors RequestTabViewModel.ApplyAuthHeaders).
+        // 5. Apply auth headers (delegates to the shared AuthHeaderHelper so logic is not duplicated).
         // Use EffectiveAuth when available so that inherited auth is correctly reflected.
-        ApplyAuthHeaders(snapshot.EffectiveAuth ?? snapshot.Auth, headers, vars, ref requestUrl);
+        AuthHeaderHelper.ApplyAuthHeaders(
+            snapshot.EffectiveAuth ?? snapshot.Auth,
+            headers,
+            requestUrl,
+            out requestUrl,
+            vars);
 
         // 6. Substitute any remaining tokens in the final URL.
         requestUrl = Substitute(requestUrl, vars) ?? requestUrl;
@@ -174,9 +179,7 @@ public static class HistorySentViewBuilder
     /// <summary>
     /// Applies the auth configuration to <paramref name="headers"/> and <paramref name="url"/>
     /// using variable substitution from <paramref name="vars"/>.
-    /// This is the canonical, non-collecting implementation of auth header injection — the same
-    /// algorithm used at actual send time, without variable-binding collection.
-    /// Used both internally by <see cref="Build"/> and by the cURL command preview.
+    /// Delegates to <see cref="AuthHeaderHelper.ApplyAuthHeaders"/> — see that method for full documentation.
     /// </summary>
     public static void ApplyAuthHeaders(
         AuthConfig auth,
@@ -184,36 +187,6 @@ public static class HistorySentViewBuilder
         IReadOnlyDictionary<string, string> vars,
         ref string url)
     {
-        switch (auth.AuthType)
-        {
-            case AuthConfig.AuthTypes.Bearer when !string.IsNullOrEmpty(auth.Token):
-                var token = Substitute(auth.Token, vars) ?? auth.Token;
-                headers[WellKnownHeaders.Authorization] = $"Bearer {token}";
-                break;
-
-            case AuthConfig.AuthTypes.Basic when !string.IsNullOrEmpty(auth.Username):
-                var username = Substitute(auth.Username, vars) ?? auth.Username;
-                var password = Substitute(auth.Password ?? string.Empty, vars) ?? string.Empty;
-                var encoded = Convert.ToBase64String(
-                    Encoding.UTF8.GetBytes($"{username}:{password}"));
-                headers[WellKnownHeaders.Authorization] = $"Basic {encoded}";
-                break;
-
-            case AuthConfig.AuthTypes.ApiKey
-                when !string.IsNullOrEmpty(auth.ApiKeyName)
-                  && !string.IsNullOrEmpty(auth.ApiKeyValue):
-                var resolvedName = Substitute(auth.ApiKeyName, vars) ?? auth.ApiKeyName;
-                var resolvedValue = Substitute(auth.ApiKeyValue, vars) ?? auth.ApiKeyValue;
-                if (string.IsNullOrWhiteSpace(resolvedName))
-                    break;
-
-                if (auth.ApiKeyIn == AuthConfig.ApiKeyLocations.Header)
-                    headers[resolvedName] = resolvedValue;
-                else
-                    url = QueryStringHelper.AppendQueryParams(
-                        url,
-                        [new KeyValuePair<string, string>(resolvedName, resolvedValue)]);
-                break;
-        }
+        AuthHeaderHelper.ApplyAuthHeaders(auth, headers, url, out url, vars);
     }
 }

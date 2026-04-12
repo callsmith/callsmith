@@ -1953,8 +1953,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     /// <summary>
     /// Applies the auth configuration to <paramref name="headers"/> and <paramref name="url"/>
-    /// with variable-binding collection support for the send pipeline.
-    /// The non-collecting variant (for cURL preview) is <see cref="HistorySentViewBuilder.ApplyAuthHeaders"/>.
+    /// with optional variable-binding collection for the send pipeline.
+    /// Delegates to <see cref="AuthHeaderHelper.ApplyAuthHeaders"/> — the canonical Core implementation.
     /// </summary>
     private static void ApplyAuthHeaders(
         Dictionary<string, string> headers,
@@ -1966,41 +1966,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         IReadOnlySet<string>? secretVariableNames = null,
         IList<VariableBinding>? collector = null)
     {
-        url = requestUrl;
-
-        string Resolve(string? template) =>
-            collector is not null && secretVariableNames is not null
-                ? VariableSubstitutionService.SubstituteCollecting(template, vars, secretVariableNames, collector, mockGenerators) ?? template ?? string.Empty
-                : VariableSubstitutionService.Substitute(template, vars) ?? template ?? string.Empty;
-
-        switch (auth.AuthType)
-        {
-            case AuthConfig.AuthTypes.Bearer when !string.IsNullOrEmpty(auth.Token):
-                var token = Resolve(auth.Token);
-                headers[WellKnownHeaders.Authorization] = $"Bearer {token}";
-                break;
-            case AuthConfig.AuthTypes.Basic when !string.IsNullOrEmpty(auth.Username):
-                var username = Resolve(auth.Username);
-                var password = Resolve(auth.Password);
-                var encoded = Convert.ToBase64String(
-                    Encoding.UTF8.GetBytes($"{username}:{password}"));
-                headers[WellKnownHeaders.Authorization] = $"Basic {encoded}";
-                break;
-            case AuthConfig.AuthTypes.ApiKey when !string.IsNullOrEmpty(auth.ApiKeyName)
-                                               && !string.IsNullOrEmpty(auth.ApiKeyValue):
-                var resolvedName = Resolve(auth.ApiKeyName);
-                var resolvedValue = Resolve(auth.ApiKeyValue);
-                if (string.IsNullOrWhiteSpace(resolvedName))
-                    break;
-
-                if (auth.ApiKeyIn == AuthConfig.ApiKeyLocations.Header)
-                    headers[resolvedName] = resolvedValue;
-                else
-                    url = QueryStringHelper.AppendQueryParams(
-                        requestUrl,
-                        [new KeyValuePair<string, string>(resolvedName, resolvedValue)]);
-                break;
-        }
+        AuthHeaderHelper.ApplyAuthHeaders(
+            auth, headers, requestUrl, out url, vars, mockGenerators, secretVariableNames, collector);
     }
 
     private static string GetBaseUrl(string value) => QueryStringHelper.GetBaseUrl(value);
