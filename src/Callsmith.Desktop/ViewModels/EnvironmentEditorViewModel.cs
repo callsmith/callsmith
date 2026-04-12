@@ -36,6 +36,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     private readonly ICollectionService _collectionService;
     private readonly IDynamicVariableEvaluator _dynamicEvaluator;
     private readonly IEnvironmentMergeService _mergeService;
+    private readonly IEnvironmentVariableSuggestionService _environmentVariableSuggestionService;
     private readonly ILogger<EnvironmentEditorViewModel> _logger;
 
     private string? _collectionFolderPath;
@@ -144,6 +145,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         IDynamicVariableEvaluator dynamicEvaluator,
         IMessenger messenger,
         ILogger<EnvironmentEditorViewModel> logger,
+        IEnvironmentVariableSuggestionService? environmentVariableSuggestionService = null,
         IEnvironmentMergeService? mergeService = null)
         : base(messenger)
     {
@@ -155,6 +157,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         _collectionService = collectionService;
         _dynamicEvaluator = dynamicEvaluator;
         _mergeService = mergeService ?? new EnvironmentMergeService(dynamicEvaluator);
+        _environmentVariableSuggestionService = environmentVariableSuggestionService ?? new EnvironmentVariableSuggestionService();
         _logger = logger;
         IsActive = true;
 
@@ -796,7 +799,10 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 globalVars = global.BuildModel().Variables;
         }
 
-        return EnvironmentVariableSuggestionsHelper.Build(globalVars, env.BuildModel().Variables);
+        return _environmentVariableSuggestionService
+            .Build(globalVars, env.BuildModel().Variables)
+            .Select(s => new EnvVarSuggestion(s.Name, s.Value))
+            .ToList();
     }
 
     private void OnEnvironmentVariablesChanged(object? sender, EventArgs e)

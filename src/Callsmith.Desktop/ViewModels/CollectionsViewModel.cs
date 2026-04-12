@@ -32,6 +32,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     private readonly ICollectionImportService _importService;
     private readonly ICollectionPreferencesService _preferencesService;
     private readonly IHistoryService _historyService;
+    private readonly IEnvironmentVariableSuggestionService _environmentVariableSuggestionService;
     private readonly ILogger<CollectionsViewModel> _logger;
 
     private EnvironmentModel? _activeEnvironment;
@@ -151,6 +152,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         ICollectionImportService importService,
         ICollectionPreferencesService preferencesService,
         IHistoryService historyService,
+        IEnvironmentVariableSuggestionService? environmentVariableSuggestionService,
         IMessenger messenger,
         ILogger<CollectionsViewModel> logger)
         : base(messenger)
@@ -165,6 +167,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         _importService = importService;
         _preferencesService = preferencesService;
         _historyService = historyService;
+        _environmentVariableSuggestionService = environmentVariableSuggestionService ?? new EnvironmentVariableSuggestionService();
         _logger = logger;
         IsActive = true;
     }
@@ -346,7 +349,10 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     /// and override global variables with the same name.
     /// </summary>
     private IReadOnlyList<EnvVarSuggestion> BuildEnvVarSuggestions() =>
-        EnvironmentVariableSuggestionsHelper.Build(_globalEnvironment.Variables, _activeEnvironment?.Variables);
+        _environmentVariableSuggestionService
+            .Build(_globalEnvironment.Variables, _activeEnvironment?.Variables)
+            .Select(s => new EnvVarSuggestion(s.Name, s.Value))
+            .ToList();
 
     /// <summary>
     /// Called by the view after the folder settings dialog window is closed.

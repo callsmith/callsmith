@@ -27,6 +27,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private readonly ICollectionService _collectionService;
     private readonly IDynamicVariableEvaluator? _dynamicEvaluator;
     private readonly IEnvironmentMergeService _mergeService;
+    private readonly IEnvironmentVariableSuggestionService _environmentVariableSuggestionService;
     private readonly IMessenger _messenger;
     private readonly Action<RequestTabViewModel> _requestClose;
     private Action<RequestTabViewModel>? _requestGlobalCloseGuard;
@@ -716,7 +717,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         IDynamicVariableEvaluator? dynamicEvaluator = null,
         IHistoryService? historyService = null,
         IEnvironmentService? environmentService = null,
-        IEnvironmentMergeService? mergeService = null)
+        IEnvironmentMergeService? mergeService = null,
+        IEnvironmentVariableSuggestionService? environmentVariableSuggestionService = null)
     {
         ArgumentNullException.ThrowIfNull(transportRegistry);
         ArgumentNullException.ThrowIfNull(collectionService);
@@ -727,6 +729,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _collectionService = collectionService;
         _dynamicEvaluator = dynamicEvaluator;
         _mergeService = mergeService ?? new EnvironmentMergeService(dynamicEvaluator);
+        _environmentVariableSuggestionService = environmentVariableSuggestionService ?? new EnvironmentVariableSuggestionService();
         _messenger = messenger;
         _requestClose = requestClose;
         _historyService = historyService;
@@ -1191,9 +1194,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
     /// </summary>
     private void UpdateEnvSuggestions()
     {
-        var suggestions = EnvironmentVariableSuggestionsHelper.Build(
-            _globalEnvironment.Variables,
-            _activeEnvironment?.Variables);
+        var suggestions = _environmentVariableSuggestionService
+            .Build(_globalEnvironment.Variables, _activeEnvironment?.Variables)
+            .Select(s => new EnvVarSuggestion(s.Name, s.Value))
+            .ToList();
 
         EnvVarNames = suggestions;
         Headers.SetSuggestions(suggestions);
