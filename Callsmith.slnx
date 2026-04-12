@@ -6,6 +6,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Callsmith.Core.Tests/Callsmith.Core.Tests.csproj" />
+    <Project Path="tests/Callsmith.Data.Tests/Callsmith.Data.Tests.csproj" />
     <Project Path="tests/Callsmith.Desktop.Tests/Callsmith.Desktop.Tests.csproj" />
   </Folder>
 </Solution>
