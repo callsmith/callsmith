@@ -1440,7 +1440,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
                     assembled.ResolvedUrl,
                     sentAt,
                     assembled.EffectiveAuth,
-                    assembled.VariableBindings);
+                    assembled.VariableBindings,
+                    ct);
             }
 
             // If this is a saved request, update the dynamic variable cache for any
@@ -2024,7 +2025,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         string resolvedUrl,
         DateTimeOffset sentAt,
         AuthConfig? effectiveAuth = null,
-        IReadOnlyList<VariableBinding>? sentBindings = null)
+        IReadOnlyList<VariableBinding>? sentBindings = null,
+        CancellationToken ct = default)
     {
         try
         {
@@ -2132,7 +2134,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 ResponseSnapshot = ResponseSnapshot.FromResponseModel(response),
             };
 
-            await _historyService!.RecordAsync(entry, CancellationToken.None);
+            await _historyService!.RecordAsync(entry, ct);
         }
         catch
         {

@@ -1212,16 +1212,26 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
             _watcherDebounce = new CancellationTokenSource();
             var ct = _watcherDebounce.Token;
 
-            Task.Delay(600, ct).ContinueWith(t =>
-            {
-                if (t.IsCanceled) return;
-                Dispatcher.UIThread.Post(async () =>
-                {
-                    if (!ct.IsCancellationRequested)
-                        await LoadCollectionAsync(CollectionPath, retainExpansion: true);
-                });
-            }, TaskScheduler.Default);
+            _ = DebouncedRefreshAsync(ct);
         });
+    }
+
+    private async Task DebouncedRefreshAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(600, ct).ConfigureAwait(false);
+            if (ct.IsCancellationRequested)
+                return;
+
+            await Dispatcher.UIThread.InvokeAsync(
+                () => LoadCollectionAsync(CollectionPath, retainExpansion: true),
+                DispatcherPriority.Background);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected for debounce cancellation when multiple watcher events arrive quickly.
+        }
     }
 
     /// <summary>
