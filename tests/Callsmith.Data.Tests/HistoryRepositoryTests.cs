@@ -4,6 +4,7 @@ using Callsmith.Data.Tests.TestHelpers;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using System.Collections.Concurrent;
 
 namespace Callsmith.Data.Tests;
 
@@ -185,6 +186,49 @@ public sealed class HistoryRepositoryTests
         var inA = await sut.QueryAsync(new HistoryFilter { Page = 0, PageSize = 10 });
         inA.TotalCount.Should().Be(1);
         inA.Entries[0].RequestName.Should().Be("A");
+    }
+
+    [Fact]
+    public async Task ConcurrentSwitchAndRecord_DoesNotThrow_AndPersistsAcrossCollections()
+    {
+        using var temp = new TempDirectory();
+        var collectionA = temp.CreateSubDirectory("collection-a");
+        var collectionB = temp.CreateSubDirectory("collection-b");
+
+        var encryption = Substitute.For<IHistoryEncryptionService>();
+        var sut = CreateSut(encryption);
+
+        var errors = new ConcurrentBag<Exception>();
+        var workers = Enumerable.Range(0, 4)
+            .Select(workerId => Task.Run(async () =>
+            {
+                try
+                {
+                    for (var i = 0; i < 30; i++)
+                    {
+                        var targetCollection = workerId % 2 == 0 ? collectionA : collectionB;
+                        await sut.SetCollectionAsync(targetCollection);
+                        await sut.RecordAsync(CreateEntry(requestName: $"w{workerId}-r{i}"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    errors.Add(ex);
+                }
+            }))
+            .ToArray();
+
+        await Task.WhenAll(workers);
+
+        errors.Should().BeEmpty();
+
+        await sut.SetCollectionAsync(collectionA);
+        var inA = await sut.GetCountAsync();
+
+        await sut.SetCollectionAsync(collectionB);
+        var inB = await sut.GetCountAsync();
+
+        (inA + inB).Should().Be(120);
     }
 
     private static HistoryRepository CreateSut(IHistoryEncryptionService encryption)
