@@ -267,15 +267,27 @@ public sealed partial class EnvironmentVariableItemViewModel : ObservableObject
         IsDynamicPreviewError = false;
         var cts = new CancellationTokenSource();
         _dynamicLoadingDelayCts = cts;
-        _ = Task.Delay(200, cts.Token).ContinueWith(
-            _ => Dispatcher.UIThread.Post(() =>
+        _ = StartDynamicLoadingDelayAsync(cts.Token);
+    }
+
+    private async Task StartDynamicLoadingDelayAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(200, ct).ConfigureAwait(false);
+            if (ct.IsCancellationRequested)
+                return;
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                if (!cts.IsCancellationRequested)
+                if (!ct.IsCancellationRequested)
                     IsDynamicPreviewLoading = true;
-            }),
-            CancellationToken.None,
-            TaskContinuationOptions.OnlyOnRanToCompletion,
-            TaskScheduler.Default);
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when a newer preview refresh supersedes this delayed state transition.
+        }
     }
 
     /// <summary>Marks the dynamic preview value as failed to resolve.</summary>

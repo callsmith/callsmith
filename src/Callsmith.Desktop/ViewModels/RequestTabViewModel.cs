@@ -46,6 +46,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private bool _syncingUrl;
     private bool _syncingPathParams;
     private long _historyHydrationVersion;
+    private CancellationTokenSource? _historyHydrationCts;
     private bool _closeAfterSaveAs;
 
     /// <summary>
@@ -1953,6 +1954,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private void QueueHistoryResponseRefresh()
     {
         var hydrationVersion = Interlocked.Increment(ref _historyHydrationVersion);
+        _historyHydrationCts?.Cancel();
+        _historyHydrationCts?.Dispose();
+        _historyHydrationCts = new CancellationTokenSource();
+        var ct = _historyHydrationCts.Token;
 
         Dispatcher.UIThread.Post(() =>
         {
@@ -1969,23 +1974,25 @@ public sealed partial class RequestTabViewModel : ObservableObject
             _ = HydrateResponseFromHistoryAsync(
                 requestId,
                 _activeEnvironment?.EnvironmentId,
-                hydrationVersion);
+                hydrationVersion,
+                ct);
         }, DispatcherPriority.Background);
     }
 
     private async Task HydrateResponseFromHistoryAsync(
         Guid requestId,
         Guid? environmentId,
-        long hydrationVersion)
+        long hydrationVersion,
+        CancellationToken ct)
     {
         try
         {
             // Run history query on thread pool to avoid blocking UI during app startup when
             // multiple tabs are being restored. Add a small delay to stagger concurrent requests.
-            await Task.Delay(10).ConfigureAwait(false);
+            await Task.Delay(10, ct).ConfigureAwait(false);
             
             var latest = await _historyService!
-                .GetLatestForRequestInEnvironmentAsync(requestId, environmentId, CancellationToken.None)
+                .GetLatestForRequestInEnvironmentAsync(requestId, environmentId, ct)
                 .ConfigureAwait(false);
 
             if (hydrationVersion != Interlocked.Read(ref _historyHydrationVersion))
@@ -2006,6 +2013,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 IsResponseFromHistory = true;
                 HistoryResponseDate = latest.SentAt;
             });
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when a newer hydration request supersedes this one.
         }
         catch
         {
