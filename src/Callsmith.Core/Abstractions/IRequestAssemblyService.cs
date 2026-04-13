@@ -16,7 +16,8 @@ public interface IRequestAssemblyService
     /// <param name="request">Request editor configuration (method, URL, headers, body, auth, params).</param>
     /// <param name="globalEnvironment">Global environment variables.</param>
     /// <param name="activeEnvironment">Active collection-level environment (may be null).</param>
-    /// <param name="collectionRootPath">Root file path of the collection (used for auth resolution).</param>
+    /// <param name="collectionRootPath">Root folder path of the collection (used for environment merging and cache scope).</param>
+    /// <param name="requestFilePath">Absolute path to the request file (used for inherited auth resolution).</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>
     /// An assembled and ready-to-send RequestModel with all variable substitution,
@@ -28,6 +29,7 @@ public interface IRequestAssemblyService
         EnvironmentModel globalEnvironment,
         EnvironmentModel? activeEnvironment,
         string collectionRootPath,
+        string requestFilePath,
         CancellationToken ct = default);
 }
 

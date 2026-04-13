@@ -176,7 +176,12 @@ public sealed class HttpTransport : ITransport, IDisposable
             foreach (var (key, value) in deferredContentHeaders)
             {
                 if (key.Equals(WellKnownHeaders.ContentType, StringComparison.OrdinalIgnoreCase))
-                    message.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(value);
+                {
+                    if (MediaTypeHeaderValue.TryParse(value, out var parsed))
+                        message.Content.Headers.ContentType = parsed;
+                    else
+                        message.Content.Headers.TryAddWithoutValidation(WellKnownHeaders.ContentType, value);
+                }
                 else
                     message.Content.Headers.TryAddWithoutValidation(key, value);
             }

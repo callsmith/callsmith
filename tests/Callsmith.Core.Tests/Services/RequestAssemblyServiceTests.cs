@@ -40,7 +40,7 @@ public class RequestAssemblyServiceTests
         };
 
         // Act
-        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection", CancellationToken.None);
+        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection", "", CancellationToken.None);
 
         // Assert
         assembled.RequestModel.Should().NotBeNull();
@@ -72,7 +72,7 @@ public class RequestAssemblyServiceTests
         };
 
         // Act
-        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection", CancellationToken.None);
+        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection", "", CancellationToken.None);
 
         // Assert
         assembled.RequestModel.Url.Should().Contain("123");
@@ -104,7 +104,7 @@ public class RequestAssemblyServiceTests
         };
 
         // Act
-        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection", CancellationToken.None);
+        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection", "", CancellationToken.None);
 
         // Assert
         assembled.RequestModel.Headers.Should().ContainKey("Authorization");
@@ -136,7 +136,7 @@ public class RequestAssemblyServiceTests
         };
 
         // Act
-        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection", CancellationToken.None);
+        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection", "", CancellationToken.None);
 
         // Assert
         assembled.RequestModel.Body.Should().Be(bodyJson);
@@ -168,7 +168,7 @@ public class RequestAssemblyServiceTests
         };
 
         // Act
-        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection", CancellationToken.None);
+        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection", "", CancellationToken.None);
 
         // Assert
         assembled.RequestModel.Body.Should().Contain("username=admin");
@@ -198,7 +198,7 @@ public class RequestAssemblyServiceTests
         };
 
         // Act
-        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection", CancellationToken.None);
+        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection", "", CancellationToken.None);
 
         // Assert
         assembled.RequestModel.MultipartFormParams.Should().NotBeNull();
@@ -231,7 +231,7 @@ public class RequestAssemblyServiceTests
         };
 
         // Act
-        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection", CancellationToken.None);
+        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection", "", CancellationToken.None);
 
         // Assert
         assembled.RequestModel.BodyBytes.Should().BeSameAs(fileBytes);
@@ -267,7 +267,7 @@ public class RequestAssemblyServiceTests
         };
 
         // Act
-        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection/request.json", CancellationToken.None);
+        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection", "/collection/request.json", CancellationToken.None);
 
         // Assert
         assembled.EffectiveAuth.AuthType.Should().Be(AuthConfig.AuthTypes.Bearer);
@@ -298,7 +298,7 @@ public class RequestAssemblyServiceTests
         };
 
         // Act
-        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection", CancellationToken.None);
+        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection", "", CancellationToken.None);
 
         // Assert
         assembled.RequestModel.Headers.Should().ContainKey("X-API-Key");

@@ -26,6 +26,7 @@ public class RequestAssemblyService : IRequestAssemblyService
         EnvironmentModel globalEnvironment,
         EnvironmentModel? activeEnvironment,
         string collectionRootPath,
+        string requestFilePath,
         CancellationToken ct = default)
     {
         // Merge environments to get unified variable set.
@@ -35,7 +36,7 @@ public class RequestAssemblyService : IRequestAssemblyService
             activeEnvironment,
             ct: ct);
 
-        var secretNames = ExtractSecretVariableNames(env);
+        var secretNames = ExtractSecretVariableNames(globalEnvironment, activeEnvironment);
         var sentBindings = new List<VariableBinding>();
 
         // Resolve headers with variable substitution.
@@ -80,7 +81,7 @@ public class RequestAssemblyService : IRequestAssemblyService
         requestUrl = QueryStringHelper.AppendQueryParams(requestUrl, substitutedQueryParams);
 
         // Get effective authentication (resolve inherited auth if needed).
-        var effectiveAuth = await GetEffectiveAuthAsync(request.Auth, collectionRootPath, ct);
+        var effectiveAuth = await GetEffectiveAuthAsync(request.Auth, requestFilePath, ct);
 
         // Apply authentication headers and potentially add auth to query string.
         requestUrl = AuthHeaderApplier.ApplyCollecting(
@@ -142,18 +143,22 @@ public class RequestAssemblyService : IRequestAssemblyService
         };
     }
 
-    private static IReadOnlySet<string> ExtractSecretVariableNames(ResolvedEnvironment env)
+    private static IReadOnlySet<string> ExtractSecretVariableNames(
+        EnvironmentModel globalEnvironment,
+        EnvironmentModel? activeEnvironment)
     {
         var secretNames = new HashSet<string>(StringComparer.Ordinal);
-        if (env.Variables is not null)
+        foreach (var v in globalEnvironment.Variables)
         {
-            foreach (var varName in env.Variables.Keys)
+            if (v.IsSecret && !string.IsNullOrWhiteSpace(v.Name))
+                secretNames.Add(v.Name);
+        }
+        if (activeEnvironment is not null)
+        {
+            foreach (var v in activeEnvironment.Variables)
             {
-                // Mark as secret if any environment in the chain has this variable marked as secret.
-                // For simplicity, just check if it's in the merged result — the merge already
-                // includes secret marking from the environment hierarchy.
-                if (!varName.StartsWith("__", StringComparison.Ordinal)) // Skip mock evaluator internals
-                    secretNames.Add(varName);
+                if (v.IsSecret && !string.IsNullOrWhiteSpace(v.Name))
+                    secretNames.Add(v.Name);
             }
         }
         return secretNames;
@@ -190,16 +195,16 @@ public class RequestAssemblyService : IRequestAssemblyService
 
     private async Task<AuthConfig> GetEffectiveAuthAsync(
         AuthConfig requestAuth,
-        string collectionRootPath,
+        string requestFilePath,
         CancellationToken ct)
     {
         if (requestAuth.AuthType != AuthConfig.AuthTypes.Inherit)
             return requestAuth;
 
-        if (string.IsNullOrEmpty(collectionRootPath))
+        if (string.IsNullOrEmpty(requestFilePath))
             return new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
 
-        return await _collectionService.ResolveEffectiveAuthAsync(collectionRootPath, ct).ConfigureAwait(false)
+        return await _collectionService.ResolveEffectiveAuthAsync(requestFilePath, ct).ConfigureAwait(false)
             ?? new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
     }
 
@@ -272,14 +277,17 @@ public class RequestAssemblyService : IRequestAssemblyService
         byte[]? fileBodyBytes,
         IReadOnlyList<KeyValuePair<string, string>>? multipartFormParams)
     {
-        // RequestModel.ContentType allows transport to override, but we apply defaults here
-        // for form and file bodies. Explicit Content-Type headers take precedence.
+        // Aligns with CollectionRequest.BodyTypes.ToContentType. We intentionally do not
+        // force multipart/form-data so MultipartFormDataContent can provide the boundary.
+        // Explicit Content-Type headers take precedence.
         return bodyType switch
         {
             CollectionRequest.BodyTypes.Form => "application/x-www-form-urlencoded",
             CollectionRequest.BodyTypes.Json => "application/json",
             CollectionRequest.BodyTypes.Xml => "application/xml",
             CollectionRequest.BodyTypes.Yaml => "application/yaml",
+            CollectionRequest.BodyTypes.Text => "text/plain",
+            CollectionRequest.BodyTypes.File => "application/octet-stream",
             _ => null,
         };
     }

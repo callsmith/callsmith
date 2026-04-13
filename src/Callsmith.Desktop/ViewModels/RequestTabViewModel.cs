@@ -1415,6 +1415,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 assemblyInput,
                 _globalEnvironment,
                 _activeEnvironment,
+                CollectionRootPath,
                 SourceFilePath,
                 ct);
 
