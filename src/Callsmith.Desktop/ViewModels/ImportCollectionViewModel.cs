@@ -90,7 +90,6 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
 
     /// <summary>
     /// Whether the "Advanced options" panel is expanded in the dialog.
-    /// Only applies when <see cref="IsImportIntoCurrentCollection"/> is <c>true</c>.
     /// </summary>
     [ObservableProperty]
     private bool _isAdvancedOptionsExpanded;
@@ -308,11 +307,12 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
         try
         {
             // First file creates the new collection (sets its name and populates root requests).
-            await _importService.ImportToFolderAsync(FilePaths[0], FolderPath, null, ct);
+            var options = BuildImportOptions();
+            await _importService.ImportToFolderAsync(FilePaths[0], FolderPath, options, ct);
 
             // Subsequent files are merged into the newly-created collection.
             for (var i = 1; i < FilePaths.Count; i++)
-                await _importService.ImportIntoCollectionAsync(FilePaths[i], FolderPath, FolderPath, null, ct);
+                await _importService.ImportIntoCollectionAsync(FilePaths[i], FolderPath, FolderPath, options, ct);
 
             ResultFolderPath = FolderPath;
             IsConfirmed = true;

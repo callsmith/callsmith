@@ -106,22 +106,30 @@
               ToolTip.Tip="Choose the folder to import into"/>
     </Grid>
 
-    <!-- Advanced options (import-into-current mode only) -->
-    <Border IsVisible="{Binding IsImportIntoCurrentCollection}"
-            Background="#2d2d2d"
+    <!-- Advanced options (always shown; merge-specific rows gated on IsImportIntoCurrentCollection) -->
+    <Border Background="#2d2d2d"
             BorderBrush="#444"
             BorderThickness="1"
             CornerRadius="4">
       <StackPanel>
 
-        <!-- Expand / collapse header -->
+        <!-- Expand / collapse header — styled so it never flashes or contracts -->
         <Button Command="{Binding ToggleAdvancedOptionsCommand}"
                 Background="Transparent"
                 BorderThickness="0"
                 Padding="12,9"
                 HorizontalAlignment="Stretch"
                 HorizontalContentAlignment="Left"
+                Focusable="False"
                 Cursor="Hand">
+          <Button.Styles>
+            <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+              <Setter Property="Background" Value="Transparent"/>
+            </Style>
+            <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+              <Setter Property="Background" Value="Transparent"/>
+            </Style>
+          </Button.Styles>
           <StackPanel Orientation="Horizontal" Spacing="6">
             <TextBlock Text="▶"
                        IsVisible="{Binding !IsAdvancedOptionsExpanded}"
@@ -146,8 +154,9 @@
                     Spacing="12"
                     Margin="12,0,12,14">
 
-          <!-- Target sub-folder -->
-          <Grid ColumnDefinitions="130,10,*">
+          <!-- Target sub-folder (import-into-current mode only) -->
+          <Grid ColumnDefinitions="130,10,*"
+                IsVisible="{Binding IsImportIntoCurrentCollection}">
             <TextBlock Grid.Column="0"
                        Text="Target sub-folder"
                        Foreground="#aaa"
@@ -164,8 +173,9 @@
                      ToolTip.Tip="Optional relative path within the collection (e.g. 'Orders/Internal'). Leave blank to import at the collection root."/>
           </Grid>
 
-          <!-- Merge strategy -->
-          <StackPanel Spacing="6">
+          <!-- Merge strategy (import-into-current mode only) -->
+          <StackPanel Spacing="6"
+                      IsVisible="{Binding IsImportIntoCurrentCollection}">
             <TextBlock Text="Merge strategy"
                        Foreground="#aaa"
                        FontSize="12"
@@ -193,7 +203,7 @@
             </StackPanel>
           </StackPanel>
 
-          <!-- Base URL variable name (relevant for OpenAPI / Swagger imports) -->
+          <!-- Base URL variable name (relevant for OpenAPI / Swagger imports in both modes) -->
           <Grid ColumnDefinitions="130,10,*">
             <TextBlock Grid.Column="0"
                        Text="Base URL variable"

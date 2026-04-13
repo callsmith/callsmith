@@ -812,6 +812,38 @@ public sealed class ImportCollectionViewModelTests
             Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task ImportCommand_NewCollectionMode_PassesBaseUrlVariableNameInOptions()
+    {
+        var svc = Substitute.For<ICollectionImportService>();
+        svc.SupportedFileExtensions.Returns([".yaml"]);
+        svc.ImportToFolderAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
+           .Returns(EmptyCollection());
+
+        var tempDir = Directory.CreateTempSubdirectory("callsmith_baseurl_new_");
+        try
+        {
+            var sut = new ImportCollectionViewModel(svc);
+            sut.FilePaths = ["/fake/file.yaml"];
+            sut.FolderPath = tempDir.FullName;
+            sut.BaseUrlVariableName = "apiHost";
+
+            await sut.ImportCommand.ExecuteAsync(null);
+
+            await svc.Received(1).ImportToFolderAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Is<CollectionImportOptions?>(o => o != null && o.BaseUrlVariableName == "apiHost"),
+                Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            tempDir.Delete(recursive: true);
+        }
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private static ImportedCollection EmptyCollection() =>
