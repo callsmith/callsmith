@@ -26,6 +26,7 @@ public sealed partial class FilteredSyntaxViewer : UserControl
     private TextBlock? _filterLabelTextBlock;
     private TextBlock? _filterStatusTextBlock;
     private Border? _filterBar;
+    private Border? _jsonPathHelpButton;
     private SyntaxEditor? _editor;
 
     /// <summary>
@@ -88,6 +89,7 @@ public sealed partial class FilteredSyntaxViewer : UserControl
         _filterLabelTextBlock = this.FindControl<TextBlock>(nameof(FilterLabelTextBlock));
         _filterStatusTextBlock = this.FindControl<TextBlock>(nameof(FilterStatusTextBlock));
         _filterBar = this.FindControl<Border>(nameof(FilterBar));
+        _jsonPathHelpButton = this.FindControl<Border>(nameof(JsonPathHelpButton));
         _editor = this.FindControl<SyntaxEditor>(nameof(Editor));
 
         if (_filterTextBox is not null)
@@ -121,6 +123,9 @@ public sealed partial class FilteredSyntaxViewer : UserControl
 
         if (_filterLabelTextBlock is not null)
             _filterLabelTextBlock.Text = GetFilterLabel();
+
+        if (_jsonPathHelpButton is not null)
+            _jsonPathHelpButton.IsVisible = NormalizeLanguage() == "json";
 
         if (_filterTextBox is not null)
         {
