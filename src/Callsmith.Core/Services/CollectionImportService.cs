@@ -87,7 +87,7 @@ public sealed class CollectionImportService : ICollectionImportService
 
         // Write root requests and track original→actual name mapping for order file.
         // New-collection imports always use TakeBoth to preserve the counter-deduplication
-        // behaviour when writing into a fresh folder.
+        // behavior when writing into a fresh folder.
         var rootNameQueues = new Dictionary<string, Queue<string>>(StringComparer.Ordinal);
         foreach (var req in collection.RootRequests)
         {
@@ -616,12 +616,12 @@ public sealed class CollectionImportService : ICollectionImportService
     /// </summary>
     private static void ApplyBaseUrlVariableName(ImportedCollection collection, string baseUrlVariableName)
     {
-        const string defaultVarName = "baseUrl";
+        const string defaultBaseUrlVarName = "baseUrl";
         if (string.IsNullOrWhiteSpace(baseUrlVariableName) ||
-            string.Equals(baseUrlVariableName, defaultVarName, StringComparison.Ordinal))
+            string.Equals(baseUrlVariableName, defaultBaseUrlVarName, StringComparison.Ordinal))
             return;
 
-        var oldPlaceholder = $"{{{{{defaultVarName}}}}}";
+        var oldPlaceholder = $"{{{{{defaultBaseUrlVarName}}}}}";
         var newPlaceholder = $"{{{{{baseUrlVariableName}}}}}";
 
         // Replace in request URLs (root + all folders, recursively).
@@ -634,9 +634,9 @@ public sealed class CollectionImportService : ICollectionImportService
         // Replace the environment variable key in all environments.
         foreach (var env in collection.Environments)
         {
-            if (env.Variables.TryGetValue(defaultVarName, out var value))
+            if (env.Variables.TryGetValue(defaultBaseUrlVarName, out var value))
             {
-                env.Variables.Remove(defaultVarName);
+                env.Variables.Remove(defaultBaseUrlVarName);
                 env.Variables[baseUrlVariableName] = value;
             }
         }
