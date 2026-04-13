@@ -86,9 +86,6 @@ public partial class App : Application
         // Core -- dynamic variable evaluation
         services.AddSingleton<IDynamicVariableEvaluator, DynamicVariableEvaluatorService>();
 
-        // Core -- JSONPath query engine (RFC 9535)
-        services.AddSingleton<IJsonPathService, JsonPathService>();
-
         // Core -- environment variable merge (shared algorithm used by both send and preview)
         services.AddSingleton<IEnvironmentMergeService, EnvironmentMergeService>();
         services.AddSingleton<ICollectionNamingService, CollectionNamingService>();

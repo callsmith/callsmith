@@ -19,7 +19,8 @@ public sealed class JsonPathService : IJsonPathService
         if (!TryParseExpression(expression, out var steps, out _))
             return [];
 
-        TryEvaluateSteps([root], root, steps, out var result, out _);
+        if (!TryEvaluateSteps([root], root, steps, out var result, out _))
+            return [];
         return result;
     }
 
@@ -108,17 +109,30 @@ public sealed class JsonPathService : IJsonPathService
     private static void CollectDescendants(
         JsonElement node, JsonElement root, IReadOnlyList<ISelector> selectors, List<JsonElement> results)
     {
-        ApplySelectors(node, root, selectors, results);
+        var stack = new Stack<JsonElement>();
+        stack.Push(node);
 
-        if (node.ValueKind == JsonValueKind.Object)
+        while (stack.Count > 0)
         {
-            foreach (var prop in node.EnumerateObject())
-                CollectDescendants(prop.Value, root, selectors, results);
-        }
-        else if (node.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in node.EnumerateArray())
-                CollectDescendants(item, root, selectors, results);
+            var current = stack.Pop();
+            ApplySelectors(current, root, selectors, results);
+
+            if (current.ValueKind == JsonValueKind.Object)
+            {
+                var children = new List<JsonElement>();
+                foreach (var prop in current.EnumerateObject())
+                    children.Add(prop.Value);
+                for (var i = children.Count - 1; i >= 0; i--)
+                    stack.Push(children[i]);
+            }
+            else if (current.ValueKind == JsonValueKind.Array)
+            {
+                var children = new List<JsonElement>();
+                foreach (var item in current.EnumerateArray())
+                    children.Add(item);
+                for (var i = children.Count - 1; i >= 0; i--)
+                    stack.Push(children[i]);
+            }
         }
     }
 
@@ -1350,7 +1364,7 @@ public sealed class JsonPathService : IJsonPathService
             var val = args[0].Evaluate(current, ctx) as string;
             var pattern = args[1].Evaluate(current, ctx) as string;
             if (val is null || pattern is null) return false;
-            try { return Regex.IsMatch(val, $"^(?:{pattern})$"); }
+            try { return Regex.IsMatch(val, $"^(?:{pattern})$", RegexOptions.None, TimeSpan.FromSeconds(1)); }
             catch { return false; }
         }
 
@@ -1360,7 +1374,7 @@ public sealed class JsonPathService : IJsonPathService
             var val = args[0].Evaluate(current, ctx) as string;
             var pattern = args[1].Evaluate(current, ctx) as string;
             if (val is null || pattern is null) return false;
-            try { return Regex.IsMatch(val, pattern); }
+            try { return Regex.IsMatch(val, pattern, RegexOptions.None, TimeSpan.FromSeconds(1)); }
             catch { return false; }
         }
 
