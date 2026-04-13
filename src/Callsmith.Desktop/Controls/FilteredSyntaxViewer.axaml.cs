@@ -1,7 +1,10 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
+using Callsmith.Core.Abstractions;
+using Callsmith.Core.Services;
 
 namespace Callsmith.Desktop.Controls;
 
@@ -25,6 +28,13 @@ public sealed partial class FilteredSyntaxViewer : UserControl
     private TextBlock? _filterStatusTextBlock;
     private Border? _filterBar;
     private SyntaxEditor? _editor;
+    private object? _jsonPathTooltipTip;
+
+    /// <summary>
+    /// Gets or sets the JSONPath query service used for JSON filtering.
+    /// Defaults to a new <see cref="JsonPathService"/> instance. Can be replaced for testing or DI.
+    /// </summary>
+    public IJsonPathService JsonPath { get; set; } = new JsonPathService();
 
     public FilteredSyntaxViewer()
     {
@@ -82,6 +92,9 @@ public sealed partial class FilteredSyntaxViewer : UserControl
         _filterBar = this.FindControl<Border>(nameof(FilterBar));
         _editor = this.FindControl<SyntaxEditor>(nameof(Editor));
 
+        if (_filterLabelTextBlock is not null)
+            _jsonPathTooltipTip = ToolTip.GetTip(_filterLabelTextBlock);
+
         if (_filterTextBox is not null)
             _filterTextBox.TextChanged += OnFilterTextChanged;
 
@@ -112,7 +125,12 @@ public sealed partial class FilteredSyntaxViewer : UserControl
             _filterBar.IsVisible = enabled;
 
         if (_filterLabelTextBlock is not null)
+        {
             _filterLabelTextBlock.Text = GetFilterLabel();
+            bool isJson = NormalizeLanguage() == "json";
+            ToolTip.SetTip(_filterLabelTextBlock, isJson ? _jsonPathTooltipTip : null);
+            _filterLabelTextBlock.Cursor = isJson ? new Cursor(StandardCursorType.Help) : null;
+        }
 
         if (_filterTextBox is not null)
         {
@@ -152,7 +170,7 @@ public sealed partial class FilteredSyntaxViewer : UserControl
             return;
         }
 
-        if (SyntaxPathFilter.TryTransform(Text, Language, expression, out var transformed, out var error))
+        if (SyntaxPathFilter.TryTransform(Text, Language, expression, JsonPath, out var transformed, out var error))
         {
             ShowActive();
             _editor.Text = transformed;
