@@ -98,7 +98,7 @@ public sealed class ImportCollectionViewModelTests
     {
         var svc = Substitute.For<ICollectionImportService>();
         svc.SupportedFileExtensions.Returns([".yaml"]);
-        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
            .Returns(new ImportedCollection
            {
                Name = "Test",
@@ -144,7 +144,7 @@ public sealed class ImportCollectionViewModelTests
     {
         var svc = Substitute.For<ICollectionImportService>();
         svc.SupportedFileExtensions.Returns([".yaml"]);
-        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
            .Returns(new ImportedCollection
            {
                Name = "Test",
@@ -178,7 +178,7 @@ public sealed class ImportCollectionViewModelTests
     {
         var svc = Substitute.For<ICollectionImportService>();
         svc.SupportedFileExtensions.Returns([".yaml"]);
-        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
            .Returns(new ImportedCollection
            {
                Name = "Test",
@@ -214,7 +214,7 @@ public sealed class ImportCollectionViewModelTests
     {
         var svc = Substitute.For<ICollectionImportService>();
         svc.SupportedFileExtensions.Returns([".yaml"]);
-        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
            .Returns(new ImportedCollection
            {
                Name = "Test",
@@ -258,7 +258,7 @@ public sealed class ImportCollectionViewModelTests
     {
         var svc = Substitute.For<ICollectionImportService>();
         svc.SupportedFileExtensions.Returns([".yaml"]);
-        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
            .ThrowsAsync(new InvalidOperationException("Bad format"));
 
         var tempDir = Directory.CreateTempSubdirectory("callsmith_import_test_");
@@ -284,7 +284,7 @@ public sealed class ImportCollectionViewModelTests
     {
         var svc = Substitute.For<ICollectionImportService>();
         svc.SupportedFileExtensions.Returns([".yaml"]);
-        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
            .ThrowsAsync(new InvalidOperationException("Bad format"));
 
         var tempDir = Directory.CreateTempSubdirectory("callsmith_import_test_");
@@ -392,7 +392,7 @@ public sealed class ImportCollectionViewModelTests
         svc.SupportedFileExtensions.Returns([".yaml"]);
         svc.ImportIntoCollectionAsync(
                 Arg.Any<string>(), Arg.Any<string>(),
-                Arg.Any<string?>(), Arg.Any<CancellationToken>())
+                Arg.Any<string?>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
            .Returns(new ImportedCollection
            {
                Name = "Test", RootRequests = [], RootFolders = [],
@@ -409,6 +409,7 @@ public sealed class ImportCollectionViewModelTests
             "/fake/file.yaml",
             "/my/collection",
             "/my/collection",
+            Arg.Any<CollectionImportOptions?>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -419,7 +420,7 @@ public sealed class ImportCollectionViewModelTests
         svc.SupportedFileExtensions.Returns([".yaml"]);
         svc.ImportIntoCollectionAsync(
                 Arg.Any<string>(), Arg.Any<string>(),
-                Arg.Any<string?>(), Arg.Any<CancellationToken>())
+                Arg.Any<string?>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
            .Returns(new ImportedCollection
            {
                Name = "Test", RootRequests = [], RootFolders = [],
@@ -438,6 +439,7 @@ public sealed class ImportCollectionViewModelTests
             "/fake/file.yaml",
             "/my/collection",
             expectedTarget,
+            Arg.Any<CollectionImportOptions?>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -448,7 +450,7 @@ public sealed class ImportCollectionViewModelTests
         svc.SupportedFileExtensions.Returns([".yaml"]);
         svc.ImportIntoCollectionAsync(
                 Arg.Any<string>(), Arg.Any<string>(),
-                Arg.Any<string?>(), Arg.Any<CancellationToken>())
+                Arg.Any<string?>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
            .Returns(new ImportedCollection
            {
                Name = "Test", RootRequests = [], RootFolders = [],
@@ -479,7 +481,7 @@ public sealed class ImportCollectionViewModelTests
             svc.SupportedFileExtensions.Returns([".yaml"]);
             svc.ImportIntoCollectionAsync(
                     Arg.Any<string>(), Arg.Any<string>(),
-                    Arg.Any<string?>(), Arg.Any<CancellationToken>())
+                    Arg.Any<string?>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
                .Returns(new ImportedCollection
                {
                    Name = "Test", RootRequests = [], RootFolders = [],
@@ -520,7 +522,7 @@ public sealed class ImportCollectionViewModelTests
         sut.ErrorMessage.Should().NotBeEmpty();
         await svc.DidNotReceive().ImportIntoCollectionAsync(
             Arg.Any<string>(), Arg.Any<string>(),
-            Arg.Any<string?>(), Arg.Any<CancellationToken>());
+            Arg.Any<string?>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -540,7 +542,7 @@ public sealed class ImportCollectionViewModelTests
         sut.ErrorMessage.Should().NotBeEmpty();
         await svc.DidNotReceive().ImportIntoCollectionAsync(
             Arg.Any<string>(), Arg.Any<string>(),
-            Arg.Any<string?>(), Arg.Any<CancellationToken>());
+            Arg.Any<string?>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>());
     }
 
     // ─── Multi-file: FilePath display property ────────────────────────────────
@@ -575,10 +577,10 @@ public sealed class ImportCollectionViewModelTests
     {
         var svc = Substitute.For<ICollectionImportService>();
         svc.SupportedFileExtensions.Returns([".yaml", ".json"]);
-        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
            .Returns(EmptyCollection());
         svc.ImportIntoCollectionAsync(Arg.Any<string>(), Arg.Any<string>(),
-               Arg.Any<string?>(), Arg.Any<CancellationToken>())
+               Arg.Any<string?>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
            .Returns(EmptyCollection());
 
         var tempDir = Directory.CreateTempSubdirectory("callsmith_multi_import_");
@@ -591,7 +593,7 @@ public sealed class ImportCollectionViewModelTests
             await sut.ImportCommand.ExecuteAsync(null);
 
             // First file → ImportToFolderAsync
-            await svc.Received(1).ImportToFolderAsync("/first.yaml", tempDir.FullName, Arg.Any<CancellationToken>());
+            await svc.Received(1).ImportToFolderAsync("/first.yaml", tempDir.FullName, Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>());
         }
         finally
         {
@@ -604,10 +606,10 @@ public sealed class ImportCollectionViewModelTests
     {
         var svc = Substitute.For<ICollectionImportService>();
         svc.SupportedFileExtensions.Returns([".yaml", ".json"]);
-        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
            .Returns(EmptyCollection());
         svc.ImportIntoCollectionAsync(Arg.Any<string>(), Arg.Any<string>(),
-               Arg.Any<string?>(), Arg.Any<CancellationToken>())
+               Arg.Any<string?>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
            .Returns(EmptyCollection());
 
         var tempDir = Directory.CreateTempSubdirectory("callsmith_multi_import_");
@@ -621,11 +623,11 @@ public sealed class ImportCollectionViewModelTests
 
             // Second and third files → ImportIntoCollectionAsync
             await svc.Received(1).ImportIntoCollectionAsync(
-                "/second.json", tempDir.FullName, tempDir.FullName, Arg.Any<CancellationToken>());
+                "/second.json", tempDir.FullName, tempDir.FullName, Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>());
             await svc.Received(1).ImportIntoCollectionAsync(
-                "/third.yaml", tempDir.FullName, tempDir.FullName, Arg.Any<CancellationToken>());
+                "/third.yaml", tempDir.FullName, tempDir.FullName, Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>());
             // ImportToFolderAsync called exactly once (for the first file only)
-            await svc.Received(1).ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+            await svc.Received(1).ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>());
         }
         finally
         {
@@ -638,7 +640,7 @@ public sealed class ImportCollectionViewModelTests
     {
         var svc = Substitute.For<ICollectionImportService>();
         svc.SupportedFileExtensions.Returns([".yaml"]);
-        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+        svc.ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
            .Returns(EmptyCollection());
 
         var tempDir = Directory.CreateTempSubdirectory("callsmith_single_import_");
@@ -650,9 +652,9 @@ public sealed class ImportCollectionViewModelTests
 
             await sut.ImportCommand.ExecuteAsync(null);
 
-            await svc.Received(1).ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+            await svc.Received(1).ImportToFolderAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>());
             await svc.DidNotReceive().ImportIntoCollectionAsync(
-                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>());
         }
         finally
         {
@@ -668,7 +670,7 @@ public sealed class ImportCollectionViewModelTests
         var svc = Substitute.For<ICollectionImportService>();
         svc.SupportedFileExtensions.Returns([".yaml", ".json"]);
         svc.ImportIntoCollectionAsync(Arg.Any<string>(), Arg.Any<string>(),
-               Arg.Any<string?>(), Arg.Any<CancellationToken>())
+               Arg.Any<string?>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
            .Returns(EmptyCollection());
 
         var sut = new ImportCollectionViewModel(svc, "/my/collection");
@@ -678,11 +680,11 @@ public sealed class ImportCollectionViewModelTests
         await sut.ImportCommand.ExecuteAsync(null);
 
         await svc.Received(1).ImportIntoCollectionAsync(
-            "/alpha.yaml", "/my/collection", "/my/collection", Arg.Any<CancellationToken>());
+            "/alpha.yaml", "/my/collection", "/my/collection", Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>());
         await svc.Received(1).ImportIntoCollectionAsync(
-            "/beta.json", "/my/collection", "/my/collection", Arg.Any<CancellationToken>());
+            "/beta.json", "/my/collection", "/my/collection", Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>());
         await svc.DidNotReceive().ImportToFolderAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>());
         sut.IsConfirmed.Should().BeTrue();
     }
 
@@ -692,7 +694,7 @@ public sealed class ImportCollectionViewModelTests
         var svc = Substitute.For<ICollectionImportService>();
         svc.SupportedFileExtensions.Returns([".yaml"]);
         svc.ImportIntoCollectionAsync(Arg.Any<string>(), Arg.Any<string>(),
-               Arg.Any<string?>(), Arg.Any<CancellationToken>())
+               Arg.Any<string?>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
            .Returns(EmptyCollection());
 
         var sut = new ImportCollectionViewModel(svc, "/col");
@@ -704,9 +706,110 @@ public sealed class ImportCollectionViewModelTests
 
         var expectedTarget = Path.GetFullPath(Path.Combine("/col", "Orders"));
         await svc.Received(1).ImportIntoCollectionAsync(
-            "/a.yaml", "/col", expectedTarget, Arg.Any<CancellationToken>());
+            "/a.yaml", "/col", expectedTarget, Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>());
         await svc.Received(1).ImportIntoCollectionAsync(
-            "/b.yaml", "/col", expectedTarget, Arg.Any<CancellationToken>());
+            "/b.yaml", "/col", expectedTarget, Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    // ─── Advanced options defaults ────────────────────────────────────────────
+
+    [Fact]
+    public void AdvancedOptions_DefaultMergeStrategy_IsSkip()
+    {
+        var sut = BuildSut();
+        sut.SelectedMergeStrategy.Should().Be(ImportMergeStrategy.Skip);
+        sut.IsMergeStrategySkip.Should().BeTrue();
+        sut.IsMergeStrategyTakeBoth.Should().BeFalse();
+        sut.IsMergeStrategyReplace.Should().BeFalse();
+    }
+
+    [Fact]
+    public void AdvancedOptions_DefaultBaseUrlVariableName_IsBaseUrl()
+    {
+        var sut = BuildSut();
+        sut.BaseUrlVariableName.Should().Be("baseUrl");
+    }
+
+    [Fact]
+    public void AdvancedOptions_IsAdvancedOptionsExpanded_DefaultIsFalse()
+    {
+        var sut = BuildSut();
+        sut.IsAdvancedOptionsExpanded.Should().BeFalse();
+    }
+
+    [Fact]
+    public void AdvancedOptions_ToggleAdvancedOptionsCommand_TogglesExpansion()
+    {
+        var sut = BuildSut();
+        sut.ToggleAdvancedOptionsCommand.Execute(null);
+        sut.IsAdvancedOptionsExpanded.Should().BeTrue();
+        sut.ToggleAdvancedOptionsCommand.Execute(null);
+        sut.IsAdvancedOptionsExpanded.Should().BeFalse();
+    }
+
+    [Fact]
+    public void AdvancedOptions_SettingMergeStrategyUpdatesHelperProperties()
+    {
+        var sut = BuildSut();
+        sut.SelectedMergeStrategy = ImportMergeStrategy.Replace;
+        sut.IsMergeStrategySkip.Should().BeFalse();
+        sut.IsMergeStrategyTakeBoth.Should().BeFalse();
+        sut.IsMergeStrategyReplace.Should().BeTrue();
+
+        sut.IsMergeStrategyTakeBoth = true;
+        sut.SelectedMergeStrategy.Should().Be(ImportMergeStrategy.TakeBoth);
+        sut.IsMergeStrategyTakeBoth.Should().BeTrue();
+        sut.IsMergeStrategySkip.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ImportCommand_InImportIntoCurrentMode_PassesMergeStrategyInOptions()
+    {
+        var svc = Substitute.For<ICollectionImportService>();
+        svc.SupportedFileExtensions.Returns([".yaml"]);
+        svc.ImportIntoCollectionAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Any<string?>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
+           .Returns(EmptyCollection());
+
+        var sut = new ImportCollectionViewModel(svc, "/my/collection");
+        sut.IsImportIntoCurrentCollection = true;
+        sut.FilePaths = ["/fake/file.yaml"];
+        sut.SelectedMergeStrategy = ImportMergeStrategy.Replace;
+
+        await sut.ImportCommand.ExecuteAsync(null);
+
+        await svc.Received(1).ImportIntoCollectionAsync(
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Any<string?>(),
+            Arg.Is<CollectionImportOptions?>(o => o != null && o.MergeStrategy == ImportMergeStrategy.Replace),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ImportCommand_InImportIntoCurrentMode_PassesBaseUrlVariableNameInOptions()
+    {
+        var svc = Substitute.For<ICollectionImportService>();
+        svc.SupportedFileExtensions.Returns([".yaml"]);
+        svc.ImportIntoCollectionAsync(
+                Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Any<string?>(), Arg.Any<CollectionImportOptions?>(), Arg.Any<CancellationToken>())
+           .Returns(EmptyCollection());
+
+        var sut = new ImportCollectionViewModel(svc, "/my/collection");
+        sut.IsImportIntoCurrentCollection = true;
+        sut.FilePaths = ["/fake/file.yaml"];
+        sut.BaseUrlVariableName = "apiRoot";
+
+        await sut.ImportCommand.ExecuteAsync(null);
+
+        await svc.Received(1).ImportIntoCollectionAsync(
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Any<string?>(),
+            Arg.Is<CollectionImportOptions?>(o => o != null && o.BaseUrlVariableName == "apiRoot"),
+            Arg.Any<CancellationToken>());
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────

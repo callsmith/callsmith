@@ -495,11 +495,229 @@ public sealed class CollectionImportServiceTests : IDisposable
         var importer = MakeImporter(canImport: true, extensions: [".yaml"], returns: collection);
         var sut = BuildSut(importer);
 
-        await sut.ImportIntoCollectionAsync("/fake.yaml", collectionRoot);
+        // TakeBoth keeps the existing file and adds the new one with a counter suffix.
+        await sut.ImportIntoCollectionAsync(
+            "/fake.yaml", collectionRoot, null,
+            new CollectionImportOptions { MergeStrategy = ImportMergeStrategy.TakeBoth });
 
         var files = Directory.GetFiles(collectionRoot, "*.callsmith");
         files.Should().HaveCount(2);
         files.Should().Contain(f => Path.GetFileName(f) == "Req (1).callsmith");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // MergeStrategy
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ImportIntoCollectionAsync_MergeStrategy_Skip_LeavesExistingRequestIntact()
+    {
+        var collectionRoot = _temp.CreateSubDirectory("col-skip");
+        var existingFile = Path.Combine(collectionRoot, "GetUsers.callsmith");
+        File.WriteAllText(existingFile, "existing-content");
+
+        var collection = new ImportedCollection
+        {
+            Name = "Test",
+            RootRequests =
+            [
+                new ImportedRequest { Name = "GetUsers", Method = System.Net.Http.HttpMethod.Get, Url = "https://new.com/users" },
+            ],
+        };
+
+        var importer = MakeImporter(canImport: true, extensions: [".yaml"], returns: collection);
+        var sut = BuildSut(importer);
+
+        await sut.ImportIntoCollectionAsync(
+            "/fake.yaml", collectionRoot, null,
+            new CollectionImportOptions { MergeStrategy = ImportMergeStrategy.Skip });
+
+        // Only 1 file: the existing one is left unchanged; the import is skipped.
+        var files = Directory.GetFiles(collectionRoot, "*.callsmith");
+        files.Should().HaveCount(1);
+        File.ReadAllText(existingFile).Should().Be("existing-content");
+    }
+
+    [Fact]
+    public async Task ImportIntoCollectionAsync_MergeStrategy_Skip_DefaultStrategy_SkipsConflictingRequests()
+    {
+        // Default (no options) = Skip.
+        var collectionRoot = _temp.CreateSubDirectory("col-skip-default");
+        var existingFile = Path.Combine(collectionRoot, "Req.callsmith");
+        File.WriteAllText(existingFile, "original");
+
+        var collection = new ImportedCollection
+        {
+            Name = "Test",
+            RootRequests =
+            [
+                new ImportedRequest { Name = "Req", Method = System.Net.Http.HttpMethod.Get, Url = "https://a.com" },
+            ],
+        };
+
+        var importer = MakeImporter(canImport: true, extensions: [".yaml"], returns: collection);
+        var sut = BuildSut(importer);
+
+        // Default options → Skip
+        await sut.ImportIntoCollectionAsync("/fake.yaml", collectionRoot);
+
+        var files = Directory.GetFiles(collectionRoot, "*.callsmith");
+        files.Should().HaveCount(1);
+        File.ReadAllText(existingFile).Should().Be("original");
+    }
+
+    [Fact]
+    public async Task ImportIntoCollectionAsync_MergeStrategy_Replace_OverwritesExistingRequest()
+    {
+        var collectionRoot = _temp.CreateSubDirectory("col-replace");
+        var existingFile = Path.Combine(collectionRoot, "GetUsers.callsmith");
+        File.WriteAllText(existingFile, "{}");
+
+        var collection = new ImportedCollection
+        {
+            Name = "Test",
+            RootRequests =
+            [
+                new ImportedRequest { Name = "GetUsers", Method = System.Net.Http.HttpMethod.Post, Url = "https://new.com/users" },
+            ],
+        };
+
+        var importer = MakeImporter(canImport: true, extensions: [".yaml"], returns: collection);
+        var sut = BuildSut(importer);
+
+        await sut.ImportIntoCollectionAsync(
+            "/fake.yaml", collectionRoot, null,
+            new CollectionImportOptions { MergeStrategy = ImportMergeStrategy.Replace });
+
+        // Only 1 file: the old one was replaced with the new one.
+        var files = Directory.GetFiles(collectionRoot, "*.callsmith");
+        files.Should().HaveCount(1);
+        Path.GetFileNameWithoutExtension(files[0]).Should().Be("GetUsers");
+        // Content should have been rewritten (not the original "{}").
+        File.ReadAllText(files[0]).Should().NotBe("{}");
+    }
+
+    [Fact]
+    public async Task ImportIntoCollectionAsync_MergeStrategy_Skip_StillWritesNonConflictingRequests()
+    {
+        var collectionRoot = _temp.CreateSubDirectory("col-skip-new");
+        var existingFile = Path.Combine(collectionRoot, "Existing.callsmith");
+        File.WriteAllText(existingFile, "{}");
+
+        var collection = new ImportedCollection
+        {
+            Name = "Test",
+            RootRequests =
+            [
+                new ImportedRequest { Name = "Existing", Method = System.Net.Http.HttpMethod.Get, Url = "https://a.com" },
+                new ImportedRequest { Name = "NewOne", Method = System.Net.Http.HttpMethod.Get, Url = "https://a.com/new" },
+            ],
+        };
+
+        var importer = MakeImporter(canImport: true, extensions: [".yaml"], returns: collection);
+        var sut = BuildSut(importer);
+
+        await sut.ImportIntoCollectionAsync(
+            "/fake.yaml", collectionRoot, null,
+            new CollectionImportOptions { MergeStrategy = ImportMergeStrategy.Skip });
+
+        var files = Directory.GetFiles(collectionRoot, "*.callsmith");
+        files.Should().HaveCount(2);
+        files.Should().Contain(f => Path.GetFileName(f) == "Existing.callsmith");
+        files.Should().Contain(f => Path.GetFileName(f) == "NewOne.callsmith");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // BaseUrlVariableName
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ImportIntoCollectionAsync_BaseUrlVariableName_ReplacesDefaultPlaceholderInUrls()
+    {
+        var collectionRoot = _temp.CreateSubDirectory("col-baseurl");
+
+        var collection = new ImportedCollection
+        {
+            Name = "Test",
+            RootRequests =
+            [
+                new ImportedRequest { Name = "GetUsers", Method = System.Net.Http.HttpMethod.Get, Url = "{{baseUrl}}/users" },
+            ],
+        };
+
+        var importer = MakeImporter(canImport: true, extensions: [".yaml"], returns: collection);
+        var sut = BuildSut(importer);
+
+        await sut.ImportIntoCollectionAsync(
+            "/fake.yaml", collectionRoot, null,
+            new CollectionImportOptions { BaseUrlVariableName = "apiRoot" });
+
+        var files = Directory.GetFiles(collectionRoot, "*.callsmith");
+        files.Should().HaveCount(1);
+        var written = await _collectionService.LoadRequestAsync(files[0]);
+        written.Url.Should().Be("{{apiRoot}}/users");
+    }
+
+    [Fact]
+    public async Task ImportIntoCollectionAsync_BaseUrlVariableName_RenamesEnvironmentVariable()
+    {
+        var collectionRoot = _temp.CreateSubDirectory("col-baseurl-env");
+
+        var collection = new ImportedCollection
+        {
+            Name = "Test",
+            Environments =
+            [
+                new ImportedEnvironment
+                {
+                    Name = "Prod",
+                    Variables = new Dictionary<string, string>
+                    {
+                        ["baseUrl"] = "https://api.prod.example.com",
+                        ["timeout"] = "30",
+                    },
+                },
+            ],
+        };
+
+        var importer = MakeImporter(canImport: true, extensions: [".yaml"], returns: collection);
+        var sut = BuildSut(importer);
+
+        await sut.ImportIntoCollectionAsync(
+            "/fake.yaml", collectionRoot, null,
+            new CollectionImportOptions { BaseUrlVariableName = "serviceUrl" });
+
+        var environments = await _environmentService.ListEnvironmentsAsync(collectionRoot);
+        var prod = environments.Single();
+        prod.Variables.Should().Contain(v => v.Name == "serviceUrl" && v.Value == "https://api.prod.example.com");
+        prod.Variables.Should().NotContain(v => v.Name == "baseUrl");
+        prod.Variables.Should().Contain(v => v.Name == "timeout");
+    }
+
+    [Fact]
+    public async Task ImportToFolderAsync_BaseUrlVariableName_ReplacesPlaceholderInUrls()
+    {
+        var collection = new ImportedCollection
+        {
+            Name = "Test",
+            RootRequests =
+            [
+                new ImportedRequest { Name = "GetItems", Method = System.Net.Http.HttpMethod.Get, Url = "{{baseUrl}}/items" },
+            ],
+        };
+
+        var importer = MakeImporter(canImport: true, extensions: [".yaml"], returns: collection);
+        var sut = BuildSut(importer);
+        var target = _temp.CreateSubDirectory("new-col-baseurl");
+
+        await sut.ImportToFolderAsync(
+            "/fake.yaml", target,
+            new CollectionImportOptions { BaseUrlVariableName = "host" });
+
+        var files = Directory.GetFiles(target, "*.callsmith");
+        files.Should().HaveCount(1);
+        var written = await _collectionService.LoadRequestAsync(files[0]);
+        written.Url.Should().Be("{{host}}/items");
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using Avalonia.Platform.Storage;
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.Import;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -85,6 +86,52 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
     [ObservableProperty]
     private string _subFolderPath = string.Empty;
 
+    // ─── Advanced options ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Whether the "Advanced options" panel is expanded in the dialog.
+    /// Only applies when <see cref="IsImportIntoCurrentCollection"/> is <c>true</c>.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isAdvancedOptionsExpanded;
+
+    /// <summary>
+    /// The selected merge strategy for import-into-current-collection mode.
+    /// Defaults to <see cref="ImportMergeStrategy.Skip"/>.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsMergeStrategySkip), nameof(IsMergeStrategyTakeBoth), nameof(IsMergeStrategyReplace))]
+    private ImportMergeStrategy _selectedMergeStrategy = ImportMergeStrategy.Skip;
+
+    /// <summary>True when the merge strategy is <see cref="ImportMergeStrategy.Skip"/>.</summary>
+    public bool IsMergeStrategySkip
+    {
+        get => SelectedMergeStrategy == ImportMergeStrategy.Skip;
+        set { if (value) SelectedMergeStrategy = ImportMergeStrategy.Skip; }
+    }
+
+    /// <summary>True when the merge strategy is <see cref="ImportMergeStrategy.TakeBoth"/>.</summary>
+    public bool IsMergeStrategyTakeBoth
+    {
+        get => SelectedMergeStrategy == ImportMergeStrategy.TakeBoth;
+        set { if (value) SelectedMergeStrategy = ImportMergeStrategy.TakeBoth; }
+    }
+
+    /// <summary>True when the merge strategy is <see cref="ImportMergeStrategy.Replace"/>.</summary>
+    public bool IsMergeStrategyReplace
+    {
+        get => SelectedMergeStrategy == ImportMergeStrategy.Replace;
+        set { if (value) SelectedMergeStrategy = ImportMergeStrategy.Replace; }
+    }
+
+    /// <summary>
+    /// The environment-variable name used to hold the server base URL in OpenAPI / Swagger
+    /// imports. Defaults to <c>baseUrl</c>.
+    /// Only affects OpenAPI and Swagger imports.
+    /// </summary>
+    [ObservableProperty]
+    private string _baseUrlVariableName = "baseUrl";
+
     // ─── Computed ─────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -134,6 +181,13 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
     }
 
     // ─── Commands ────────────────────────────────────────────────────────────
+
+    /// <summary>Toggles the expanded state of the Advanced options panel.</summary>
+    [RelayCommand]
+    private void ToggleAdvancedOptions()
+    {
+        IsAdvancedOptionsExpanded = !IsAdvancedOptionsExpanded;
+    }
 
     /// <summary>Opens a file picker so the user can choose one or more collection files to import.</summary>
     [RelayCommand]
@@ -254,11 +308,11 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
         try
         {
             // First file creates the new collection (sets its name and populates root requests).
-            await _importService.ImportToFolderAsync(FilePaths[0], FolderPath, ct);
+            await _importService.ImportToFolderAsync(FilePaths[0], FolderPath, null, ct);
 
             // Subsequent files are merged into the newly-created collection.
             for (var i = 1; i < FilePaths.Count; i++)
-                await _importService.ImportIntoCollectionAsync(FilePaths[i], FolderPath, FolderPath, ct);
+                await _importService.ImportIntoCollectionAsync(FilePaths[i], FolderPath, FolderPath, null, ct);
 
             ResultFolderPath = FolderPath;
             IsConfirmed = true;
@@ -299,10 +353,12 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
                 return;
             }
 
+            var options = BuildImportOptions();
+
             // All selected files are merged sequentially into the collection.
             foreach (var filePath in FilePaths)
                 await _importService.ImportIntoCollectionAsync(
-                    filePath, _currentCollectionPath, absoluteTarget, ct);
+                    filePath, _currentCollectionPath, absoluteTarget, options, ct);
 
             ResultFolderPath = _currentCollectionPath;
             ImportedIntoCurrentCollection = true;
@@ -321,6 +377,23 @@ public sealed partial class ImportCollectionViewModel : ObservableObject
         {
             IsImporting = false;
         }
+    }
+
+    /// <summary>
+    /// Builds a <see cref="CollectionImportOptions"/> from the current advanced-option
+    /// selections. Falls back to sensible defaults when values are empty or invalid.
+    /// </summary>
+    private CollectionImportOptions BuildImportOptions()
+    {
+        var baseUrlName = string.IsNullOrWhiteSpace(BaseUrlVariableName)
+            ? "baseUrl"
+            : BaseUrlVariableName.Trim();
+
+        return new CollectionImportOptions
+        {
+            MergeStrategy = SelectedMergeStrategy,
+            BaseUrlVariableName = baseUrlName,
+        };
     }
 
     private static bool IsFolderNonEmpty(string folderPath)
