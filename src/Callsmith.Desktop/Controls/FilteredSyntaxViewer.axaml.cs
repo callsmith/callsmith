@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Callsmith.Core.Abstractions;
@@ -18,16 +19,16 @@ public sealed partial class FilteredSyntaxViewer : UserControl
     public static readonly StyledProperty<string> FilterExpressionProperty =
         AvaloniaProperty.Register<FilteredSyntaxViewer, string>(nameof(FilterExpression), string.Empty);
 
-    private const string JsonFilterLabel = "JSONPATH FILTER";
-    private const string XmlFilterLabel = "XPATH FILTER";
+    private const string JsonFilterLabel = "JSONPATH FILTER:";
+    private const string XmlFilterLabel = "XPATH FILTER:";
 
     private TextBox? _filterTextBox;
     private Button? _clearButton;
     private TextBlock? _filterLabelTextBlock;
     private TextBlock? _filterStatusTextBlock;
     private Border? _filterBar;
-    private Border? _jsonPathHelpButton;
     private SyntaxEditor? _editor;
+    private object? _jsonPathTooltipTip;
 
     /// <summary>
     /// Gets or sets the JSONPath query service used for JSON filtering.
@@ -89,8 +90,10 @@ public sealed partial class FilteredSyntaxViewer : UserControl
         _filterLabelTextBlock = this.FindControl<TextBlock>(nameof(FilterLabelTextBlock));
         _filterStatusTextBlock = this.FindControl<TextBlock>(nameof(FilterStatusTextBlock));
         _filterBar = this.FindControl<Border>(nameof(FilterBar));
-        _jsonPathHelpButton = this.FindControl<Border>(nameof(JsonPathHelpButton));
         _editor = this.FindControl<SyntaxEditor>(nameof(Editor));
+
+        if (_filterLabelTextBlock is not null)
+            _jsonPathTooltipTip = ToolTip.GetTip(_filterLabelTextBlock);
 
         if (_filterTextBox is not null)
             _filterTextBox.TextChanged += OnFilterTextChanged;
@@ -122,10 +125,12 @@ public sealed partial class FilteredSyntaxViewer : UserControl
             _filterBar.IsVisible = enabled;
 
         if (_filterLabelTextBlock is not null)
+        {
             _filterLabelTextBlock.Text = GetFilterLabel();
-
-        if (_jsonPathHelpButton is not null)
-            _jsonPathHelpButton.IsVisible = NormalizeLanguage() == "json";
+            bool isJson = NormalizeLanguage() == "json";
+            ToolTip.SetTip(_filterLabelTextBlock, isJson ? _jsonPathTooltipTip : null);
+            _filterLabelTextBlock.Cursor = isJson ? new Cursor(StandardCursorType.Help) : null;
+        }
 
         if (_filterTextBox is not null)
         {

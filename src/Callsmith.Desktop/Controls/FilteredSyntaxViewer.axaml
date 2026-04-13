@@ -27,17 +27,7 @@
                      FontSize="10"
                      LetterSpacing="1"
                      VerticalAlignment="Center"
-                     Text="FILTER"/>
-          <Border x:Name="JsonPathHelpButton"
-                  Width="14"
-                  Height="14"
-                  CornerRadius="7"
-                  Background="#3a3a3a"
-                  BorderBrush="#555"
-                  BorderThickness="1"
-                  VerticalAlignment="Center"
-                  Cursor="Help"
-                  IsVisible="False">
+                     Text="FILTER:">
             <ToolTip.Tip>
               <ToolTip MaxWidth="380">
                 <StackPanel Spacing="6">
@@ -123,19 +113,7 @@
                 </StackPanel>
               </ToolTip>
             </ToolTip.Tip>
-            <TextBlock Text="?"
-                       FontSize="9"
-                       FontWeight="SemiBold"
-                       Foreground="#888"
-                       HorizontalAlignment="Center"
-                       VerticalAlignment="Center"/>
-          </Border>
-          <TextBlock Text=":"
-                     Foreground="#888"
-                     FontWeight="Bold"
-                     FontSize="10"
-                     LetterSpacing="1"
-                     VerticalAlignment="Center"/>
+          </TextBlock>
           <TextBlock x:Name="FilterStatusTextBlock"
                      FontSize="11"
                      VerticalAlignment="Center"
