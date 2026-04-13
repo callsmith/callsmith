@@ -13,6 +13,9 @@ public sealed partial class FilteredSyntaxViewer : UserControl
     public static readonly StyledProperty<string> LanguageProperty =
         AvaloniaProperty.Register<FilteredSyntaxViewer, string>(nameof(Language), string.Empty);
 
+    public static readonly StyledProperty<string> FilterExpressionProperty =
+        AvaloniaProperty.Register<FilteredSyntaxViewer, string>(nameof(FilterExpression), string.Empty);
+
     private const string JsonFilterLabel = "JSONPATH FILTER:";
     private const string XmlFilterLabel = "XPATH FILTER:";
 
@@ -43,6 +46,12 @@ public sealed partial class FilteredSyntaxViewer : UserControl
         set => SetValue(LanguageProperty, value);
     }
 
+    public string FilterExpression
+    {
+        get => GetValue(FilterExpressionProperty);
+        set => SetValue(FilterExpressionProperty, value);
+    }
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -50,6 +59,14 @@ public sealed partial class FilteredSyntaxViewer : UserControl
         if (change.Property == TextProperty || change.Property == LanguageProperty)
         {
             UpdateFilterAvailability();
+            ApplyFilter();
+        }
+
+        if (change.Property == FilterExpressionProperty && _filterTextBox is not null)
+        {
+            var expression = change.GetNewValue<string>() ?? string.Empty;
+            if (!string.Equals(_filterTextBox.Text, expression, StringComparison.Ordinal))
+                _filterTextBox.Text = expression;
             ApplyFilter();
         }
     }
@@ -80,6 +97,9 @@ public sealed partial class FilteredSyntaxViewer : UserControl
     {
         if (_clearButton is not null && _filterTextBox is not null)
             _clearButton.IsVisible = !string.IsNullOrWhiteSpace(_filterTextBox.Text);
+
+        if (_filterTextBox is not null)
+            FilterExpression = _filterTextBox.Text ?? string.Empty;
 
         ApplyFilter();
     }

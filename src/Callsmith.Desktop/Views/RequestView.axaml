@@ -867,7 +867,8 @@
                   IsVisible="{Binding Response, Converter={x:Static conv:NotNullConverter.Instance}}">
         <TabItem Header="Preview">
           <controls:FilteredSyntaxViewer Text="{Binding FormattedResponseBody, FallbackValue='', Mode=OneWay}"
-                                         Language="{Binding ResponseLanguage}"/>
+                                         Language="{Binding ResponseLanguage}"
+                                         FilterExpression="{Binding ResponsePathFilterExpression, Mode=TwoWay}"/>
         </TabItem>
         <TabItem Header="Headers">
           <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">

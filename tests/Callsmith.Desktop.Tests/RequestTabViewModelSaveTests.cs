@@ -133,6 +133,29 @@ public sealed class RequestTabViewModelSaveTests
     }
 
     [Fact]
+    public void ChangingResponsePathFilterExpression_DoesNotMarkTabDirty()
+    {
+        var sut = BuildSut();
+        sut.LoadRequest(SampleRequest());
+
+        sut.ResponsePathFilterExpression = "$.results[0].id";
+
+        sut.HasUnsavedChanges.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ResponsePathFilterExpression_IsTabScoped()
+    {
+        var firstTab = BuildSut();
+        var secondTab = BuildSut();
+
+        firstTab.ResponsePathFilterExpression = "$.results[0].id";
+
+        secondTab.ResponsePathFilterExpression.Should().BeEmpty();
+        firstTab.ResponsePathFilterExpression.Should().Be("$.results[0].id");
+    }
+
+    [Fact]
     public void AddingQueryParam_MarksTabDirty()
     {
         var sut = BuildSut();

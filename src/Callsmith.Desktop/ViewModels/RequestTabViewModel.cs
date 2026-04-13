@@ -272,6 +272,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [ObservableProperty] private bool _isSending;
     [ObservableProperty] private string? _errorMessage;
 
+    // In-memory, tab-local expression for JSONPath/XPath filtering in the response preview.
+    [ObservableProperty] private string _responsePathFilterExpression = string.Empty;
+
     /// <summary>True when the displayed response was loaded from history, not from a live send.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HistoryResponseDisplay), nameof(HistoryResponseToolTip))]
@@ -785,6 +788,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(ShowSaveAsPanel) or nameof(SaveAsName) or nameof(SaveAsFolderPath) or
                 nameof(SaveAsError) or nameof(PendingClose) or
                 nameof(Response) or nameof(IsSending) or nameof(ErrorMessage) or
+                nameof(ResponsePathFilterExpression) or
                 nameof(IsResponseFromHistory) or nameof(HistoryResponseDate) or nameof(HistoryResponseDisplay) or nameof(HistoryResponseToolTip) or
                 nameof(StatusDisplay) or nameof(ElapsedDisplay) or nameof(SizeDisplay) or
                 nameof(StatusBadgeColor) or nameof(MethodColor) or
