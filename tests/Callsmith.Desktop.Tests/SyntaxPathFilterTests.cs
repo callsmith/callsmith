@@ -41,6 +41,46 @@ public sealed class SyntaxPathFilterTests
     }
 
     [Fact]
+    public void TryTransform_JsonPath_WildcardArraySelector_ExtractsAllValues()
+    {
+        const string json = """
+            {
+              "library": {
+                "books": [
+                  { "author": "Le Guin" },
+                  { "author": "Butler" },
+                  { "author": "Leckie" }
+                ]
+              }
+            }
+            """;
+
+        var ok = SyntaxPathFilter.TryTransform(json, "json", "$.library.books[*].author", out var transformed, out var error);
+
+        ok.Should().BeTrue();
+        transformed.Should().Be("""
+            [
+              "Le Guin",
+              "Butler",
+              "Leckie"
+            ]
+            """);
+        error.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TryTransform_JsonPath_WildcardArraySelector_OnEmptyArray_ReturnsEmpty()
+    {
+        const string json = """{ "library": { "books": [] } }""";
+
+        var ok = SyntaxPathFilter.TryTransform(json, "json", "$.library.books[*].author", out var transformed, out var error);
+
+        ok.Should().BeTrue();
+        transformed.Should().BeEmpty();
+        error.Should().BeEmpty();
+    }
+
+    [Fact]
     public void TryTransform_XPath_ExtractsNodeValue()
     {
         const string xml = """

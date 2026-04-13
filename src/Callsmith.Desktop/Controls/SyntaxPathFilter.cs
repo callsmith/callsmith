@@ -45,36 +45,69 @@ internal static class SyntaxPathFilter
             return Fail($"Response is not valid JSON: {ex.Message}", out transformed, out error, source);
         }
 
+        List<JsonElement> currentElements = [element];
+
         foreach (var step in steps)
         {
             if (!string.IsNullOrEmpty(step.PropertyName))
             {
-                if (element.ValueKind != JsonValueKind.Object)
-                    return Fail($"Expected an object before property '{step.PropertyName}'.", out transformed, out error, source);
+                var propertyElements = new List<JsonElement>(currentElements.Count);
+                foreach (var current in currentElements)
+                {
+                    if (current.ValueKind != JsonValueKind.Object)
+                        return Fail($"Expected an object before property '{step.PropertyName}'.", out transformed, out error, source);
 
-                if (!element.TryGetProperty(step.PropertyName, out element))
+                    if (current.TryGetProperty(step.PropertyName, out var propertyElement))
+                        propertyElements.Add(propertyElement);
+                }
+
+                currentElements = propertyElements;
+                if (currentElements.Count == 0)
                 {
                     transformed = string.Empty;
                     return true;
                 }
             }
 
-            foreach (var index in step.ArrayIndexes)
+            foreach (var selector in step.ArraySelectors)
             {
-                if (element.ValueKind != JsonValueKind.Array)
-                    return Fail($"Expected an array before index [{index}].", out transformed, out error, source);
+                var nextElements = new List<JsonElement>();
+                foreach (var current in currentElements)
+                {
+                    if (current.ValueKind != JsonValueKind.Array)
+                    {
+                        var selectorText = selector.IsWildcard ? "*" : selector.Index.ToString(CultureInfo.InvariantCulture);
+                        return Fail($"Expected an array before selector [{selectorText}].", out transformed, out error, source);
+                    }
 
-                if (index < 0 || index >= element.GetArrayLength())
+                    if (selector.IsWildcard)
+                    {
+                        foreach (var arrayItem in current.EnumerateArray())
+                            nextElements.Add(arrayItem);
+                        continue;
+                    }
+
+                    var index = selector.Index;
+                    if (index >= 0 && index < current.GetArrayLength())
+                        nextElements.Add(current[index]);
+                }
+
+                currentElements = nextElements;
+                if (currentElements.Count == 0)
                 {
                     transformed = string.Empty;
                     return true;
                 }
-
-                element = element[index];
             }
         }
 
-        transformed = JsonElementToString(element);
+        transformed = currentElements.Count == 1
+            ? JsonElementToString(currentElements[0])
+            : JsonSerializer.Serialize(currentElements, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            });
         return true;
     }
 
@@ -226,7 +259,7 @@ internal static class SyntaxPathFilter
             }
         }
 
-        var indexes = new List<int>();
+        var selectors = new List<JsonPathArraySelector>();
         while (index < segment.Length)
         {
             if (segment[index] != '[')
@@ -243,23 +276,30 @@ internal static class SyntaxPathFilter
             }
 
             var indexText = segment[(index + 1)..endBracket];
+            if (indexText == "*")
+            {
+                selectors.Add(JsonPathArraySelector.Wildcard);
+                index = endBracket + 1;
+                continue;
+            }
+
             if (!int.TryParse(indexText, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedIndex))
             {
                 error = $"Array index '{indexText}' is not a valid non-negative integer.";
                 return false;
             }
 
-            indexes.Add(parsedIndex);
+            selectors.Add(new JsonPathArraySelector(parsedIndex));
             index = endBracket + 1;
         }
 
-        if (string.IsNullOrEmpty(propertyName) && indexes.Count == 0)
+        if (string.IsNullOrEmpty(propertyName) && selectors.Count == 0)
         {
             error = $"Invalid JSONPath segment '{segment}'.";
             return false;
         }
 
-        step = new JsonPathStep(propertyName, indexes);
+        step = new JsonPathStep(propertyName, selectors);
         return true;
     }
 
@@ -288,5 +328,12 @@ internal static class SyntaxPathFilter
         return false;
     }
 
-    private readonly record struct JsonPathStep(string PropertyName, IReadOnlyList<int> ArrayIndexes);
+    private readonly record struct JsonPathStep(string PropertyName, IReadOnlyList<JsonPathArraySelector> ArraySelectors);
+
+    private readonly record struct JsonPathArraySelector(int Index)
+    {
+        public bool IsWildcard => Index < 0;
+
+        public static JsonPathArraySelector Wildcard => new(-1);
+    }
 }
