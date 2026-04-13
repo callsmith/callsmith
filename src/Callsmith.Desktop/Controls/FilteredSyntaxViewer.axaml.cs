@@ -18,8 +18,8 @@ public sealed partial class FilteredSyntaxViewer : UserControl
     public static readonly StyledProperty<string> FilterExpressionProperty =
         AvaloniaProperty.Register<FilteredSyntaxViewer, string>(nameof(FilterExpression), string.Empty);
 
-    private const string JsonFilterLabel = "JSONPATH FILTER:";
-    private const string XmlFilterLabel = "XPATH FILTER:";
+    private const string JsonFilterLabel = "JSONPATH FILTER";
+    private const string XmlFilterLabel = "XPATH FILTER";
 
     private TextBox? _filterTextBox;
     private Button? _clearButton;
