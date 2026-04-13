@@ -31,7 +31,9 @@ internal static class SyntaxPathFilter
     private static bool TryTransformJson(string source, string expression, IJsonPathService jsonPath, out string transformed, out string error)
     {
         transformed = source;
+        error = string.Empty;
 
+        // Validate syntax first so path errors are reported before trying to parse JSON
         if (!jsonPath.TryValidate(expression, out error))
             return false;
 
@@ -46,7 +48,9 @@ internal static class SyntaxPathFilter
             return Fail($"Response is not valid JSON: {ex.Message}", out transformed, out error, source);
         }
 
-        var results = jsonPath.Query(root, expression);
+        // Evaluate; TryQuery propagates runtime errors (e.g. sort applied to non-array)
+        if (!jsonPath.TryQuery(root, expression, out var results, out error))
+            return false;
 
         if (results.Count == 0)
         {

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -15,18 +16,69 @@ public sealed class JsonPathService : IJsonPathService
     /// <inheritdoc/>
     public IReadOnlyList<JsonElement> Query(JsonElement root, string expression)
     {
-        if (!TryParseExpression(expression, out var segments, out _))
+        if (!TryParseExpression(expression, out var steps, out _))
             return [];
 
-        return EvaluateSegments([root], root, segments);
+        TryEvaluateSteps([root], root, steps, out var result, out _);
+        return result;
     }
 
     /// <inheritdoc/>
     public bool TryValidate(string expression, out string error)
         => TryParseExpression(expression, out _, out error);
 
+    /// <inheritdoc/>
+    public bool TryQuery(JsonElement root, string expression,
+        out IReadOnlyList<JsonElement> results, out string error)
+    {
+        results = [];
+        if (!TryParseExpression(expression, out var steps, out error))
+            return false;
+
+        if (!TryEvaluateSteps([root], root, steps, out var list, out error))
+            return false;
+
+        results = list;
+        return true;
+    }
+
     // ─── Evaluator ────────────────────────────────────────────────────────────
 
+    /// <summary>Evaluates a mixed list of path steps (selectors and/or sort operations).</summary>
+    private static bool TryEvaluateSteps(
+        List<JsonElement> nodes, JsonElement root, IReadOnlyList<IPathStep> steps,
+        out List<JsonElement> result, out string error)
+    {
+        result = nodes;
+        error = string.Empty;
+
+        foreach (var step in steps)
+        {
+            var next = new List<JsonElement>();
+
+            if (step is Segment segment)
+            {
+                foreach (var node in result)
+                {
+                    if (segment.IsDescendant)
+                        CollectDescendants(node, root, segment.Selectors, next);
+                    else
+                        ApplySelectors(node, root, segment.Selectors, next);
+                }
+            }
+            else if (step is SortStep sort)
+            {
+                if (!TryApplySort(result, sort, next, out error))
+                    return false;
+            }
+
+            result = next;
+        }
+
+        return true;
+    }
+
+    /// <summary>Evaluates a list of regular segments (used inside filter-path expressions).</summary>
     private static List<JsonElement> EvaluateSegments(
         List<JsonElement> nodes, JsonElement root, IReadOnlyList<Segment> segments)
     {
@@ -70,12 +122,108 @@ public sealed class JsonPathService : IJsonPathService
         }
     }
 
+    // ─── Sort helpers ─────────────────────────────────────────────────────────
+
+    private static bool TryApplySort(
+        List<JsonElement> nodes, SortStep sort, List<JsonElement> output, out string error)
+    {
+        error = string.Empty;
+
+        foreach (var node in nodes)
+        {
+            if (node.ValueKind != JsonValueKind.Array)
+            {
+                error = "sort functions can only be applied to arrays.";
+                return false;
+            }
+
+            var elements = node.EnumerateArray().ToList();
+
+            if (elements.Count == 0)
+                continue; // empty array → nothing to add
+
+            // Determine array element type from the first non-null element
+            JsonElement? firstNonNull = null;
+            foreach (var el in elements)
+            {
+                if (el.ValueKind != JsonValueKind.Null)
+                {
+                    firstNonNull = el;
+                    break;
+                }
+            }
+
+            var isObjectArray = firstNonNull?.ValueKind == JsonValueKind.Object;
+
+            if (isObjectArray && sort.SortExpression is null)
+            {
+                error = "sort requires a property expression for arrays of objects, e.g. sort_asc(name).";
+                return false;
+            }
+
+            if (!isObjectArray && sort.SortExpression is not null)
+            {
+                error = "sort cannot use a property expression for arrays of primitives.";
+                return false;
+            }
+
+            var sorted = sort.Ascending
+                ? elements.OrderBy(e => GetSortKey(e, sort.SortExpression), SortKeyComparer.Instance)
+                : elements.OrderByDescending(e => GetSortKey(e, sort.SortExpression), SortKeyComparer.Instance);
+
+            output.AddRange(sorted);
+        }
+
+        return true;
+    }
+
+    private static object? GetSortKey(JsonElement element, string? propertyName)
+    {
+        var target = element;
+        if (propertyName is not null)
+        {
+            if (element.ValueKind != JsonValueKind.Object ||
+                !element.TryGetProperty(propertyName, out target))
+                return null; // missing property → sorts last
+        }
+
+        return target.ValueKind switch
+        {
+            JsonValueKind.String => target.GetString(),
+            JsonValueKind.Number => target.TryGetDouble(out var d) ? (object?)d : target.GetRawText(),
+            JsonValueKind.True => (object?)1.0,
+            JsonValueKind.False => (object?)0.0,
+            _ => null,
+        };
+    }
+
+    private sealed class SortKeyComparer : IComparer<object?>
+    {
+        public static readonly SortKeyComparer Instance = new();
+
+        public int Compare(object? x, object? y)
+        {
+            if (x is null && y is null) return 0;
+            if (x is null) return 1;  // nulls sort last
+            if (y is null) return -1;
+
+            if (x is double dx && y is double dy)
+                return dx.CompareTo(dy);
+
+            if (x is string sx && y is string sy)
+                return string.CompareOrdinal(sx, sy);
+
+            // Mixed types: fall back to string comparison
+            return string.CompareOrdinal(x.ToString() ?? string.Empty, y.ToString() ?? string.Empty);
+        }
+    }
+
     // ─── Parser ───────────────────────────────────────────────────────────────
 
     private static bool TryParseExpression(
-        string input, out IReadOnlyList<Segment> segments, out string error)
+        string input, out IReadOnlyList<IPathStep> steps, out string error)
     {
-        segments = [];
+        steps = [];
         error = string.Empty;
 
         if (string.IsNullOrWhiteSpace(input))
@@ -92,16 +240,134 @@ public sealed class JsonPathService : IJsonPathService
         }
 
         var pos = 1;
-        var result = new List<Segment>();
+        var result = new List<IPathStep>();
 
         while (pos < span.Length)
         {
-            if (!TryParseSegment(span, ref pos, out var segment, out error))
+            if (!TryParseNextStep(span, ref pos, out var step, out error))
                 return false;
-            result.Add(segment);
+            result.Add(step);
         }
 
-        segments = result;
+        steps = result;
+        return true;
+    }
+
+    /// <summary>
+    /// Parses one path step from the main query, returning either a <see cref="Segment"/> or a
+    /// <see cref="SortStep"/> for <c>sort</c>/<c>sort_asc</c>/<c>sort_desc</c> function calls.
+    /// </summary>
+    private static bool TryParseNextStep(
+        ReadOnlySpan<char> span, ref int pos, out IPathStep step, out string error)
+    {
+        step = new Segment(false, []);
+        error = string.Empty;
+
+        if (pos >= span.Length)
+        {
+            error = "Unexpected end of path.";
+            return false;
+        }
+
+        // Non-dot bracket segment
+        if (span[pos] == '[')
+        {
+            if (!TryParseBracketedSelection(span, ref pos, out var selectors, out error))
+                return false;
+            step = new Segment(false, selectors);
+            return true;
+        }
+
+        if (span[pos] != '.')
+        {
+            error = $"Expected '.' or '[' at position {pos}.";
+            return false;
+        }
+
+        pos++; // skip first '.'
+
+        bool isDescendant = false;
+        if (pos < span.Length && span[pos] == '.')
+        {
+            isDescendant = true;
+            pos++; // skip second '.'
+        }
+
+        if (pos >= span.Length)
+        {
+            error = "Unexpected end of path after '.'.";
+            return false;
+        }
+
+        if (span[pos] == '[')
+        {
+            if (!TryParseBracketedSelection(span, ref pos, out var selectors, out error))
+                return false;
+            step = new Segment(isDescendant, selectors);
+            return true;
+        }
+
+        if (span[pos] == '*')
+        {
+            pos++;
+            step = new Segment(isDescendant, [WildcardSelector.Instance]);
+            return true;
+        }
+
+        if (!TryParseMemberName(span, ref pos, out var name, out error))
+            return false;
+
+        // Detect sort function calls: sort(...), sort_asc(...), sort_desc(...)
+        if (name is "sort" or "sort_asc" or "sort_desc")
+        {
+            SkipWhitespace(span, ref pos);
+            if (pos < span.Length && span[pos] == '(')
+            {
+                if (isDescendant)
+                {
+                    error = "sort functions cannot be used with the descendant operator '..'.";
+                    return false;
+                }
+
+                pos++; // skip '('
+                SkipWhitespace(span, ref pos);
+
+                string? sortExpr = null;
+                if (pos < span.Length && span[pos] != ')')
+                {
+                    if (span[pos] == '\'' || span[pos] == '"')
+                    {
+                        if (!TryParseQuotedString(span, ref pos, out sortExpr, out error))
+                            return false;
+                    }
+                    else if (IsNameFirst(span[pos]))
+                    {
+                        var exprStart = pos;
+                        while (pos < span.Length && IsNameChar(span[pos])) pos++;
+                        sortExpr = span[exprStart..pos].ToString();
+                    }
+                    else
+                    {
+                        error = $"Invalid sort expression at position {pos}.";
+                        return false;
+                    }
+
+                    SkipWhitespace(span, ref pos);
+                }
+
+                if (pos >= span.Length || span[pos] != ')')
+                {
+                    error = "Missing ')' in sort function call.";
+                    return false;
+                }
+
+                pos++; // skip ')'
+                step = new SortStep(Ascending: name != "sort_desc", SortExpression: sortExpr);
+                return true;
+            }
+        }
+
+        step = new Segment(isDescendant, [new NameSelector(name)]);
         return true;
     }
 
@@ -745,9 +1011,16 @@ public sealed class JsonPathService : IJsonPathService
             _ => element,
         };
 
-    // ─── Data types: segments and selectors ───────────────────────────────────
+    // ─── Data types: path steps (segments and sort operations) ───────────────
 
-    private sealed record Segment(bool IsDescendant, IReadOnlyList<ISelector> Selectors);
+    private interface IPathStep { }
+
+    private sealed record Segment(bool IsDescendant, IReadOnlyList<ISelector> Selectors) : IPathStep;
+
+    /// <summary>
+    /// Represents a sort function step: <c>sort(expr?)</c>, <c>sort_asc(expr?)</c>, <c>sort_desc(expr?)</c>.
+    /// </summary>
+    private sealed record SortStep(bool Ascending, string? SortExpression) : IPathStep;
 
     private interface ISelector
     {

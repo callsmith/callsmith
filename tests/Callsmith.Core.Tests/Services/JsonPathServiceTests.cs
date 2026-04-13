@@ -723,4 +723,152 @@ public sealed class JsonPathServiceTests
         results.Should().HaveCount(2);
         results.Select(e => e.GetProperty("flag").GetInt32()).Should().BeEquivalentTo([1, 2]);
     }
+
+    // ─── sort / sort_asc / sort_desc ──────────────────────────────────────────
+
+    [Fact]
+    public void Query_SortAsc_PrimitiveArray_SortsAscending()
+    {
+        var results = Query("""[3,1,4,1,5,9,2,6]""", "$.sort_asc()");
+        results.Select(e => e.GetInt32()).Should().Equal(1, 1, 2, 3, 4, 5, 6, 9);
+    }
+
+    [Fact]
+    public void Query_Sort_IsAliasForSortAsc()
+    {
+        var r1 = Query("""[3,1,2]""", "$.sort()");
+        var r2 = Query("""[3,1,2]""", "$.sort_asc()");
+        r1.Select(e => e.GetInt32()).Should().Equal(r2.Select(e => e.GetInt32()));
+    }
+
+    [Fact]
+    public void Query_SortDesc_PrimitiveArray_SortsDescending()
+    {
+        var results = Query("""[3,1,4,1,5,9,2,6]""", "$.sort_desc()");
+        results.Select(e => e.GetInt32()).Should().Equal(9, 6, 5, 4, 3, 2, 1, 1);
+    }
+
+    [Fact]
+    public void Query_SortAsc_StringPrimitiveArray()
+    {
+        var results = Query("""["banana","apple","cherry"]""", "$.sort_asc()");
+        results.Select(e => e.GetString()).Should().Equal("apple", "banana", "cherry");
+    }
+
+    [Fact]
+    public void Query_SortAsc_ObjectArray_ByProperty()
+    {
+        var json = """[{"name":"Charlie"},{"name":"Alice"},{"name":"Bob"}]""";
+        var results = Query(json, "$.sort_asc(name)");
+        results.Select(e => e.GetProperty("name").GetString()).Should().Equal("Alice", "Bob", "Charlie");
+    }
+
+    [Fact]
+    public void Query_SortDesc_ObjectArray_ByProperty()
+    {
+        var json = """[{"price":30},{"price":10},{"price":20}]""";
+        var results = Query(json, "$.sort_desc(price)");
+        results.Select(e => e.GetProperty("price").GetInt32()).Should().Equal(30, 20, 10);
+    }
+
+    [Fact]
+    public void Query_SortAsc_ObjectArray_ByPropertyQuoted()
+    {
+        var json = """[{"age":30},{"age":10},{"age":20}]""";
+        var results = Query(json, "$.sort_asc('age')");
+        results.Select(e => e.GetProperty("age").GetInt32()).Should().Equal(10, 20, 30);
+    }
+
+    [Fact]
+    public void Query_SortAsc_EmptyArray_ReturnsEmpty()
+    {
+        Query("[]", "$.sort_asc()").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Query_Sort_OnNestedPath()
+    {
+        var json = """{"items":[{"score":5},{"score":1},{"score":3}]}""";
+        var results = Query(json, "$.items.sort_asc(score)");
+        results.Select(e => e.GetProperty("score").GetInt32()).Should().Equal(1, 3, 5);
+    }
+
+    [Fact]
+    public void Query_SortAsc_NullValuesLast()
+    {
+        var json = """[{"v":2},{"v":null},{"v":1}]""";
+        var results = Query(json, "$.sort_asc(v)");
+        // non-null values come first (ascending), nulls last
+        results.Select(e => e.GetProperty("v").ValueKind == JsonValueKind.Null
+            ? (int?)null
+            : e.GetProperty("v").GetInt32())
+            .Should().Equal(1, 2, null);
+    }
+
+    // ─── sort TryQuery error cases ────────────────────────────────────────────
+
+    private bool TryQuery(string json, string path, out string error)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement.Clone();
+        var ok = _sut.TryQuery(root, path, out _, out error);
+        return ok;
+    }
+
+    [Fact]
+    public void TryQuery_Sort_OnNonArray_ReturnsFalseWithError()
+    {
+        TryQuery("""{"name":"Alice"}""", "$.sort_asc()", out var error).Should().BeFalse();
+        error.Should().Contain("arrays");
+    }
+
+    [Fact]
+    public void TryQuery_SortAsc_ObjectArrayWithoutExpression_ReturnsFalseWithError()
+    {
+        TryQuery("""[{"name":"Alice"}]""", "$.sort_asc()", out var error).Should().BeFalse();
+        error.Should().Contain("expression");
+    }
+
+    [Fact]
+    public void TryQuery_SortAsc_PrimitiveArrayWithExpression_ReturnsFalseWithError()
+    {
+        TryQuery("""[1,2,3]""", "$.sort_asc(value)", out var error).Should().BeFalse();
+        error.Should().Contain("expression");
+    }
+
+    [Fact]
+    public void TryValidate_SortAsc_NoExpression_ReturnsTrue()
+    {
+        _sut.TryValidate("$.sort_asc()", out var error).Should().BeTrue();
+        error.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TryValidate_SortDesc_WithExpression_ReturnsTrue()
+    {
+        _sut.TryValidate("$.items.sort_desc(price)", out var error).Should().BeTrue();
+        error.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TryValidate_SortWithDescendant_ReturnsFalse()
+    {
+        _sut.TryValidate("$..sort_asc()", out var error).Should().BeFalse();
+        error.Should().Contain("descendant");
+    }
+
+    [Fact]
+    public void TryValidate_SortMissingClosingParen_ReturnsFalse()
+    {
+        _sut.TryValidate("$.sort_asc(name", out var error).Should().BeFalse();
+        error.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public void TryQuery_SortReturnsCorrectResults()
+    {
+        var ok = TryQuery("""[3,1,2]""", "$.sort()", out var error);
+        ok.Should().BeTrue();
+        error.Should().BeEmpty();
+    }
 }
