@@ -88,6 +88,16 @@ public partial class App : Application
 
         // Core -- environment variable merge (shared algorithm used by both send and preview)
         services.AddSingleton<IEnvironmentMergeService, EnvironmentMergeService>();
+        services.AddSingleton<ICollectionNamingService, CollectionNamingService>();
+
+        // Core -- environment variable suggestions used by completion UIs
+        services.AddSingleton<IEnvironmentVariableSuggestionService, EnvironmentVariableSuggestionService>();
+
+        // Core -- request assembly (preparation of request models for sending)
+        services.AddSingleton<IRequestAssemblyService, RequestAssemblyService>();
+
+        // Core -- command palette request flattening + fuzzy filtering
+        services.AddSingleton<ICommandPaletteSearchService, CommandPaletteSearchService>();
 
         // Core -- collection preferences
         services.AddSingleton<ICollectionPreferencesService, FileSystemCollectionPreferencesService>();

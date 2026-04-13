@@ -115,41 +115,48 @@ public partial class EnvironmentEditorView : UserControl
 
     private async void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(EnvironmentEditorViewModel.ShowResponseBodyConfig))
+        try
         {
-            if (_trackedVm is null || !_trackedVm.ShowResponseBodyConfig)
-                return;
-            if (_trackedVm.PendingResponseBodyConfig is null)
-                return;
-
-            var owner = TopLevel.GetTopLevel(this) as Window;
-            if (owner is null) return;
-
-            var dialog = new DynamicValueConfigDialog
+            if (e.PropertyName == nameof(EnvironmentEditorViewModel.ShowResponseBodyConfig))
             {
-                DataContext = _trackedVm.PendingResponseBodyConfig,
-            };
+                if (_trackedVm is null || !_trackedVm.ShowResponseBodyConfig)
+                    return;
+                if (_trackedVm.PendingResponseBodyConfig is null)
+                    return;
 
-            await dialog.ShowDialog(owner);
-            _trackedVm.OnResponseBodyConfigDialogClosed();
+                var owner = TopLevel.GetTopLevel(this) as Window;
+                if (owner is null) return;
+
+                var dialog = new DynamicValueConfigDialog
+                {
+                    DataContext = _trackedVm.PendingResponseBodyConfig,
+                };
+
+                await dialog.ShowDialog(owner);
+                _trackedVm.OnResponseBodyConfigDialogClosed();
+            }
+            else if (e.PropertyName == nameof(EnvironmentEditorViewModel.ShowMockDataConfig))
+            {
+                if (_trackedVm is null || !_trackedVm.ShowMockDataConfig)
+                    return;
+                if (_trackedVm.PendingMockDataConfig is null)
+                    return;
+
+                var owner = TopLevel.GetTopLevel(this) as Window;
+                if (owner is null) return;
+
+                var dialog = new MockDataConfigDialog
+                {
+                    DataContext = _trackedVm.PendingMockDataConfig,
+                };
+
+                await dialog.ShowDialog(owner);
+                _trackedVm.OnMockDataConfigDialogClosed();
+            }
         }
-        else if (e.PropertyName == nameof(EnvironmentEditorViewModel.ShowMockDataConfig))
+        catch
         {
-            if (_trackedVm is null || !_trackedVm.ShowMockDataConfig)
-                return;
-            if (_trackedVm.PendingMockDataConfig is null)
-                return;
-
-            var owner = TopLevel.GetTopLevel(this) as Window;
-            if (owner is null) return;
-
-            var dialog = new MockDataConfigDialog
-            {
-                DataContext = _trackedVm.PendingMockDataConfig,
-            };
-
-            await dialog.ShowDialog(owner);
-            _trackedVm.OnMockDataConfigDialogClosed();
+            // Keep UI responsive even if modal orchestration fails.
         }
     }
 
@@ -211,18 +218,34 @@ public partial class EnvironmentEditorView : UserControl
     }
 
     private async void OnListPointerReleased(object? sender, PointerReleasedEventArgs e)
-        => await EndDragAsync(e.Pointer).ConfigureAwait(true);
+    {
+        try
+        {
+            await EndDragAsync(e.Pointer).ConfigureAwait(true);
+        }
+        catch
+        {
+            // Keep drag/drop UI stable if pointer release finalization fails.
+        }
+    }
 
     private async void OnListPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
     {
-        var shouldPersist = _environmentOrderChanged;
-        _draggedItem = null;
-        _isDragging = false;
-        _environmentOrderChanged = false;
-        EnvironmentList.Cursor = Cursor.Default;
+        try
+        {
+            var shouldPersist = _environmentOrderChanged;
+            _draggedItem = null;
+            _isDragging = false;
+            _environmentOrderChanged = false;
+            EnvironmentList.Cursor = Cursor.Default;
 
-        if (shouldPersist && DataContext is EnvironmentEditorViewModel vm)
-            await vm.PersistEnvironmentOrderAsync().ConfigureAwait(true);
+            if (shouldPersist && DataContext is EnvironmentEditorViewModel vm)
+                await vm.PersistEnvironmentOrderAsync().ConfigureAwait(true);
+        }
+        catch
+        {
+            // Keep drag/drop UI stable if persistence fails.
+        }
     }
 
     private async Task EndDragAsync(IPointer pointer)

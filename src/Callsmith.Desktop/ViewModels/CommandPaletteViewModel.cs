@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
+using Callsmith.Core.Services;
 using Callsmith.Desktop.Messages;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -16,10 +17,11 @@ namespace Callsmith.Desktop.ViewModels;
 public sealed partial class CommandPaletteViewModel : ViewModelBase
 {
     private readonly ICollectionService _collectionService;
+    private readonly ICommandPaletteSearchService _commandPaletteSearchService;
     private readonly IMessenger _messenger;
 
     /// <summary>Full flat list of every request in the current collection.</summary>
-    private IReadOnlyList<CommandPaletteResult> _allResults = [];
+    private IReadOnlyList<CommandPaletteSearchEntry> _allEntries = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasResults))]
@@ -36,12 +38,16 @@ public sealed partial class CommandPaletteViewModel : ViewModelBase
 
     public bool HasResults => Results.Count > 0;
 
-    public CommandPaletteViewModel(ICollectionService collectionService, IMessenger messenger)
+    public CommandPaletteViewModel(
+        ICollectionService collectionService,
+        IMessenger messenger,
+        ICommandPaletteSearchService? commandPaletteSearchService = null)
     {
         ArgumentNullException.ThrowIfNull(collectionService);
         ArgumentNullException.ThrowIfNull(messenger);
         _collectionService = collectionService;
         _messenger = messenger;
+        _commandPaletteSearchService = commandPaletteSearchService ?? new CommandPaletteSearchService();
     }
 
     // -------------------------------------------------------------------------
@@ -54,7 +60,7 @@ public sealed partial class CommandPaletteViewModel : ViewModelBase
     /// </summary>
     public void Open(IReadOnlyList<CollectionTreeItemViewModel> treeRoots)
     {
-        _allResults = FlattenRequests(treeRoots);
+        _allEntries = _commandPaletteSearchService.FlattenRequests(MapTree(treeRoots));
         SearchText = string.Empty;
         ApplyFilter(string.Empty);
         SelectedResult = Results.Count > 0 ? Results[0] : null;
@@ -67,7 +73,7 @@ public sealed partial class CommandPaletteViewModel : ViewModelBase
         IsOpen = false;
         SearchText = string.Empty;
         Results.Clear();
-        _allResults = [];
+        _allEntries = [];
         SelectedResult = null;
     }
 
@@ -85,32 +91,12 @@ public sealed partial class CommandPaletteViewModel : ViewModelBase
     {
         Results.Clear();
 
-        var matches = string.IsNullOrEmpty(query)
-            ? _allResults
-            : _allResults.Where(r => FuzzyMatch(r, query));
+        var matches = _commandPaletteSearchService.Filter(_allEntries, query);
 
         foreach (var m in matches)
-            Results.Add(m);
+            Results.Add(new CommandPaletteResult(m.Request, m.DisplayPath, m.MethodName));
 
         OnPropertyChanged(nameof(HasResults));
-    }
-
-    /// <summary>
-    /// Matches by stripping spaces, dashes, and underscores from both the query and the request name,
-    /// then checking that the normalised query is a substring of the normalised name
-    /// (case-insensitive).  "find by roles" therefore matches "findByRoles".
-    /// </summary>
-    private static bool FuzzyMatch(CommandPaletteResult result, string query)
-    {
-        var normQuery = query
-          .Replace(" ", string.Empty, StringComparison.Ordinal)
-          .Replace("_", string.Empty, StringComparison.Ordinal)
-          .Replace("-", string.Empty, StringComparison.Ordinal);
-        var normName  = result.Request.Name
-          .Replace(" ", string.Empty, StringComparison.Ordinal)
-          .Replace("_", string.Empty, StringComparison.Ordinal)
-          .Replace("-", string.Empty, StringComparison.Ordinal);
-        return normName.Contains(normQuery, StringComparison.OrdinalIgnoreCase);
     }
 
     // -------------------------------------------------------------------------
@@ -161,40 +147,21 @@ public sealed partial class CommandPaletteViewModel : ViewModelBase
     // Helpers
     // -------------------------------------------------------------------------
 
-    private static IReadOnlyList<CommandPaletteResult> FlattenRequests(
+    private static IReadOnlyList<CommandPaletteSearchNode> MapTree(
         IReadOnlyList<CollectionTreeItemViewModel> roots)
     {
-        var results = new List<CommandPaletteResult>();
-        foreach (var root in roots)
-            WalkNode(root, string.Empty, results);
-        return results;
+        return roots.Select(MapNode).ToList();
     }
 
-    private static void WalkNode(
-        CollectionTreeItemViewModel node,
-        string pathPrefix,
-        List<CommandPaletteResult> results)
+    private static CommandPaletteSearchNode MapNode(CollectionTreeItemViewModel node)
     {
-        if (!node.IsFolder && node.Request is { } request)
+        return new CommandPaletteSearchNode
         {
-            var displayPath = string.IsNullOrEmpty(pathPrefix)
-                ? request.Name
-                : $"{pathPrefix} / {request.Name}";
-
-            var method = request.Method.Method;
-            results.Add(new CommandPaletteResult(
-                request,
-                displayPath,
-                method));
-            return;
-        }
-
-        // Folder node — recurse into children
-        var nextPrefix = node.IsRoot
-            ? string.Empty
-            : string.IsNullOrEmpty(pathPrefix) ? node.Name : $"{pathPrefix} / {node.Name}";
-
-        foreach (var child in node.Children)
-            WalkNode(child, nextPrefix, results);
+            Name = node.Name,
+            IsFolder = node.IsFolder,
+            IsRoot = node.IsRoot,
+            Request = node.Request,
+            Children = node.Children.Select(MapNode).ToList(),
+        };
     }
 }

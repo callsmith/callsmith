@@ -27,6 +27,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private readonly ICollectionService _collectionService;
     private readonly IDynamicVariableEvaluator? _dynamicEvaluator;
     private readonly IEnvironmentMergeService _mergeService;
+    private readonly IEnvironmentVariableSuggestionService _environmentVariableSuggestionService;
+    private readonly IRequestAssemblyService _requestAssemblyService;
     private readonly IMessenger _messenger;
     private readonly Action<RequestTabViewModel> _requestClose;
     private Action<RequestTabViewModel>? _requestGlobalCloseGuard;
@@ -44,6 +46,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private bool _syncingUrl;
     private bool _syncingPathParams;
     private long _historyHydrationVersion;
+    private CancellationTokenSource? _historyHydrationCts;
     private bool _closeAfterSaveAs;
 
     /// <summary>
@@ -716,7 +719,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
         IDynamicVariableEvaluator? dynamicEvaluator = null,
         IHistoryService? historyService = null,
         IEnvironmentService? environmentService = null,
-        IEnvironmentMergeService? mergeService = null)
+        IEnvironmentMergeService? mergeService = null,
+        IEnvironmentVariableSuggestionService? environmentVariableSuggestionService = null,
+        IRequestAssemblyService? requestAssemblyService = null)
     {
         ArgumentNullException.ThrowIfNull(transportRegistry);
         ArgumentNullException.ThrowIfNull(collectionService);
@@ -727,6 +732,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _collectionService = collectionService;
         _dynamicEvaluator = dynamicEvaluator;
         _mergeService = mergeService ?? new EnvironmentMergeService(dynamicEvaluator);
+        _environmentVariableSuggestionService = environmentVariableSuggestionService ?? new EnvironmentVariableSuggestionService();
+        _requestAssemblyService = requestAssemblyService ?? new RequestAssemblyService(collectionService, _mergeService);
         _messenger = messenger;
         _requestClose = requestClose;
         _historyService = historyService;
@@ -1191,9 +1198,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
     /// </summary>
     private void UpdateEnvSuggestions()
     {
-        var suggestions = EnvironmentVariableSuggestionsHelper.Build(
-            _globalEnvironment.Variables,
-            _activeEnvironment?.Variables);
+        var suggestions = _environmentVariableSuggestionService
+            .Build(_globalEnvironment.Variables, _activeEnvironment?.Variables)
+            .Select(s => new EnvVarSuggestion(s.Name, s.Value))
+            .ToList();
 
         EnvVarNames = suggestions;
         Headers.SetSuggestions(suggestions);
@@ -1376,92 +1384,67 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
         try
         {
-            var env = await _mergeService.MergeAsync(CollectionRootPath, _globalEnvironment, _activeEnvironment, ct: ct);
-            var secretNames = BuildSecretVarNames();
-            var sentBindings = new List<VariableBinding>();
-
-            var headers = ResolveHeaders(Headers.GetEnabledPairs(), env.Variables, env.MockGenerators, secretNames, sentBindings);
-
-            var pathParamValues = PathParams.GetEnabledPairs()
-                .Where(p => !string.IsNullOrWhiteSpace(p.Value))
-                .ToDictionary(
-                    p => p.Key,
-                    p => VariableSubstitutionService.SubstituteCollecting(p.Value, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Value);
-
-            var requestUrl = PathTemplateHelper.ApplyPathParams(Url, pathParamValues);
-
-            // Substitute variables in query param keys/values BEFORE URL-encoding.
-            var substitutedQueryParams = QueryParams.GetEnabledPairs()
-                .Select(p => new KeyValuePair<string, string>(
-                    VariableSubstitutionService.SubstituteCollecting(p.Key, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Key,
-                    VariableSubstitutionService.SubstituteCollecting(p.Value, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Value))
-                .ToList();
-
-            requestUrl = QueryStringHelper.AppendQueryParams(requestUrl, substitutedQueryParams);
-
-            var effectiveAuth = await GetEffectiveAuthAsync(ct).ConfigureAwait(false);
-            ApplyAuthHeaders(headers, requestUrl, env.Variables, out requestUrl, effectiveAuth, env.MockGenerators, secretNames, sentBindings);
-
-            // Substitute any remaining {{tokens}} in the base URL / path.
-            requestUrl = VariableSubstitutionService.SubstituteCollecting(requestUrl, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? requestUrl;
-
-            var resolvedBody = SelectedBodyType is
-                CollectionRequest.BodyTypes.Json or CollectionRequest.BodyTypes.Xml or
-                CollectionRequest.BodyTypes.Yaml or CollectionRequest.BodyTypes.Text or
-                CollectionRequest.BodyTypes.Other
-                && !string.IsNullOrEmpty(Body)
-                ? VariableSubstitutionService.SubstituteCollecting(Body, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? Body
-                : null;
-
-            // For form-encoded bodies, build the URL-encoded string from FormParams.
-            if (SelectedBodyType == CollectionRequest.BodyTypes.Form)
+            // Build request assembly input from current ViewModel state.
+            var assemblyInput = new RequestAssemblyInput
             {
-                var formPairs = FormParams.GetEnabledPairs()
-                    .Select(p => new KeyValuePair<string, string>(
-                        VariableSubstitutionService.SubstituteCollecting(p.Key, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Key,
-                        VariableSubstitutionService.SubstituteCollecting(p.Value, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Value))
-                    .ToList();
-                if (formPairs.Count > 0)
-                    resolvedBody = string.Join("&",
-                        formPairs.Select(p =>
-                            Uri.EscapeDataString(p.Key) + "=" + Uri.EscapeDataString(p.Value)));
-            }
-
-            // For multipart bodies, collect form params for proper MultipartFormDataContent.
-            IReadOnlyList<KeyValuePair<string, string>>? multipartFormParams = null;
-            if (SelectedBodyType == CollectionRequest.BodyTypes.Multipart)
-            {
-                multipartFormParams = FormParams.GetEnabledPairs()
-                    .Select(p => new KeyValuePair<string, string>(
-                        VariableSubstitutionService.SubstituteCollecting(p.Key, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Key,
-                        VariableSubstitutionService.SubstituteCollecting(p.Value, env.Variables, secretNames, sentBindings, env.MockGenerators) ?? p.Value))
-                    .ToList();
-            }
-
-            // For file bodies, pass the loaded bytes directly.
-            byte[]? fileBodyBytes = SelectedBodyType == CollectionRequest.BodyTypes.File
-                ? _fileBodyBytes
-                : null;
-
-            var request = new RequestModel
-            {
-                Method = new HttpMethod(SelectedMethod),
-                Url = requestUrl,
-                Headers = headers,
-                Body = resolvedBody,
-                BodyBytes = fileBodyBytes,
-                MultipartFormParams = multipartFormParams,
-                ContentType = GetContentType(),
+                Method = SelectedMethod,
+                Url = Url,
+                Headers = Headers.GetEnabledPairs(),
+                PathParams = PathParams.GetEnabledPairs(),
+                QueryParams = QueryParams.GetEnabledPairs(),
+                BodyType = SelectedBodyType,
+                BodyText = Body,
+                FormParams = FormParams.GetEnabledPairs(),
+                FileBodyBytes = SelectedBodyType == CollectionRequest.BodyTypes.File ? _fileBodyBytes : null,
+                FileBodyName = SelectedBodyType == CollectionRequest.BodyTypes.File ? _fileBodyName : null,
+                Auth = new AuthConfig
+                {
+                    AuthType = AuthType,
+                    Token = string.IsNullOrEmpty(AuthToken) ? null : AuthToken,
+                    Username = string.IsNullOrEmpty(AuthUsername) ? null : AuthUsername,
+                    Password = string.IsNullOrEmpty(AuthPassword) ? null : AuthPassword,
+                    ApiKeyName = string.IsNullOrEmpty(AuthApiKeyName) ? null : AuthApiKeyName,
+                    ApiKeyValue = string.IsNullOrEmpty(AuthApiKeyValue) ? null : AuthApiKeyValue,
+                    ApiKeyIn = AuthApiKeyIn,
+                },
+                MockGenerators = null, // Will be resolved by service during merge.
             };
 
-            var transport = _transportRegistry.Resolve(request);
-            Response = await transport.SendAsync(request, ct);
+            // Assemble the request using the Core service.
+            var assembled = await _requestAssemblyService.AssembleAsync(
+                assemblyInput,
+                _globalEnvironment,
+                _activeEnvironment,
+                CollectionRootPath,
+                SourceFilePath,
+                ct);
+
+            // Send the assembled request.
+            var transport = _transportRegistry.Resolve(assembled.RequestModel);
+            Response = await transport.SendAsync(assembled.RequestModel, ct);
             IsResponseFromHistory = false;
             HistoryResponseDate = null;
-                var sentAt = DateTimeOffset.UtcNow - (Response?.Elapsed ?? TimeSpan.Zero);
 
-                if (_historyService is not null && Response is not null)
-                    _ = RecordHistoryAsync(env, Response, requestUrl, sentAt, effectiveAuth, sentBindings);
+            // Record to history if available.
+            var sentAt = DateTimeOffset.UtcNow - (Response?.Elapsed ?? TimeSpan.Zero);
+            if (_historyService is not null && Response is not null)
+            {
+                // Merge environment for history recording context.
+                var env = await _mergeService.MergeAsync(
+                    CollectionRootPath,
+                    _globalEnvironment,
+                    _activeEnvironment,
+                    ct: ct);
+
+                await RecordHistoryAsync(
+                    env,
+                    Response,
+                    assembled.ResolvedUrl,
+                    sentAt,
+                    assembled.EffectiveAuth,
+                    assembled.VariableBindings,
+                    ct);
+            }
 
             // If this is a saved request, update the dynamic variable cache for any
             // environment variables that reference this request, so subsequent resolutions
@@ -1948,58 +1931,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
             ?? new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
     }
 
-    /// <summary>
-    /// Applies the auth configuration to <paramref name="headers"/> and <paramref name="url"/>
-    /// with variable-binding collection support for the send pipeline.
-    /// The non-collecting variant (for cURL preview) is <see cref="HistorySentViewBuilder.ApplyAuthHeaders"/>.
-    /// </summary>
-    private static void ApplyAuthHeaders(
-        Dictionary<string, string> headers,
-        string requestUrl,
-        IReadOnlyDictionary<string, string> vars,
-        out string url,
-        AuthConfig auth,
-        IReadOnlyDictionary<string, MockDataEntry>? mockGenerators = null,
-        IReadOnlySet<string>? secretVariableNames = null,
-        IList<VariableBinding>? collector = null)
-    {
-        url = requestUrl;
-
-        string Resolve(string? template) =>
-            collector is not null && secretVariableNames is not null
-                ? VariableSubstitutionService.SubstituteCollecting(template, vars, secretVariableNames, collector, mockGenerators) ?? template ?? string.Empty
-                : VariableSubstitutionService.Substitute(template, vars) ?? template ?? string.Empty;
-
-        switch (auth.AuthType)
-        {
-            case AuthConfig.AuthTypes.Bearer when !string.IsNullOrEmpty(auth.Token):
-                var token = Resolve(auth.Token);
-                headers[WellKnownHeaders.Authorization] = $"Bearer {token}";
-                break;
-            case AuthConfig.AuthTypes.Basic when !string.IsNullOrEmpty(auth.Username):
-                var username = Resolve(auth.Username);
-                var password = Resolve(auth.Password);
-                var encoded = Convert.ToBase64String(
-                    Encoding.UTF8.GetBytes($"{username}:{password}"));
-                headers[WellKnownHeaders.Authorization] = $"Basic {encoded}";
-                break;
-            case AuthConfig.AuthTypes.ApiKey when !string.IsNullOrEmpty(auth.ApiKeyName)
-                                               && !string.IsNullOrEmpty(auth.ApiKeyValue):
-                var resolvedName = Resolve(auth.ApiKeyName);
-                var resolvedValue = Resolve(auth.ApiKeyValue);
-                if (string.IsNullOrWhiteSpace(resolvedName))
-                    break;
-
-                if (auth.ApiKeyIn == AuthConfig.ApiKeyLocations.Header)
-                    headers[resolvedName] = resolvedValue;
-                else
-                    url = QueryStringHelper.AppendQueryParams(
-                        requestUrl,
-                        [new KeyValuePair<string, string>(resolvedName, resolvedValue)]);
-                break;
-        }
-    }
-
     private static string GetBaseUrl(string value) => QueryStringHelper.GetBaseUrl(value);
 
     private void SyncPathParamsWithUrl(string url, IReadOnlyDictionary<string, string> existingValues)
@@ -2024,6 +1955,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private void QueueHistoryResponseRefresh()
     {
         var hydrationVersion = Interlocked.Increment(ref _historyHydrationVersion);
+        _historyHydrationCts?.Cancel();
+        _historyHydrationCts?.Dispose();
+        _historyHydrationCts = new CancellationTokenSource();
+        var ct = _historyHydrationCts.Token;
 
         Dispatcher.UIThread.Post(() =>
         {
@@ -2040,23 +1975,25 @@ public sealed partial class RequestTabViewModel : ObservableObject
             _ = HydrateResponseFromHistoryAsync(
                 requestId,
                 _activeEnvironment?.EnvironmentId,
-                hydrationVersion);
+                hydrationVersion,
+                ct);
         }, DispatcherPriority.Background);
     }
 
     private async Task HydrateResponseFromHistoryAsync(
         Guid requestId,
         Guid? environmentId,
-        long hydrationVersion)
+        long hydrationVersion,
+        CancellationToken ct)
     {
         try
         {
             // Run history query on thread pool to avoid blocking UI during app startup when
             // multiple tabs are being restored. Add a small delay to stagger concurrent requests.
-            await Task.Delay(10).ConfigureAwait(false);
+            await Task.Delay(10, ct).ConfigureAwait(false);
             
             var latest = await _historyService!
-                .GetLatestForRequestInEnvironmentAsync(requestId, environmentId, CancellationToken.None)
+                .GetLatestForRequestInEnvironmentAsync(requestId, environmentId, ct)
                 .ConfigureAwait(false);
 
             if (hydrationVersion != Interlocked.Read(ref _historyHydrationVersion))
@@ -2078,6 +2015,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 HistoryResponseDate = latest.SentAt;
             });
         }
+        catch (OperationCanceledException)
+        {
+            // Expected when a newer hydration request supersedes this one.
+        }
         catch
         {
             // Non-critical: if hydration fails, tab still opens with a clean empty response pane.
@@ -2096,7 +2037,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         string resolvedUrl,
         DateTimeOffset sentAt,
         AuthConfig? effectiveAuth = null,
-        IReadOnlyList<VariableBinding>? sentBindings = null)
+        IReadOnlyList<VariableBinding>? sentBindings = null,
+        CancellationToken ct = default)
     {
         try
         {
@@ -2204,7 +2146,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 ResponseSnapshot = ResponseSnapshot.FromResponseModel(response),
             };
 
-            await _historyService!.RecordAsync(entry, CancellationToken.None);
+            await _historyService!.RecordAsync(entry, ct);
         }
         catch
         {

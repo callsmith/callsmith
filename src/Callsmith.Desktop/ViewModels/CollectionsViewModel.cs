@@ -32,6 +32,8 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     private readonly ICollectionImportService _importService;
     private readonly ICollectionPreferencesService _preferencesService;
     private readonly IHistoryService _historyService;
+    private readonly ICollectionNamingService _collectionNamingService;
+    private readonly IEnvironmentVariableSuggestionService _environmentVariableSuggestionService;
     private readonly ILogger<CollectionsViewModel> _logger;
 
     private EnvironmentModel? _activeEnvironment;
@@ -152,7 +154,9 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         ICollectionPreferencesService preferencesService,
         IHistoryService historyService,
         IMessenger messenger,
-        ILogger<CollectionsViewModel> logger)
+        ILogger<CollectionsViewModel> logger,
+        ICollectionNamingService? collectionNamingService = null,
+        IEnvironmentVariableSuggestionService? environmentVariableSuggestionService = null)
         : base(messenger)
     {
         ArgumentNullException.ThrowIfNull(collectionService);
@@ -165,6 +169,8 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         _importService = importService;
         _preferencesService = preferencesService;
         _historyService = historyService;
+        _collectionNamingService = collectionNamingService ?? new CollectionNamingService();
+        _environmentVariableSuggestionService = environmentVariableSuggestionService ?? new EnvironmentVariableSuggestionService();
         _logger = logger;
         IsActive = true;
     }
@@ -346,7 +352,10 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     /// and override global variables with the same name.
     /// </summary>
     private IReadOnlyList<EnvVarSuggestion> BuildEnvVarSuggestions() =>
-        EnvironmentVariableSuggestionsHelper.Build(_globalEnvironment.Variables, _activeEnvironment?.Variables);
+        _environmentVariableSuggestionService
+            .Build(_globalEnvironment.Variables, _activeEnvironment?.Variables)
+            .Select(s => new EnvVarSuggestion(s.Name, s.Value))
+            .ToList();
 
     /// <summary>
     /// Called by the view after the folder settings dialog window is closed.
@@ -564,7 +573,10 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     {
         if (!folder.IsFolder) return;
 
-        var finalName = PickUniqueRequestName(folder.FolderPath!, "New Request");
+        var finalName = await _collectionNamingService.PickUniqueRequestNameAsync(
+            folder.FolderPath!,
+            "New Request",
+            _collectionService.RequestFileExtension);
 
         _suppressWatcher = true;
         try
@@ -589,14 +601,16 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
 
     /// <summary>Opens the create-folder dialog with a unique default name.</summary>
     [RelayCommand]
-    public void CreateFolder(CollectionTreeItemViewModel folder)
+    public async Task CreateFolder(CollectionTreeItemViewModel folder)
     {
         if (!folder.IsFolder) return;
 
         _renameTargetNode = null;
         _renameParentFolder = folder;
         RenameDialogTitle = "New Folder";
-        RenameDialogValue = PickUniqueFolderName(folder.FolderPath!, "New Folder");
+        RenameDialogValue = await _collectionNamingService.PickUniqueFolderNameAsync(
+            folder.FolderPath!,
+            "New Folder");
         RenameDialogError = string.Empty;
         RenameDialogConfirmLabel = "Create";
         IsRenameDialogOpen = true;
@@ -984,25 +998,6 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         }
     }
 
-    private string PickUniqueRequestName(string folderPath, string baseName)
-    {
-        var ext = _collectionService.RequestFileExtension;
-        var name = baseName;
-        var counter = 1;
-        while (File.Exists(Path.Combine(folderPath, name + ext)))
-            name = $"{baseName} {++counter}";
-        return name;
-    }
-
-    private static string PickUniqueFolderName(string parentPath, string baseName)
-    {
-        var name = baseName;
-        var counter = 1;
-        while (Directory.Exists(Path.Combine(parentPath, name)))
-            name = $"{baseName} {++counter}";
-        return name;
-    }
-
     private static bool IsAncestor(
         CollectionTreeItemViewModel potentialAncestor,
         CollectionTreeItemViewModel? node)
@@ -1172,6 +1167,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
             _watcher.Created += OnWatcherEvent;
             _watcher.Deleted += OnWatcherEvent;
             _watcher.Renamed += OnWatcherEvent;
+            _watcher.Error += OnWatcherError;
         }
         catch (Exception ex)
         {
@@ -1217,16 +1213,41 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
             _watcherDebounce = new CancellationTokenSource();
             var ct = _watcherDebounce.Token;
 
-            Task.Delay(600, ct).ContinueWith(t =>
-            {
-                if (t.IsCanceled) return;
-                Dispatcher.UIThread.Post(async () =>
-                {
-                    if (!ct.IsCancellationRequested)
-                        await LoadCollectionAsync(CollectionPath, retainExpansion: true);
-                });
-            }, TaskScheduler.Default);
+            _ = DebouncedRefreshAsync(ct);
         });
+    }
+
+    private void OnWatcherError(object sender, ErrorEventArgs e)
+    {
+        _logger.LogWarning(e.GetException(), "FileSystemWatcher error for '{Path}'. Restarting watcher.", CollectionPath);
+
+        if (string.IsNullOrWhiteSpace(CollectionPath))
+            return;
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            StopWatcher();
+            StartWatcher(CollectionPath);
+            _ = DebouncedRefreshAsync(default);
+        }, DispatcherPriority.Background);
+    }
+
+    private async Task DebouncedRefreshAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(600, ct).ConfigureAwait(false);
+            if (ct.IsCancellationRequested)
+                return;
+
+            await Dispatcher.UIThread.InvokeAsync(
+                () => LoadCollectionAsync(CollectionPath, retainExpansion: true),
+                DispatcherPriority.Background);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected for debounce cancellation when multiple watcher events arrive quickly.
+        }
     }
 
     /// <summary>

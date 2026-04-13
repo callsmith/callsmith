@@ -69,11 +69,11 @@ public sealed class HistoryRepository : IHistoryService
     }
 
     // Creates a DbContext pointed at the current collection's database.
-    private CallsmithDbContext CreateDbContext()
+    private static CallsmithDbContext CreateDbContext(string dbPath)
     {
         var connectionString = new SqliteConnectionStringBuilder
         {
-            DataSource = _currentDbPath,
+            DataSource = dbPath,
         }.ToString();
 
         var options = new DbContextOptionsBuilder<CallsmithDbContext>()
@@ -87,12 +87,13 @@ public sealed class HistoryRepository : IHistoryService
     {
         ArgumentNullException.ThrowIfNull(entry);
 
-        if (_currentDbPath is null) return;
+        var dbPath = Volatile.Read(ref _currentDbPath);
+        if (dbPath is null) return;
 
         var entity = ToEntity(entry);
 
-        await using var db = CreateDbContext();
-        await EnsureHistorySchemaAsync(db, ct);
+        await using var db = CreateDbContext(dbPath);
+        await EnsureHistorySchemaAsync(dbPath, db, ct);
 
         db.HistoryEntries.Add(entity);
         await db.SaveChangesAsync(ct);
@@ -105,10 +106,11 @@ public sealed class HistoryRepository : IHistoryService
     {
         ArgumentNullException.ThrowIfNull(filter);
 
-        if (_currentDbPath is null) return ([], 0);
+        var dbPath = Volatile.Read(ref _currentDbPath);
+        if (dbPath is null) return ([], 0);
 
-        await using var db = CreateDbContext();
-        await EnsureHistorySchemaAsync(db, ct);
+        await using var db = CreateDbContext(dbPath);
+        await EnsureHistorySchemaAsync(dbPath, db, ct);
 
         var query = db.HistoryEntries.AsNoTracking().AsQueryable();
 
@@ -134,10 +136,11 @@ public sealed class HistoryRepository : IHistoryService
     /// <inheritdoc/>
     public async Task<HistoryEntry?> GetLatestForRequestAsync(Guid requestId, CancellationToken ct = default)
     {
-        if (_currentDbPath is null) return null;
+        var dbPath = Volatile.Read(ref _currentDbPath);
+        if (dbPath is null) return null;
 
-        await using var db = CreateDbContext();
-        await EnsureHistorySchemaAsync(db, ct);
+        await using var db = CreateDbContext(dbPath);
+        await EnsureHistorySchemaAsync(dbPath, db, ct);
 
         var entity = await db.HistoryEntries
             .AsNoTracking()
@@ -154,10 +157,11 @@ public sealed class HistoryRepository : IHistoryService
         Guid? environmentId,
         CancellationToken ct = default)
     {
-        if (_currentDbPath is null) return null;
+        var dbPath = Volatile.Read(ref _currentDbPath);
+        if (dbPath is null) return null;
 
-        await using var db = CreateDbContext();
-        await EnsureHistorySchemaAsync(db, ct);
+        await using var db = CreateDbContext(dbPath);
+        await EnsureHistorySchemaAsync(dbPath, db, ct);
 
         var query = db.HistoryEntries
             .AsNoTracking()
@@ -182,10 +186,11 @@ public sealed class HistoryRepository : IHistoryService
     /// <inheritdoc/>
     public async Task<HistoryEntry?> GetByIdAsync(long id, CancellationToken ct = default)
     {
-        if (_currentDbPath is null) return null;
+        var dbPath = Volatile.Read(ref _currentDbPath);
+        if (dbPath is null) return null;
 
-        await using var db = CreateDbContext();
-        await EnsureHistorySchemaAsync(db, ct);
+        await using var db = CreateDbContext(dbPath);
+        await EnsureHistorySchemaAsync(dbPath, db, ct);
 
         var entity = await db.HistoryEntries
             .AsNoTracking()
@@ -197,10 +202,11 @@ public sealed class HistoryRepository : IHistoryService
     /// <inheritdoc/>
     public async Task<long> GetCountAsync(CancellationToken ct = default)
     {
-        if (_currentDbPath is null) return 0;
+        var dbPath = Volatile.Read(ref _currentDbPath);
+        if (dbPath is null) return 0;
 
-        await using var db = CreateDbContext();
-        await EnsureHistorySchemaAsync(db, ct);
+        await using var db = CreateDbContext(dbPath);
+        await EnsureHistorySchemaAsync(dbPath, db, ct);
         return await db.HistoryEntries.LongCountAsync(ct);
     }
 
@@ -218,10 +224,11 @@ public sealed class HistoryRepository : IHistoryService
         Guid? requestId = null,
         CancellationToken ct = default)
     {
-        if (_currentDbPath is null) return [];
+        var dbPath = Volatile.Read(ref _currentDbPath);
+        if (dbPath is null) return [];
 
-        await using var db = CreateDbContext();
-        await EnsureHistorySchemaAsync(db, ct);
+        await using var db = CreateDbContext(dbPath);
+        await EnsureHistorySchemaAsync(dbPath, db, ct);
 
         var query = db.HistoryEntries
             .AsNoTracking()
@@ -268,7 +275,7 @@ public sealed class HistoryRepository : IHistoryService
     }
 
     /// <inheritdoc/>
-    public async Task<HistoryEntry> RevealSensitiveFieldsAsync(
+    public Task<HistoryEntry> RevealSensitiveFieldsAsync(
         HistoryEntry entry,
         CancellationToken ct = default)
     {
@@ -293,16 +300,17 @@ public sealed class HistoryRepository : IHistoryService
             })
             .ToList();
 
-        return await Task.FromResult(entry with { VariableBindings = revealedBindings });
+        return Task.FromResult(entry with { VariableBindings = revealedBindings });
     }
 
     /// <inheritdoc/>
     public async Task DeleteByIdAsync(long id, CancellationToken ct = default)
     {
-        if (_currentDbPath is null) return;
+        var dbPath = Volatile.Read(ref _currentDbPath);
+        if (dbPath is null) return;
 
-        await using var db = CreateDbContext();
-        await EnsureHistorySchemaAsync(db, ct);
+        await using var db = CreateDbContext(dbPath);
+        await EnsureHistorySchemaAsync(dbPath, db, ct);
 
         await db.HistoryEntries
             .Where(e => e.Id == id)
@@ -316,10 +324,11 @@ public sealed class HistoryRepository : IHistoryService
         Guid? requestId = null,
         CancellationToken ct = default)
     {
-        if (_currentDbPath is null) return;
+        var dbPath = Volatile.Read(ref _currentDbPath);
+        if (dbPath is null) return;
 
-        await using var db = CreateDbContext();
-        await EnsureHistorySchemaAsync(db, ct);
+        await using var db = CreateDbContext(dbPath);
+        await EnsureHistorySchemaAsync(dbPath, db, ct);
         var cutoffUnixMs = cutoff.ToUnixTimeMilliseconds();
         var query = db.HistoryEntries
             .Where(e => e.SentAtUnixMs < cutoffUnixMs);
@@ -340,10 +349,11 @@ public sealed class HistoryRepository : IHistoryService
         Guid? requestId = null,
         CancellationToken ct = default)
     {
-        if (_currentDbPath is null) return;
+        var dbPath = Volatile.Read(ref _currentDbPath);
+        if (dbPath is null) return;
 
-        await using var db = CreateDbContext();
-        await EnsureHistorySchemaAsync(db, ct);
+        await using var db = CreateDbContext(dbPath);
+        await EnsureHistorySchemaAsync(dbPath, db, ct);
         var query = db.HistoryEntries.AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(environmentName))
@@ -559,11 +569,8 @@ public sealed class HistoryRepository : IHistoryService
         return query;
     }
 
-    private async Task EnsureHistorySchemaAsync(CallsmithDbContext db, CancellationToken ct)
+    private async Task EnsureHistorySchemaAsync(string dbPath, CallsmithDbContext db, CancellationToken ct)
     {
-        // _currentDbPath is guaranteed non-null by callers that already checked it.
-        var dbPath = _currentDbPath!;
-
         if (_checkedDbPaths.ContainsKey(dbPath)) return;
 
         await _schemaLock.WaitAsync(ct);

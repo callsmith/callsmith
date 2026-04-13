@@ -1,5 +1,4 @@
 using System.Net.Http;
-using System.Text;
 using Callsmith.Core.Helpers;
 using Callsmith.Core.Models;
 
@@ -184,36 +183,6 @@ public static class HistorySentViewBuilder
         IReadOnlyDictionary<string, string> vars,
         ref string url)
     {
-        switch (auth.AuthType)
-        {
-            case AuthConfig.AuthTypes.Bearer when !string.IsNullOrEmpty(auth.Token):
-                var token = Substitute(auth.Token, vars) ?? auth.Token;
-                headers[WellKnownHeaders.Authorization] = $"Bearer {token}";
-                break;
-
-            case AuthConfig.AuthTypes.Basic when !string.IsNullOrEmpty(auth.Username):
-                var username = Substitute(auth.Username, vars) ?? auth.Username;
-                var password = Substitute(auth.Password ?? string.Empty, vars) ?? string.Empty;
-                var encoded = Convert.ToBase64String(
-                    Encoding.UTF8.GetBytes($"{username}:{password}"));
-                headers[WellKnownHeaders.Authorization] = $"Basic {encoded}";
-                break;
-
-            case AuthConfig.AuthTypes.ApiKey
-                when !string.IsNullOrEmpty(auth.ApiKeyName)
-                  && !string.IsNullOrEmpty(auth.ApiKeyValue):
-                var resolvedName = Substitute(auth.ApiKeyName, vars) ?? auth.ApiKeyName;
-                var resolvedValue = Substitute(auth.ApiKeyValue, vars) ?? auth.ApiKeyValue;
-                if (string.IsNullOrWhiteSpace(resolvedName))
-                    break;
-
-                if (auth.ApiKeyIn == AuthConfig.ApiKeyLocations.Header)
-                    headers[resolvedName] = resolvedValue;
-                else
-                    url = QueryStringHelper.AppendQueryParams(
-                        url,
-                        [new KeyValuePair<string, string>(resolvedName, resolvedValue)]);
-                break;
-        }
+        url = AuthHeaderApplier.Apply(auth, headers, vars, url);
     }
 }

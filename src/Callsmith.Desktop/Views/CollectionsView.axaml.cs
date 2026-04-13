@@ -371,34 +371,41 @@ public partial class CollectionsView : UserControl
 
     private async void OnTreePointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        if (_draggedNode is not null && _dropTargetFolder is not null && DataContext is CollectionsViewModel vm)
+        try
         {
-            if (!_draggedNode.IsFolder && _draggedNode.Parent != _dropTargetFolder)
+            if (_draggedNode is not null && _dropTargetFolder is not null && DataContext is CollectionsViewModel vm)
             {
-                await vm.MoveRequestToFolderAsync(_draggedNode, _dropTargetFolder, _dropInsertIndex);
-            }
-            else if (_draggedNode.IsFolder && _draggedNode.Parent != _dropTargetFolder)
-            {
-                await vm.MoveFolderToFolderAsync(_draggedNode, _dropTargetFolder, _dropInsertIndex);
-            }
-            else if (_draggedNode.Parent == _dropTargetFolder)
-            {
-                var parent = _draggedNode.Parent;
-                if (parent is not null && _dropInsertIndex >= 0)
+                if (!_draggedNode.IsFolder && _draggedNode.Parent != _dropTargetFolder)
                 {
-                    var currentIndex = parent.Children.IndexOf(_draggedNode);
-                    if (currentIndex >= 0)
+                    await vm.MoveRequestToFolderAsync(_draggedNode, _dropTargetFolder, _dropInsertIndex);
+                }
+                else if (_draggedNode.IsFolder && _draggedNode.Parent != _dropTargetFolder)
+                {
+                    await vm.MoveFolderToFolderAsync(_draggedNode, _dropTargetFolder, _dropInsertIndex);
+                }
+                else if (_draggedNode.Parent == _dropTargetFolder)
+                {
+                    var parent = _draggedNode.Parent;
+                    if (parent is not null && _dropInsertIndex >= 0)
                     {
-                        // Convert insertion slot to final index expected by MoveItemAsync.
-                        var targetIndex = _dropInsertIndex > currentIndex
-                            ? _dropInsertIndex - 1
-                            : _dropInsertIndex;
+                        var currentIndex = parent.Children.IndexOf(_draggedNode);
+                        if (currentIndex >= 0)
+                        {
+                            // Convert insertion slot to final index expected by MoveItemAsync.
+                            var targetIndex = _dropInsertIndex > currentIndex
+                                ? _dropInsertIndex - 1
+                                : _dropInsertIndex;
 
-                        if (targetIndex >= 0 && targetIndex < parent.Children.Count)
-                            await vm.MoveItemAsync(_draggedNode, targetIndex);
+                            if (targetIndex >= 0 && targetIndex < parent.Children.Count)
+                                await vm.MoveItemAsync(_draggedNode, targetIndex);
+                        }
                     }
                 }
             }
+        }
+        catch
+        {
+            // Drag/drop failures should not crash the UI; state is reset below.
         }
 
         _dropTargetFolder = null;

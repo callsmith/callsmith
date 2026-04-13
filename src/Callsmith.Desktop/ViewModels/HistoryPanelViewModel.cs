@@ -504,7 +504,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
 
         try
         {
-            await LoadEntriesAsync(reset: false);
+            await LoadEntriesAsync(reset: false, default);
         }
         finally
         {
@@ -514,14 +514,14 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task RevealSecretsAsync()
+    private async Task RevealSecretsAsync(CancellationToken ct = default)
     {
         if (SelectedEntry is null || IsRevealingSecrets) return;
         IsRevealingSecrets = true;
         try
         {
             var revealed = await _historyService.RevealSensitiveFieldsAsync(
-                SelectedEntry.Entry, CancellationToken.None);
+                SelectedEntry.Entry, ct);
             var values = await Task.Run(() => ComputeDetail(revealed, resolved: true));
             IsSecretShown = true;
             ApplyDetail(values);
@@ -545,13 +545,13 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task ResendRequestAsync()
+    private async Task ResendRequestAsync(CancellationToken ct = default)
     {
         if (SelectedEntry is null || _messenger is null) return;
 
         // Always reveal secrets so resolved values include decrypted fields.
         var entry = await _historyService.RevealSensitiveFieldsAsync(
-            SelectedEntry.Entry, CancellationToken.None);
+            SelectedEntry.Entry, ct);
 
         _messenger.Send(new ResendFromHistoryMessage(entry));
         IsOpen = false;
@@ -628,7 +628,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task ConfirmClearHistoryAsync()
+    private async Task ConfirmClearHistoryAsync(CancellationToken ct = default)
     {
         var pendingEnvironmentName = _pendingPurgeEnvironmentName;
         var pendingDays = _pendingPurgeDays;
@@ -640,7 +640,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             await _historyService.PurgeAllAsync(
                 pendingEnvironmentName,
                 _scopedRequestId,
-                CancellationToken.None);
+                ct);
         }
         else
         {
@@ -652,7 +652,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                 cutoff,
                 pendingEnvironmentName,
                 _scopedRequestId,
-                CancellationToken.None);
+                ct);
         }
 
         _nextPage = 0;
@@ -666,12 +666,12 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task RemoveEntryFromHistoryAsync(HistoryEntryRowViewModel? row)
+    private async Task RemoveEntryFromHistoryAsync(HistoryEntryRowViewModel? row, CancellationToken ct = default)
     {
         if (row is null)
             return;
 
-        await _historyService.DeleteByIdAsync(row.Entry.Id, CancellationToken.None);
+        await _historyService.DeleteByIdAsync(row.Entry.Id, ct);
 
         _nextPage = 0;
         await ReloadEntriesAsync();
@@ -736,10 +736,10 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         ResultCountLabel = string.Empty;
         HistoryListStatusMessage = string.Empty;
 
-        await LoadEntriesAsync(reset: true);
+        await LoadEntriesAsync(reset: true, default);
     }
 
-    private async Task LoadEntriesAsync(bool reset)
+    private async Task LoadEntriesAsync(bool reset, CancellationToken ct)
     {
         if (IsLoading) return;
         IsLoading = true;
@@ -750,7 +750,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             var pageSize = reset ? InitialChunkSize : IncrementalChunkSize;
             var filter = BuildFilter(_nextPage, pageSize);
 
-            var (entries, total) = await _historyService.QueryAsync(filter, CancellationToken.None);
+            var (entries, total) = await _historyService.QueryAsync(filter, ct);
             _queryTotalCount = total;
             TotalCount = total;
 

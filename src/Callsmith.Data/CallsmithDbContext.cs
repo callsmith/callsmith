@@ -1,6 +1,6 @@
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using Callsmith.Core.Helpers;
 using Microsoft.EntityFrameworkCore;
 
 
@@ -39,7 +39,7 @@ public sealed class CallsmithDbContext : DbContext
     public static string GetDbPath(string collectionFolderPath)
     {
         var fileName = HashPath(collectionFolderPath) + ".db";
-        return Path.Combine(GetAppDataDirectory(), "Callsmith", "history", fileName);
+        return Path.Combine(AppDataPaths.GetCallsmithAppDataDirectory(), "history", fileName);
     }
 
     /// <summary>
@@ -47,13 +47,8 @@ public sealed class CallsmithDbContext : DbContext
     /// </summary>
     internal static string GetKeyPath()
     {
-        return Path.Combine(GetAppDataDirectory(), "Callsmith", "history.key");
+        return Path.Combine(AppDataPaths.GetCallsmithAppDataDirectory(), "history.key");
     }
-
-    private static string GetAppDataDirectory() =>
-        RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
-            ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
-            : Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
 
     private static string HashPath(string path)
     {

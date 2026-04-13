@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http;
+using Callsmith.Core.Helpers;
 using Callsmith.Core.Models;
 using Callsmith.Core.Transports.Http;
 using FluentAssertions;
@@ -226,6 +227,28 @@ public sealed class HttpTransportTests
         // Body is captured by the stub before HttpTransport disposes the content.
         handler.LastRequestBody.Should().Be("""{"key":"value"}""");
         handler.LastRequest!.Content!.Headers.ContentType?.MediaType.Should().Be("application/json");
+    }
+
+    [Fact]
+    public async Task SendAsync_UsesExplicitContentTypeHeader_WhenProvided()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK);
+        var transport = CreateTransport(handler);
+        var request = new RequestModel
+        {
+            Method = HttpMethod.Post,
+            Url = "https://example.com",
+            Body = "plain-text-body",
+            ContentType = "application/json",
+            Headers = new Dictionary<string, string>
+            {
+                [WellKnownHeaders.ContentType] = "text/plain",
+            },
+        };
+
+        await transport.SendAsync(request);
+
+        handler.LastRequest!.Content!.Headers.ContentType?.MediaType.Should().Be("text/plain");
     }
 
     [Fact]
