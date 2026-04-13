@@ -6,7 +6,6 @@ using System.Xml;
 using System.Xml.Linq;
 using System.Xml.XPath;
 using Callsmith.Core.Abstractions;
-using Callsmith.Core.Services;
 
 namespace Callsmith.Desktop.Controls;
 
@@ -15,9 +14,7 @@ namespace Callsmith.Desktop.Controls;
 /// </summary>
 internal static class SyntaxPathFilter
 {
-    private static readonly IJsonPathService JsonPath = new JsonPathService();
-
-    public static bool TryTransform(string source, string? language, string expression, out string transformed, out string error)
+    public static bool TryTransform(string source, string? language, string expression, IJsonPathService jsonPath, out string transformed, out string error)
     {
         transformed = source;
         error = string.Empty;
@@ -25,17 +22,17 @@ internal static class SyntaxPathFilter
         var normalizedLanguage = language?.Trim().ToLowerInvariant();
         return normalizedLanguage switch
         {
-            "json" => TryTransformJson(source, expression, out transformed, out error),
+            "json" => TryTransformJson(source, expression, jsonPath, out transformed, out error),
             "xml" => TryTransformXml(source, expression, out transformed, out error),
             _ => Fail("Path filtering is available only for JSON and XML responses.", out transformed, out error, source),
         };
     }
 
-    private static bool TryTransformJson(string source, string expression, out string transformed, out string error)
+    private static bool TryTransformJson(string source, string expression, IJsonPathService jsonPath, out string transformed, out string error)
     {
         transformed = source;
 
-        if (!JsonPath.TryValidate(expression, out error))
+        if (!jsonPath.TryValidate(expression, out error))
             return false;
 
         JsonElement root;
@@ -49,7 +46,7 @@ internal static class SyntaxPathFilter
             return Fail($"Response is not valid JSON: {ex.Message}", out transformed, out error, source);
         }
 
-        var results = JsonPath.Query(root, expression);
+        var results = jsonPath.Query(root, expression);
 
         if (results.Count == 0)
         {

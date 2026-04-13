@@ -289,6 +289,10 @@ public sealed class JsonPathServiceTests
         var json = """{"a":[[1,2],[3,4]]}""";
         var results = Query(json, "$..a[0]");
         results.Should().HaveCount(1);
+        // a[0] = [1,2] — the first sub-array
+        results[0].GetArrayLength().Should().Be(2);
+        results[0][0].GetInt32().Should().Be(1);
+        results[0][1].GetInt32().Should().Be(2);
     }
 
     // ─── Multiple selectors in brackets ──────────────────────────────────────
@@ -717,5 +721,6 @@ public sealed class JsonPathServiceTests
         var json = """{"a":{"flag":1},"b":{},"c":{"flag":2}}""";
         var results = Query(json, "$[?@.flag]");
         results.Should().HaveCount(2);
+        results.Select(e => e.GetProperty("flag").GetInt32()).Should().BeEquivalentTo([1, 2]);
     }
 }

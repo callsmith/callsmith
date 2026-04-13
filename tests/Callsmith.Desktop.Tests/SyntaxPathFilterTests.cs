@@ -1,3 +1,4 @@
+using Callsmith.Core.Services;
 using Callsmith.Desktop.Controls;
 using FluentAssertions;
 using Avalonia.Controls;
@@ -8,6 +9,8 @@ namespace Callsmith.Desktop.Tests;
 
 public sealed class SyntaxPathFilterTests
 {
+    private static readonly JsonPathService JsonPath = new();
+
     [Fact]
     public void TryTransform_JsonPath_ExtractsScalar()
     {
@@ -21,7 +24,7 @@ public sealed class SyntaxPathFilterTests
             }
             """;
 
-        var ok = SyntaxPathFilter.TryTransform(json, "json", "$.data.items[0].id", out var transformed, out var error);
+        var ok = SyntaxPathFilter.TryTransform(json, "json", "$.data.items[0].id", JsonPath, out var transformed, out var error);
 
         ok.Should().BeTrue();
         transformed.Should().Be("42");
@@ -33,7 +36,7 @@ public sealed class SyntaxPathFilterTests
     {
         const string json = """{ "data": [1,2,3] }""";
 
-        var ok = SyntaxPathFilter.TryTransform(json, "json", "data[0]", out var transformed, out var error);
+        var ok = SyntaxPathFilter.TryTransform(json, "json", "data[0]", JsonPath, out var transformed, out var error);
 
         ok.Should().BeFalse();
         transformed.Should().Be(json);
@@ -55,7 +58,7 @@ public sealed class SyntaxPathFilterTests
             }
             """;
 
-        var ok = SyntaxPathFilter.TryTransform(json, "json", "$.library.books[*].author", out var transformed, out var error);
+        var ok = SyntaxPathFilter.TryTransform(json, "json", "$.library.books[*].author", JsonPath, out var transformed, out var error);
 
         ok.Should().BeTrue();
         transformed.Should().Be("""
@@ -73,7 +76,7 @@ public sealed class SyntaxPathFilterTests
     {
         const string json = """{ "library": { "books": [] } }""";
 
-        var ok = SyntaxPathFilter.TryTransform(json, "json", "$.library.books[*].author", out var transformed, out var error);
+        var ok = SyntaxPathFilter.TryTransform(json, "json", "$.library.books[*].author", JsonPath, out var transformed, out var error);
 
         ok.Should().BeTrue();
         transformed.Should().BeEmpty();
@@ -93,7 +96,7 @@ public sealed class SyntaxPathFilterTests
             </root>
             """;
 
-        var ok = SyntaxPathFilter.TryTransform(xml, "xml", "/root/users/user/name", out var transformed, out var error);
+        var ok = SyntaxPathFilter.TryTransform(xml, "xml", "/root/users/user/name", JsonPath, out var transformed, out var error);
 
         ok.Should().BeTrue();
         transformed.Should().Be("Ada");
@@ -105,7 +108,7 @@ public sealed class SyntaxPathFilterTests
     {
         const string xml = """<root><value>1</value></root>""";
 
-        var ok = SyntaxPathFilter.TryTransform(xml, "xml", "/root/[", out var transformed, out var error);
+        var ok = SyntaxPathFilter.TryTransform(xml, "xml", "/root/[", JsonPath, out var transformed, out var error);
 
         ok.Should().BeFalse();
         transformed.Should().Be(xml);

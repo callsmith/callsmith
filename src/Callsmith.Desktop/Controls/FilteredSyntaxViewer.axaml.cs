@@ -2,6 +2,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
+using Callsmith.Core.Abstractions;
+using Callsmith.Core.Services;
 
 namespace Callsmith.Desktop.Controls;
 
@@ -25,6 +27,12 @@ public sealed partial class FilteredSyntaxViewer : UserControl
     private TextBlock? _filterStatusTextBlock;
     private Border? _filterBar;
     private SyntaxEditor? _editor;
+
+    /// <summary>
+    /// Gets or sets the JSONPath query service used for JSON filtering.
+    /// Defaults to a new <see cref="JsonPathService"/> instance. Can be replaced for testing or DI.
+    /// </summary>
+    public IJsonPathService JsonPath { get; set; } = new JsonPathService();
 
     public FilteredSyntaxViewer()
     {
@@ -152,7 +160,7 @@ public sealed partial class FilteredSyntaxViewer : UserControl
             return;
         }
 
-        if (SyntaxPathFilter.TryTransform(Text, Language, expression, out var transformed, out var error))
+        if (SyntaxPathFilter.TryTransform(Text, Language, expression, JsonPath, out var transformed, out var error))
         {
             ShowActive();
             _editor.Text = transformed;
