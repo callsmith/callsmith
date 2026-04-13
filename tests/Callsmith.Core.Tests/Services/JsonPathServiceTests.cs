@@ -818,8 +818,10 @@ public sealed class JsonPathServiceTests
     [Fact]
     public void TryQuery_Sort_OnNonArray_ReturnsFalseWithError()
     {
+        // Root is a plain object (not an array). In flat-list mode the single object is
+        // treated as a one-element array of objects, which requires a sort expression.
         TryQuery("""{"name":"Alice"}""", "$.sort_asc()", out var error).Should().BeFalse();
-        error.Should().Contain("arrays");
+        error.Should().Contain("expression");
     }
 
     [Fact]
@@ -870,5 +872,48 @@ public sealed class JsonPathServiceTests
         var ok = TryQuery("""[3,1,2]""", "$.sort()", out var error);
         ok.Should().BeTrue();
         error.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Query_Sort_AfterWildcard_SortsAsFlatList()
+    {
+        // [*] expands the array into a flat list of elements; sort should operate on the whole list.
+        var json = """{"items":[{"price":30},{"price":10},{"price":20}]}""";
+        var results = Query(json, "$.items[*].sort(price)");
+        results.Select(e => e.GetProperty("price").GetInt32()).Should().Equal(10, 20, 30);
+    }
+
+    [Fact]
+    public void Query_SortDesc_AfterWildcard_SortsDescending()
+    {
+        var json = """{"items":[{"price":30},{"price":10},{"price":20}]}""";
+        var results = Query(json, "$.items[*].sort_desc(price)");
+        results.Select(e => e.GetProperty("price").GetInt32()).Should().Equal(30, 20, 10);
+    }
+
+    [Fact]
+    public void Query_Sort_AfterDescendantWildcard_FlattensThenSorts()
+    {
+        // $..items[*] collects elements from all nested items arrays then sort merges them.
+        var json = """{"orders":[{"items":[{"price":5},{"price":1}]},{"items":[{"price":3},{"price":2}]}]}""";
+        var results = Query(json, "$..items[*].sort(price)");
+        results.Select(e => e.GetProperty("price").GetInt32()).Should().Equal(1, 2, 3, 5);
+    }
+
+    [Fact]
+    public void Query_Sort_AfterSliceSelector_SortsSlicedElements()
+    {
+        var json = """{"items":[{"v":5},{"v":3},{"v":4},{"v":1},{"v":2}]}""";
+        // Slice [0:3] picks first 3; sort should sort those 3 elements.
+        var results = Query(json, "$.items[0:3].sort(v)");
+        results.Select(e => e.GetProperty("v").GetInt32()).Should().Equal(3, 4, 5);
+    }
+
+    [Fact]
+    public void Query_Sort_AfterWildcard_PrimitiveElements_SortsAscending()
+    {
+        var json = """{"scores":[3,1,4,1,5]}""";
+        var results = Query(json, "$.scores[*].sort()");
+        results.Select(e => e.GetInt32()).Should().Equal(1, 1, 3, 4, 5);
     }
 }

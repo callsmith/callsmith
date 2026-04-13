@@ -129,6 +129,18 @@ public sealed class JsonPathService : IJsonPathService
     {
         error = string.Empty;
 
+        if (nodes.Count == 0)
+            return true;
+
+        // When no node is itself a JSON array, the elements were already expanded by a
+        // wildcard or slice selector (e.g. [*] or [0:5]). Treat the whole list as one
+        // flat virtual array and sort it in one pass.
+        bool flatListMode = nodes.TrueForAll(n => n.ValueKind != JsonValueKind.Array);
+
+        if (flatListMode)
+            return TrySortElements(nodes, sort, output, out error);
+
+        // Per-array mode: each node must be an array; sort each one independently.
         foreach (var node in nodes)
         {
             if (node.ValueKind != JsonValueKind.Array)
@@ -138,42 +150,51 @@ public sealed class JsonPathService : IJsonPathService
             }
 
             var elements = node.EnumerateArray().ToList();
-
-            if (elements.Count == 0)
-                continue; // empty array → nothing to add
-
-            // Determine array element type from the first non-null element
-            JsonElement? firstNonNull = null;
-            foreach (var el in elements)
-            {
-                if (el.ValueKind != JsonValueKind.Null)
-                {
-                    firstNonNull = el;
-                    break;
-                }
-            }
-
-            var isObjectArray = firstNonNull?.ValueKind == JsonValueKind.Object;
-
-            if (isObjectArray && sort.SortExpression is null)
-            {
-                error = "sort requires a property expression for arrays of objects, e.g. sort_asc(name).";
+            if (!TrySortElements(elements, sort, output, out error))
                 return false;
-            }
-
-            if (!isObjectArray && sort.SortExpression is not null)
-            {
-                error = "sort cannot use a property expression for arrays of primitives.";
-                return false;
-            }
-
-            var sorted = sort.Ascending
-                ? elements.OrderBy(e => GetSortKey(e, sort.SortExpression), SortKeyComparer.Instance)
-                : elements.OrderByDescending(e => GetSortKey(e, sort.SortExpression), SortKeyComparer.Instance);
-
-            output.AddRange(sorted);
         }
 
+        return true;
+    }
+
+    private static bool TrySortElements(
+        List<JsonElement> elements, SortStep sort, List<JsonElement> output, out string error)
+    {
+        error = string.Empty;
+
+        if (elements.Count == 0)
+            return true; // empty → nothing to add
+
+        // Determine element type from the first non-null element
+        JsonElement? firstNonNull = null;
+        foreach (var el in elements)
+        {
+            if (el.ValueKind != JsonValueKind.Null)
+            {
+                firstNonNull = el;
+                break;
+            }
+        }
+
+        var isObjectArray = firstNonNull?.ValueKind == JsonValueKind.Object;
+
+        if (isObjectArray && sort.SortExpression is null)
+        {
+            error = "sort requires a property expression for arrays of objects, e.g. sort_asc(name).";
+            return false;
+        }
+
+        if (!isObjectArray && sort.SortExpression is not null)
+        {
+            error = "sort cannot use a property expression for arrays of primitives.";
+            return false;
+        }
+
+        var sorted = sort.Ascending
+            ? elements.OrderBy(e => GetSortKey(e, sort.SortExpression), SortKeyComparer.Instance)
+            : elements.OrderByDescending(e => GetSortKey(e, sort.SortExpression), SortKeyComparer.Instance);
+
+        output.AddRange(sorted);
         return true;
     }
 
