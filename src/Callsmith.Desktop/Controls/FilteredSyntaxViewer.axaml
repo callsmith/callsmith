@@ -39,13 +39,13 @@
                              FontSize="11"
                              Foreground="#aaa"
                              Text="Fully compliant with RFC 9535. Supports all standard selectors: property access, array indexes, slices, wildcards, recursive descent, and filter expressions with comparison and logical operators."/>
-                  <TextBlock Text="Sort extensions (arrays only)"
+                  <TextBlock Text="Array extensions (arrays only)"
                              FontWeight="SemiBold"
                              FontSize="11"
                              Foreground="#d4d4d4"
                              Margin="0,2,0,0"/>
                   <Grid ColumnDefinitions="Auto,*"
-                        RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                    RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
                         Margin="4,0,0,0">
                     <TextBlock Grid.Row="0" Grid.Column="0"
                                FontFamily="Consolas,Menlo,monospace"
@@ -97,18 +97,38 @@
                                FontSize="11"
                                Foreground="#ce9178"
                                Text="  $.items.sort_asc(price)"
-                               Margin="0,1,0,4"/>
+                               Margin="0,1,0,1"/>
                     <TextBlock Grid.Row="6" Grid.Column="0"
-                               Grid.ColumnSpan="2"
-                               FontSize="11"
-                               Foreground="#aaa"
-                               Text="Primitive arrays — no field:"/>
-                    <TextBlock Grid.Row="7" Grid.Column="0"
                                Grid.ColumnSpan="2"
                                FontFamily="Consolas,Menlo,monospace"
                                FontSize="11"
                                Foreground="#ce9178"
-                               Text="  $.scores.sort_desc()"/>
+                               Text="  $.items.distinct(price)"
+                               Margin="0,0,0,4"/>
+                    <TextBlock Grid.Row="7" Grid.Column="0"
+                               Grid.ColumnSpan="2"
+                               FontSize="11"
+                               Foreground="#aaa"
+                               Text="Primitive arrays — no field:"/>
+                    <TextBlock Grid.Row="8" Grid.Column="0"
+                               Grid.ColumnSpan="2"
+                               FontFamily="Consolas,Menlo,monospace"
+                               FontSize="11"
+                               Foreground="#ce9178"
+                               Text="  $.scores.sort_desc()"
+                               Margin="0,1,0,1"/>
+                    <TextBlock Grid.Row="9" Grid.Column="0"
+                               Grid.ColumnSpan="2"
+                               FontFamily="Consolas,Menlo,monospace"
+                               FontSize="11"
+                               Foreground="#ce9178"
+                               Text="  $.scores.distinct()"/>
+                    <TextBlock Grid.Row="10" Grid.Column="0"
+                               Grid.ColumnSpan="2"
+                               FontSize="11"
+                               Foreground="#777"
+                               TextWrapping="Wrap"
+                               Text="distinct follows the same expression rules as sort."/>
                   </Grid>
                 </StackPanel>
               </ToolTip>
