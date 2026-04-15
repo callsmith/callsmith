@@ -385,13 +385,7 @@ public sealed class JsonPathService : IJsonPathService
         public bool Equals(JsonElement x, JsonElement y)
         {
             if (x.ValueKind != y.ValueKind)
-            {
-                // Allow cross-kind numeric comparison (e.g. 1 vs 1.0).
-                if (x.ValueKind == JsonValueKind.Number && y.ValueKind == JsonValueKind.Number)
-                    return NumbersEqual(x, y);
-
                 return false;
-            }
 
             return x.ValueKind switch
             {
@@ -429,8 +423,11 @@ public sealed class JsonPathService : IJsonPathService
 
         private static int GetNumberHashCode(JsonElement value)
         {
-            if (value.TryGetDecimal(out var decimalValue))
-                return decimalValue.GetHashCode();
+            // Cast to double so the hash is consistent with NumbersEqual: if either
+            // operand cannot be represented as decimal the equality path falls back to
+            // double, so hashing via (double) keeps the GetHashCode/Equals contract.
+            if (value.TryGetDecimal(out var d))
+                return ((double)d).GetHashCode();
 
             return value.GetDouble().GetHashCode();
         }
