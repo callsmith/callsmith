@@ -916,4 +916,65 @@ public sealed class JsonPathServiceTests
         var results = Query(json, "$.scores[*].sort()");
         results.Select(e => e.GetInt32()).Should().Equal(1, 1, 3, 4, 5);
     }
+
+    // ─── distinct(expr?) ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void Query_Distinct_PrimitiveArray_RemovesDuplicatesPreservingOrder()
+    {
+        var results = Query("""[3,1,4,1,5,3,2,2]""", "$.distinct()");
+        results.Select(e => e.GetInt32()).Should().Equal(3, 1, 4, 5, 2);
+    }
+
+    [Fact]
+    public void Query_Distinct_ObjectArray_ByProperty()
+    {
+        var json = """[{"name":"Alice"},{"name":"Bob"},{"name":"Alice"}]""";
+        var results = Query(json, "$.distinct(name)");
+        results.Select(e => e.GetProperty("name").GetString()).Should().Equal("Alice", "Bob");
+    }
+
+    [Fact]
+    public void Query_Distinct_ObjectArray_ByPropertyQuoted()
+    {
+        var json = """[{"age":30},{"age":10},{"age":30}]""";
+        var results = Query(json, "$.distinct('age')");
+        results.Select(e => e.GetProperty("age").GetInt32()).Should().Equal(30, 10);
+    }
+
+    [Fact]
+    public void Query_Distinct_AfterWildcard_SupportsFlatListMode()
+    {
+        var json = """{"items":[{"price":30},{"price":10},{"price":30},{"price":20}]}""";
+        var results = Query(json, "$.items[*].distinct(price)");
+        results.Select(e => e.GetProperty("price").GetInt32()).Should().Equal(30, 10, 20);
+    }
+
+    [Fact]
+    public void TryQuery_Distinct_ObjectArrayWithoutExpression_ReturnsFalseWithError()
+    {
+        TryQuery("""[{"name":"Alice"}]""", "$.distinct()", out var error).Should().BeFalse();
+        error.Should().Contain("expression");
+    }
+
+    [Fact]
+    public void TryQuery_Distinct_PrimitiveArrayWithExpression_ReturnsFalseWithError()
+    {
+        TryQuery("""[1,2,3]""", "$.distinct(value)", out var error).Should().BeFalse();
+        error.Should().Contain("expression");
+    }
+
+    [Fact]
+    public void TryValidate_Distinct_WithExpression_ReturnsTrue()
+    {
+        _sut.TryValidate("$.items.distinct(price)", out var error).Should().BeTrue();
+        error.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TryValidate_DistinctWithDescendant_ReturnsFalse()
+    {
+        _sut.TryValidate("$..distinct()", out var error).Should().BeFalse();
+        error.Should().Contain("descendant");
+    }
 }

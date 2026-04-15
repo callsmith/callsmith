@@ -4,7 +4,8 @@ namespace Callsmith.Core.Abstractions;
 
 /// <summary>
 /// Evaluates RFC 9535 JSONPath expressions against JSON documents.
-/// Also supports sort extension functions: <c>sort(expr?)</c>, <c>sort_asc(expr?)</c>, <c>sort_desc(expr?)</c>.
+/// Also supports extension functions: <c>sort(expr?)</c>, <c>sort_asc(expr?)</c>,
+/// <c>sort_desc(expr?)</c>, and <c>distinct(expr?)</c>.
 /// </summary>
 public interface IJsonPathService
 {
@@ -22,7 +23,8 @@ public interface IJsonPathService
 
     /// <summary>
     /// Evaluates a JSONPath expression and surfaces both syntax and runtime errors.
-    /// Runtime errors include sort applied to a non-array, or sort constraint violations.
+    /// Runtime errors include extension functions applied to a non-array, or extension
+    /// constraint violations (for example, missing required object-property expressions).
     /// Returns <see langword="false"/> and sets <paramref name="error"/> on failure.
     /// </summary>
     bool TryQuery(JsonElement root, string expression,

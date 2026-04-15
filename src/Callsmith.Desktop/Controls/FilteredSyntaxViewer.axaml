@@ -21,13 +21,13 @@
         <StackPanel Orientation="Horizontal"
               Spacing="4"
               MinHeight="16">
-          <TextBlock x:Name="FilterLabelTextBlock"
-                     Foreground="#888"
-                     FontWeight="Bold"
-                     FontSize="10"
-                     LetterSpacing="1"
-                     VerticalAlignment="Center"
-                     Text="FILTER:">
+            <TextBlock x:Name="FilterLabelTextBlock"
+                       Foreground="#888"
+                       FontWeight="Bold"
+                       FontSize="10"
+                       LetterSpacing="1"
+                       VerticalAlignment="Center"
+                       Text="FILTER:">
             <ToolTip.Tip>
               <ToolTip MaxWidth="380">
                 <StackPanel Spacing="6">
@@ -38,14 +38,14 @@
                   <TextBlock TextWrapping="Wrap"
                              FontSize="11"
                              Foreground="#aaa"
-                             Text="Fully compliant with RFC 9535. Supports all standard selectors: property access, array indexes, slices, wildcards, recursive descent, and filter expressions with comparison and logical operators."/>
-                  <TextBlock Text="Sort extensions (arrays only)"
+                             Text="Fully compliant with RFC 9535, with additional extensions listed below"/>
+                  <TextBlock Text="Array extensions"
                              FontWeight="SemiBold"
                              FontSize="11"
                              Foreground="#d4d4d4"
                              Margin="0,2,0,0"/>
                   <Grid ColumnDefinitions="Auto,*"
-                        RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                    RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
                         Margin="4,0,0,0">
                     <TextBlock Grid.Row="0" Grid.Column="0"
                                FontFamily="Consolas,Menlo,monospace"
@@ -81,39 +81,64 @@
                                TextWrapping="Wrap"
                                Text="Sort descending by field"/>
                     <TextBlock Grid.Row="3" Grid.Column="0"
+                               FontFamily="Consolas,Menlo,monospace"
+                               FontSize="11"
+                               Foreground="#9cdcfe"
+                               Text="distinct(field)"
+                               Margin="0,0,10,2"/>
+                    <TextBlock Grid.Row="3" Grid.Column="1"
+                               FontSize="11"
+                               Foreground="#aaa"
+                               TextWrapping="Wrap"
+                               Text="Return distinct values by field"/>
+                    <TextBlock Grid.Row="4" Grid.Column="0"
                                Grid.ColumnSpan="2"
                                FontSize="11"
                                Foreground="#666"
                                Text="──────────────────────────────"
                                Margin="0,2,0,2"/>
-                    <TextBlock Grid.Row="4" Grid.Column="0"
+                    <TextBlock Grid.Row="5" Grid.Column="0"
                                Grid.ColumnSpan="2"
                                FontSize="11"
                                Foreground="#aaa"
                                Text="Object arrays — field required:"/>
-                    <TextBlock Grid.Row="5" Grid.Column="0"
+                    <TextBlock Grid.Row="6" Grid.Column="0"
                                Grid.ColumnSpan="2"
                                FontFamily="Consolas,Menlo,monospace"
                                FontSize="11"
                                Foreground="#ce9178"
                                Text="  $.items.sort_asc(price)"
-                               Margin="0,1,0,4"/>
-                    <TextBlock Grid.Row="6" Grid.Column="0"
-                               Grid.ColumnSpan="2"
-                               FontSize="11"
-                               Foreground="#aaa"
-                               Text="Primitive arrays — no field:"/>
+                               Margin="0,1,0,1"/>
                     <TextBlock Grid.Row="7" Grid.Column="0"
                                Grid.ColumnSpan="2"
                                FontFamily="Consolas,Menlo,monospace"
                                FontSize="11"
                                Foreground="#ce9178"
-                               Text="  $.scores.sort_desc()"/>
+                               Text="  $.items.distinct(price)"
+                               Margin="0,0,0,4"/>
+                    <TextBlock Grid.Row="8" Grid.Column="0"
+                               Grid.ColumnSpan="2"
+                               FontSize="11"
+                               Foreground="#aaa"
+                               Text="Primitive arrays — no field:"/>
+                    <TextBlock Grid.Row="9" Grid.Column="0"
+                               Grid.ColumnSpan="2"
+                               FontFamily="Consolas,Menlo,monospace"
+                               FontSize="11"
+                               Foreground="#ce9178"
+                               Text="  $.scores.sort_desc()"
+                               Margin="0,1,0,1"/>
+                    <TextBlock Grid.Row="10" Grid.Column="0"
+                               Grid.ColumnSpan="2"
+                               FontFamily="Consolas,Menlo,monospace"
+                               FontSize="11"
+                               Foreground="#ce9178"
+                               Text="  $.scores.distinct()"/>
                   </Grid>
                 </StackPanel>
               </ToolTip>
             </ToolTip.Tip>
-          </TextBlock>
+            </TextBlock>
           <TextBlock x:Name="FilterStatusTextBlock"
                      FontSize="11"
                      VerticalAlignment="Center"

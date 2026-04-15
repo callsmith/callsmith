@@ -72,6 +72,11 @@ public sealed class JsonPathService : IJsonPathService
                 if (!TryApplySort(result, sort, next, out error))
                     return false;
             }
+            else if (step is DistinctStep distinct)
+            {
+                if (!TryApplyDistinct(result, distinct, next, out error))
+                    return false;
+            }
 
             result = next;
         }
@@ -212,6 +217,94 @@ public sealed class JsonPathService : IJsonPathService
         return true;
     }
 
+    private static bool TryApplyDistinct(
+        List<JsonElement> nodes, DistinctStep distinct, List<JsonElement> output, out string error)
+    {
+        error = string.Empty;
+
+        if (nodes.Count == 0)
+            return true;
+
+        // Mirrors sort behavior: if nodes have already been expanded into a flat list,
+        // treat them as one virtual array.
+        bool flatListMode = nodes.TrueForAll(n => n.ValueKind != JsonValueKind.Array);
+
+        if (flatListMode)
+            return TryDistinctElements(nodes, distinct, output, out error);
+
+        // Per-array mode: each node must be an array; de-duplicate each one independently.
+        foreach (var node in nodes)
+        {
+            if (node.ValueKind != JsonValueKind.Array)
+            {
+                error = "distinct can only be applied to arrays.";
+                return false;
+            }
+
+            var elements = node.EnumerateArray().ToList();
+            if (!TryDistinctElements(elements, distinct, output, out error))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryDistinctElements(
+        List<JsonElement> elements, DistinctStep distinct, List<JsonElement> output, out string error)
+    {
+        error = string.Empty;
+
+        if (elements.Count == 0)
+            return true;
+
+        // Determine element type from the first non-null element.
+        JsonElement? firstNonNull = null;
+        foreach (var el in elements)
+        {
+            if (el.ValueKind != JsonValueKind.Null)
+            {
+                firstNonNull = el;
+                break;
+            }
+        }
+
+        var isObjectArray = firstNonNull?.ValueKind == JsonValueKind.Object;
+
+        if (isObjectArray && distinct.DistinctExpression is null)
+        {
+            error = "distinct requires a property expression for arrays of objects, e.g. distinct(name).";
+            return false;
+        }
+
+        if (!isObjectArray && distinct.DistinctExpression is not null)
+        {
+            error = "distinct cannot use a property expression for arrays of primitives.";
+            return false;
+        }
+
+        if (isObjectArray)
+        {
+            var seen = new HashSet<object?>(SortKeyEqualityComparer.Instance);
+            foreach (var element in elements)
+            {
+                var key = GetSortKey(element, distinct.DistinctExpression);
+                if (seen.Add(key))
+                    output.Add(element);
+            }
+        }
+        else
+        {
+            var seen = new HashSet<JsonElement>(JsonElementValueComparer.Instance);
+            foreach (var element in elements)
+            {
+                if (seen.Add(element))
+                    output.Add(element);
+            }
+        }
+
+        return true;
+    }
+
     private static object? GetSortKey(JsonElement element, string? propertyName)
     {
         var target = element;
@@ -253,6 +346,94 @@ public sealed class JsonPathService : IJsonPathService
         }
     }
 
+    private sealed class SortKeyEqualityComparer : IEqualityComparer<object?>
+    {
+        public static readonly SortKeyEqualityComparer Instance = new();
+
+        public new bool Equals(object? x, object? y)
+        {
+            if (x is null && y is null) return true;
+            if (x is null || y is null) return false;
+
+            // Only treat values as equal when they are the same runtime type,
+            // so numeric 1 and string "1" are never considered duplicates.
+            if (x is double dx && y is double dy)
+                return dx.Equals(dy);
+
+            if (x is string sx && y is string sy)
+                return string.Equals(sx, sy, StringComparison.Ordinal);
+
+            // Different types (e.g. double vs string) are never equal.
+            return false;
+        }
+
+        public int GetHashCode(object? obj)
+        {
+            if (obj is null) return 0;
+            // Include the runtime type in the hash so values of different types
+            // land in different buckets even when their string forms are identical.
+            if (obj is double d) return HashCode.Combine(typeof(double), d);
+            if (obj is string s) return HashCode.Combine(typeof(string), StringComparer.Ordinal.GetHashCode(s));
+            return HashCode.Combine(obj.GetType(), obj.GetHashCode());
+        }
+    }
+
+    private sealed class JsonElementValueComparer : IEqualityComparer<JsonElement>
+    {
+        public static readonly JsonElementValueComparer Instance = new();
+
+        public bool Equals(JsonElement x, JsonElement y)
+        {
+            if (x.ValueKind != y.ValueKind)
+                return false;
+
+            return x.ValueKind switch
+            {
+                JsonValueKind.String => string.Equals(x.GetString(), y.GetString(), StringComparison.Ordinal),
+                JsonValueKind.Number => NumbersEqual(x, y),
+                JsonValueKind.True => true,
+                JsonValueKind.False => true,
+                JsonValueKind.Null => true,
+                JsonValueKind.Undefined => true,
+                _ => string.Equals(x.GetRawText(), y.GetRawText(), StringComparison.Ordinal),
+            };
+        }
+
+        public int GetHashCode(JsonElement obj)
+        {
+            return obj.ValueKind switch
+            {
+                JsonValueKind.String => HashCode.Combine(JsonValueKind.String, StringComparer.Ordinal.GetHashCode(obj.GetString() ?? string.Empty)),
+                JsonValueKind.Number => HashCode.Combine(JsonValueKind.Number, GetNumberHashCode(obj)),
+                JsonValueKind.True => JsonValueKind.True.GetHashCode(),
+                JsonValueKind.False => JsonValueKind.False.GetHashCode(),
+                JsonValueKind.Null => JsonValueKind.Null.GetHashCode(),
+                JsonValueKind.Undefined => JsonValueKind.Undefined.GetHashCode(),
+                _ => HashCode.Combine(obj.ValueKind, StringComparer.Ordinal.GetHashCode(obj.GetRawText())),
+            };
+        }
+
+        private static bool NumbersEqual(JsonElement x, JsonElement y)
+        {
+            if (x.TryGetDecimal(out var dx) && y.TryGetDecimal(out var dy))
+                return dx == dy;
+
+            return x.GetDouble().Equals(y.GetDouble());
+        }
+
+        private static int GetNumberHashCode(JsonElement value)
+        {
+            // Cast decimal to double before hashing. NumbersEqual falls back to double
+            // when either operand cannot be represented as decimal, so a decimal value
+            // that equals a non-decimal value via double comparison must produce the same
+            // hash code — which requires normalising through double here as well.
+            if (value.TryGetDecimal(out var d))
+                return ((double)d).GetHashCode();
+
+            return value.GetDouble().GetHashCode();
+        }
+    }
+
     // ─── Parser ───────────────────────────────────────────────────────────────
 
     private static bool TryParseExpression(
@@ -289,8 +470,8 @@ public sealed class JsonPathService : IJsonPathService
     }
 
     /// <summary>
-    /// Parses one path step from the main query, returning either a <see cref="Segment"/> or a
-    /// <see cref="SortStep"/> for <c>sort</c>/<c>sort_asc</c>/<c>sort_desc</c> function calls.
+    /// Parses one path step from the main query, returning either a <see cref="Segment"/>,
+    /// <see cref="SortStep"/>, or <see cref="DistinctStep"/> for extension function calls.
     /// </summary>
     private static bool TryParseNextStep(
         ReadOnlySpan<char> span, ref int pos, out IPathStep step, out string error)
@@ -352,15 +533,15 @@ public sealed class JsonPathService : IJsonPathService
         if (!TryParseMemberName(span, ref pos, out var name, out error))
             return false;
 
-        // Detect sort function calls: sort(...), sort_asc(...), sort_desc(...)
-        if (name is "sort" or "sort_asc" or "sort_desc")
+        // Detect extension function calls: sort(...), sort_asc(...), sort_desc(...), distinct(...)
+        if (name is "sort" or "sort_asc" or "sort_desc" or "distinct")
         {
             SkipWhitespace(span, ref pos);
             if (pos < span.Length && span[pos] == '(')
             {
                 if (isDescendant)
                 {
-                    error = "sort functions cannot be used with the descendant operator '..'.";
+                    error = "extension functions cannot be used with the descendant operator '..'.";
                     return false;
                 }
 
@@ -383,7 +564,7 @@ public sealed class JsonPathService : IJsonPathService
                     }
                     else
                     {
-                        error = $"Invalid sort expression at position {pos}.";
+                        error = $"Invalid expression at position {pos}.";
                         return false;
                     }
 
@@ -392,12 +573,14 @@ public sealed class JsonPathService : IJsonPathService
 
                 if (pos >= span.Length || span[pos] != ')')
                 {
-                    error = "Missing ')' in sort function call.";
+                    error = "Missing ')' in extension function call.";
                     return false;
                 }
 
                 pos++; // skip ')'
-                step = new SortStep(Ascending: name != "sort_desc", SortExpression: sortExpr);
+                step = name == "distinct"
+                    ? new DistinctStep(sortExpr)
+                    : new SortStep(Ascending: name != "sort_desc", SortExpression: sortExpr);
                 return true;
             }
         }
@@ -1056,6 +1239,11 @@ public sealed class JsonPathService : IJsonPathService
     /// Represents a sort function step: <c>sort(expr?)</c>, <c>sort_asc(expr?)</c>, <c>sort_desc(expr?)</c>.
     /// </summary>
     private sealed record SortStep(bool Ascending, string? SortExpression) : IPathStep;
+
+    /// <summary>
+    /// Represents a distinct function step: <c>distinct(expr?)</c>.
+    /// </summary>
+    private sealed record DistinctStep(string? DistinctExpression) : IPathStep;
 
     private interface ISelector
     {
