@@ -423,9 +423,10 @@ public sealed class JsonPathService : IJsonPathService
 
         private static int GetNumberHashCode(JsonElement value)
         {
-            // Cast to double so the hash is consistent with NumbersEqual: if either
-            // operand cannot be represented as decimal the equality path falls back to
-            // double, so hashing via (double) keeps the GetHashCode/Equals contract.
+            // Cast decimal to double before hashing. NumbersEqual falls back to double
+            // when either operand cannot be represented as decimal, so a decimal value
+            // that equals a non-decimal value via double comparison must produce the same
+            // hash code — which requires normalising through double here as well.
             if (value.TryGetDecimal(out var d))
                 return ((double)d).GetHashCode();
 
