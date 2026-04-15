@@ -355,21 +355,26 @@ public sealed class JsonPathService : IJsonPathService
             if (x is null && y is null) return true;
             if (x is null || y is null) return false;
 
+            // Only treat values as equal when they are the same runtime type,
+            // so numeric 1 and string "1" are never considered duplicates.
             if (x is double dx && y is double dy)
                 return dx.Equals(dy);
 
             if (x is string sx && y is string sy)
                 return string.Equals(sx, sy, StringComparison.Ordinal);
 
-            return string.Equals(x.ToString(), y.ToString(), StringComparison.Ordinal);
+            // Different types (e.g. double vs string) are never equal.
+            return false;
         }
 
         public int GetHashCode(object? obj)
         {
             if (obj is null) return 0;
-            if (obj is double d) return d.GetHashCode();
-            if (obj is string s) return StringComparer.Ordinal.GetHashCode(s);
-            return StringComparer.Ordinal.GetHashCode(obj.ToString() ?? string.Empty);
+            // Include the runtime type in the hash so values of different types
+            // land in different buckets even when their string forms are identical.
+            if (obj is double d) return HashCode.Combine(typeof(double), d);
+            if (obj is string s) return HashCode.Combine(typeof(string), StringComparer.Ordinal.GetHashCode(s));
+            return HashCode.Combine(obj.GetType(), obj.GetHashCode());
         }
     }
 
@@ -378,10 +383,57 @@ public sealed class JsonPathService : IJsonPathService
         public static readonly JsonElementValueComparer Instance = new();
 
         public bool Equals(JsonElement x, JsonElement y)
-            => string.Equals(x.GetRawText(), y.GetRawText(), StringComparison.Ordinal);
+        {
+            if (x.ValueKind != y.ValueKind)
+            {
+                // Allow cross-kind numeric comparison (e.g. 1 vs 1.0).
+                if (x.ValueKind == JsonValueKind.Number && y.ValueKind == JsonValueKind.Number)
+                    return NumbersEqual(x, y);
+
+                return false;
+            }
+
+            return x.ValueKind switch
+            {
+                JsonValueKind.String => string.Equals(x.GetString(), y.GetString(), StringComparison.Ordinal),
+                JsonValueKind.Number => NumbersEqual(x, y),
+                JsonValueKind.True => true,
+                JsonValueKind.False => true,
+                JsonValueKind.Null => true,
+                JsonValueKind.Undefined => true,
+                _ => string.Equals(x.GetRawText(), y.GetRawText(), StringComparison.Ordinal),
+            };
+        }
 
         public int GetHashCode(JsonElement obj)
-            => StringComparer.Ordinal.GetHashCode(obj.GetRawText());
+        {
+            return obj.ValueKind switch
+            {
+                JsonValueKind.String => HashCode.Combine(JsonValueKind.String, StringComparer.Ordinal.GetHashCode(obj.GetString() ?? string.Empty)),
+                JsonValueKind.Number => HashCode.Combine(JsonValueKind.Number, GetNumberHashCode(obj)),
+                JsonValueKind.True => JsonValueKind.True.GetHashCode(),
+                JsonValueKind.False => JsonValueKind.False.GetHashCode(),
+                JsonValueKind.Null => JsonValueKind.Null.GetHashCode(),
+                JsonValueKind.Undefined => JsonValueKind.Undefined.GetHashCode(),
+                _ => HashCode.Combine(obj.ValueKind, StringComparer.Ordinal.GetHashCode(obj.GetRawText())),
+            };
+        }
+
+        private static bool NumbersEqual(JsonElement x, JsonElement y)
+        {
+            if (x.TryGetDecimal(out var dx) && y.TryGetDecimal(out var dy))
+                return dx == dy;
+
+            return x.GetDouble().Equals(y.GetDouble());
+        }
+
+        private static int GetNumberHashCode(JsonElement value)
+        {
+            if (value.TryGetDecimal(out var decimalValue))
+                return decimalValue.GetHashCode();
+
+            return value.GetDouble().GetHashCode();
+        }
     }
 
     // ─── Parser ───────────────────────────────────────────────────────────────
