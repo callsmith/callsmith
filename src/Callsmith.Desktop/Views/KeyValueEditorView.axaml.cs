@@ -2,8 +2,12 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Callsmith.Desktop.ViewModels;
+using System.Collections.Specialized;
+using System.ComponentModel;
 
 namespace Callsmith.Desktop.Views;
 
@@ -13,6 +17,7 @@ public partial class KeyValueEditorView : UserControl
     private Point _dragStartPoint;
     private bool _isDragging;
     private const double DragThreshold = 6.0;
+    private KeyValueEditorViewModel? _trackedVm;
 
     public KeyValueEditorView()
     {
@@ -23,6 +28,70 @@ public partial class KeyValueEditorView : UserControl
         ItemRows.AddHandler(InputElement.PointerMovedEvent, OnRowPointerMoved, moveRelease, handledEventsToo: true);
         ItemRows.AddHandler(InputElement.PointerReleasedEvent, OnRowPointerReleased, moveRelease, handledEventsToo: true);
         ItemRows.AddHandler(InputElement.PointerCaptureLostEvent, OnRowPointerCaptureLost, RoutingStrategies.Direct);
+        HeaderSplitter.AddHandler(PointerReleasedEvent, OnHeaderSplitterPointerReleased, handledEventsToo: true);
+    }
+
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+
+        if (_trackedVm is not null)
+        {
+            _trackedVm.PropertyChanged -= OnViewModelPropertyChanged;
+            _trackedVm.Items.CollectionChanged -= OnItemsCollectionChanged;
+        }
+
+        _trackedVm = DataContext as KeyValueEditorViewModel;
+        if (_trackedVm is null) return;
+
+        _trackedVm.PropertyChanged += OnViewModelPropertyChanged;
+        _trackedVm.Items.CollectionChanged += OnItemsCollectionChanged;
+        Dispatcher.UIThread.Post(() => ApplyKeyValueSplitterFraction(_trackedVm.KeyValueSplitterFraction));
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_trackedVm is null) return;
+        if (e.PropertyName != nameof(KeyValueEditorViewModel.KeyValueSplitterFraction)) return;
+        Dispatcher.UIThread.Post(() => ApplyKeyValueSplitterFraction(_trackedVm.KeyValueSplitterFraction));
+    }
+
+    private void OnItemsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (_trackedVm is null) return;
+        Dispatcher.UIThread.Post(() => ApplyKeyValueSplitterFraction(_trackedVm.KeyValueSplitterFraction));
+    }
+
+    private void ApplyKeyValueSplitterFraction(double? fraction)
+    {
+        if (!fraction.HasValue) return;
+        if (HeaderGrid.ColumnDefinitions.Count < 5) return;
+
+        var f = Math.Clamp(fraction.Value, 0.05, 0.95);
+        HeaderGrid.ColumnDefinitions[2].Width = new GridLength(f, GridUnitType.Star);
+        HeaderGrid.ColumnDefinitions[4].Width = new GridLength(1 - f, GridUnitType.Star);
+
+        foreach (var grid in ItemRows.GetVisualDescendants().OfType<Grid>())
+        {
+            if (grid.ColumnDefinitions.Count < 5) continue;
+            grid.ColumnDefinitions[2].Width = new GridLength(f, GridUnitType.Star);
+            grid.ColumnDefinitions[4].Width = new GridLength(1 - f, GridUnitType.Star);
+        }
+    }
+
+    private void OnHeaderSplitterPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_trackedVm is null) return;
+        if (HeaderGrid.ColumnDefinitions.Count < 5) return;
+
+        var keyWidth = HeaderGrid.ColumnDefinitions[2].ActualWidth;
+        var valueWidth = HeaderGrid.ColumnDefinitions[4].ActualWidth;
+        var total = keyWidth + valueWidth;
+        if (total <= 0) return;
+
+        var fraction = Math.Clamp(keyWidth / total, 0.05, 0.95);
+        _trackedVm.KeyValueSplitterFraction = fraction;
+        _trackedVm.SplitterChangedCallback?.Invoke(fraction);
     }
 
     // ─── Drag to reorder ──────────────────────────────────────────────────────

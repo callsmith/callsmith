@@ -62,4 +62,28 @@ public sealed record AppPreferences
     /// Null means the default ratio is used.
     /// </summary>
     public double? HistoryListSplitterFraction { get; init; }
+
+    /// <summary>
+    /// Fraction (0.0–1.0) of the key column width in the headers key/value editor.
+    /// Null means the default 0.5 ratio is used.
+    /// </summary>
+    public double? HeadersKvpSplitterFraction { get; init; }
+
+    /// <summary>
+    /// Fraction (0.0–1.0) of the key column width in the path params key/value editor.
+    /// Null means the default 0.5 ratio is used.
+    /// </summary>
+    public double? PathParamsKvpSplitterFraction { get; init; }
+
+    /// <summary>
+    /// Fraction (0.0–1.0) of the key column width in the query params key/value editor.
+    /// Null means the default 0.5 ratio is used.
+    /// </summary>
+    public double? QueryParamsKvpSplitterFraction { get; init; }
+
+    /// <summary>
+    /// Fraction (0.0–1.0) of the key column width in the form body key/value editor.
+    /// Null means the default 0.5 ratio is used.
+    /// </summary>
+    public double? FormParamsKvpSplitterFraction { get; init; }
 }

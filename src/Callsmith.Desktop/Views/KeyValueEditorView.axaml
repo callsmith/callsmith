@@ -12,8 +12,9 @@
   <StackPanel>
 
     <!-- Column headers -->
-    <Grid IsVisible="{Binding Items.Count}"
-          ColumnDefinitions="24,28,*,*,28"
+    <Grid x:Name="HeaderGrid"
+          IsVisible="{Binding Items.Count}"
+          ColumnDefinitions="24,28,*,6,*,28"
           Margin="0,4,0,4">
       <TextBlock Grid.Column="2"
                  Text="Key"
@@ -22,13 +23,20 @@
                  FontWeight="SemiBold"
                  LetterSpacing="1"
                  Margin="6,0"/>
-      <TextBlock Grid.Column="3"
+      <TextBlock Grid.Column="4"
                  Text="Value"
                  Foreground="#888"
                  FontSize="10"
                  FontWeight="SemiBold"
                  LetterSpacing="1"
                  Margin="6,0"/>
+      <GridSplitter x:Name="HeaderSplitter"
+                    Grid.Column="3"
+                    Width="6"
+                    ResizeDirection="Columns"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Background="#3f3f46"/>
     </Grid>
 
     <!-- Rows + add button (add appears where the new row will be inserted) -->
@@ -37,7 +45,7 @@
         <ItemsControl x:Name="ItemRows" ItemsSource="{Binding Items}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:KeyValueItemViewModel">
-              <Grid ColumnDefinitions="24,28,*,*,28" Margin="0,2">
+              <Grid ColumnDefinitions="24,28,*,6,*,28" Margin="0,2">
 
                 <!-- Drag handle -->
                 <TextBlock Grid.Column="0"
@@ -195,7 +203,7 @@
                 <!-- ── Value column: plain input OR pill view ──────────────── -->
 
                 <!-- Plain text input (no dynamic segments) -->
-                <TextBox Grid.Column="3"
+                 <TextBox Grid.Column="4"
                          Text="{Binding ValueField.Text}"
                          Watermark="value"
                          FontSize="12"
@@ -219,7 +227,7 @@
                 </TextBox>
 
                 <!-- Pill view (active when the value contains dynamic/mock segments) -->
-                <Border Grid.Column="3"
+                 <Border Grid.Column="4"
                         Background="#2d2d30"
                         BorderBrush="#4ec9b0"
                         BorderThickness="1"
@@ -351,7 +359,14 @@
                   </Grid>
                 </Border>
 
-                <Button Grid.Column="4"
+                 <GridSplitter Grid.Column="3"
+                               Width="6"
+                               ResizeDirection="Columns"
+                               HorizontalAlignment="Stretch"
+                               VerticalAlignment="Stretch"
+                               Background="#3f3f46"/>
+
+                 <Button Grid.Column="5"
                         Content="×"
                         Command="{Binding DeleteCommand}"
                         IsVisible="{Binding ShowDeleteButton}"
