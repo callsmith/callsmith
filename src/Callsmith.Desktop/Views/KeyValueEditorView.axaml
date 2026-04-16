@@ -17,14 +17,20 @@
             ColumnDefinitions="*,3,*"
             RowDefinitions="Auto,Auto">
 
-        <!-- Single panel splitter spanning all rows — draggable from anywhere along the dividing line -->
+        <!-- Single panel splitter spanning all rows — draggable from anywhere along the dividing line.
+             Custom template overrides the Fluent theme default which would render wider than 3 px. -->
         <GridSplitter x:Name="PanelSplitter"
                       Grid.Column="1" Grid.Row="0" Grid.RowSpan="2"
                       Width="3"
                       ResizeDirection="Columns"
                       HorizontalAlignment="Stretch"
-                      VerticalAlignment="Stretch"
-                      Background="#3f3f46"/>
+                      VerticalAlignment="Stretch">
+          <GridSplitter.Template>
+            <ControlTemplate>
+              <Border Background="#3f3f46"/>
+            </ControlTemplate>
+          </GridSplitter.Template>
+        </GridSplitter>
 
       <!-- Row 0: Column headers (hidden when there are no items) -->
       <Grid Grid.Row="0" Grid.Column="0"

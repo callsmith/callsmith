@@ -10,8 +10,6 @@ namespace Callsmith.Desktop.Views;
 
 public partial class KeyValueEditorView : UserControl
 {
-    private const double MinSplitterFraction = 0.05;
-    private const double MaxSplitterFraction = 0.95;
     private KeyValueItemViewModel? _draggedItem;
     private Point _dragStartPoint;
     private bool _isDragging;
@@ -66,7 +64,7 @@ public partial class KeyValueEditorView : UserControl
         if (!fraction.HasValue) return;
         if (SplitGrid.ColumnDefinitions.Count < 3) return;
 
-        var f = Math.Clamp(fraction.Value, MinSplitterFraction, MaxSplitterFraction);
+        var f = fraction.Value;
         SplitGrid.ColumnDefinitions[0].Width = new GridLength(f, GridUnitType.Star);
         SplitGrid.ColumnDefinitions[2].Width = new GridLength(1 - f, GridUnitType.Star);
     }
@@ -81,7 +79,7 @@ public partial class KeyValueEditorView : UserControl
         var total = keyWidth + valueWidth;
         if (total <= 0) return;
 
-        var fraction = Math.Clamp(keyWidth / total, MinSplitterFraction, MaxSplitterFraction);
+        var fraction = keyWidth / total;
         _trackedVm.KeyValueSplitterFraction = fraction;
         _trackedVm.SplitterChangedCallback?.Invoke(fraction);
     }
