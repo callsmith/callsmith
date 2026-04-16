@@ -36,16 +36,18 @@ public sealed class RequestEditorViewModelKvpSplitterTests
     }
 
     [Fact]
-    public async Task QueryParamsSplitterChanged_SyncsAcrossTabs_AndPersistsAppPreference()
+    public async Task QueryParamsSplitterChanged_SynchronizesAcrossTabs_AndPersistsAppPreference()
     {
         var (sut, appPreferencesService) = BuildSut();
         AppPreferences? persisted = null;
+        var persistedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         appPreferencesService
             .UpdateAsync(Arg.Any<Func<AppPreferences, AppPreferences>>(), Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {
                 var update = callInfo.Arg<Func<AppPreferences, AppPreferences>>();
                 persisted = update(new AppPreferences());
+                persistedTcs.TrySetResult(true);
                 return Task.CompletedTask;
             });
 
@@ -56,7 +58,7 @@ public sealed class RequestEditorViewModelKvpSplitterTests
         sourceTab.QueryParams.SplitterChangedCallback.Should().NotBeNull();
 
         sourceTab.QueryParams.SplitterChangedCallback!.Invoke(0.72);
-        await Task.Delay(10);
+        await persistedTcs.Task;
 
         sut.Tabs.Should().OnlyContain(t => t.QueryParams.KeyValueSplitterFraction == 0.72);
         persisted.Should().NotBeNull();

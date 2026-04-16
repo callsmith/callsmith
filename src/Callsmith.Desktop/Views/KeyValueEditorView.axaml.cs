@@ -13,11 +13,14 @@ namespace Callsmith.Desktop.Views;
 
 public partial class KeyValueEditorView : UserControl
 {
+    private const double MinSplitterFraction = 0.05;
+    private const double MaxSplitterFraction = 0.95;
     private KeyValueItemViewModel? _draggedItem;
     private Point _dragStartPoint;
     private bool _isDragging;
     private const double DragThreshold = 6.0;
     private KeyValueEditorViewModel? _trackedVm;
+    private bool _applyFractionQueued;
 
     public KeyValueEditorView()
     {
@@ -46,20 +49,33 @@ public partial class KeyValueEditorView : UserControl
 
         _trackedVm.PropertyChanged += OnViewModelPropertyChanged;
         _trackedVm.Items.CollectionChanged += OnItemsCollectionChanged;
-        Dispatcher.UIThread.Post(() => ApplyKeyValueSplitterFraction(_trackedVm.KeyValueSplitterFraction));
+        QueueApplyForVm(_trackedVm);
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (_trackedVm is null) return;
         if (e.PropertyName != nameof(KeyValueEditorViewModel.KeyValueSplitterFraction)) return;
-        Dispatcher.UIThread.Post(() => ApplyKeyValueSplitterFraction(_trackedVm.KeyValueSplitterFraction));
+        QueueApplyForVm(_trackedVm);
     }
 
     private void OnItemsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (_trackedVm is null) return;
-        Dispatcher.UIThread.Post(() => ApplyKeyValueSplitterFraction(_trackedVm.KeyValueSplitterFraction));
+        QueueApplyForVm(_trackedVm);
+    }
+
+    private void QueueApplyForVm(KeyValueEditorViewModel vm)
+    {
+        if (_applyFractionQueued) return;
+        _applyFractionQueued = true;
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            _applyFractionQueued = false;
+            if (!ReferenceEquals(_trackedVm, vm)) return;
+            ApplyKeyValueSplitterFraction(vm.KeyValueSplitterFraction);
+        });
     }
 
     private void ApplyKeyValueSplitterFraction(double? fraction)
@@ -67,7 +83,7 @@ public partial class KeyValueEditorView : UserControl
         if (!fraction.HasValue) return;
         if (HeaderGrid.ColumnDefinitions.Count < 5) return;
 
-        var f = Math.Clamp(fraction.Value, 0.05, 0.95);
+        var f = Math.Clamp(fraction.Value, MinSplitterFraction, MaxSplitterFraction);
         HeaderGrid.ColumnDefinitions[2].Width = new GridLength(f, GridUnitType.Star);
         HeaderGrid.ColumnDefinitions[4].Width = new GridLength(1 - f, GridUnitType.Star);
 
@@ -89,7 +105,7 @@ public partial class KeyValueEditorView : UserControl
         var total = keyWidth + valueWidth;
         if (total <= 0) return;
 
-        var fraction = Math.Clamp(keyWidth / total, 0.05, 0.95);
+        var fraction = Math.Clamp(keyWidth / total, MinSplitterFraction, MaxSplitterFraction);
         _trackedVm.KeyValueSplitterFraction = fraction;
         _trackedVm.SplitterChangedCallback?.Invoke(fraction);
     }
