@@ -43,6 +43,10 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private bool _isHorizontalLayout = true;
     private double? _requestEditorHorizontalSplitterFraction;
     private double? _requestEditorVerticalSplitterFraction;
+    private double? _headersKvpSplitterFraction;
+    private double? _pathParamsKvpSplitterFraction;
+    private double? _queryParamsKvpSplitterFraction;
+    private double? _formParamsKvpSplitterFraction;
 
     // -------------------------------------------------------------------------
     // Observable state
@@ -449,6 +453,10 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         tab.IsHorizontalLayout = _isHorizontalLayout;
         tab.HorizontalSplitterPosition = _requestEditorHorizontalSplitterFraction;
         tab.VerticalSplitterPosition = _requestEditorVerticalSplitterFraction;
+        tab.Headers.KeyValueSplitterFraction = _headersKvpSplitterFraction;
+        tab.PathParams.KeyValueSplitterFraction = _pathParamsKvpSplitterFraction;
+        tab.QueryParams.KeyValueSplitterFraction = _queryParamsKvpSplitterFraction;
+        tab.FormParams.KeyValueSplitterFraction = _formParamsKvpSplitterFraction;
 
         tab.LayoutChangedCallback = isHorizontal =>
         {
@@ -476,6 +484,15 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             }
             _ = PersistSplitterPositionAsync();
         };
+
+        tab.Headers.SplitterChangedCallback = fraction =>
+            OnKvpSplitterChanged(KvpEditorType.Headers, fraction);
+        tab.PathParams.SplitterChangedCallback = fraction =>
+            OnKvpSplitterChanged(KvpEditorType.PathParams, fraction);
+        tab.QueryParams.SplitterChangedCallback = fraction =>
+            OnKvpSplitterChanged(KvpEditorType.QueryParams, fraction);
+        tab.FormParams.SplitterChangedCallback = fraction =>
+            OnKvpSplitterChanged(KvpEditorType.FormParams, fraction);
 
         if (request is not null)
             tab.LoadRequest(request);
@@ -563,6 +580,62 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             {
                 RequestEditorHorizontalSplitterFraction = h,
                 RequestEditorVerticalSplitterFraction = v
+            }).ConfigureAwait(false);
+    }
+
+    private enum KvpEditorType
+    {
+        Headers,
+        PathParams,
+        QueryParams,
+        FormParams
+    }
+
+    private void OnKvpSplitterChanged(KvpEditorType editorType, double fraction)
+    {
+        switch (editorType)
+        {
+            case KvpEditorType.Headers:
+                _headersKvpSplitterFraction = fraction;
+                foreach (var tab in Tabs)
+                    tab.Headers.KeyValueSplitterFraction = fraction;
+                break;
+            case KvpEditorType.PathParams:
+                _pathParamsKvpSplitterFraction = fraction;
+                foreach (var tab in Tabs)
+                    tab.PathParams.KeyValueSplitterFraction = fraction;
+                break;
+            case KvpEditorType.QueryParams:
+                _queryParamsKvpSplitterFraction = fraction;
+                foreach (var tab in Tabs)
+                    tab.QueryParams.KeyValueSplitterFraction = fraction;
+                break;
+            case KvpEditorType.FormParams:
+                _formParamsKvpSplitterFraction = fraction;
+                foreach (var tab in Tabs)
+                    tab.FormParams.KeyValueSplitterFraction = fraction;
+                break;
+        }
+
+        _ = PersistKvpSplitterPositionsAsync();
+    }
+
+    private async Task PersistKvpSplitterPositionsAsync()
+    {
+        if (_appPreferencesService is null) return;
+
+        var headers = _headersKvpSplitterFraction;
+        var path = _pathParamsKvpSplitterFraction;
+        var query = _queryParamsKvpSplitterFraction;
+        var form = _formParamsKvpSplitterFraction;
+
+        await _appPreferencesService.UpdateAsync(
+            p => p with
+            {
+                HeadersKvpSplitterFraction = headers,
+                PathParamsKvpSplitterFraction = path,
+                QueryParamsKvpSplitterFraction = query,
+                FormParamsKvpSplitterFraction = form
             }).ConfigureAwait(false);
     }
 
@@ -658,6 +731,10 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
                     _isHorizontalLayout = appPrefs?.IsHorizontalRequestEditorLayout ?? true;
                     _requestEditorHorizontalSplitterFraction = appPrefs?.RequestEditorHorizontalSplitterFraction;
                     _requestEditorVerticalSplitterFraction = appPrefs?.RequestEditorVerticalSplitterFraction;
+                    _headersKvpSplitterFraction = appPrefs?.HeadersKvpSplitterFraction;
+                    _pathParamsKvpSplitterFraction = appPrefs?.PathParamsKvpSplitterFraction;
+                    _queryParamsKvpSplitterFraction = appPrefs?.QueryParamsKvpSplitterFraction;
+                    _formParamsKvpSplitterFraction = appPrefs?.FormParamsKvpSplitterFraction;
                 }
 
                 RequestTabViewModel? tabToActivate = null;

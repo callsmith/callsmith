@@ -35,6 +35,19 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
     [ObservableProperty]
     private bool _showKeyPills = false;
 
+    /// <summary>
+    /// Saved fraction (0.0–1.0) of editor width allocated to the key column.
+    /// Null means default split (50/50).
+    /// </summary>
+    [ObservableProperty]
+    private double? _keyValueSplitterFraction;
+
+    /// <summary>
+    /// Optional callback fired when the key/value splitter ratio changes.
+    /// Wired by the parent view-model to persist editor-specific splitter preferences.
+    /// </summary>
+    internal Action<double>? SplitterChangedCallback { get; set; }
+
     /// <summary>Raised whenever the collection or any item's key/value/enabled state changes.</summary>
     public event EventHandler? Changed;
 
