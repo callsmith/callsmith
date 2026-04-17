@@ -404,6 +404,26 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     [RelayCommand]
     private void ToggleRecentPanel() => IsRecentPanelOpen = !IsRecentPanelOpen;
 
+    [RelayCommand]
+    public async Task CollapseAllFoldersAsync()
+    {
+        if (TreeRoots.Count == 0)
+            return;
+
+        _suppressExpandedStatePersistence = true;
+        try
+        {
+            foreach (var root in TreeRoots)
+                CollapseFoldersRecursive(root);
+        }
+        finally
+        {
+            _suppressExpandedStatePersistence = false;
+        }
+
+        await PersistExpandedStateAsync().ConfigureAwait(false);
+    }
+
     /// <summary>Opens a request node â€” called directly from the sidebar on every click.</summary>
     [RelayCommand]
     public async Task OpenRequestAsync(CollectionTreeItemViewModel node)
@@ -928,6 +948,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         await _historyService.SetCollectionAsync(path, cts.Token);
 
         var rootNode = CollectionTreeItemViewModel.FromFolder(root, parent: null, isRoot: true);
+        rootNode.IsBrunoCollectionRoot = IsBrunoCollection;
 
         if (expandedPaths is not null)
             RestoreExpandedState(rootNode, expandedPaths);
@@ -1058,6 +1079,7 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     // Cleanup actions for event handlers wired to the current tree's nodes.
     // Cleared and re-populated each time the tree is rebuilt.
     private readonly List<Action> _expansionCleanups = [];
+    private bool _suppressExpandedStatePersistence;
 
     /// <summary>
     /// Walks <paramref name="root"/> and subscribes to <c>IsExpanded</c> changes on
@@ -1079,7 +1101,10 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         void PropHandler(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
             if (e.PropertyName == nameof(CollectionTreeItemViewModel.IsExpanded))
+            {
+                if (_suppressExpandedStatePersistence) return;
                 _ = PersistExpandedStateAsync();
+            }
         }
         node.PropertyChanged += PropHandler;
         _expansionCleanups.Add(() => node.PropertyChanged -= PropHandler);
@@ -1146,6 +1171,14 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
             node.IsExpanded = expandedPaths.Contains(node.FolderPath);
         foreach (var child in node.Children)
             RestoreExpandedState(child, expandedPaths);
+    }
+
+    private static void CollapseFoldersRecursive(CollectionTreeItemViewModel node)
+    {
+        if (!node.IsFolder) return;
+        node.IsExpanded = false;
+        foreach (var child in node.Children)
+            CollapseFoldersRecursive(child);
     }
 
     // -------------------------------------------------------------------------
@@ -1262,4 +1295,3 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
             Path.AltDirectorySeparatorChar + BrunoCollectionService.EnvironmentFolderName + Path.AltDirectorySeparatorChar,
             StringComparison.OrdinalIgnoreCase);
 }
-

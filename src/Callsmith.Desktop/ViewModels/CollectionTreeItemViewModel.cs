@@ -47,6 +47,10 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _isExpanded = true;
 
+    /// <summary>True only for the root node when the loaded collection uses Bruno format.</summary>
+    [ObservableProperty]
+    private bool _isBrunoCollectionRoot;
+
     /// <summary>True when this node's request is the currently active tab.</summary>
     [ObservableProperty]
     private bool _isActive;
@@ -222,4 +226,3 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
         }
     }
 }
-
