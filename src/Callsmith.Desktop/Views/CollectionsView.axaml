@@ -145,7 +145,7 @@
                front square (stroke only) top-left with a minus sign inside. -->
           <Canvas Width="16" Height="16">
             <!-- Back square (outline) — offset to bottom-right -->
-            <Rectangle Canvas.Left="5" Canvas.Top="5"
+            <Rectangle Canvas.Left="3" Canvas.Top="3"
                        Width="10" Height="10"
                        Stroke="#4ec9b0" StrokeThickness="1.5"/>
             <!-- Front square (outline) — top-left, slightly smaller -->
