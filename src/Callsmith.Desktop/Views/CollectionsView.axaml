@@ -135,15 +135,20 @@
         </StackPanel>
 
         <Button Grid.Column="2"
-                Content="Collapse all"
-                FontSize="11"
-                Foreground="#4ec9b0"
                 Background="Transparent"
                 BorderThickness="0"
                 Padding="4,0"
                 IsVisible="{Binding HasCollection}"
-                ToolTip.Tip="Collapse all folders"
-                Command="{Binding CollapseAllFoldersCommand}"/>
+                ToolTip.Tip="Collapse all folders (Ctrl+Shift+C)"
+                Command="{Binding CollapseAllFoldersCommand}">
+          <Path Data="M2,7 L8,1 L14,7 M2,13 L8,7 L14,13"
+                Stroke="#4ec9b0"
+                StrokeThickness="1.5"
+                StrokeLineCap="Round"
+                Width="16"
+                Height="14"
+                Stretch="None"/>
+        </Button>
       </Grid>
     </Border>
 
@@ -303,12 +308,13 @@
               </Border>
               <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
                           IsVisible="{Binding IsFolder}">
-                <Image Width="14"
-                       Height="14"
+                <Image Width="18"
+                       Height="18"
                        VerticalAlignment="Center"
                        IsVisible="{Binding IsBrunoCollectionRoot}"
                        Source="/Assets/bruno.png"
                        ToolTip.Tip="Bruno Collection"
+                       Margin="0,0,6,0"
                        RenderOptions.BitmapInterpolationMode="MediumQuality"/>
               </StackPanel>
               <TextBlock Grid.Column="3"

@@ -421,6 +421,11 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
             _suppressExpandedStatePersistence = false;
         }
 
+        // Increment before ConfigureAwait(false) so the notification fires on the UI thread.
+        // The view's code-behind observes this and force-collapses all realized TreeViewItem
+        // containers to override any local-priority values left by prior user interactions.
+        CollapseAllVersion++;
+
         await PersistExpandedStateAsync().ConfigureAwait(false);
     }
 
@@ -1080,6 +1085,14 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
     // Cleared and re-populated each time the tree is rebuilt.
     private readonly List<Action> _expansionCleanups = [];
     private bool _suppressExpandedStatePersistence;
+
+    /// <summary>
+    /// Incremented each time <see cref="CollapseAllFoldersAsync"/> completes so the
+    /// view's code-behind can force-collapse all realized <c>TreeViewItem</c> containers,
+    /// overriding any local-priority values that were set by prior user interactions.
+    /// </summary>
+    [ObservableProperty]
+    private int _collapseAllVersion;
 
     /// <summary>
     /// Walks <paramref name="root"/> and subscribes to <c>IsExpanded</c> changes on

@@ -81,6 +81,17 @@ public partial class CollectionsView : UserControl
                     else
                         vm.PendingFolderSettings = null; // No node to update; just clear the dialog state.
                 }
+                else if (args.PropertyName == nameof(CollectionsViewModel.CollapseAllVersion))
+                {
+                    // Force-collapse all realized TreeViewItem containers.
+                    // Setting IsExpanded on the ViewModel node fires the style-binding, but that
+                    // binding has "Style" priority and can't override a "Local" value that was
+                    // stamped on the container by prior user interactions (click-to-expand or
+                    // Avalonia's native toggle button). Directly setting it here as a local value
+                    // always wins and guarantees the visual state matches the ViewModel.
+                    foreach (var root in vm.TreeRoots)
+                        ForceCollapseFolder(CollectionTree, root);
+                }
             };
         }
 
@@ -603,5 +614,25 @@ public partial class CollectionsView : UserControl
             chain.RemoveAt(chain.Count - 1);
         }
         return false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collapse-all visual update
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Recursively sets <c>IsExpanded = false</c> on the realized <see cref="TreeViewItem"/>
+    /// container for <paramref name="node"/> and every folder descendant. Non-realized
+    /// containers (not yet in the visual tree) are skipped — they will render correctly
+    /// via the ViewModel's <c>IsExpanded</c> value when they are eventually realized.
+    /// </summary>
+    private static void ForceCollapseFolder(ItemsControl parent, CollectionTreeItemViewModel node)
+    {
+        if (!node.IsFolder) return;
+        if (parent.ContainerFromItem(node) is not TreeViewItem tvi) return;
+
+        tvi.IsExpanded = false;
+        foreach (var child in node.Children)
+            ForceCollapseFolder(tvi, child);
     }
 }
