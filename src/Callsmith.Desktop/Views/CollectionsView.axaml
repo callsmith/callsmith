@@ -141,13 +141,22 @@
                 IsVisible="{Binding HasCollection}"
                 ToolTip.Tip="Collapse all folders (Ctrl+Shift+C)"
                 Command="{Binding CollapseAllFoldersCommand}">
-          <Path Data="M2,7 L8,1 L14,7 M2,13 L8,7 L14,13"
-                Stroke="#4ec9b0"
-                StrokeThickness="1.5"
-                StrokeLineCap="Round"
-                Width="16"
-                Height="14"
-                Stretch="None"/>
+          <!-- Two offset squares: back square (stroke only) bottom-right,
+               front square (stroke only) top-left with a minus sign inside. -->
+          <Canvas Width="16" Height="16">
+            <!-- Back square (outline) — offset to bottom-right -->
+            <Rectangle Canvas.Left="5" Canvas.Top="5"
+                       Width="10" Height="10"
+                       Stroke="#4ec9b0" StrokeThickness="1.5"/>
+            <!-- Front square (outline) — top-left, slightly smaller -->
+            <Rectangle Canvas.Left="0" Canvas.Top="0"
+                       Width="10" Height="10"
+                       Fill="#2d2d30"
+                       Stroke="#4ec9b0" StrokeThickness="1.5"/>
+            <!-- Minus sign inside front square -->
+            <Line StartPoint="2.5,5" EndPoint="7.5,5"
+                  Stroke="#4ec9b0" StrokeThickness="1.5"/>
+          </Canvas>
         </Button>
       </Grid>
     </Border>
