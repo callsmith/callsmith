@@ -134,15 +134,30 @@
                   Command="{Binding OpenImportDialogCommand}"/>
         </StackPanel>
 
-        <!-- Bruno compatibility mode indicator -->
-        <Image Grid.Column="2"
-               Width="20"
-               Height="20"
-               VerticalAlignment="Center"
-               IsVisible="{Binding IsBrunoCollection}"
-               Source="/Assets/bruno.png"
-               ToolTip.Tip="Bruno Collection"
-               RenderOptions.BitmapInterpolationMode="MediumQuality"/>
+        <Button Grid.Column="2"
+                Background="Transparent"
+                BorderThickness="0"
+                Padding="4,0"
+                IsVisible="{Binding HasCollection}"
+                ToolTip.Tip="Collapse all folders (Ctrl+Shift+C)"
+                Command="{Binding CollapseAllFoldersCommand}">
+          <!-- Two offset squares: back square (stroke only) bottom-right,
+               front square (stroke only) top-left with a minus sign inside. -->
+          <Canvas Width="16" Height="16">
+            <!-- Back square (outline) — offset to bottom-right -->
+            <Rectangle Canvas.Left="3" Canvas.Top="3"
+                       Width="10" Height="10"
+                       Stroke="#4ec9b0" StrokeThickness="1.5"/>
+            <!-- Front square (outline) — top-left, slightly smaller -->
+            <Rectangle Canvas.Left="0" Canvas.Top="0"
+                       Width="10" Height="10"
+                       Fill="#2d2d30"
+                       Stroke="#4ec9b0" StrokeThickness="1.5"/>
+            <!-- Minus sign inside front square -->
+            <Line StartPoint="2.5,5" EndPoint="7.5,5"
+                  Stroke="#4ec9b0" StrokeThickness="1.5"/>
+          </Canvas>
+        </Button>
       </Grid>
     </Border>
 
@@ -260,6 +275,9 @@
           AutoScrollToSelectedItem="false"
           ItemsSource="{Binding TreeRoots}"
           Background="Transparent">
+      <TreeView.KeyBindings>
+        <KeyBinding Gesture="Ctrl+Shift+C" Command="{Binding CollapseAllFoldersCommand}"/>
+      </TreeView.KeyBindings>
       <TreeView.ItemTemplate>
         <TreeDataTemplate ItemsSource="{Binding Children}"
                           x:DataType="vm:CollectionTreeItemViewModel">
@@ -299,6 +317,14 @@
               </Border>
               <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
                           IsVisible="{Binding IsFolder}">
+                <Image Width="18"
+                       Height="18"
+                       VerticalAlignment="Center"
+                       IsVisible="{Binding IsBrunoCollectionRoot}"
+                       Source="/Assets/bruno.png"
+                       ToolTip.Tip="Bruno Collection"
+                       Margin="0,0,6,0"
+                       RenderOptions.BitmapInterpolationMode="MediumQuality"/>
               </StackPanel>
               <TextBlock Grid.Column="3"
                          Classes="tree-label"
