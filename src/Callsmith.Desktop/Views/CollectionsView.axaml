@@ -142,7 +142,7 @@
                 BorderThickness="0"
                 Padding="4,0"
                 IsVisible="{Binding HasCollection}"
-                ToolTip.Tip="Collapse all folders (Ctrl+Shift+C)"
+                ToolTip.Tip="Collapse all folders"
                 Command="{Binding CollapseAllFoldersCommand}"/>
       </Grid>
     </Border>

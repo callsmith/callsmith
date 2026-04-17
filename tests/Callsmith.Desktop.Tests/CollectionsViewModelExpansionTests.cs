@@ -10,7 +10,7 @@ namespace Callsmith.Desktop.Tests;
 
 public sealed class CollectionsViewModelExpansionTests
 {
-    private const string CollectionPath = @"C:\collections\my-api";
+    private static readonly string CollectionPath = Path.Combine("collections", "my-api");
 
     [Fact]
     public async Task CollapseAllFoldersAsync_CollapsesAllFolders_AndPersistsEmptyExpandedList()
