@@ -307,24 +307,11 @@
                            Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"
                            Padding="8,6" FontFamily="Consolas,Menlo,monospace"
                            IsVisible="{Binding AuthTokenField.ShowPlainInput}"
-                           controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}">
-                    <TextBox.ContextMenu>
-                      <ContextMenu>
-                        <MenuItem Header="Dynamic Value…" Command="{Binding AuthTokenField.AddDynamicValueCommand}"/>
-                        <MenuItem Header="Mock Data…"     Command="{Binding AuthTokenField.AddMockDataCommand}"/>
-                      </ContextMenu>
-                    </TextBox.ContextMenu>
-                  </TextBox>
+                           controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
                   <!-- Pill view when segments are present -->
                   <Border Background="#3c3c3c" BorderBrush="#4ec9b0" BorderThickness="1"
                           CornerRadius="3" Padding="4,2" MinHeight="32"
                           IsVisible="{Binding AuthTokenField.HasSegments}">
-                    <Border.ContextMenu>
-                      <ContextMenu>
-                        <MenuItem Header="Dynamic Value…" Command="{Binding AuthTokenField.AddDynamicValueCommand}"/>
-                        <MenuItem Header="Mock Data…"     Command="{Binding AuthTokenField.AddMockDataCommand}"/>
-                      </ContextMenu>
-                    </Border.ContextMenu>
                     <Grid ColumnDefinitions="Auto,*">
                       <ItemsControl Grid.Column="0" ItemsSource="{Binding AuthTokenField.DisplaySegments}">
                         <ItemsControl.ItemsPanel>
@@ -383,23 +370,10 @@
                            Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"
                            Padding="8,6" FontFamily="Consolas,Menlo,monospace"
                            IsVisible="{Binding AuthUsernameField.ShowPlainInput}"
-                           controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}">
-                    <TextBox.ContextMenu>
-                      <ContextMenu>
-                        <MenuItem Header="Dynamic Value…" Command="{Binding AuthUsernameField.AddDynamicValueCommand}"/>
-                        <MenuItem Header="Mock Data…"     Command="{Binding AuthUsernameField.AddMockDataCommand}"/>
-                      </ContextMenu>
-                    </TextBox.ContextMenu>
-                  </TextBox>
+                           controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
                   <Border Background="#3c3c3c" BorderBrush="#4ec9b0" BorderThickness="1"
                           CornerRadius="3" Padding="4,2" MinHeight="32"
                           IsVisible="{Binding AuthUsernameField.HasSegments}">
-                    <Border.ContextMenu>
-                      <ContextMenu>
-                        <MenuItem Header="Dynamic Value…" Command="{Binding AuthUsernameField.AddDynamicValueCommand}"/>
-                        <MenuItem Header="Mock Data…"     Command="{Binding AuthUsernameField.AddMockDataCommand}"/>
-                      </ContextMenu>
-                    </Border.ContextMenu>
                     <Grid ColumnDefinitions="Auto,*">
                       <ItemsControl Grid.Column="0" ItemsSource="{Binding AuthUsernameField.DisplaySegments}">
                         <ItemsControl.ItemsPanel>
@@ -460,27 +434,13 @@
                              Padding="8,6" FontFamily="Consolas,Menlo,monospace"
                              PasswordChar="●"
                              IsVisible="{Binding ShowAuthPassword, Converter={x:Static BoolConverters.Not}}"
-                             controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}">
-                      <TextBox.ContextMenu>
-                        <ContextMenu>
-                          <MenuItem Header="Dynamic Value…" Command="{Binding AuthPasswordField.AddDynamicValueCommand}"/>
-                          <MenuItem Header="Mock Data…"     Command="{Binding AuthPasswordField.AddMockDataCommand}"/>
-                        </ContextMenu>
-                      </TextBox.ContextMenu>
-                    </TextBox>
+                             controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
                     <!-- Plain text password input (revealed) -->
                     <TextBox Grid.Column="0" Text="{Binding AuthPasswordField.Text}" Watermark="password"
                              Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"
                              Padding="8,6" FontFamily="Consolas,Menlo,monospace"
                              IsVisible="{Binding ShowAuthPassword}"
-                             controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}">
-                      <TextBox.ContextMenu>
-                        <ContextMenu>
-                          <MenuItem Header="Dynamic Value…" Command="{Binding AuthPasswordField.AddDynamicValueCommand}"/>
-                          <MenuItem Header="Mock Data…"     Command="{Binding AuthPasswordField.AddMockDataCommand}"/>
-                        </ContextMenu>
-                      </TextBox.ContextMenu>
-                    </TextBox>
+                             controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
                     <!-- Eye toggle button -->
                     <ToggleButton Grid.Column="1" IsChecked="{Binding ShowAuthPassword}"
                                   Background="Transparent" BorderThickness="0"
@@ -502,12 +462,6 @@
                   <Border Background="#3c3c3c" BorderBrush="#4ec9b0" BorderThickness="1"
                           CornerRadius="3" Padding="4,2" MinHeight="32"
                           IsVisible="{Binding AuthPasswordField.HasSegments}">
-                    <Border.ContextMenu>
-                      <ContextMenu>
-                        <MenuItem Header="Dynamic Value…" Command="{Binding AuthPasswordField.AddDynamicValueCommand}"/>
-                        <MenuItem Header="Mock Data…"     Command="{Binding AuthPasswordField.AddMockDataCommand}"/>
-                      </ContextMenu>
-                    </Border.ContextMenu>
                     <Grid ColumnDefinitions="Auto,*">
                       <ItemsControl Grid.Column="0" ItemsSource="{Binding AuthPasswordField.DisplaySegments}">
                         <ItemsControl.ItemsPanel>
@@ -566,23 +520,10 @@
                            Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"
                            Padding="8,6" FontFamily="Consolas,Menlo,monospace"
                            IsVisible="{Binding AuthApiKeyNameField.ShowPlainInput}"
-                           controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}">
-                    <TextBox.ContextMenu>
-                      <ContextMenu>
-                        <MenuItem Header="Dynamic Value…" Command="{Binding AuthApiKeyNameField.AddDynamicValueCommand}"/>
-                        <MenuItem Header="Mock Data…"     Command="{Binding AuthApiKeyNameField.AddMockDataCommand}"/>
-                      </ContextMenu>
-                    </TextBox.ContextMenu>
-                  </TextBox>
+                           controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
                   <Border Background="#3c3c3c" BorderBrush="#4ec9b0" BorderThickness="1"
                           CornerRadius="3" Padding="4,2" MinHeight="32"
                           IsVisible="{Binding AuthApiKeyNameField.HasSegments}">
-                    <Border.ContextMenu>
-                      <ContextMenu>
-                        <MenuItem Header="Dynamic Value…" Command="{Binding AuthApiKeyNameField.AddDynamicValueCommand}"/>
-                        <MenuItem Header="Mock Data…"     Command="{Binding AuthApiKeyNameField.AddMockDataCommand}"/>
-                      </ContextMenu>
-                    </Border.ContextMenu>
                     <Grid ColumnDefinitions="Auto,*">
                       <ItemsControl Grid.Column="0" ItemsSource="{Binding AuthApiKeyNameField.DisplaySegments}">
                         <ItemsControl.ItemsPanel>
@@ -642,26 +583,12 @@
                              Padding="8,6" FontFamily="Consolas,Menlo,monospace"
                              PasswordChar="●"
                              IsVisible="{Binding ShowAuthApiKeyValue, Converter={x:Static BoolConverters.Not}}"
-                             controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}">
-                      <TextBox.ContextMenu>
-                        <ContextMenu>
-                          <MenuItem Header="Dynamic Value…" Command="{Binding AuthApiKeyValueField.AddDynamicValueCommand}"/>
-                          <MenuItem Header="Mock Data…"     Command="{Binding AuthApiKeyValueField.AddMockDataCommand}"/>
-                        </ContextMenu>
-                      </TextBox.ContextMenu>
-                    </TextBox>
+                             controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
                     <TextBox Grid.Column="0" Text="{Binding AuthApiKeyValueField.Text}"
                              Foreground="#d4d4d4" Background="#3c3c3c" BorderBrush="#555"
                              Padding="8,6" FontFamily="Consolas,Menlo,monospace"
                              IsVisible="{Binding ShowAuthApiKeyValue}"
-                             controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}">
-                      <TextBox.ContextMenu>
-                        <ContextMenu>
-                          <MenuItem Header="Dynamic Value…" Command="{Binding AuthApiKeyValueField.AddDynamicValueCommand}"/>
-                          <MenuItem Header="Mock Data…"     Command="{Binding AuthApiKeyValueField.AddMockDataCommand}"/>
-                        </ContextMenu>
-                      </TextBox.ContextMenu>
-                    </TextBox>
+                             controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>
                     <ToggleButton Grid.Column="1" IsChecked="{Binding ShowAuthApiKeyValue}"
                                   Background="Transparent" BorderThickness="0"
                                   Margin="6,0,0,0"
@@ -681,12 +608,6 @@
                   <Border Background="#3c3c3c" BorderBrush="#4ec9b0" BorderThickness="1"
                           CornerRadius="3" Padding="4,2" MinHeight="32"
                           IsVisible="{Binding AuthApiKeyValueField.HasSegments}">
-                    <Border.ContextMenu>
-                      <ContextMenu>
-                        <MenuItem Header="Dynamic Value…" Command="{Binding AuthApiKeyValueField.AddDynamicValueCommand}"/>
-                        <MenuItem Header="Mock Data…"     Command="{Binding AuthApiKeyValueField.AddMockDataCommand}"/>
-                      </ContextMenu>
-                    </Border.ContextMenu>
                     <Grid ColumnDefinitions="Auto,*">
                       <ItemsControl Grid.Column="0" ItemsSource="{Binding AuthApiKeyValueField.DisplaySegments}">
                         <ItemsControl.ItemsPanel>

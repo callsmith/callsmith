@@ -25,6 +25,10 @@ public sealed class SyntaxEditor : TextEditor
     private static readonly IHighlightingDefinition? HtmlHighlighting;
     private static readonly IHighlightingDefinition? TextHighlighting;
     private static readonly IHighlightingDefinition? YamlHighlighting;
+    private readonly MenuItem _cutMenuItem;
+    private readonly MenuItem _copyMenuItem;
+    private readonly MenuItem _pasteMenuItem;
+    private readonly MenuItem _selectAllMenuItem;
     private bool _updatingText;
     private bool _isInitialized;
     private FoldingManager? _foldingManager;
@@ -67,6 +71,30 @@ public sealed class SyntaxEditor : TextEditor
 
         TextArea.SelectionBrush = new SolidColorBrush(Color.Parse("#264f78"));
         TextArea.CaretBrush = new SolidColorBrush(Color.Parse("#aeafad"));
+
+        _cutMenuItem = new MenuItem { Header = "Cut" };
+        _copyMenuItem = new MenuItem { Header = "Copy" };
+        _pasteMenuItem = new MenuItem { Header = "Paste" };
+        _selectAllMenuItem = new MenuItem { Header = "Select All" };
+
+        _cutMenuItem.Click += (_, _) => Cut();
+        _copyMenuItem.Click += (_, _) => Copy();
+        _pasteMenuItem.Click += (_, _) => Paste();
+        _selectAllMenuItem.Click += (_, _) => SelectAll();
+
+        var contextMenu = new ContextMenu
+        {
+            ItemsSource = new object[]
+            {
+                _cutMenuItem,
+                _copyMenuItem,
+                _pasteMenuItem,
+                new Separator(),
+                _selectAllMenuItem,
+            },
+        };
+        contextMenu.Opening += OnContextMenuOpening;
+        ContextMenu = contextMenu;
 
         AddHandler(RequestBringIntoViewEvent, OnRequestBringIntoView, RoutingStrategies.Bubble);
 
@@ -175,6 +203,18 @@ public sealed class SyntaxEditor : TextEditor
 
     private void OnRequestBringIntoView(object? sender, RequestBringIntoViewEventArgs e)
         => e.Handled = true;
+
+    private void OnContextMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        var hasSelection = !string.IsNullOrEmpty(SelectedText);
+        var hasText = !string.IsNullOrEmpty(Text);
+        var canEdit = !IsReadOnly;
+
+        _cutMenuItem.IsEnabled = canEdit && hasSelection;
+        _copyMenuItem.IsEnabled = hasSelection;
+        _pasteMenuItem.IsEnabled = canEdit;
+        _selectAllMenuItem.IsEnabled = hasText;
+    }
 
     private void UpdateFoldings()
     {

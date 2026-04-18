@@ -20,6 +20,7 @@
         <KeyBinding Gesture="Ctrl+W" Command="{Binding CloseCurrentTabCommand}"/>
         <KeyBinding Gesture="Ctrl+P" Command="{Binding OpenCommandPaletteCommand}"/>
         <KeyBinding Gesture="Ctrl+E" Command="{Binding OpenEnvironmentConfigurationCommand}"/>
+        <KeyBinding Gesture="Ctrl+Shift+C" Command="{Binding CollapseAllFoldersCommand}"/>
         <KeyBinding Gesture="Ctrl+H" Command="{Binding OpenActiveRequestHistoryCommand}"/>
         <KeyBinding Gesture="Ctrl+Shift+H" Command="{Binding OpenGlobalHistoryCommand}"/>
         <KeyBinding Gesture="Alt+R" Command="{Binding RevealActiveRequestCommand}"/>

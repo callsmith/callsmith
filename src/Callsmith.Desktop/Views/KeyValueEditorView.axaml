@@ -85,14 +85,7 @@
                          VerticalContentAlignment="Center"
                          FontFamily="Consolas,Menlo,monospace"
                          IsVisible="{Binding ShowKeyPlainInput}"
-                         controls:EnvVarCompletion.Suggestions="{Binding SuggestionNames}">
-                  <TextBox.ContextMenu>
-                    <ContextMenu>
-                      <MenuItem Header="Dynamic Value…" Command="{Binding KeyField.AddDynamicValueCommand}"/>
-                      <MenuItem Header="Mock Data…"     Command="{Binding KeyField.AddMockDataCommand}"/>
-                    </ContextMenu>
-                  </TextBox.ContextMenu>
-                </TextBox>
+                         controls:EnvVarCompletion.Suggestions="{Binding SuggestionNames}"/>
 
                 <!-- Pill view for key (headers, query params — when segments are present) -->
                 <Border Grid.Column="2"
@@ -104,12 +97,6 @@
                         Margin="2,0"
                         MinHeight="28"
                         IsVisible="{Binding ShowKeyPillView}">
-                  <Border.ContextMenu>
-                    <ContextMenu>
-                      <MenuItem Header="Dynamic Value…" Command="{Binding KeyField.AddDynamicValueCommand}"/>
-                      <MenuItem Header="Mock Data…"     Command="{Binding KeyField.AddMockDataCommand}"/>
-                    </ContextMenu>
-                  </Border.ContextMenu>
                   <Grid ColumnDefinitions="Auto,*">
                     <ItemsControl Grid.Column="0" ItemsSource="{Binding KeyField.DisplaySegments}">
                       <ItemsControl.ItemsPanel>
@@ -134,12 +121,6 @@
                                      MinWidth="20"
                                      Watermark="…"
                                      controls:EnvVarCompletion.Suggestions="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).SuggestionNames}">
-                              <TextBox.ContextMenu>
-                                <ContextMenu>
-                                  <MenuItem Header="Dynamic Value…" Command="{Binding AddDynamicValueCommand}"/>
-                                  <MenuItem Header="Mock Data…"     Command="{Binding AddMockDataCommand}"/>
-                                </ContextMenu>
-                              </TextBox.ContextMenu>
                               <TextBox.Styles>
                                 <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
                                   <Setter Property="BorderThickness" Value="0"/>
@@ -207,16 +188,7 @@
                          VerticalContentAlignment="Center"
                          FontFamily="Consolas,Menlo,monospace"
                          IsVisible="{Binding ValueField.ShowPlainInput}"
-                         controls:EnvVarCompletion.Suggestions="{Binding SuggestionNames}">
-                  <TextBox.ContextMenu>
-                    <ContextMenu>
-                      <MenuItem Header="Dynamic Value…"
-                                Command="{Binding ValueField.AddDynamicValueCommand}"/>
-                      <MenuItem Header="Mock Data…"
-                                Command="{Binding ValueField.AddMockDataCommand}"/>
-                    </ContextMenu>
-                  </TextBox.ContextMenu>
-                </TextBox>
+                         controls:EnvVarCompletion.Suggestions="{Binding SuggestionNames}"/>
 
                 <!-- Pill view (active when the value contains dynamic/mock segments) -->
                 <Border Grid.Column="3"
@@ -228,14 +200,6 @@
                         Margin="2,0"
                         MinHeight="28"
                         IsVisible="{Binding ValueField.HasSegments}">
-                  <Border.ContextMenu>
-                    <ContextMenu>
-                      <MenuItem Header="Dynamic Value…"
-                                Command="{Binding ValueField.AddDynamicValueCommand}"/>
-                      <MenuItem Header="Mock Data…"
-                                Command="{Binding ValueField.AddMockDataCommand}"/>
-                    </ContextMenu>
-                  </Border.ContextMenu>
                   <Grid ColumnDefinitions="Auto,*">
 
                     <ItemsControl Grid.Column="0" ItemsSource="{Binding ValueField.DisplaySegments}">
@@ -263,14 +227,6 @@
                                      MinWidth="20"
                                      Watermark="…"
                                      controls:EnvVarCompletion.Suggestions="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).SuggestionNames}">
-                              <TextBox.ContextMenu>
-                                <ContextMenu>
-                                  <MenuItem Header="Dynamic Value…"
-                                            Command="{Binding AddDynamicValueCommand}"/>
-                                  <MenuItem Header="Mock Data…"
-                                            Command="{Binding AddMockDataCommand}"/>
-                                </ContextMenu>
-                              </TextBox.ContextMenu>
                               <TextBox.Styles>
                                 <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
                                   <Setter Property="BorderThickness" Value="0"/>

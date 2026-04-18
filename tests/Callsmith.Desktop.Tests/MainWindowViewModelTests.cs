@@ -207,4 +207,81 @@ public sealed class MainWindowViewModelTests
         sut.RequestEditor.Tabs.Count.Should().Be(1);
         sut.RequestEditor.ActiveTab.Should().NotBeNull();
     }
+
+    [Fact]
+    public void CollapseAllFolders_WhenMainRequestScreenIsActive_CollapsesTree()
+    {
+        var sut = BuildSut();
+        var root = BuildExpandedTree();
+        var nestedFolder = root.Children.OfType<CollectionTreeItemViewModel>().Single();
+        sut.Collections.HasCollection = true;
+        sut.Collections.CollectionPath = FakeCollectionPath;
+        sut.Collections.TreeRoots = [root];
+
+        sut.CollapseAllFoldersCommand.Execute(null);
+
+        root.IsExpanded.Should().BeFalse();
+        nestedFolder.IsExpanded.Should().BeFalse();
+    }
+
+    [Fact]
+    public void CollapseAllFolders_WhenHistoryPanelIsOpen_DoesNotCollapseTree()
+    {
+        var sut = BuildSut();
+        var root = BuildExpandedTree();
+        var nestedFolder = root.Children.OfType<CollectionTreeItemViewModel>().Single();
+        sut.Collections.HasCollection = true;
+        sut.Collections.CollectionPath = FakeCollectionPath;
+        sut.Collections.TreeRoots = [root];
+        sut.HistoryPanel.IsOpen = true;
+
+        sut.CollapseAllFoldersCommand.Execute(null);
+
+        root.IsExpanded.Should().BeTrue();
+        nestedFolder.IsExpanded.Should().BeTrue();
+    }
+
+    [Fact]
+    public void CollapseAllFolders_WhenEnvironmentEditorIsOpen_DoesNotCollapseTree()
+    {
+        var sut = BuildSut();
+        var root = BuildExpandedTree();
+        var nestedFolder = root.Children.OfType<CollectionTreeItemViewModel>().Single();
+        sut.Collections.HasCollection = true;
+        sut.Collections.CollectionPath = FakeCollectionPath;
+        sut.Collections.TreeRoots = [root];
+        sut.Environment.IsEditorOpen = true;
+
+        sut.CollapseAllFoldersCommand.Execute(null);
+
+        root.IsExpanded.Should().BeTrue();
+        nestedFolder.IsExpanded.Should().BeTrue();
+    }
+
+    private static CollectionTreeItemViewModel BuildExpandedTree()
+    {
+        var root = CollectionTreeItemViewModel.FromFolder(
+            new CollectionFolder
+            {
+                Name = "root",
+                FolderPath = FakeCollectionPath,
+                Requests = [],
+                SubFolders =
+                [
+                    new CollectionFolder
+                    {
+                        Name = "auth",
+                        FolderPath = Path.Combine(FakeCollectionPath, "auth"),
+                        Requests = [],
+                        SubFolders = [],
+                    },
+                ],
+            },
+            parent: null,
+            isRoot: true);
+
+        root.IsExpanded = true;
+        root.Children.OfType<CollectionTreeItemViewModel>().Single().IsExpanded = true;
+        return root;
+    }
 }

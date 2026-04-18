@@ -218,6 +218,17 @@ public partial class MainWindowViewModel : ViewModelBase
     [RelayCommand]
     private void OpenHistory() => OpenGlobalHistory();
 
+    [RelayCommand]
+    private void CollapseAllFolders()
+    {
+        if (!Collections.HasCollection) return;
+        if (Environment.IsAnyEditorOpen) return;
+        if (HistoryPanel.IsOpen) return;
+
+        if (Collections.CollapseAllFoldersCommand.CanExecute(null))
+            Collections.CollapseAllFoldersCommand.Execute(null);
+    }
+
     /// <summary>
     /// Ctrl+Enter handler: sends the currently active request.
     /// </summary>

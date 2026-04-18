@@ -275,9 +275,6 @@
           AutoScrollToSelectedItem="false"
           ItemsSource="{Binding TreeRoots}"
           Background="Transparent">
-      <TreeView.KeyBindings>
-        <KeyBinding Gesture="Ctrl+Shift+C" Command="{Binding CollapseAllFoldersCommand}"/>
-      </TreeView.KeyBindings>
       <TreeView.ItemTemplate>
         <TreeDataTemplate ItemsSource="{Binding Children}"
                           x:DataType="vm:CollectionTreeItemViewModel">
