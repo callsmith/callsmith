@@ -284,22 +284,13 @@ public sealed class JsonPathService : IJsonPathService
 
         if (isObjectArray)
         {
-            var seen = new HashSet<object?>(SortKeyEqualityComparer.Instance);
-            foreach (var element in elements)
-            {
-                var key = GetSortKey(element, distinct.DistinctExpression);
-                if (seen.Add(key))
-                    output.Add(element);
-            }
+            output.AddRange(elements.DistinctBy(
+                element => GetSortKey(element, distinct.DistinctExpression),
+                SortKeyEqualityComparer.Instance));
         }
         else
         {
-            var seen = new HashSet<JsonElement>(JsonElementValueComparer.Instance);
-            foreach (var element in elements)
-            {
-                if (seen.Add(element))
-                    output.Add(element);
-            }
+            output.AddRange(elements.Distinct(JsonElementValueComparer.Instance));
         }
 
         return true;
