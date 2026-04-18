@@ -20,7 +20,7 @@ public sealed class ImportedRequest
     /// The importer is responsible for normalizing the source tool's variable syntax
     /// to the Callsmith <c>{{name}}</c> convention.
     /// </summary>
-    public required string Url { get; init; }
+    public required string Url { get; set; }
 
     /// <summary>Optional human-readable description.</summary>
     public string? Description { get; init; }

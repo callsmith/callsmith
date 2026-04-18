@@ -32,6 +32,10 @@ public interface ICollectionImportService
     /// <param name="targetFolderPath">
     /// Absolute path to the destination folder. The folder is created if it does not exist.
     /// </param>
+    /// <param name="options">
+    /// Options controlling import behaviour (e.g. the base URL variable name for
+    /// OpenAPI/Swagger imports). Pass <c>null</c> to use <see cref="CollectionImportOptions.Default"/>.
+    /// </param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The <see cref="ImportedCollection"/> that was written to disk.</returns>
     /// <exception cref="InvalidOperationException">
@@ -40,11 +44,12 @@ public interface ICollectionImportService
     Task<ImportedCollection> ImportToFolderAsync(
         string filePath,
         string targetFolderPath,
+        CollectionImportOptions? options = null,
         CancellationToken ct = default);
 
     /// <summary>
     /// Merges an import file into an already-open collection.
-    /// Requests are written (with counter-suffix deduplication) to
+    /// Requests are written to
     /// <paramref name="targetSubFolderPath"/> (or the collection root when
     /// <paramref name="targetSubFolderPath"/> is <c>null</c> or equal to
     /// <paramref name="collectionRootPath"/>).
@@ -62,6 +67,10 @@ public interface ICollectionImportService
     /// placed. When <c>null</c> or equal to <paramref name="collectionRootPath"/>,
     /// requests land at the collection root.
     /// </param>
+    /// <param name="options">
+    /// Options controlling import behaviour (merge strategy, base URL variable name, …).
+    /// Pass <c>null</c> to use <see cref="CollectionImportOptions.Default"/>.
+    /// </param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The <see cref="ImportedCollection"/> that was merged into the collection.</returns>
     /// <exception cref="InvalidOperationException">
@@ -71,5 +80,6 @@ public interface ICollectionImportService
         string filePath,
         string collectionRootPath,
         string? targetSubFolderPath = null,
+        CollectionImportOptions? options = null,
         CancellationToken ct = default);
 }

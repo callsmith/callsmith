@@ -106,24 +106,126 @@
               ToolTip.Tip="Choose the folder to import into"/>
     </Grid>
 
-    <!-- Sub-folder path (import-into-current mode only) -->
-    <Grid ColumnDefinitions="110,10,*"
-          IsVisible="{Binding IsImportIntoCurrentCollection}">
-      <TextBlock Grid.Column="0"
-                 Text="Target sub-folder"
-                 Foreground="#aaa"
-                 FontSize="12"
-                 VerticalAlignment="Center"/>
-      <TextBox Grid.Column="2"
-               Text="{Binding SubFolderPath}"
-               Watermark="Leave blank to import at collection root"
-               Foreground="#d4d4d4"
-               Background="#3c3c3c"
-               BorderBrush="#555"
-               Padding="8,5"
-               FontSize="12"
-               ToolTip.Tip="Optional relative path within the collection (e.g. 'Orders/Internal'). Leave blank to import at the collection root."/>
-    </Grid>
+    <!-- Advanced options (always shown; merge-specific rows gated on IsImportIntoCurrentCollection) -->
+    <Border Background="#2d2d2d"
+            BorderBrush="#444"
+            BorderThickness="1"
+            CornerRadius="4">
+      <StackPanel>
+
+        <!-- Expand / collapse header — styled so it never flashes or contracts -->
+        <Button Command="{Binding ToggleAdvancedOptionsCommand}"
+                Background="Transparent"
+                BorderThickness="0"
+                Padding="12,9"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Left"
+                Focusable="False"
+                Cursor="Hand">
+          <Button.Styles>
+            <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+              <Setter Property="Background" Value="Transparent"/>
+            </Style>
+            <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+              <Setter Property="Background" Value="Transparent"/>
+            </Style>
+          </Button.Styles>
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Text="▶"
+                       IsVisible="{Binding !IsAdvancedOptionsExpanded}"
+                       Foreground="#888"
+                       FontSize="10"
+                       VerticalAlignment="Center"/>
+            <TextBlock Text="▼"
+                       IsVisible="{Binding IsAdvancedOptionsExpanded}"
+                       Foreground="#888"
+                       FontSize="10"
+                       VerticalAlignment="Center"/>
+            <TextBlock Text="Advanced options"
+                       Foreground="#aaa"
+                       FontSize="12"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+
+        <!-- Expanded content -->
+        <StackPanel IsVisible="{Binding IsAdvancedOptionsExpanded}"
+                    Spacing="12"
+                    Margin="12,0,12,14">
+
+          <!-- Target sub-folder (import-into-current mode only) -->
+          <Grid ColumnDefinitions="130,10,*"
+                IsVisible="{Binding IsImportIntoCurrentCollection}">
+            <TextBlock Grid.Column="0"
+                       Text="Target sub-folder"
+                       Foreground="#aaa"
+                       FontSize="12"
+                       VerticalAlignment="Center"/>
+            <TextBox Grid.Column="2"
+                     Text="{Binding SubFolderPath}"
+                     Watermark="Leave blank to import at collection root"
+                     Foreground="#d4d4d4"
+                     Background="#3c3c3c"
+                     BorderBrush="#555"
+                     Padding="8,5"
+                     FontSize="12"
+                     ToolTip.Tip="Optional relative path within the collection (e.g. 'Orders/Internal'). Leave blank to import at the collection root."/>
+          </Grid>
+
+          <!-- Merge strategy (import-into-current mode only) -->
+          <StackPanel Spacing="6"
+                      IsVisible="{Binding IsImportIntoCurrentCollection}">
+            <TextBlock Text="Merge strategy"
+                       Foreground="#aaa"
+                       FontSize="12"
+                       FontWeight="SemiBold"/>
+            <TextBlock TextWrapping="Wrap"
+                       Foreground="#888"
+                       FontSize="11"
+                       Text="Controls what happens when an imported request has the same name as one already in the target folder."/>
+            <StackPanel Spacing="4" Margin="0,4,0,0">
+              <RadioButton Content="Skip — leave existing requests unchanged (default)"
+                           Foreground="#d4d4d4"
+                           FontSize="12"
+                           IsChecked="{Binding IsMergeStrategySkip, Mode=TwoWay}"
+                           GroupName="MergeStrategy"/>
+              <RadioButton Content="Take both — keep existing and add imported with a renamed copy"
+                           Foreground="#d4d4d4"
+                           FontSize="12"
+                           IsChecked="{Binding IsMergeStrategyTakeBoth, Mode=TwoWay}"
+                           GroupName="MergeStrategy"/>
+              <RadioButton Content="Replace — overwrite existing requests with the imported ones"
+                           Foreground="#d4d4d4"
+                           FontSize="12"
+                           IsChecked="{Binding IsMergeStrategyReplace, Mode=TwoWay}"
+                           GroupName="MergeStrategy"/>
+            </StackPanel>
+          </StackPanel>
+
+          <!-- Base URL variable name (relevant for OpenAPI / Swagger imports in both modes) -->
+          <Grid ColumnDefinitions="130,10,*">
+            <TextBlock Grid.Column="0"
+                       Text="Base URL variable"
+                       Foreground="#aaa"
+                       FontSize="12"
+                       VerticalAlignment="Center"
+                       ToolTip.Tip="The environment variable name used to hold the server base URL in OpenAPI / Swagger imports. Other formats use absolute URLs and ignore this setting."/>
+            <TextBox Grid.Column="2"
+                     Text="{Binding BaseUrlVariableName}"
+                     Watermark="baseUrl"
+                     Foreground="#d4d4d4"
+                     Background="#3c3c3c"
+                     BorderBrush="#555"
+                     Padding="8,5"
+                     FontSize="12"
+                     ToolTip.Tip="The environment variable name used for the server base URL in OpenAPI / Swagger imports. Request URLs are generated as {{variableName}}/path. Only applies to OpenAPI and Swagger imports."/>
+          </Grid>
+
+        </StackPanel>
+
+      </StackPanel>
+    </Border>
 
     <!-- Non-empty folder warning -->
     <Border IsVisible="{Binding IsNonEmptyFolderWarningVisible}"
@@ -196,3 +298,4 @@
   </StackPanel>
 
 </Window>
+

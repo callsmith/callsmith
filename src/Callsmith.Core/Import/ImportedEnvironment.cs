@@ -14,7 +14,7 @@ public sealed class ImportedEnvironment
     /// Script values (e.g. Insomnia <c>{% response … %}</c> expressions) are imported
     /// separately as <see cref="DynamicVariables"/>; only static string values appear here.
     /// </summary>
-    public IReadOnlyDictionary<string, string> Variables { get; init; }
+    public Dictionary<string, string> Variables { get; init; }
         = new Dictionary<string, string>();
 
     /// <summary>

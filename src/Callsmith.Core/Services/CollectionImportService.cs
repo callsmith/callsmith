@@ -60,8 +60,11 @@ public sealed class CollectionImportService : ICollectionImportService
     public async Task<ImportedCollection> ImportToFolderAsync(
         string filePath,
         string targetFolderPath,
+        CollectionImportOptions? options = null,
         CancellationToken ct = default)
     {
+        var effectiveOptions = options ?? CollectionImportOptions.Default;
+
         var importer = await FindImporterAsync(filePath, ct).ConfigureAwait(false);
         if (importer is null)
             throw new InvalidOperationException(
@@ -73,6 +76,7 @@ public sealed class CollectionImportService : ICollectionImportService
             filePath, importer.FormatName, targetFolderPath);
 
         var collection = await importer.ImportAsync(filePath, ct).ConfigureAwait(false);
+        ApplyBaseUrlVariableName(collection, effectiveOptions.BaseUrlVariableName);
 
         Directory.CreateDirectory(targetFolderPath);
 
@@ -82,16 +86,19 @@ public sealed class CollectionImportService : ICollectionImportService
         await _collectionService.OpenFolderAsync(targetFolderPath, ct).ConfigureAwait(false);
 
         // Write root requests and track original→actual name mapping for order file.
+        // New-collection imports always use TakeBoth to preserve the counter-deduplication
+        // behavior when writing into a fresh folder.
         var rootNameQueues = new Dictionary<string, Queue<string>>(StringComparer.Ordinal);
         foreach (var req in collection.RootRequests)
         {
-            var actualName = await WriteRequestAsync(req, targetFolderPath, ct).ConfigureAwait(false);
-            EnqueueName(rootNameQueues, req.Name, actualName);
+            var actualName = await WriteRequestAsync(req, targetFolderPath, ImportMergeStrategy.TakeBoth, ct).ConfigureAwait(false);
+            if (actualName is not null)
+                EnqueueName(rootNameQueues, req.Name, actualName);
         }
 
         // Write root folders (recursive)
         foreach (var folder in collection.RootFolders)
-            await WriteFolderAsync(folder, targetFolderPath, ct).ConfigureAwait(false);
+            await WriteFolderAsync(folder, targetFolderPath, ImportMergeStrategy.TakeBoth, ct).ConfigureAwait(false);
 
         // Persist the interleaved sort order from the source tool.
         await WriteFolderOrderAsync(targetFolderPath, collection.ItemOrder, rootNameQueues, ct).ConfigureAwait(false);
@@ -128,8 +135,11 @@ public sealed class CollectionImportService : ICollectionImportService
         string filePath,
         string collectionRootPath,
         string? targetSubFolderPath = null,
+        CollectionImportOptions? options = null,
         CancellationToken ct = default)
     {
+        var effectiveOptions = options ?? CollectionImportOptions.Default;
+
         var importer = await FindImporterAsync(filePath, ct).ConfigureAwait(false);
         if (importer is null)
             throw new InvalidOperationException(
@@ -149,25 +159,27 @@ public sealed class CollectionImportService : ICollectionImportService
             : targetSubFolderPath;
 
         _logger.LogInformation(
-            "Importing '{FilePath}' using {Format} importer into existing collection '{CollectionRoot}' (target folder: '{TargetFolder}')",
-            filePath, importer.FormatName, collectionRootPath, effectiveTarget);
+            "Importing '{FilePath}' using {Format} importer into existing collection '{CollectionRoot}' (target folder: '{TargetFolder}', merge strategy: {MergeStrategy})",
+            filePath, importer.FormatName, collectionRootPath, effectiveTarget, effectiveOptions.MergeStrategy);
 
         var collection = await importer.ImportAsync(filePath, ct).ConfigureAwait(false);
+        ApplyBaseUrlVariableName(collection, effectiveOptions.BaseUrlVariableName);
 
         // Ensure the target sub-folder exists (the collection root already exists).
         Directory.CreateDirectory(effectiveTarget);
 
-        // Write root requests at the target folder; deduplication is handled by WriteRequestAsync.
+        // Write root requests at the target folder; merge strategy controls deduplication.
         var rootNameQueues = new Dictionary<string, Queue<string>>(StringComparer.Ordinal);
         foreach (var req in collection.RootRequests)
         {
-            var actualName = await WriteRequestAsync(req, effectiveTarget, ct).ConfigureAwait(false);
-            EnqueueName(rootNameQueues, req.Name, actualName);
+            var actualName = await WriteRequestAsync(req, effectiveTarget, effectiveOptions.MergeStrategy, ct).ConfigureAwait(false);
+            if (actualName is not null)
+                EnqueueName(rootNameQueues, req.Name, actualName);
         }
 
         // Write root folders (recursive).
         foreach (var folder in collection.RootFolders)
-            await WriteFolderAsync(folder, effectiveTarget, ct).ConfigureAwait(false);
+            await WriteFolderAsync(folder, effectiveTarget, effectiveOptions.MergeStrategy, ct).ConfigureAwait(false);
 
         // Persist the interleaved sort order from the source tool.
         await WriteFolderOrderAsync(effectiveTarget, collection.ItemOrder, rootNameQueues, ct).ConfigureAwait(false);
@@ -196,7 +208,7 @@ public sealed class CollectionImportService : ICollectionImportService
     // ─────────────────────────────────────────────────────────────────────────
 
     private async Task WriteFolderAsync(
-        ImportedFolder folder, string parentPath, CancellationToken ct)
+        ImportedFolder folder, string parentPath, ImportMergeStrategy mergeStrategy, CancellationToken ct)
     {
         var folderPath = Path.Combine(parentPath, SanitizeName(folder.Name));
         Directory.CreateDirectory(folderPath);
@@ -204,35 +216,62 @@ public sealed class CollectionImportService : ICollectionImportService
         var nameQueues = new Dictionary<string, Queue<string>>(StringComparer.Ordinal);
         foreach (var req in folder.Requests)
         {
-            var actualName = await WriteRequestAsync(req, folderPath, ct).ConfigureAwait(false);
-            EnqueueName(nameQueues, req.Name, actualName);
+            var actualName = await WriteRequestAsync(req, folderPath, mergeStrategy, ct).ConfigureAwait(false);
+            if (actualName is not null)
+                EnqueueName(nameQueues, req.Name, actualName);
         }
 
         foreach (var sub in folder.SubFolders)
-            await WriteFolderAsync(sub, folderPath, ct).ConfigureAwait(false);
+            await WriteFolderAsync(sub, folderPath, mergeStrategy, ct).ConfigureAwait(false);
 
         await WriteFolderOrderAsync(folderPath, folder.ItemOrder, nameQueues, ct).ConfigureAwait(false);
     }
 
-    /// <returns>The base name (without extension) of the file written on disk, which may
+    /// <returns>
+    /// The base name (without extension) of the file written on disk, which may
     /// differ from <paramref name="imported"/>.<see cref="ImportedRequest.Name"/> when a
-    /// duplicate was detected and a counter suffix was appended.</returns>
-    private async Task<string> WriteRequestAsync(
-        ImportedRequest imported, string folderPath, CancellationToken ct)
+    /// duplicate was detected and a counter suffix was appended.
+    /// Returns <c>null</c> when the request was skipped due to
+    /// <see cref="ImportMergeStrategy.Skip"/> and the file already exists.
+    /// </returns>
+    private async Task<string?> WriteRequestAsync(
+        ImportedRequest imported, string folderPath, ImportMergeStrategy mergeStrategy, CancellationToken ct)
     {
         var safeName = SanitizeName(imported.Name);
         var filePath = Path.Combine(
             folderPath,
             safeName + _collectionService.RequestFileExtension);
 
-        // Deduplicate: append a counter when the filename is already taken
-        var counter = 1;
-        while (File.Exists(filePath))
+        if (File.Exists(filePath))
         {
-            filePath = Path.Combine(
-                folderPath,
-                $"{safeName} ({counter}){_collectionService.RequestFileExtension}");
-            counter++;
+            switch (mergeStrategy)
+            {
+                case ImportMergeStrategy.Skip:
+                    _logger.LogDebug(
+                        "Skipping request '{Name}' — already exists at '{FilePath}'",
+                        safeName, filePath);
+                    return null;
+
+                case ImportMergeStrategy.Replace:
+                    // Delete the existing file; the new request will be written below.
+                    File.Delete(filePath);
+                    _logger.LogDebug(
+                        "Replacing request '{Name}' at '{FilePath}'",
+                        safeName, filePath);
+                    break;
+
+                default: // TakeBoth
+                    // Append a counter suffix until a free name is found.
+                    var counter = 1;
+                    while (File.Exists(filePath))
+                    {
+                        filePath = Path.Combine(
+                            folderPath,
+                            $"{safeName} ({counter}){_collectionService.RequestFileExtension}");
+                        counter++;
+                    }
+                    break;
+            }
         }
 
         var request = new CollectionRequest
@@ -565,5 +604,50 @@ public sealed class CollectionImportService : ICollectionImportService
 
         await _collectionService.SaveFolderOrderAsync(folderPath, onDiskOrder, ct)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// If <paramref name="baseUrlVariableName"/> differs from the importer default
+    /// (<c>baseUrl</c>), performs an in-memory find-and-replace across all request URLs
+    /// and environment variable names in <paramref name="collection"/> so that the custom
+    /// variable name is used throughout.
+    /// This approach avoids coupling the <see cref="ICollectionImporter"/> interface to
+    /// import options while still allowing users to customise the base-URL variable name.
+    /// </summary>
+    private static void ApplyBaseUrlVariableName(ImportedCollection collection, string baseUrlVariableName)
+    {
+        const string defaultBaseUrlVarName = "baseUrl";
+        if (string.IsNullOrWhiteSpace(baseUrlVariableName) ||
+            string.Equals(baseUrlVariableName, defaultBaseUrlVarName, StringComparison.Ordinal))
+            return;
+
+        var oldPlaceholder = $"{{{{{defaultBaseUrlVarName}}}}}";
+        var newPlaceholder = $"{{{{{baseUrlVariableName}}}}}";
+
+        // Replace in request URLs (root + all folders, recursively).
+        foreach (var req in collection.RootRequests)
+            req.Url = req.Url.Replace(oldPlaceholder, newPlaceholder, StringComparison.Ordinal);
+
+        foreach (var folder in collection.RootFolders)
+            ApplyBaseUrlInFolder(folder, oldPlaceholder, newPlaceholder);
+
+        // Replace the environment variable key in all environments.
+        foreach (var env in collection.Environments)
+        {
+            if (env.Variables.TryGetValue(defaultBaseUrlVarName, out var value))
+            {
+                env.Variables.Remove(defaultBaseUrlVarName);
+                env.Variables[baseUrlVariableName] = value;
+            }
+        }
+    }
+
+    private static void ApplyBaseUrlInFolder(ImportedFolder folder, string oldPlaceholder, string newPlaceholder)
+    {
+        foreach (var req in folder.Requests)
+            req.Url = req.Url.Replace(oldPlaceholder, newPlaceholder, StringComparison.Ordinal);
+
+        foreach (var sub in folder.SubFolders)
+            ApplyBaseUrlInFolder(sub, oldPlaceholder, newPlaceholder);
     }
 }

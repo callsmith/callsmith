@@ -250,7 +250,7 @@ public sealed class InsomniaCollectionImporter : ICollectionImporter
     /// Splits a raw Insomnia environment data dictionary into static string variables
     /// and typed dynamic variables (mock-data or response-body).
     /// </summary>
-    private static (IReadOnlyDictionary<string, string> staticVars, IReadOnlyList<ImportedDynamicVariable> dynamicVars)
+    private static (Dictionary<string, string> staticVars, IReadOnlyList<ImportedDynamicVariable> dynamicVars)
         SplitVariables(Dictionary<string, string> data, IReadOnlyDictionary<string, string> requestIdMap)
     {
         var staticVars = new Dictionary<string, string>();
