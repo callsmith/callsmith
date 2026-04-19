@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
 using Callsmith.Desktop.Messages;
@@ -1133,6 +1134,19 @@ public sealed class HistoryPanelViewModelTests
     {
         for (var attempt = 0; attempt < 20; attempt++)
         {
+            // Pump dispatcher to allow async work to proceed
+            try
+            {
+                if (Dispatcher.UIThread.CheckAccess())
+                    Dispatcher.UIThread.RunJobs();
+                else
+                    await Dispatcher.UIThread.InvokeAsync(() => { }, Avalonia.Threading.DispatcherPriority.Input);
+            }
+            catch
+            {
+                // Dispatcher unavailable; continue
+            }
+
             if (condition())
                 return;
 

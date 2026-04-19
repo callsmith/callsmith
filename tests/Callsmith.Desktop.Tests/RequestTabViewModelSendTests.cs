@@ -1,4 +1,5 @@
 using System.Net.Http;
+using Avalonia.Threading;
 using Callsmith.Core;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.MockData;
@@ -591,6 +592,19 @@ public sealed class RequestTabViewModelSendTests
         Exception? last = null;
         for (var i = 0; i < retries; i++)
         {
+            // Pump dispatcher to allow async work to proceed
+            try
+            {
+                if (Dispatcher.UIThread.CheckAccess())
+                    Dispatcher.UIThread.RunJobs();
+                else
+                    await Dispatcher.UIThread.InvokeAsync(() => { }, Avalonia.Threading.DispatcherPriority.Input);
+            }
+            catch
+            {
+                // Dispatcher unavailable; continue
+            }
+
             try
             {
                 await assertion();

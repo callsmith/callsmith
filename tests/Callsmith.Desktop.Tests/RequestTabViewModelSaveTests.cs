@@ -774,8 +774,8 @@ public sealed class RequestTabViewModelSaveTests
     {
         for (var attempt = 0; attempt < 300; attempt++)
         {
-            // Pump UI queue when possible so Dispatcher.Post work from the ViewModel
-            // can run in headless tests. Ignore transient suspension windows.
+            // Pump UI queue so Dispatcher.Post work from the ViewModel runs in headless tests.
+            // On Linux, CheckAccess may return false from test threads, so use InvokeAsync as fallback.
             if (Dispatcher.UIThread.CheckAccess())
             {
                 try
@@ -785,6 +785,18 @@ public sealed class RequestTabViewModelSaveTests
                 catch (InvalidOperationException)
                 {
                     // Dispatcher processing can be briefly suspended; retry.
+                }
+            }
+            else
+            {
+                // Fallback for non-UI threads (especially on Linux): pump via InvokeAsync
+                try
+                {
+                    await Dispatcher.UIThread.InvokeAsync(() => { }, Avalonia.Threading.DispatcherPriority.Input);
+                }
+                catch
+                {
+                    // Dispatcher may be unavailable or suspended; continue anyway
                 }
             }
 
