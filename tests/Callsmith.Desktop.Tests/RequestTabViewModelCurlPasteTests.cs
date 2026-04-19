@@ -26,7 +26,7 @@ public sealed class RequestTabViewModelCurlPasteTests
         var sut = BuildSut();
         sut.LoadRequest(new CollectionRequest
         {
-            FilePath = @"c:\tmp\sample.callsmith",
+            FilePath = Path.Combine("tmp", "sample.callsmith"),
             Name = "sample",
             Method = HttpMethod.Get,
             Url = "https://old.example.com/users/{id}",
@@ -72,7 +72,7 @@ public sealed class RequestTabViewModelCurlPasteTests
         var sut = BuildSut();
         sut.LoadRequest(new CollectionRequest
         {
-            FilePath = @"c:\tmp\sample.callsmith",
+            FilePath = Path.Combine("tmp", "sample.callsmith"),
             Name = "sample",
             Method = HttpMethod.Get,
             Url = "https://old.example.com",

@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using Callsmith.Core.Models;
 
@@ -309,15 +308,15 @@ public static class CurlCommandParser
         if (string.IsNullOrWhiteSpace(contentType))
             return CollectionRequest.BodyTypes.Text;
 
-        var lowered = contentType.ToLower(CultureInfo.InvariantCulture);
-
-        if (lowered.Contains("application/json", StringComparison.Ordinal) || lowered.EndsWith("+json", StringComparison.Ordinal))
+        if (contentType.Contains("application/json", StringComparison.OrdinalIgnoreCase) ||
+            contentType.EndsWith("+json", StringComparison.OrdinalIgnoreCase))
             return CollectionRequest.BodyTypes.Json;
-        if (lowered.Contains("xml", StringComparison.Ordinal))
+        if (contentType.Contains("xml", StringComparison.OrdinalIgnoreCase))
             return CollectionRequest.BodyTypes.Xml;
-        if (lowered.Contains("yaml", StringComparison.Ordinal) || lowered.Contains("yml", StringComparison.Ordinal))
+        if (contentType.Contains("yaml", StringComparison.OrdinalIgnoreCase) ||
+            contentType.Contains("yml", StringComparison.OrdinalIgnoreCase))
             return CollectionRequest.BodyTypes.Yaml;
-        if (lowered.Contains("application/x-www-form-urlencoded", StringComparison.Ordinal))
+        if (contentType.Contains("application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase))
             return CollectionRequest.BodyTypes.Form;
 
         return CollectionRequest.BodyTypes.Text;
