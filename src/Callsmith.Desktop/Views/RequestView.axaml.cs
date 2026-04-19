@@ -272,7 +272,7 @@ public partial class RequestView : UserControl
                 return;
             }
 
-            var text = await clipboard.GetTextAsync();
+            var text = await clipboard.TryGetTextAsync();
             if (DataContext is RequestTabViewModel vm && vm.TryApplyCurlCommand(text))
                 return;
 
