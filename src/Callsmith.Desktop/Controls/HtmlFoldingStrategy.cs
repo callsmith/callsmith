@@ -33,7 +33,7 @@ internal sealed class HtmlFoldingStrategy
 
         var text = document.Text;
         List<NewFolding> foldings = [];
-        Stack<(string Name, int Offset, int Line)> openTags = [];
+        Stack<(string Name, int Offset, int Line, int ChildCount)> openTags = [];
 
         for (var offset = 0; offset < text.Length; offset++)
         {
@@ -88,7 +88,7 @@ internal sealed class HtmlFoldingStrategy
                 {
                     foldings.Add(new NewFolding(openTag.Offset, closeEndOffset)
                     {
-                        Name = $"<{closingName}>...</{closingName}>",
+                        Name = $"<{closingName}>← {openTag.ChildCount} →</{closingName}>",
                     });
                 }
 
@@ -105,12 +105,14 @@ internal sealed class HtmlFoldingStrategy
 
             if (IsSelfClosingTag(text, tagEnd) || VoidElements.Contains(openingName))
             {
+                IncrementParentChildCount(openTags);
                 offset = tagEnd;
                 continue;
             }
 
+            IncrementParentChildCount(openTags);
             var line = document.GetLineByOffset(offset).LineNumber;
-            openTags.Push((openingName, offset, line));
+            openTags.Push((openingName, offset, line, 0));
             offset = tagEnd;
         }
 
@@ -119,9 +121,9 @@ internal sealed class HtmlFoldingStrategy
     }
 
     private static bool TryPopMatchingTag(
-        Stack<(string Name, int Offset, int Line)> openTags,
+        Stack<(string Name, int Offset, int Line, int ChildCount)> openTags,
         string closingName,
-        out (string Name, int Offset, int Line) openTag)
+        out (string Name, int Offset, int Line, int ChildCount) openTag)
     {
         if (openTags.Count == 0)
         {
@@ -141,6 +143,15 @@ internal sealed class HtmlFoldingStrategy
 
         openTag = default;
         return false;
+    }
+
+    private static void IncrementParentChildCount(Stack<(string Name, int Offset, int Line, int ChildCount)> openTags)
+    {
+        if (openTags.Count == 0)
+            return;
+
+        var parent = openTags.Pop();
+        openTags.Push(parent with { ChildCount = parent.ChildCount + 1 });
     }
 
     private static bool IsSelfClosingTag(string text, int tagEnd)

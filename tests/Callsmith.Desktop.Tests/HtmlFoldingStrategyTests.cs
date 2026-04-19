@@ -25,7 +25,7 @@ public sealed class HtmlFoldingStrategyTests
         var foldings = strategy.CreateNewFoldings(document);
 
         foldings.Should().HaveCount(3);
-        foldings.Select(f => f.Name).Should().Contain(["<html>...</html>", "<body>...</body>", "<div>...</div>"]);
+        foldings.Select(f => f.Name).Should().Contain(["<html>← 1 →</html>", "<body>← 1 →</body>", "<div>← 1 →</div>"]);
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public sealed class HtmlFoldingStrategyTests
 
         var foldings = strategy.CreateNewFoldings(document);
 
-        foldings.Select(f => f.Name).Should().Contain(["<!--...-->", "<div>...</div>"]);
+        foldings.Select(f => f.Name).Should().Contain(["<!--...-->", "<div>← 1 →</div>"]);
     }
 
     [Fact]
@@ -64,7 +64,31 @@ public sealed class HtmlFoldingStrategyTests
 
         var foldings = strategy.CreateNewFoldings(document);
 
-        foldings.Should().ContainSingle(f => f.Name == "<section>...</section>");
+        foldings.Should().ContainSingle(f => f.Name == "<section>← 3 →</section>");
+    }
+
+    [Fact]
+    public void CreateNewFoldings_CountsOnlyDirectChildElements()
+    {
+        var document = new TextDocument(
+            """
+            <main>
+              <section>
+                <div>
+                  <p>hello</p>
+                </div>
+              </section>
+              <aside>
+                <span>note</span>
+              </aside>
+            </main>
+            """);
+
+        var strategy = new HtmlFoldingStrategy();
+
+        var foldings = strategy.CreateNewFoldings(document);
+
+        foldings.Select(f => f.Name).Should().Contain(["<main>← 2 →</main>", "<section>← 1 →</section>", "<div>← 1 →</div>", "<aside>← 1 →</aside>"]);
     }
 
     [Fact]

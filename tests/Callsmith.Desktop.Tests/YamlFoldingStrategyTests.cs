@@ -23,7 +23,7 @@ public sealed class YamlFoldingStrategyTests
         var foldings = strategy.CreateNewFoldings(document);
 
         foldings.Should().HaveCount(2);
-        foldings.Select(f => f.Name).Should().Contain(["root: ...", "service: ..."]);
+        foldings.Select(f => f.Name).Should().Contain(["root: ← 2 →", "service: ← 2 →"]);
     }
 
     [Fact]
@@ -44,9 +44,29 @@ public sealed class YamlFoldingStrategyTests
 
         var foldings = strategy.CreateNewFoldings(document);
 
-        foldings.Select(f => f.Name).Should().Contain("jobs: ...");
-        foldings.Select(f => f.Name).Should().Contain("- ...");
-        foldings.Select(f => f.Name).Should().Contain("steps: ...");
+        foldings.Select(f => f.Name).Should().Contain("jobs: ← 2 →");
+        foldings.Select(f => f.Name).Should().Contain("- ← 2 →");
+        foldings.Select(f => f.Name).Should().Contain("steps: ← 1 →");
+    }
+
+    [Fact]
+    public void CreateNewFoldings_CountsInlineMappingKeyOnSequenceItemOpener()
+    {
+        var document = new TextDocument(
+            """
+            subnets:
+              - id: subnet-a1
+                cidr: 10.0.1.0/24
+                zones:
+                  - us-east-1a
+            """);
+
+        var strategy = new YamlFoldingStrategy();
+
+        var foldings = strategy.CreateNewFoldings(document);
+
+        foldings.Select(f => f.Name).Should().Contain("- ← 3 →");
+        foldings.Select(f => f.Name).Should().Contain("zones: ← 1 →");
     }
 
     [Fact]
@@ -89,7 +109,7 @@ public sealed class YamlFoldingStrategyTests
 
         var foldings = strategy.CreateNewFoldings(document);
 
-        var optionsFolding = foldings.Single(f => f.Name == "options: ...");
+        var optionsFolding = foldings.Single(f => f.Name == "options: ← 2 →");
         var optionsLine = document.GetLineByNumber(3);
         var optionsText = document.GetText(optionsLine.Offset, optionsLine.Length);
         var expectedStartOffset = optionsLine.Offset + optionsText.TakeWhile(c => c == ' ').Count();
@@ -112,7 +132,7 @@ public sealed class YamlFoldingStrategyTests
 
         var foldings = strategy.CreateNewFoldings(document);
 
-        foldings.Should().ContainSingle(f => f.Name == "description: ...");
+        foldings.Should().ContainSingle(f => f.Name == "description: ← 0 →");
     }
 
     [Fact]

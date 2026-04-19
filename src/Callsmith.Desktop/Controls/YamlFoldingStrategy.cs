@@ -26,7 +26,7 @@ internal sealed class YamlFoldingStrategy
         ArgumentNullException.ThrowIfNull(document);
 
         List<NewFolding> foldings = [];
-        Stack<(int Indent, int StartOffset, int StartLine, string Name)> blocks = [];
+        Stack<(int Indent, int StartOffset, int StartLine, string Label, int ChildCount, bool IsScalarBlock)> blocks = [];
 
         var lastNonBlankLineEndOffset = 0;
 
@@ -44,8 +44,10 @@ internal sealed class YamlFoldingStrategy
             while (blocks.Count > 0 && indent <= blocks.Peek().Indent)
             {
                 var block = blocks.Pop();
-                TryAddFolding(document, foldings, block.StartOffset, block.StartLine, block.Name, lastNonBlankLineEndOffset);
+                TryAddFolding(document, foldings, block.StartOffset, block.StartLine, BuildFoldingName(block.Label, block.ChildCount), lastNonBlankLineEndOffset);
             }
+
+            IncrementParentChildCount(blocks, indent);
 
             if (!IsBlockOpener(trimmed))
             {
@@ -54,14 +56,14 @@ internal sealed class YamlFoldingStrategy
             }
 
             var startOffset = line.Offset + indent;
-            blocks.Push((indent, startOffset, lineNumber, BuildFoldingName(trimmed)));
+            blocks.Push((indent, startOffset, lineNumber, BuildFoldingLabel(trimmed), CountInlineChildren(trimmed), IsScalarBlock(trimmed)));
             lastNonBlankLineEndOffset = line.EndOffset;
         }
 
         while (blocks.Count > 0)
         {
             var block = blocks.Pop();
-            TryAddFolding(document, foldings, block.StartOffset, block.StartLine, block.Name, lastNonBlankLineEndOffset);
+            TryAddFolding(document, foldings, block.StartOffset, block.StartLine, BuildFoldingName(block.Label, block.ChildCount), lastNonBlankLineEndOffset);
         }
 
         foldings.Sort((left, right) => left.StartOffset.CompareTo(right.StartOffset));
@@ -105,17 +107,50 @@ internal sealed class YamlFoldingStrategy
         return false;
     }
 
-    private static string BuildFoldingName(string trimmed)
+    private static string BuildFoldingLabel(string trimmed)
     {
         if (trimmed.StartsWith("-", StringComparison.Ordinal))
-            return "- ...";
+            return "-";
 
         var colonIndex = trimmed.IndexOf(':');
         if (colonIndex <= 0)
-            return "...";
+            return string.Empty;
 
         var key = trimmed[..colonIndex].Trim();
-        return key.Length == 0 ? "..." : $"{key}: ...";
+        return key.Length == 0 ? string.Empty : $"{key}:";
+    }
+
+    private static string BuildFoldingName(string label, int childCount) =>
+        string.IsNullOrEmpty(label)
+            ? $"← {childCount} →"
+            : $"{label} ← {childCount} →";
+
+    private static bool IsScalarBlock(string trimmed)
+    {
+        if (trimmed.StartsWith("- ", StringComparison.Ordinal))
+        {
+            var item = trimmed[2..].TrimStart();
+            return item.StartsWith('|') || item.StartsWith('>');
+        }
+
+        var colonIndex = trimmed.IndexOf(':');
+        if (colonIndex < 0)
+            return false;
+
+        var suffix = trimmed[(colonIndex + 1)..].TrimStart();
+        return suffix.StartsWith('|') || suffix.StartsWith('>');
+    }
+
+    private static int CountInlineChildren(string trimmed)
+    {
+        if (!trimmed.StartsWith("- ", StringComparison.Ordinal))
+            return 0;
+
+        var item = trimmed[2..].TrimStart();
+        if (item.Length == 0 || item.StartsWith('|') || item.StartsWith('>'))
+            return 0;
+
+        return item.Contains(':') ? 1 : 0;
     }
 
     private static int CountIndent(string line)
@@ -139,6 +174,21 @@ internal sealed class YamlFoldingStrategy
         }
 
         return indent;
+    }
+
+    private static void IncrementParentChildCount(
+        Stack<(int Indent, int StartOffset, int StartLine, string Label, int ChildCount, bool IsScalarBlock)> blocks,
+        int indent)
+    {
+        if (blocks.Count == 0)
+            return;
+
+        var parent = blocks.Peek();
+        if (parent.IsScalarBlock || indent <= parent.Indent)
+            return;
+
+        blocks.Pop();
+        blocks.Push(parent with { ChildCount = parent.ChildCount + 1 });
     }
 
     private static void TryAddFolding(
