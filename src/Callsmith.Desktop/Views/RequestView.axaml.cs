@@ -21,6 +21,7 @@ public partial class RequestView : UserControl
         InitializeComponent();
         CopyPreviewUrlButton.Click += OnCopyPreviewUrlClicked;
         ContentSplitter.AddHandler(PointerReleasedEvent, OnContentSplitterPointerReleased, handledEventsToo: true);
+        UrlTextBox.PastingFromClipboard += OnUrlTextBoxPastingFromClipboard;
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -254,6 +255,49 @@ public partial class RequestView : UserControl
         }
     }
 
+    private async void OnUrlTextBoxPastingFromClipboard(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not TextBox textBox)
+            return;
+
+        // We manually handle paste so we can intercept only cURL commands.
+        e.Handled = true;
+
+        try
+        {
+            var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+            if (clipboard is null)
+            {
+                PasteLiteralText(textBox);
+                return;
+            }
+
+            var text = await clipboard.GetTextAsync();
+            if (DataContext is RequestTabViewModel vm && vm.TryApplyCurlCommand(text))
+                return;
+
+            PasteLiteralText(textBox);
+        }
+        catch
+        {
+            // If interception fails, fall back to standard literal paste.
+            PasteLiteralText(textBox);
+        }
+    }
+
+    private void PasteLiteralText(TextBox textBox)
+    {
+        UrlTextBox.PastingFromClipboard -= OnUrlTextBoxPastingFromClipboard;
+        try
+        {
+            textBox.Paste();
+        }
+        finally
+        {
+            UrlTextBox.PastingFromClipboard += OnUrlTextBoxPastingFromClipboard;
+        }
+    }
+
     /// <summary>
     /// Handles the body-type ComboBox selection change.  The binding is OneWay (VM → View)
     /// to prevent Avalonia's TwoWay binding from writing back intermediate values during
@@ -275,4 +319,3 @@ public partial class RequestView : UserControl
         vm.SelectedBodyTypeOption = opt;
     }
 }
-
