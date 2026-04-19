@@ -598,7 +598,8 @@ public sealed class RequestTabViewModelSendTests
                 if (Dispatcher.UIThread.CheckAccess())
                     Dispatcher.UIThread.RunJobs();
                 else
-                    await Dispatcher.UIThread.InvokeAsync(() => { }, Avalonia.Threading.DispatcherPriority.Input);
+                    // Non-UI thread: queue a no-op (fire-and-forget)
+                    _ = Dispatcher.UIThread.InvokeAsync(() => { });
             }
             catch
             {

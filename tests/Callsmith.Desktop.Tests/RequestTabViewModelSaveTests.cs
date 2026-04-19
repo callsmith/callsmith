@@ -775,7 +775,7 @@ public sealed class RequestTabViewModelSaveTests
         for (var attempt = 0; attempt < 300; attempt++)
         {
             // Pump UI queue so Dispatcher.Post work from the ViewModel runs in headless tests.
-            // On Linux, CheckAccess may return false from test threads, so use InvokeAsync as fallback.
+            // CheckAccess returns true on UI threads; false on worker threads (especially on Linux).
             if (Dispatcher.UIThread.CheckAccess())
             {
                 try
@@ -789,14 +789,16 @@ public sealed class RequestTabViewModelSaveTests
             }
             else
             {
-                // Fallback for non-UI threads (especially on Linux): pump via InvokeAsync
+                // Non-UI thread: schedule a no-op to force at least one dispatcher cycle
                 try
                 {
-                    await Dispatcher.UIThread.InvokeAsync(() => { }, Avalonia.Threading.DispatcherPriority.Input);
+                    var task = Dispatcher.UIThread.InvokeAsync(() => { });
+                    // Don't await; just let it queue and yield control
+                    _ = task;
                 }
                 catch
                 {
-                    // Dispatcher may be unavailable or suspended; continue anyway
+                    // Dispatcher may be unavailable; continue
                 }
             }
 
