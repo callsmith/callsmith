@@ -8,8 +8,12 @@ namespace Callsmith.Core.Helpers;
 /// </summary>
 public static class CurlCommandParser
 {
-    // Recognized value-consuming flags: -X/--request, -H/--header, -d/--data*, -u/--user, --url
-    // Recognized no-value flags:        -I/--head, -G/--get
+    // Value-consuming flags recognised:
+    //   Method:  -X/--request, -I/--head (no-value), -G/--get (no-value)
+    //   Headers: -H/--header, -A/--user-agent, -e/--referer, -b/--cookie
+    //   Body:    -d/--data*, --json, -F/--form, --form-string
+    //   Auth:    -u/--user, --oauth2-bearer
+    //   URL:     --url, --url-query
     // Unknown flags are skipped along with their values (unless the value looks like a URL).
 
     /// <summary>
@@ -41,6 +45,9 @@ public static class CurlCommandParser
         var dataAsQuery = false;
         var headers = new List<RequestKv>();
         var formDataParts = new List<string>();
+        var multipartParts = new List<KeyValuePair<string, string>>();
+        var urlQueryParts = new List<string>();
+        var hasJsonFlag = false;
         AuthConfig? auth = null;
 
         for (var i = 1; i < tokens.Count; i++)
@@ -139,6 +146,82 @@ public static class CurlCommandParser
                 continue;
             }
 
+            if (string.Equals(token, "--url-query", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryTakeValue(tokens, ref i, out var value))
+                    return false;
+                urlQueryParts.Add(value);
+                continue;
+            }
+
+            if (string.Equals(token, "--json", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryTakeValue(tokens, ref i, out var value))
+                    return false;
+                formDataParts.Add(value);
+                hasJsonFlag = true;
+                continue;
+            }
+
+            if (string.Equals(token, "--oauth2-bearer", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryTakeValue(tokens, ref i, out var value))
+                    return false;
+                auth = new AuthConfig
+                {
+                    AuthType = AuthConfig.AuthTypes.Bearer,
+                    Token = value,
+                };
+                continue;
+            }
+
+            if (string.Equals(token, "-A", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(token, "--user-agent", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryTakeValue(tokens, ref i, out var value))
+                    return false;
+                headers.Add(new RequestKv("User-Agent", value, IsEnabled: true));
+                continue;
+            }
+
+            if (string.Equals(token, "-e", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(token, "--referer", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryTakeValue(tokens, ref i, out var value))
+                    return false;
+                headers.Add(new RequestKv("Referer", value, IsEnabled: true));
+                continue;
+            }
+
+            if (string.Equals(token, "-b", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(token, "--cookie", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryTakeValue(tokens, ref i, out var value))
+                    return false;
+                headers.Add(new RequestKv("Cookie", value, IsEnabled: true));
+                continue;
+            }
+
+            if (string.Equals(token, "-F", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(token, "--form", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(token, "--form-string", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryTakeValue(tokens, ref i, out var value))
+                    return false;
+                var eq = value.IndexOf('=', StringComparison.Ordinal);
+                if (eq > 0)
+                {
+                    var name = value[..eq];
+                    var content = value[(eq + 1)..];
+                    // For --form, skip file references (@filename) since we cannot resolve them.
+                    // --form-string always treats the value as a plain string.
+                    var isFormString = string.Equals(token, "--form-string", StringComparison.OrdinalIgnoreCase);
+                    if (isFormString || !content.StartsWith("@", StringComparison.Ordinal))
+                        multipartParts.Add(new KeyValuePair<string, string>(name, content));
+                }
+                continue;
+            }
+
             // Unknown flag: skip it. If the next token does not start with '-' and does not
             // look like a URL (no '://'), treat it as the flag's value and skip it too.
             if (token.StartsWith("-", StringComparison.Ordinal))
@@ -171,6 +254,10 @@ public static class CurlCommandParser
                 .ParseQueryParams(url)
                 .Select(p => new RequestKv(p.Key, p.Value, IsEnabled: true)));
 
+        // --url-query appends extra parameters to the query string.
+        foreach (var part in urlQueryParts)
+            queryParams.AddRange(ParseFormLikePairs(part).Select(p => new RequestKv(p.Key, p.Value, IsEnabled: true)));
+
         string bodyType = CollectionRequest.BodyTypes.None;
         string? body = null;
         IReadOnlyList<KeyValuePair<string, string>> formParams = [];
@@ -190,6 +277,10 @@ public static class CurlCommandParser
                     ?.Value;
                 bodyType = InferBodyType(contentType);
 
+                // --json implies JSON body type when no explicit Content-Type header overrides it.
+                if (hasJsonFlag && bodyType == CollectionRequest.BodyTypes.Text)
+                    bodyType = CollectionRequest.BodyTypes.Json;
+
                 if (bodyType == CollectionRequest.BodyTypes.Form)
                 {
                     formParams = ParseFormLikePairs(body);
@@ -197,8 +288,14 @@ public static class CurlCommandParser
                 }
             }
         }
+        else if (multipartParts.Count > 0)
+        {
+            // -F / --form / --form-string without any -d body → multipart body.
+            bodyType = CollectionRequest.BodyTypes.Multipart;
+            formParams = multipartParts;
+        }
 
-        if (!explicitMethod && formDataParts.Count > 0 && !dataAsQuery)
+        if (!explicitMethod && (formDataParts.Count > 0 || multipartParts.Count > 0) && !dataAsQuery)
             method = "POST";
 
         parsed = new ParsedCurlRequest
