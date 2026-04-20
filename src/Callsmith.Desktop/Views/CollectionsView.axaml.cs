@@ -336,7 +336,7 @@ public partial class CollectionsView : UserControl
 
             // When hovering the middle of a folder row, drop into that folder.
             // Near the top/bottom edge, show insertion line for reordering between siblings.
-            if (targetNode.IsFolder && targetNode.Parent != _draggedNode.Parent)
+            if (targetNode.IsFolder)
             {
                 var topEdge = targetTvi.Bounds.Height * FolderDropMiddleBandTopRatio;
                 var bottomEdge = targetTvi.Bounds.Height * FolderDropMiddleBandBottomRatio;
