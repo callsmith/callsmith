@@ -56,7 +56,7 @@
           </ComboBox>
           <TextBox x:Name="UrlTextBox" Grid.Column="2"
                    Text="{Binding Url}"
-                   Watermark="https://api.example.com/endpoint"
+                   Watermark="https://api.example.com/endpoint or paste a cURL command"
                    FontSize="13" Foreground="#d4d4d4" Background="#3c3c3c"
                    BorderBrush="#555" Padding="8,6" FontFamily="Consolas,Menlo,monospace"
                    controls:EnvVarCompletion.Suggestions="{Binding EnvVarNames}"/>

@@ -853,6 +853,19 @@ public sealed partial class RequestTabViewModel : ObservableObject
         IsTransient = false;
     }
 
+    /// <summary>
+    /// If <paramref name="text"/> is a cURL command, replaces the entire request editor
+    /// state with parsed values and returns <see langword="true"/>; otherwise returns false.
+    /// </summary>
+    internal bool TryApplyCurlCommand(string? text)
+    {
+        if (!CurlCommandParser.TryParse(text, out var parsed) || parsed is null)
+            return false;
+
+        ApplyParsedCurl(parsed);
+        return true;
+    }
+
     /// <summary>Loads a saved request into this tab.</summary>
     public void LoadRequest(CollectionRequest req)
     {
@@ -936,6 +949,76 @@ public sealed partial class RequestTabViewModel : ObservableObject
         }
 
         QueueHistoryResponseRefresh();
+    }
+
+    private void ApplyParsedCurl(ParsedCurlRequest parsed)
+    {
+        _loading = true;
+        try
+        {
+            SelectedMethod = parsed.Method;
+
+            _syncingUrl = true;
+            try
+            {
+                Url = parsed.Url;
+                QueryParams.LoadFrom(parsed.QueryParams);
+                SyncPathParamsWithUrl(Url, new Dictionary<string, string>());
+            }
+            finally
+            {
+                _syncingUrl = false;
+            }
+
+            Headers.LoadFrom(parsed.Headers);
+            SelectedBodyType = parsed.BodyType;
+            Body = parsed.Body ?? string.Empty;
+            FormatBody(); // prettify body now that SelectedBodyType and Body are both set
+            _bodyContents.Clear();
+            if (parsed.BodyType is CollectionRequest.BodyTypes.Json
+                                or CollectionRequest.BodyTypes.Text
+                                or CollectionRequest.BodyTypes.Xml
+                                or CollectionRequest.BodyTypes.Yaml
+                                or CollectionRequest.BodyTypes.Other)
+            {
+                _bodyContents[parsed.BodyType] = Body;
+            }
+
+            FormParams.LoadFrom(parsed.FormParams);
+            _fileBodyBytes = null;
+            _fileBodyName = null;
+            SelectedFilePath = string.Empty;
+
+            AuthType = parsed.Auth.AuthType;
+            AuthToken = parsed.Auth.Token ?? string.Empty;
+            AuthTokenField.LoadFromText(AuthToken);
+            AuthUsername = parsed.Auth.Username ?? string.Empty;
+            AuthUsernameField.LoadFromText(AuthUsername);
+            AuthPassword = parsed.Auth.Password ?? string.Empty;
+            AuthPasswordField.LoadFromText(AuthPassword);
+            AuthApiKeyName = parsed.Auth.ApiKeyName ?? string.Empty;
+            AuthApiKeyNameField.LoadFromText(AuthApiKeyName);
+            AuthApiKeyValue = parsed.Auth.ApiKeyValue ?? string.Empty;
+            AuthApiKeyValueField.LoadFromText(AuthApiKeyValue);
+            AuthApiKeyIn = parsed.Auth.ApiKeyIn;
+
+            Description = null;
+            ErrorMessage = null;
+        }
+        finally
+        {
+            _loading = false;
+        }
+
+        if (_sourceRequest is not null)
+            HasUnsavedChanges = true;
+
+        OnPropertyChanged(nameof(HasFileBodySelected));
+        OnPropertyChanged(nameof(PreviewUrl));
+        OnPropertyChanged(nameof(HasUnresolvedPathParams));
+        OnPropertyChanged(nameof(PreviewUrlForeground));
+        OnPropertyChanged(nameof(PreviewUrlTooltip));
+        PromoteFromTransient();
     }
 
     /// <summary>
