@@ -192,7 +192,7 @@
                          Height="7"
                          Fill="#4ec9b0"
                          VerticalAlignment="Center"
-                         IsVisible="{Binding IsHeadersAndParamsModified}"/>
+                          Opacity="{Binding IsHeadersAndParamsModified, Converter={x:Static conv:BoolToOpacityConverter.Instance}}"/>
               </Grid>
             </TabItem.Header>
             <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -241,7 +241,7 @@
                          Height="7"
                          Fill="#4ec9b0"
                          VerticalAlignment="Center"
-                         IsVisible="{Binding IsBodyModified}"/>
+                          Opacity="{Binding IsBodyModified, Converter={x:Static conv:BoolToOpacityConverter.Instance}}"/>
               </Grid>
             </TabItem.Header>
             <Grid RowDefinitions="Auto,*" Margin="0,8">
@@ -320,7 +320,7 @@
                          Height="7"
                          Fill="#4ec9b0"
                          VerticalAlignment="Center"
-                         IsVisible="{Binding IsAuthModified}"/>
+                          Opacity="{Binding IsAuthModified, Converter={x:Static conv:BoolToOpacityConverter.Instance}}"/>
               </Grid>
             </TabItem.Header>
             <ScrollViewer Margin="0,8" VerticalScrollBarVisibility="Auto">
@@ -709,7 +709,7 @@
                          Height="7"
                          Fill="#4ec9b0"
                          VerticalAlignment="Center"
-                         IsVisible="{Binding IsInfoModified}"/>
+                          Opacity="{Binding IsInfoModified, Converter={x:Static conv:BoolToOpacityConverter.Instance}}"/>
               </Grid>
             </TabItem.Header>
             <ScrollViewer Margin="0,8" VerticalScrollBarVisibility="Auto">
