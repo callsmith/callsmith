@@ -139,6 +139,38 @@ public sealed class RequestViewModelPathParamsTests
         }
     }
 
+    [Fact]
+    public void ChangingCollectionRootPath_RecomputesBrunoModeAndHintText()
+    {
+        var nonBrunoRoot = Path.Combine(Path.GetTempPath(), "NonBrunoHintTest_" + Guid.NewGuid().ToString("N"));
+        var brunoRoot = Path.Combine(Path.GetTempPath(), "BrunoHintSwitchTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(nonBrunoRoot);
+        Directory.CreateDirectory(brunoRoot);
+        File.WriteAllText(Path.Combine(brunoRoot, "bruno.json"), """{"name":"test","version":"1"}""");
+
+        try
+        {
+            var sut = new RequestTabViewModel(
+                new TransportRegistry(),
+                Substitute.For<ICollectionService>(),
+                WeakReferenceMessenger.Default,
+                _ => { });
+
+            sut.CollectionRootPath = nonBrunoRoot;
+            sut.IsBrunoCollection.Should().BeFalse();
+            sut.PathParamHintText.Should().Contain("{variable}");
+
+            sut.CollectionRootPath = brunoRoot;
+            sut.IsBrunoCollection.Should().BeTrue();
+            sut.PathParamHintText.Should().NotContain("{variable}");
+        }
+        finally
+        {
+            Directory.Delete(nonBrunoRoot, recursive: true);
+            Directory.Delete(brunoRoot, recursive: true);
+        }
+    }
+
     // ── Callsmith: colon-syntax detection ────────────────────────────────────
 
     [Fact]
