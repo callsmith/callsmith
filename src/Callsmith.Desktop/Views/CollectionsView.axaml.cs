@@ -26,19 +26,11 @@ public partial class CollectionsView : UserControl
     {
         InitializeComponent();
         CollectionTree.AddHandler(InputElement.KeyDownEvent, OnTreeKeyDown, RoutingStrategies.Tunnel);
-        // handledEventsToo: true — Avalonia's TreeView.OnPointerPressed can mark PointerPressed
-        // as Handled during the Bubble phase; without this flag, Tapped/DoubleTapped would
-        // silently be dropped by the time they bubble to CollectionTree.
-        CollectionTree.AddHandler(InputElement.TappedEvent, OnTreeTapped, RoutingStrategies.Bubble, handledEventsToo: true);
-        CollectionTree.AddHandler(InputElement.DoubleTappedEvent, OnTreeDoubleTapped, RoutingStrategies.Bubble, handledEventsToo: true);
+        CollectionTree.AddHandler(InputElement.TappedEvent, OnTreeTapped, RoutingStrategies.Bubble);
+        CollectionTree.AddHandler(InputElement.DoubleTappedEvent, OnTreeDoubleTapped, RoutingStrategies.Bubble);
         CollectionTree.AddHandler(InputElement.PointerPressedEvent, OnTreePointerPressed, RoutingStrategies.Tunnel);
-
-        // Direct covers events sent to CollectionTree when it holds pointer capture;
-        // Bubble covers events that originate from child items during normal movement.
-        // handledEventsToo ensures we receive events even if a child has marked them handled.
-        var moveRelease = RoutingStrategies.Direct | RoutingStrategies.Bubble;
-        CollectionTree.AddHandler(InputElement.PointerMovedEvent, OnTreePointerMoved, moveRelease, handledEventsToo: true);
-        CollectionTree.AddHandler(InputElement.PointerReleasedEvent, OnTreePointerReleased, moveRelease, handledEventsToo: true);
+        CollectionTree.AddHandler(InputElement.PointerMovedEvent, OnTreePointerMoved, RoutingStrategies.Bubble);
+        CollectionTree.AddHandler(InputElement.PointerReleasedEvent, OnTreePointerReleased, RoutingStrategies.Bubble);
         CollectionTree.AddHandler(InputElement.PointerCaptureLostEvent, OnTreePointerCaptureLost, RoutingStrategies.Direct);
     }
 
@@ -247,15 +239,7 @@ public partial class CollectionsView : UserControl
 
     private void OnTreePointerMoved(object? sender, PointerEventArgs e)
     {
-        if (_draggedNode is null)
-        {
-            // Guard: if capture is somehow stuck on the tree without an active drag node
-            // (e.g. a spurious PointerCaptureLost raced with an async operation), release
-            // it here so pointer events resume normal routing.
-            if (_isDragging || e.Pointer.Captured == CollectionTree)
-                EndDrag(e.Pointer);
-            return;
-        }
+        if (_draggedNode is null) return;
 
         if (!e.GetCurrentPoint(null).Properties.IsLeftButtonPressed)
         {
@@ -564,16 +548,12 @@ public partial class CollectionsView : UserControl
     private void EndDrag(IPointer pointer)
     {
         ClearDropVisuals();
-        // Release capture BEFORE clearing _draggedNode so that this is safe to call even
-        // when _draggedNode is already null (e.g. PointerCaptureLost raced with an async
-        // drop and cleared _draggedNode while capture was still technically held).
-        // Unconditional release ensures the tree is never left with stuck pointer capture.
-        pointer.Capture(null);
         _draggedNode = null;
         _dropTargetFolder = null;
         _dropInsertIndex = -1;
         _isDragging = false;
         CollectionTree.Cursor = Cursor.Default;
+        pointer.Capture(null);
     }
 
     // -------------------------------------------------------------------------

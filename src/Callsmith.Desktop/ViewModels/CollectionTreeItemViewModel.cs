@@ -65,6 +65,12 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
     public string? Description => Request?.Description?.Trim();
 
     /// <summary>
+    /// Text shown in the tree tooltip. Returns the description when one is set,
+    /// otherwise falls back to the node name so the tooltip is always available.
+    /// </summary>
+    public string TooltipText => string.IsNullOrWhiteSpace(Description) ? Name : Description!;
+
+    /// <summary>
     /// Abbreviated method label used in the sidebar pill.
     /// Long verbs are shortened so the pill stays compact; the full name is used everywhere else.
     /// </summary>
@@ -114,6 +120,7 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
         if (updatedRequest is not null)
             Request = updatedRequest;
         OnPropertyChanged(nameof(Name));
+        OnPropertyChanged(nameof(TooltipText));
     }
 
     /// <summary>Updates the in-memory request snapshot after a save, without touching the display name.</summary>
@@ -123,6 +130,7 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
         OnPropertyChanged(nameof(MethodName));
         OnPropertyChanged(nameof(MethodPillLabel));
         OnPropertyChanged(nameof(Description));
+        OnPropertyChanged(nameof(TooltipText));
     }
 
     /// <summary>Applies a folder rename, updating path and display name.</summary>
