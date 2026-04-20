@@ -185,15 +185,18 @@
 
           <TabItem>
             <TabItem.Header>
-              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                <TextBlock Grid.Column="0" Text="Headers &amp; Params"/>
-                <Ellipse Grid.Column="1"
-                         Width="7"
-                         Height="7"
-                         Fill="#4ec9b0"
-                         VerticalAlignment="Center"
-                          Opacity="{Binding IsHeadersAndParamsModified, Converter={x:Static conv:BoolToOpacityConverter.Instance}}"/>
-              </Grid>
+              <!-- Panel measures only the TextBlock, so the active underline spans only
+                   the label. The dot sits in a zero-size Canvas that floats to the right
+                   without affecting the measured (and therefore underlined) width. -->
+              <Panel>
+                <TextBlock Text="Headers &amp; Params"/>
+                <Canvas Width="0" Height="0" HorizontalAlignment="Right" VerticalAlignment="Center">
+                  <Ellipse Canvas.Left="4" Canvas.Top="-3.5"
+                           Width="7" Height="7"
+                           Fill="#4ec9b0"
+                           Opacity="{Binding IsHeadersAndParamsModified, Converter={x:Static conv:BoolToOpacityConverter.Instance}}"/>
+                </Canvas>
+              </Panel>
             </TabItem.Header>
             <ScrollViewer VerticalScrollBarVisibility="Auto">
               <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*" Margin="0,4">
@@ -234,15 +237,15 @@
 
           <TabItem>
             <TabItem.Header>
-              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                <TextBlock Grid.Column="0" Text="Body"/>
-                <Ellipse Grid.Column="1"
-                         Width="7"
-                         Height="7"
-                         Fill="#4ec9b0"
-                         VerticalAlignment="Center"
-                          Opacity="{Binding IsBodyModified, Converter={x:Static conv:BoolToOpacityConverter.Instance}}"/>
-              </Grid>
+              <Panel>
+                <TextBlock Text="Body"/>
+                <Canvas Width="0" Height="0" HorizontalAlignment="Right" VerticalAlignment="Center">
+                  <Ellipse Canvas.Left="4" Canvas.Top="-3.5"
+                           Width="7" Height="7"
+                           Fill="#4ec9b0"
+                           Opacity="{Binding IsBodyModified, Converter={x:Static conv:BoolToOpacityConverter.Instance}}"/>
+                </Canvas>
+              </Panel>
             </TabItem.Header>
             <Grid RowDefinitions="Auto,*" Margin="0,8">
               <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
@@ -313,15 +316,15 @@
 
           <TabItem>
             <TabItem.Header>
-              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                <TextBlock Grid.Column="0" Text="Auth"/>
-                <Ellipse Grid.Column="1"
-                         Width="7"
-                         Height="7"
-                         Fill="#4ec9b0"
-                         VerticalAlignment="Center"
-                          Opacity="{Binding IsAuthModified, Converter={x:Static conv:BoolToOpacityConverter.Instance}}"/>
-              </Grid>
+              <Panel>
+                <TextBlock Text="Auth"/>
+                <Canvas Width="0" Height="0" HorizontalAlignment="Right" VerticalAlignment="Center">
+                  <Ellipse Canvas.Left="4" Canvas.Top="-3.5"
+                           Width="7" Height="7"
+                           Fill="#4ec9b0"
+                           Opacity="{Binding IsAuthModified, Converter={x:Static conv:BoolToOpacityConverter.Instance}}"/>
+                </Canvas>
+              </Panel>
             </TabItem.Header>
             <ScrollViewer Margin="0,8" VerticalScrollBarVisibility="Auto">
               <StackPanel Spacing="8">
@@ -702,15 +705,15 @@
 
           <TabItem>
             <TabItem.Header>
-              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                <TextBlock Grid.Column="0" Text="Info"/>
-                <Ellipse Grid.Column="1"
-                         Width="7"
-                         Height="7"
-                         Fill="#4ec9b0"
-                         VerticalAlignment="Center"
-                          Opacity="{Binding IsInfoModified, Converter={x:Static conv:BoolToOpacityConverter.Instance}}"/>
-              </Grid>
+              <Panel>
+                <TextBlock Text="Info"/>
+                <Canvas Width="0" Height="0" HorizontalAlignment="Right" VerticalAlignment="Center">
+                  <Ellipse Canvas.Left="4" Canvas.Top="-3.5"
+                           Width="7" Height="7"
+                           Fill="#4ec9b0"
+                           Opacity="{Binding IsInfoModified, Converter={x:Static conv:BoolToOpacityConverter.Instance}}"/>
+                </Canvas>
+              </Panel>
             </TabItem.Header>
             <ScrollViewer Margin="0,8" VerticalScrollBarVisibility="Auto">
               <StackPanel Spacing="6">
