@@ -1881,9 +1881,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         if (_syncingUrl || _syncingPathParams || _loading) return;
 
         var currentBaseUrl = GetBaseUrl(Url);
-        var existingNames = IsBrunoCollection
-            ? PathTemplateHelper.ExtractPathParamNamesColon(currentBaseUrl)
-            : PathTemplateHelper.ExtractPathParamNamesBoth(currentBaseUrl);
+        var existingNames = ExtractPathParamNamesForCollection(currentBaseUrl);
         if (existingNames.Count == 0) return;
 
         var editedNames = PathParams.Items
@@ -2021,14 +2019,23 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     private static string GetBaseUrl(string value) => QueryStringHelper.GetBaseUrl(value);
 
+    /// <summary>
+    /// Returns the path-parameter names present in <paramref name="url"/> using the extraction
+    /// strategy appropriate for the current collection type.
+    /// Bruno collections use colon-only extraction; Callsmith collections recognise both
+    /// brace and colon syntax.
+    /// </summary>
+    private IReadOnlyList<string> ExtractPathParamNamesForCollection(string url) =>
+        IsBrunoCollection
+            ? PathTemplateHelper.ExtractPathParamNamesColon(url)
+            : PathTemplateHelper.ExtractPathParamNamesBoth(url);
+
     private void SyncPathParamsWithUrl(string url, IReadOnlyDictionary<string, string> existingValues)
     {
         _syncingPathParams = true;
         try
         {
-            var names = IsBrunoCollection
-                ? PathTemplateHelper.ExtractPathParamNamesColon(url)
-                : PathTemplateHelper.ExtractPathParamNamesBoth(url);
+            var names = ExtractPathParamNamesForCollection(url);
             var merged = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var name in names)
                 merged[name] = existingValues.TryGetValue(name, out var value) ? value : string.Empty;
