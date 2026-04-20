@@ -246,6 +246,24 @@ public sealed class PathTemplateHelperTests
         result.Should().Be("https://api.example.com/users/{userId}/orders/:orderId");
     }
 
+    [Fact]
+    public void RenamePathParam_BraceForm_DoesNotRenameDoubleBraceEnvTokens()
+    {
+        var result = PathTemplateHelper.RenamePathParam(
+            "https://api.example.com/{{tenant}}/users/{tenant}", "tenant", "accountId");
+
+        result.Should().Be("https://api.example.com/{{tenant}}/users/{accountId}");
+    }
+
+    [Fact]
+    public void RenamePathParam_ColonForm_TreatsReplacementAsLiteral()
+    {
+        var result = PathTemplateHelper.RenamePathParam(
+            "https://api.example.com/users/:id", "id", "user$1");
+
+        result.Should().Be("https://api.example.com/users/:user$1");
+    }
+
     // ── Colon syntax (Bruno) ─────────────────────────────────────────────────
 
     [Fact]

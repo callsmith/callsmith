@@ -134,14 +134,25 @@ public static partial class PathTemplateHelper
 
         var pathPart = StripQueryAndFragment(urlTemplate, out var suffix);
 
-        // Replace brace form: {oldName} → {newName}
-        var result = pathPart.Replace($"{{{oldName}}}", $"{{{newName}}}", StringComparison.Ordinal);
+        // Replace brace form using the same single-brace rules as PathParamPattern(),
+        // so double-brace env tokens like {{tenant}} are never affected.
+        var result = PathParamPattern().Replace(pathPart, match =>
+        {
+            var key = match.Groups[1].Value;
+            return string.Equals(key, oldName, StringComparison.Ordinal)
+                ? $"{{{newName}}}"
+                : match.Value;
+        });
 
-        // Replace colon form at path-segment boundaries (same rules as ColonPathParamPattern).
-        result = Regex.Replace(
-            result,
-            $@"(?<=/):{Regex.Escape(oldName)}(?=[/?#]|$)",
-            $":{newName}");
+        // Replace colon form at path-segment boundaries (same rules as ColonPathParamPattern)
+        // using a MatchEvaluator so replacement text is inserted literally.
+        result = ColonPathParamPattern().Replace(result, match =>
+        {
+            var key = match.Groups[1].Value;
+            return string.Equals(key, oldName, StringComparison.Ordinal)
+                ? $":{newName}"
+                : match.Value;
+        });
 
         return result + suffix;
     }

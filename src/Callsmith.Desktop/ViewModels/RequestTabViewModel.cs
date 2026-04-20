@@ -48,6 +48,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private long _historyHydrationVersion;
     private CancellationTokenSource? _historyHydrationCts;
     private bool _closeAfterSaveAs;
+    private string _collectionRootPath = string.Empty;
+    private bool _isBrunoCollection;
 
     /// <summary>
     /// Per-body-type content store. Keyed by <see cref="CollectionRequest.BodyTypes"/> constants.
@@ -226,10 +228,26 @@ public sealed partial class RequestTabViewModel : ObservableObject
     public IReadOnlyList<string> AvailableFolders { get; internal set; } = [];
 
     /// <summary>Absolute path of the open collection root. Used to resolve relative SaveAsFolderPath values.</summary>
-    public string CollectionRootPath { get; internal set; } = string.Empty;
+    public string CollectionRootPath
+    {
+        get => _collectionRootPath;
+        internal set
+        {
+            var newPath = value ?? string.Empty;
+            if (string.Equals(_collectionRootPath, newPath, StringComparison.Ordinal))
+                return;
+
+            _collectionRootPath = newPath;
+            _isBrunoCollection = BrunoDetector.IsBrunoCollection(newPath);
+
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsBrunoCollection));
+            OnPropertyChanged(nameof(PathParamHintText));
+        }
+    }
 
     /// <summary>True when the open collection is a Bruno collection (uses colon path-param syntax).</summary>
-    public bool IsBrunoCollection => BrunoDetector.IsBrunoCollection(CollectionRootPath);
+    public bool IsBrunoCollection => _isBrunoCollection;
 
     /// <summary>
     /// Hint text for the path params editor, adapting to the collection format.
