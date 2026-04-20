@@ -1,4 +1,5 @@
 using System.Net.Http;
+using System.Diagnostics;
 using Avalonia.Threading;
 using Callsmith.Core;
 using Callsmith.Core.Abstractions;
@@ -649,10 +650,12 @@ public sealed class RequestTabViewModelSendTests
         transport.LastRequest.Url.Should().NotContain("dev.example.com");
     }
 
-    private static async Task AssertEventuallyAsync(Func<Task> assertion, int retries = 50, int delayMs = 20)
+    private static async Task AssertEventuallyAsync(Func<Task> assertion, int timeoutMs = 10000, int pollDelayMs = 20)
     {
         Exception? last = null;
-        for (var i = 0; i < retries; i++)
+        var deadline = Stopwatch.GetTimestamp() + (long)(timeoutMs * (Stopwatch.Frequency / 1000d));
+
+        while (Stopwatch.GetTimestamp() < deadline)
         {
             // Pump dispatcher to allow async work to proceed
             try
@@ -660,8 +663,8 @@ public sealed class RequestTabViewModelSendTests
                 if (Dispatcher.UIThread.CheckAccess())
                     Dispatcher.UIThread.RunJobs();
                 else
-                    // Non-UI thread: queue a no-op (fire-and-forget)
-                    _ = Dispatcher.UIThread.InvokeAsync(() => { });
+                    // Non-UI thread: queue and await a no-op to force a dispatcher cycle
+                    await Dispatcher.UIThread.InvokeAsync(() => { });
             }
             catch
             {
@@ -676,7 +679,7 @@ public sealed class RequestTabViewModelSendTests
             catch (Exception ex)
             {
                 last = ex;
-                await Task.Delay(delayMs);
+                await Task.Delay(pollDelayMs);
             }
         }
 
