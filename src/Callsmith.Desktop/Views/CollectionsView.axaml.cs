@@ -333,30 +333,46 @@ public partial class CollectionsView : UserControl
             // Prevent dropping a folder into one of its own descendants (circular hierarchy).
             if (IsDescendantOf(targetNode, _draggedNode)) return;
 
-            // Allow dropping a folder into a different parent folder.
-            CollectionTreeItemViewModel? destFolder = null;
-            TreeViewItem? destFolderTvi = null;
+            var localPos = e.GetPosition(targetTvi);
+            var midY = targetTvi.Bounds.Height / 2.0;
+            var above = localPos.Y <= midY;
 
-            if ((targetNode.IsFolder || targetNode.IsRoot) && targetNode != _draggedNode.Parent)
+            // When hovering the middle of a folder row, drop into that folder.
+            // Near the top/bottom edge, show insertion line for reordering between siblings.
+            if (targetNode.IsFolder && targetNode.Parent != _draggedNode.Parent)
             {
-                destFolder = targetNode;
-                destFolderTvi = targetTvi;
-            }
-            else if (!targetNode.IsFolder && targetNode.Parent is not null && targetNode.Parent != _draggedNode.Parent)
-            {
-                destFolder = targetNode.Parent;
-                destFolderTvi = targetTvi.Parent as TreeViewItem;
-            }
+                var topEdge = targetTvi.Bounds.Height * 0.30;
+                var bottomEdge = targetTvi.Bounds.Height * 0.70;
+                var isMiddleBand = localPos.Y > topEdge && localPos.Y < bottomEdge;
 
-            if (destFolder is not null)
-            {
-                _dropTargetFolder = destFolder;
-                _dropInsertIndex = -1;
-                if (destFolderTvi is not null && FindItemBorder(destFolderTvi) is Border destBorder)
+                if (isMiddleBand)
                 {
-                    destBorder.Classes.Add("drop-target");
-                    _previousDropTargetBorder = destBorder;
+                    _dropTargetFolder = targetNode;
+                    _dropInsertIndex = -1;
+                    if (FindItemBorder(targetTvi) is Border destBorder)
+                    {
+                        destBorder.Classes.Add("drop-target");
+                        _previousDropTargetBorder = destBorder;
+                    }
+                    return;
                 }
+
+                if (targetNode.Parent is not null)
+                {
+                    _dropTargetFolder = targetNode.Parent;
+                    var targetIndexInParent = targetNode.Parent.Children.IndexOf(targetNode);
+                    _dropInsertIndex = above ? targetIndexInParent : targetIndexInParent + 1;
+                    ShowDropIndicator(targetTvi, above);
+                    return;
+                }
+            }
+
+            if (!targetNode.IsFolder && targetNode.Parent is not null && targetNode.Parent != _draggedNode.Parent)
+            {
+                _dropTargetFolder = targetNode.Parent;
+                var targetIndexInParent = targetNode.Parent.Children.IndexOf(targetNode);
+                _dropInsertIndex = above ? targetIndexInParent : targetIndexInParent + 1;
+                ShowDropIndicator(targetTvi, above);
                 return;
             }
         }

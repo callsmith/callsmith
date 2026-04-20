@@ -140,6 +140,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanFormatBody))]
     [NotifyPropertyChangedFor(nameof(BodyLanguage))]
     [NotifyPropertyChangedFor(nameof(SelectedBodyTypeOption))]
+    [NotifyPropertyChangedFor(nameof(IsBodyModified))]
     private string _selectedBodyType = CollectionRequest.BodyTypes.None;
 
     [ObservableProperty]
@@ -164,6 +165,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsAuthBearer))]
     [NotifyPropertyChangedFor(nameof(IsAuthBasic))]
     [NotifyPropertyChangedFor(nameof(IsAuthApiKey))]
+    [NotifyPropertyChangedFor(nameof(IsAuthModified))]
     private string _authType = AuthConfig.AuthTypes.Inherit;
 
     [ObservableProperty] private string _authToken = string.Empty;
@@ -177,6 +179,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     /// <summary>Optional human-readable description for this request (shown in the Info tab).</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsInfoModified))]
     private string? _description;
 
     /// <summary>Segmented field for the bearer token (supports pill rendering of dynamic tokens).</summary>
@@ -675,6 +678,15 @@ public sealed partial class RequestTabViewModel : ObservableObject
     public bool IsAuthBearer => AuthType == AuthConfig.AuthTypes.Bearer;
     public bool IsAuthBasic  => AuthType == AuthConfig.AuthTypes.Basic;
     public bool IsAuthApiKey => AuthType == AuthConfig.AuthTypes.ApiKey;
+    public bool IsHeadersAndParamsModified =>
+        Headers.GetAllKv().Count > 0 ||
+        PathParams.Items.Any(i => !string.IsNullOrWhiteSpace(i.Key)) ||
+        QueryParams.GetAllKv().Count > 0;
+    public bool IsBodyModified => SelectedBodyType != CollectionRequest.BodyTypes.None;
+    public bool IsAuthModified =>
+        AuthType != AuthConfig.AuthTypes.Inherit &&
+        AuthType != AuthConfig.AuthTypes.None;
+    public bool IsInfoModified => !string.IsNullOrWhiteSpace(Description);
 
     // -------------------------------------------------------------------------
     // ComboBox source lists
@@ -833,6 +845,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         Headers.Changed += (_, _) =>
         {
             if (!_loading && !_saving && _sourceRequest is not null) HasUnsavedChanges = true;
+            OnPropertyChanged(nameof(IsHeadersAndParamsModified));
         };
 
         QueryParams.Changed += (_, _) =>
@@ -840,6 +853,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             if (!_loading && !_saving && _sourceRequest is not null) HasUnsavedChanges = true;
             OnPropertyChanged(nameof(PreviewUrl));
             OnPropertyChanged(nameof(PreviewUrlTooltip));
+            OnPropertyChanged(nameof(IsHeadersAndParamsModified));
         };
 
         PathParams.Changed += (_, _) =>
@@ -850,6 +864,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             OnPropertyChanged(nameof(HasUnresolvedPathParams));
             OnPropertyChanged(nameof(PreviewUrlForeground));
             OnPropertyChanged(nameof(PreviewUrlTooltip));
+            OnPropertyChanged(nameof(IsHeadersAndParamsModified));
         };
 
         FormParams.Changed += (_, _) =>

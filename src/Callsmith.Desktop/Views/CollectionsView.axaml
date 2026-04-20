@@ -20,6 +20,7 @@
     <Style Selector="TreeViewItem" x:DataType="vm:CollectionTreeItemViewModel">
       <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
       <Setter Property="ToolTip.Tip" Value="{Binding Description}"/>
+      <Setter Property="ToolTip.IsEnabled" Value="{Binding Description, Converter={x:Static conv:StringNotEmptyConverter.Instance}}"/>
     </Style>
 
     <!-- Tree node label: default appearance -->

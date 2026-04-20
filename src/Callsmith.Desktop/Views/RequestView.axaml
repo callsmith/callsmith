@@ -16,6 +16,7 @@
       <Setter Property="FontSize" Value="14"/>
       <Setter Property="Padding" Value="13,6"/>
       <Setter Property="MinHeight" Value="34"/>
+      <Setter Property="Width" Value="170"/>
       <Setter Property="Cursor" Value="Hand"/>
     </Style>
     <Style Selector="TabControl.response-tabs TabItem">
@@ -183,7 +184,18 @@
             <!-- Row 0: Params & Headers | Body | Auth -->
             <TabControl Grid.Row="0" Classes="request-tabs" Margin="0" Background="Transparent">
 
-          <TabItem Header="Headers &amp; Params">
+          <TabItem>
+            <TabItem.Header>
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                <TextBlock Grid.Column="0" Text="Headers &amp; Params"/>
+                <Ellipse Grid.Column="1"
+                         Width="7"
+                         Height="7"
+                         Fill="#4ec9b0"
+                         VerticalAlignment="Center"
+                         IsVisible="{Binding IsHeadersAndParamsModified}"/>
+              </Grid>
+            </TabItem.Header>
             <ScrollViewer VerticalScrollBarVisibility="Auto">
               <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*" Margin="0,4">
                 <!-- Headers -->
@@ -221,7 +233,18 @@
             </ScrollViewer>
           </TabItem>
 
-          <TabItem Header="Body">
+          <TabItem>
+            <TabItem.Header>
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                <TextBlock Grid.Column="0" Text="Body"/>
+                <Ellipse Grid.Column="1"
+                         Width="7"
+                         Height="7"
+                         Fill="#4ec9b0"
+                         VerticalAlignment="Center"
+                         IsVisible="{Binding IsBodyModified}"/>
+              </Grid>
+            </TabItem.Header>
             <Grid RowDefinitions="Auto,*" Margin="0,8">
               <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
                 <ComboBox ItemsSource="{Binding BodyTypes}"
@@ -289,7 +312,18 @@
             </Grid>
           </TabItem>
 
-          <TabItem Header="Auth">
+          <TabItem>
+            <TabItem.Header>
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                <TextBlock Grid.Column="0" Text="Auth"/>
+                <Ellipse Grid.Column="1"
+                         Width="7"
+                         Height="7"
+                         Fill="#4ec9b0"
+                         VerticalAlignment="Center"
+                         IsVisible="{Binding IsAuthModified}"/>
+              </Grid>
+            </TabItem.Header>
             <ScrollViewer Margin="0,8" VerticalScrollBarVisibility="Auto">
               <StackPanel Spacing="8">
                 <ComboBox ItemsSource="{Binding AuthTypes}" SelectedItem="{Binding AuthType}"
@@ -667,7 +701,18 @@
             </ScrollViewer>
           </TabItem>
 
-          <TabItem Header="Info">
+          <TabItem>
+            <TabItem.Header>
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                <TextBlock Grid.Column="0" Text="Info"/>
+                <Ellipse Grid.Column="1"
+                         Width="7"
+                         Height="7"
+                         Fill="#4ec9b0"
+                         VerticalAlignment="Center"
+                         IsVisible="{Binding IsInfoModified}"/>
+              </Grid>
+            </TabItem.Header>
             <ScrollViewer Margin="0,8" VerticalScrollBarVisibility="Auto">
               <StackPanel Spacing="6">
                 <TextBlock Text="Description" Foreground="#888" FontSize="11"/>

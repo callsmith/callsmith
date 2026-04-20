@@ -243,6 +243,34 @@ public sealed class BrunoCollectionServiceTests : IDisposable
         Assert.Contains(request.FormParams, p => p.Key == "username" && p.Value == "user@example.com");
     }
 
+    [Fact]
+    public async Task LoadRequestAsync_DocsBlock_MapsToDescription()
+    {
+        var content = """
+            meta {
+              name: with docs
+              type: http
+              seq: 1
+            }
+
+            get {
+              url: https://api.example.com/items
+              body: none
+              auth: none
+            }
+
+            docs {
+              First line.
+              Second line.
+            }
+            """;
+        WriteFile("docs-load.bru", content);
+
+        var request = await _sut.LoadRequestAsync(Path.Combine(_root, "docs-load.bru"));
+
+        Assert.Equal("First line.\nSecond line.", request.Description);
+    }
+
       [Fact]
       public async Task LoadRequestAsync_WhenBruFileHasNoRequestId_DoesNotBackfillOrModifyFile()
       {
@@ -314,6 +342,63 @@ public sealed class BrunoCollectionServiceTests : IDisposable
         Assert.Contains("setGlobalEnvVar", written);
         Assert.Contains("tests", written);
         Assert.Contains("pm.globals.unset", written);
+    }
+
+    [Fact]
+    public async Task SaveRequestAsync_Description_WritesAndRemovesDocsBlock()
+    {
+        WriteFile("docs-save.bru", BruFile("docs-save", "get", "https://api.example.com/items", seq: 1));
+        var path = Path.Combine(_root, "docs-save.bru");
+        var request = await _sut.LoadRequestAsync(path);
+
+        var withDescription = new CollectionRequest
+        {
+            RequestId = request.RequestId,
+            FilePath = request.FilePath,
+            Name = request.Name,
+            Method = request.Method,
+            Url = request.Url,
+            Description = "Request docs text",
+            Headers = request.Headers,
+            BodyType = request.BodyType,
+            Body = request.Body,
+            AllBodyContents = request.AllBodyContents,
+            QueryParams = request.QueryParams,
+            PathParams = request.PathParams,
+            Auth = request.Auth,
+            FormParams = request.FormParams,
+            FileBodyBase64 = request.FileBodyBase64,
+            FileBodyName = request.FileBodyName,
+        };
+        await _sut.SaveRequestAsync(withDescription);
+
+        var savedWithDescription = await File.ReadAllTextAsync(path);
+        Assert.Contains("docs {", savedWithDescription);
+        Assert.Contains("Request docs text", savedWithDescription);
+
+        var withoutDescription = new CollectionRequest
+        {
+            RequestId = withDescription.RequestId,
+            FilePath = withDescription.FilePath,
+            Name = withDescription.Name,
+            Method = withDescription.Method,
+            Url = withDescription.Url,
+            Description = null,
+            Headers = withDescription.Headers,
+            BodyType = withDescription.BodyType,
+            Body = withDescription.Body,
+            AllBodyContents = withDescription.AllBodyContents,
+            QueryParams = withDescription.QueryParams,
+            PathParams = withDescription.PathParams,
+            Auth = withDescription.Auth,
+            FormParams = withDescription.FormParams,
+            FileBodyBase64 = withDescription.FileBodyBase64,
+            FileBodyName = withDescription.FileBodyName,
+        };
+        await _sut.SaveRequestAsync(withoutDescription);
+
+        var savedWithoutDescription = await File.ReadAllTextAsync(path);
+        Assert.DoesNotContain("docs {", savedWithoutDescription);
     }
 
     [Fact]

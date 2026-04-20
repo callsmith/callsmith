@@ -852,6 +852,7 @@ public sealed class BrunoCollectionService : ICollectionService
         var formParams = BuildFormParams(doc, bodyType);
         var authType = MapBrunoAuthType(bruAuthType);
         var auth = BuildAuth(doc, authType, basicPasswordOverride, bearerTokenOverride);
+        var docs = doc.Find("docs")?.RawContent;
 
         // params:path block — load enabled values into PathParams so the UI can edit them.
         var pathParamsBlock = doc.Find("params:path");
@@ -881,6 +882,7 @@ public sealed class BrunoCollectionService : ICollectionService
             Name = name,
             Method = new HttpMethod(httpMethod),
             Url = rawUrl,
+            Description = string.IsNullOrWhiteSpace(docs) ? null : docs,
             Headers = headers,
             PathParams = pathParams,
             QueryParams = queryParams,
@@ -1042,6 +1044,20 @@ public sealed class BrunoCollectionService : ICollectionService
         methodBlock.Items.Add(new BruKv("body", MapCallsmithBodyType(request.BodyType)));
         methodBlock.Items.Add(new BruKv("auth", MapCallsmithAuthType(request.Auth.AuthType)));
         ReplaceVerbBlock(blocks, methodBlock);
+
+        // docs — update in-place or remove when empty
+        if (!string.IsNullOrWhiteSpace(request.Description))
+        {
+            var docsBlock = new BruBlock("docs")
+            {
+                RawContent = request.Description,
+            };
+            SetOrInsertAfter(blocks, "docs", docsBlock, bruMethod);
+        }
+        else
+        {
+            RemoveBlock(blocks, "docs");
+        }
 
         // params:query — update in-place or remove when empty
         if (request.QueryParams.Count > 0)
