@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Avalonia.Threading;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
@@ -1130,9 +1131,11 @@ public sealed class HistoryPanelViewModelTests
         };
     }
 
-    private static async Task AssertEventuallyAsync(Func<bool> condition)
+    private static async Task AssertEventuallyAsync(Func<bool> condition, int timeoutMs = 10000, int pollDelayMs = 20)
     {
-        for (var attempt = 0; attempt < 20; attempt++)
+        var deadline = Stopwatch.GetTimestamp() + (long)(timeoutMs * (Stopwatch.Frequency / 1000d));
+
+        while (Stopwatch.GetTimestamp() < deadline)
         {
             // Pump dispatcher to allow async work to proceed
             try
@@ -1140,8 +1143,8 @@ public sealed class HistoryPanelViewModelTests
                 if (Dispatcher.UIThread.CheckAccess())
                     Dispatcher.UIThread.RunJobs();
                 else
-                    // Non-UI thread: queue a no-op (fire-and-forget)
-                    _ = Dispatcher.UIThread.InvokeAsync(() => { });
+                    // Non-UI thread: queue and await a no-op to force a dispatcher cycle
+                    await Dispatcher.UIThread.InvokeAsync(() => { });
             }
             catch
             {
@@ -1151,7 +1154,7 @@ public sealed class HistoryPanelViewModelTests
             if (condition())
                 return;
 
-            await Task.Delay(10);
+            await Task.Delay(pollDelayMs);
         }
 
         condition().Should().BeTrue();

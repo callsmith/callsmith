@@ -55,7 +55,8 @@ public static class ResponseFormatter
         try
         {
             using var doc = JsonDocument.Parse(json, TrailingCommaDocOptions);
-            return JsonSerializer.Serialize(doc.RootElement, IndentedJsonOptions);
+            return JsonSerializer.Serialize(doc.RootElement, IndentedJsonOptions)
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
         }
         catch (JsonException)
         {

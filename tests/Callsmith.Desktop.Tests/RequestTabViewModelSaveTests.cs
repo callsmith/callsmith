@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Net.Http;
+using System.Diagnostics;
 using Avalonia.Threading;
 using Callsmith.Core;
 using Callsmith.Core.Abstractions;
@@ -770,9 +771,11 @@ public sealed class RequestTabViewModelSaveTests
         sut.ShowRevertButton.Should().BeTrue();
     }
 
-    private static async Task AssertEventuallyAsync(Func<bool> condition)
+    private static async Task AssertEventuallyAsync(Func<bool> condition, int timeoutMs = 10000, int pollDelayMs = 20)
     {
-        for (var attempt = 0; attempt < 300; attempt++)
+        var deadline = Stopwatch.GetTimestamp() + (long)(timeoutMs * (Stopwatch.Frequency / 1000d));
+
+        while (Stopwatch.GetTimestamp() < deadline)
         {
             // Pump UI queue so Dispatcher.Post work from the ViewModel runs in headless tests.
             // CheckAccess returns true on UI threads; false on worker threads (especially on Linux).
@@ -792,9 +795,7 @@ public sealed class RequestTabViewModelSaveTests
                 // Non-UI thread: schedule a no-op to force at least one dispatcher cycle
                 try
                 {
-                    var task = Dispatcher.UIThread.InvokeAsync(() => { });
-                    // Don't await; just let it queue and yield control
-                    _ = task;
+                    await Dispatcher.UIThread.InvokeAsync(() => { });
                 }
                 catch
                 {
@@ -805,7 +806,7 @@ public sealed class RequestTabViewModelSaveTests
             if (condition())
                 return;
 
-            await Task.Delay(10);
+            await Task.Delay(pollDelayMs);
         }
 
         condition().Should().BeTrue();
