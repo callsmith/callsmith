@@ -93,6 +93,159 @@ public sealed class PathTemplateHelperTests
         result.Should().Be("https://api.example.com/jokes/random");
     }
 
+    // ── ExtractPathParamNamesBoth ─────────────────────────────────────────────
+
+    [Fact]
+    public void ExtractPathParamNamesBoth_EmptyInput_ReturnsEmpty()
+    {
+        PathTemplateHelper.ExtractPathParamNamesBoth(string.Empty).Should().BeEmpty();
+        PathTemplateHelper.ExtractPathParamNamesBoth("  ").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ExtractPathParamNamesBoth_PureBraceUrl_FindsBraceParams()
+    {
+        var names = PathTemplateHelper.ExtractPathParamNamesBoth(
+            "https://api.example.com/users/{id}/orders/{orderId}");
+
+        names.Should().ContainInOrder("id", "orderId");
+    }
+
+    [Fact]
+    public void ExtractPathParamNamesBoth_PureColonUrl_FindsColonParams()
+    {
+        var names = PathTemplateHelper.ExtractPathParamNamesBoth(
+            "https://api.example.com/users/:id/orders/:orderId");
+
+        names.Should().ContainInOrder("id", "orderId");
+    }
+
+    [Fact]
+    public void ExtractPathParamNamesBoth_MixedUrl_FindsBothInOrder()
+    {
+        // brace first, then colon
+        var names = PathTemplateHelper.ExtractPathParamNamesBoth(
+            "https://api.example.com/users/{id}/orders/:orderId");
+
+        names.Should().ContainInOrder("id", "orderId");
+    }
+
+    [Fact]
+    public void ExtractPathParamNamesBoth_MixedUrl_ColonFirst_FindsBothInOrder()
+    {
+        // colon first, then brace
+        var names = PathTemplateHelper.ExtractPathParamNamesBoth(
+            "https://api.example.com/users/:id/orders/{orderId}");
+
+        names.Should().ContainInOrder("id", "orderId");
+    }
+
+    [Fact]
+    public void ExtractPathParamNamesBoth_DeduplicatesAcrossSyntaxes()
+    {
+        // same name appears as both forms (unusual but should deduplicate)
+        var names = PathTemplateHelper.ExtractPathParamNamesBoth(
+            "https://api.example.com/{id}/:id");
+
+        names.Should().Equal("id");
+    }
+
+    [Fact]
+    public void ExtractPathParamNamesBoth_DoesNotMatchDoubleBraceEnvTokens()
+    {
+        var names = PathTemplateHelper.ExtractPathParamNamesBoth(
+            "https://api.example.com/{{tenant}}/users/{id}");
+
+        names.Should().Equal("id");
+    }
+
+    [Fact]
+    public void ExtractPathParamNamesBoth_IgnoresQueryAndFragment()
+    {
+        var names = PathTemplateHelper.ExtractPathParamNamesBoth(
+            "https://api.example.com/users/{id}?x=:query#frag/:part");
+
+        names.Should().Equal("id");
+    }
+
+    // ── ApplyPathParams colon / {{token}} parity ─────────────────────────────
+
+    [Fact]
+    public void ApplyPathParams_ColonPlaceholder_WithDynamicTokenValue_PreservesTokenVerbatim()
+    {
+        // Parity with brace behaviour: a value containing {{...}} must not be URL-encoded.
+        var result = PathTemplateHelper.ApplyPathParams(
+            "https://api.example.com/users/:id",
+            new Dictionary<string, string> { ["id"] = "{{userId}}" });
+
+        result.Should().Be("https://api.example.com/users/{{userId}}");
+    }
+
+    [Fact]
+    public void ApplyPathParams_BraceAndColonParityForDynamicTokens()
+    {
+        // Both placeholder forms must produce identical output for a {{token}} value.
+        var values = new Dictionary<string, string> { ["id"] = "{{userId}}" };
+
+        var braceResult = PathTemplateHelper.ApplyPathParams(
+            "https://api.example.com/users/{id}", values);
+
+        var colonResult = PathTemplateHelper.ApplyPathParams(
+            "https://api.example.com/users/:id", values);
+
+        braceResult.Should().Be("https://api.example.com/users/{{userId}}");
+        colonResult.Should().Be(braceResult);
+    }
+
+    // ── RenamePathParam ───────────────────────────────────────────────────────
+
+    [Fact]
+    public void RenamePathParam_BraceForm_RenamesBrace()
+    {
+        var result = PathTemplateHelper.RenamePathParam(
+            "https://api.example.com/users/{id}", "id", "userId");
+
+        result.Should().Be("https://api.example.com/users/{userId}");
+    }
+
+    [Fact]
+    public void RenamePathParam_ColonForm_RenamesColon()
+    {
+        var result = PathTemplateHelper.RenamePathParam(
+            "https://api.example.com/users/:id", "id", "userId");
+
+        result.Should().Be("https://api.example.com/users/:userId");
+    }
+
+    [Fact]
+    public void RenamePathParam_MixedUrl_RenamesBothForms()
+    {
+        // A single param name that appears in brace form in one segment and colon form
+        // in another is unlikely but must be handled consistently.
+        var result = PathTemplateHelper.RenamePathParam(
+            "https://api.example.com/{id}/:id", "id", "userId");
+
+        result.Should().Be("https://api.example.com/{userId}/:userId");
+    }
+
+    [Fact]
+    public void RenamePathParam_PreservesQueryString()
+    {
+        var result = PathTemplateHelper.RenamePathParam(
+            "https://api.example.com/users/{id}?x=1", "id", "userId");
+
+        result.Should().Be("https://api.example.com/users/{userId}?x=1");
+    }
+
+    [Fact]
+    public void RenamePathParam_LeavesOtherParamsUntouched()
+    {
+        var result = PathTemplateHelper.RenamePathParam(
+            "https://api.example.com/users/{id}/orders/:orderId", "id", "userId");
+
+        result.Should().Be("https://api.example.com/users/{userId}/orders/:orderId");
+    }
+
     // ── Colon syntax (Bruno) ─────────────────────────────────────────────────
 
     [Fact]

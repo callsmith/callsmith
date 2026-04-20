@@ -420,4 +420,71 @@ public sealed class RequestTabViewModelPreviewUrlTests
 
         sut.PreviewUrlTooltip.Should().Be("Fully resolved preview URL");
     }
+
+    // ── Colon placeholder parity ──────────────────────────────────────────────
+
+    [Fact]
+    public void PreviewUrl_CallsmithColonParam_WithDynamicVarValue_LeavesPathPlaceholderUnresolved()
+    {
+        // Mirrors PreviewUrl_WithDynamicVarInPathParam_LeavesPathPlaceholderUnresolved but
+        // uses colon syntax. The token must not be URL-encoded in the preview URL.
+        var sut = new RequestTabViewModel(
+            new TransportRegistry(),
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/preview.callsmith",
+            Name = "preview",
+            Method = HttpMethod.Get,
+            Url = "https://example.com/:username",
+            PathParams = new Dictionary<string, string> { ["username"] = "i-am-{{me}}" },
+        });
+
+        sut.SetGlobalEnvironment(new EnvironmentModel
+        {
+            FilePath = "global.env.callsmith",
+            Name = "Global",
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "me",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.ResponseBody,
+                },
+            ],
+            EnvironmentId = Guid.NewGuid(),
+        });
+
+        // The dynamic part must remain readable — not URL-encoded as %7B%7Bme%7D%7D.
+        sut.PreviewUrl.Should().Be("https://example.com/i-am-{{me}}");
+    }
+
+    [Fact]
+    public void PreviewUrl_CallsmithMixedSyntaxUrl_ResolvesAllParams()
+    {
+        var sut = new RequestTabViewModel(
+            new TransportRegistry(),
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/preview.callsmith",
+            Name = "preview",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com/users/{userId}/orders/:orderId",
+            PathParams = new Dictionary<string, string>
+            {
+                ["userId"] = "10",
+                ["orderId"] = "20",
+            },
+        });
+
+        sut.PreviewUrl.Should().Be("https://api.example.com/users/10/orders/20");
+    }
 }
