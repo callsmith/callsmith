@@ -26,8 +26,8 @@ public partial class CollectionsView : UserControl
     {
         InitializeComponent();
         CollectionTree.AddHandler(InputElement.KeyDownEvent, OnTreeKeyDown, RoutingStrategies.Tunnel);
-        CollectionTree.AddHandler(InputElement.TappedEvent, OnTreeTapped, RoutingStrategies.Bubble);
-        CollectionTree.AddHandler(InputElement.DoubleTappedEvent, OnTreeDoubleTapped, RoutingStrategies.Bubble);
+        CollectionTree.AddHandler(InputElement.TappedEvent, OnTreeTapped, RoutingStrategies.Bubble, handledEventsToo: true);
+        CollectionTree.AddHandler(InputElement.DoubleTappedEvent, OnTreeDoubleTapped, RoutingStrategies.Bubble, handledEventsToo: true);
         CollectionTree.AddHandler(InputElement.PointerPressedEvent, OnTreePointerPressed, RoutingStrategies.Tunnel);
 
         // Direct covers events sent to CollectionTree when it holds pointer capture;
@@ -244,7 +244,15 @@ public partial class CollectionsView : UserControl
 
     private void OnTreePointerMoved(object? sender, PointerEventArgs e)
     {
-        if (_draggedNode is null) return;
+        if (_draggedNode is null)
+        {
+            // Guard: if capture is somehow stuck on the tree without an active drag node
+            // (e.g. a spurious PointerCaptureLost raced with an async operation), release
+            // it here so pointer events resume normal routing.
+            if (_isDragging || e.Pointer.Captured == CollectionTree)
+                EndDrag(e.Pointer);
+            return;
+        }
 
         if (!e.GetCurrentPoint(null).Properties.IsLeftButtonPressed)
         {
@@ -553,13 +561,15 @@ public partial class CollectionsView : UserControl
     private void EndDrag(IPointer pointer)
     {
         ClearDropVisuals();
-        if (_draggedNode is null) return;
+        // Always release pointer capture before clearing state; ensures the tree is
+        // never left with stuck capture even when _draggedNode is null (e.g. when a
+        // spurious PointerCaptureLost races with an async drop operation).
+        pointer.Capture(null);
         _draggedNode = null;
         _dropTargetFolder = null;
         _dropInsertIndex = -1;
         _isDragging = false;
         CollectionTree.Cursor = Cursor.Default;
-        pointer.Capture(null);
     }
 
     // -------------------------------------------------------------------------
