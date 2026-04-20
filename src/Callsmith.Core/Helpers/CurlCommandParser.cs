@@ -8,15 +8,9 @@ namespace Callsmith.Core.Helpers;
 /// </summary>
 public static class CurlCommandParser
 {
-    private static readonly HashSet<string> DataFlags =
-    [
-        "-d",
-        "--data",
-        "--data-raw",
-        "--data-binary",
-        "--data-ascii",
-        "--data-urlencode",
-    ];
+    // Recognized value-consuming flags: -X/--request, -H/--header, -d/--data*, -u/--user, --url
+    // Recognized no-value flags:        -I/--head, -G/--get
+    // Unknown flags are skipped along with their values (unless the value looks like a URL).
 
     /// <summary>
     /// Parses a cURL command. Returns <see langword="false"/> for non-cURL text or invalid input.
@@ -27,11 +21,18 @@ public static class CurlCommandParser
         if (string.IsNullOrWhiteSpace(text))
             return false;
 
+        // Fast early-exit before any expensive normalization/tokenization work.
+        // Must start with "curl" (case-insensitive) followed by whitespace or end-of-string.
+        var trimmedSpan = text.AsSpan().TrimStart();
+        if (!trimmedSpan.StartsWith("curl", StringComparison.OrdinalIgnoreCase) ||
+            (trimmedSpan.Length > 4 && !char.IsWhiteSpace(trimmedSpan[4])))
+            return false;
+
         var normalized = NormalizeLineContinuations(text);
         if (!TryTokenize(normalized, out var tokens))
             return false;
 
-        if (tokens.Count == 0 || !string.Equals(tokens[0], "curl", StringComparison.OrdinalIgnoreCase))
+        if (tokens.Count == 0)
             return false;
 
         var method = "GET";
@@ -64,20 +65,21 @@ public static class CurlCommandParser
                 continue;
             }
 
-            if (DataFlags.Contains(token))
-            {
-                if (!TryTakeValue(tokens, ref i, out var value))
-                    return false;
-                formDataParts.Add(value);
-                continue;
-            }
-
             if (string.Equals(token, "-G", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(token, "--get", StringComparison.OrdinalIgnoreCase))
             {
                 dataAsQuery = true;
                 method = "GET";
                 explicitMethod = true;
+                continue;
+            }
+
+            if (token.Equals("-d", StringComparison.OrdinalIgnoreCase) ||
+                token.StartsWith("--data", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryTakeValue(tokens, ref i, out var value))
+                    return false;
+                formDataParts.Add(value);
                 continue;
             }
 
@@ -137,10 +139,26 @@ public static class CurlCommandParser
                 continue;
             }
 
-            if (!token.StartsWith("-", StringComparison.Ordinal) && string.IsNullOrWhiteSpace(url))
+            // Unknown flag: skip it. If the next token does not start with '-' and does not
+            // look like a URL (no '://'), treat it as the flag's value and skip it too.
+            if (token.StartsWith("-", StringComparison.Ordinal))
+            {
+                if (i + 1 < tokens.Count)
+                {
+                    var next = tokens[i + 1];
+                    if (!next.StartsWith("-", StringComparison.Ordinal) &&
+                        !next.Contains("://", StringComparison.Ordinal))
+                    {
+                        i++; // consume the unknown flag's value
+                    }
+                }
+                continue;
+            }
+
+            // Non-flag token: only accept as the URL when it looks like a URL.
+            if (token.Contains("://", StringComparison.Ordinal) && string.IsNullOrWhiteSpace(url))
             {
                 url = token;
-                continue;
             }
         }
 

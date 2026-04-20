@@ -16,6 +16,59 @@ public sealed class CurlCommandParserTests
     }
 
     [Fact]
+    public void TryParse_ReturnsFalse_ForTextStartingWithCurlButNoSpace()
+    {
+        // "curlsmith" starts with "curl" but the 5th character is not whitespace.
+        var ok = CurlCommandParser.TryParse("curlsmith https://api.example.com", out var parsed);
+
+        ok.Should().BeFalse();
+        parsed.Should().BeNull();
+    }
+
+    [Fact]
+    public void TryParse_IgnoresUnknownValueFlagAndItsValue_PicksUpUrl()
+    {
+        // --limit-rate is not a recognized flag; 200K should not be treated as the URL.
+        var command = "curl --limit-rate 200K https://api.example.com/data";
+
+        var ok = CurlCommandParser.TryParse(command, out var parsed);
+
+        ok.Should().BeTrue();
+        parsed.Should().NotBeNull();
+        parsed!.Url.Should().Be("https://api.example.com/data");
+        parsed.Method.Should().Be("GET");
+    }
+
+    [Fact]
+    public void TryParse_IgnoresUnknownValueFlagAndItsValue_WithDownloadFlag()
+    {
+        // -O takes no value in curl, but since it is unknown to us the next token is peeked.
+        // https://... contains "://" so -O is skipped alone, and the URL is still found.
+        var command = "curl --limit-rate 200K -O https://example.com/file.zip";
+
+        var ok = CurlCommandParser.TryParse(command, out var parsed);
+
+        ok.Should().BeTrue();
+        parsed.Should().NotBeNull();
+        parsed!.Url.Should().Be("https://example.com/file.zip");
+    }
+
+    [Fact]
+    public void TryParse_IgnoresUnknownNoValueFlag_Verbose()
+    {
+        // -v is a well-known curl flag that takes no value.
+        var command = "curl -v -X POST https://api.example.com/items -H \"Content-Type: application/json\"";
+
+        var ok = CurlCommandParser.TryParse(command, out var parsed);
+
+        ok.Should().BeTrue();
+        parsed.Should().NotBeNull();
+        parsed!.Method.Should().Be("POST");
+        parsed.Url.Should().Be("https://api.example.com/items");
+        parsed.Headers.Should().ContainSingle(h => h.Key == "Content-Type");
+    }
+
+    [Fact]
     public void TryParse_ParsesBasicCurlRequest()
     {
         var command = """
