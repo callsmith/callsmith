@@ -973,6 +973,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             Headers.LoadFrom(parsed.Headers);
             SelectedBodyType = parsed.BodyType;
             Body = parsed.Body ?? string.Empty;
+            FormatBody(); // prettify body now that SelectedBodyType and Body are both set
             _bodyContents.Clear();
             if (parsed.BodyType is CollectionRequest.BodyTypes.Json
                                 or CollectionRequest.BodyTypes.Text
