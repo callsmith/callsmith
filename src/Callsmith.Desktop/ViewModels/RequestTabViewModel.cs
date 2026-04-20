@@ -182,6 +182,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsInfoModified))]
     private string? _description;
 
+    [ObservableProperty]
+    private bool _isHeadersAndParamsModified;
+
     /// <summary>Segmented field for the bearer token (supports pill rendering of dynamic tokens).</summary>
     public SegmentedValueFieldViewModel AuthTokenField { get; }
 
@@ -678,10 +681,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
     public bool IsAuthBearer => AuthType == AuthConfig.AuthTypes.Bearer;
     public bool IsAuthBasic  => AuthType == AuthConfig.AuthTypes.Basic;
     public bool IsAuthApiKey => AuthType == AuthConfig.AuthTypes.ApiKey;
-    public bool IsHeadersAndParamsModified =>
-        Headers.GetAllKv().Count > 0 ||
-        PathParams.Items.Any(i => !string.IsNullOrWhiteSpace(i.Key)) ||
-        QueryParams.GetAllKv().Count > 0;
     public bool IsBodyModified => SelectedBodyType != CollectionRequest.BodyTypes.None;
     public bool IsAuthModified =>
         AuthType != AuthConfig.AuthTypes.Inherit &&
@@ -845,7 +844,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         Headers.Changed += (_, _) =>
         {
             if (!_loading && !_saving && _sourceRequest is not null) HasUnsavedChanges = true;
-            OnPropertyChanged(nameof(IsHeadersAndParamsModified));
+            RefreshHeadersAndParamsModifiedState();
         };
 
         QueryParams.Changed += (_, _) =>
@@ -853,7 +852,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             if (!_loading && !_saving && _sourceRequest is not null) HasUnsavedChanges = true;
             OnPropertyChanged(nameof(PreviewUrl));
             OnPropertyChanged(nameof(PreviewUrlTooltip));
-            OnPropertyChanged(nameof(IsHeadersAndParamsModified));
+            RefreshHeadersAndParamsModifiedState();
         };
 
         PathParams.Changed += (_, _) =>
@@ -864,13 +863,23 @@ public sealed partial class RequestTabViewModel : ObservableObject
             OnPropertyChanged(nameof(HasUnresolvedPathParams));
             OnPropertyChanged(nameof(PreviewUrlForeground));
             OnPropertyChanged(nameof(PreviewUrlTooltip));
-            OnPropertyChanged(nameof(IsHeadersAndParamsModified));
+            RefreshHeadersAndParamsModifiedState();
         };
 
         FormParams.Changed += (_, _) =>
         {
             if (!_loading && !_saving && _sourceRequest is not null) HasUnsavedChanges = true;
         };
+
+        RefreshHeadersAndParamsModifiedState();
+    }
+
+    private void RefreshHeadersAndParamsModifiedState()
+    {
+        IsHeadersAndParamsModified =
+            Headers.GetAllKv().Count > 0 ||
+            PathParams.Items.Any(i => !string.IsNullOrWhiteSpace(i.Key)) ||
+            QueryParams.GetAllKv().Count > 0;
     }
 
     // -------------------------------------------------------------------------

@@ -18,6 +18,8 @@ public partial class CollectionsView : UserControl
     private Point _dragStartPoint;
     private bool _isDragging;
     private const double DragThreshold = 6.0;
+    private const double FolderDropMiddleBandTopRatio = 0.30;
+    private const double FolderDropMiddleBandBottomRatio = 0.70;
     private int _dropInsertIndex = -1;
 
     public CollectionsView()
@@ -341,8 +343,8 @@ public partial class CollectionsView : UserControl
             // Near the top/bottom edge, show insertion line for reordering between siblings.
             if (targetNode.IsFolder && targetNode.Parent != _draggedNode.Parent)
             {
-                var topEdge = targetTvi.Bounds.Height * 0.30;
-                var bottomEdge = targetTvi.Bounds.Height * 0.70;
+                var topEdge = targetTvi.Bounds.Height * FolderDropMiddleBandTopRatio;
+                var bottomEdge = targetTvi.Bounds.Height * FolderDropMiddleBandBottomRatio;
                 var isMiddleBand = localPos.Y > topEdge && localPos.Y < bottomEdge;
 
                 if (isMiddleBand)
@@ -359,20 +361,14 @@ public partial class CollectionsView : UserControl
 
                 if (targetNode.Parent is not null)
                 {
-                    _dropTargetFolder = targetNode.Parent;
-                    var targetIndexInParent = targetNode.Parent.Children.IndexOf(targetNode);
-                    _dropInsertIndex = above ? targetIndexInParent : targetIndexInParent + 1;
-                    ShowDropIndicator(targetTvi, above);
+                    SetDropInsertionTarget(targetNode.Parent, targetNode, targetTvi, above);
                     return;
                 }
             }
 
             if (!targetNode.IsFolder && targetNode.Parent is not null && targetNode.Parent != _draggedNode.Parent)
             {
-                _dropTargetFolder = targetNode.Parent;
-                var targetIndexInParent = targetNode.Parent.Children.IndexOf(targetNode);
-                _dropInsertIndex = above ? targetIndexInParent : targetIndexInParent + 1;
-                ShowDropIndicator(targetTvi, above);
+                SetDropInsertionTarget(targetNode.Parent, targetNode, targetTvi, above);
                 return;
             }
         }
@@ -506,6 +502,18 @@ public partial class CollectionsView : UserControl
                                             : Avalonia.Layout.VerticalAlignment.Bottom;
         indicator.IsVisible = true;
         _previousDropIndicator = indicator;
+    }
+
+    private void SetDropInsertionTarget(
+        CollectionTreeItemViewModel destinationFolder,
+        CollectionTreeItemViewModel anchorNode,
+        TreeViewItem anchorTreeViewItem,
+        bool above)
+    {
+        _dropTargetFolder = destinationFolder;
+        var targetIndexInParent = destinationFolder.Children.IndexOf(anchorNode);
+        _dropInsertIndex = above ? targetIndexInParent : targetIndexInParent + 1;
+        ShowDropIndicator(anchorTreeViewItem, above);
     }
 
     private bool TryShowBottomDropTarget(Point currentPos)
