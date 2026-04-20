@@ -59,7 +59,7 @@ public sealed class RequestTabViewModelCurlPasteTests
         sut.Headers.GetAllKv().Should().Contain(p => p.Key == "X-New" && p.Value == "yes");
         sut.Headers.GetAllKv().Should().NotContain(p => p.Key == "X-Old");
         sut.SelectedBodyType.Should().Be(CollectionRequest.BodyTypes.Json);
-        sut.Body.Should().Be("""
+        sut.Body.ReplaceLineEndings("\n").Should().Be("""
                              {
                                "name": "alice"
                              }
