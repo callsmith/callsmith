@@ -26,6 +26,9 @@ public partial class CollectionsView : UserControl
     {
         InitializeComponent();
         CollectionTree.AddHandler(InputElement.KeyDownEvent, OnTreeKeyDown, RoutingStrategies.Tunnel);
+        // handledEventsToo: true — Avalonia's TreeView.OnPointerPressed can mark PointerPressed
+        // as Handled during the Bubble phase; without this flag, Tapped/DoubleTapped would
+        // silently be dropped by the time they bubble to CollectionTree.
         CollectionTree.AddHandler(InputElement.TappedEvent, OnTreeTapped, RoutingStrategies.Bubble, handledEventsToo: true);
         CollectionTree.AddHandler(InputElement.DoubleTappedEvent, OnTreeDoubleTapped, RoutingStrategies.Bubble, handledEventsToo: true);
         CollectionTree.AddHandler(InputElement.PointerPressedEvent, OnTreePointerPressed, RoutingStrategies.Tunnel);
@@ -561,9 +564,10 @@ public partial class CollectionsView : UserControl
     private void EndDrag(IPointer pointer)
     {
         ClearDropVisuals();
-        // Always release pointer capture before clearing state; ensures the tree is
-        // never left with stuck capture even when _draggedNode is null (e.g. when a
-        // spurious PointerCaptureLost races with an async drop operation).
+        // Release capture BEFORE clearing _draggedNode so that this is safe to call even
+        // when _draggedNode is already null (e.g. PointerCaptureLost raced with an async
+        // drop and cleared _draggedNode while capture was still technically held).
+        // Unconditional release ensures the tree is never left with stuck pointer capture.
         pointer.Capture(null);
         _draggedNode = null;
         _dropTargetFolder = null;
