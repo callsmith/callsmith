@@ -110,6 +110,68 @@ public sealed class RequestTabViewModelSendTests
     }
 
     [Fact]
+    public async Task Send_CallsmithColonPathParams_AreSubstitutedIntoRequestUrl()
+    {
+        // Callsmith collection (no bruno.json) using colon-syntax path params.
+        var transport = new CapturingTransport();
+        var registry = new TransportRegistry();
+        registry.Register(transport);
+
+        var sut = new RequestTabViewModel(
+            registry,
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/colon.callsmith",
+            Name = "colon",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com/users/:userId",
+            PathParams = new Dictionary<string, string> { ["userId"] = "42" },
+        });
+
+        await sut.SendCommand.ExecuteAsync(null);
+
+        transport.LastRequest.Should().NotBeNull();
+        transport.LastRequest!.Url.Should().Be("https://api.example.com/users/42");
+    }
+
+    [Fact]
+    public async Task Send_CallsmithMixedPathParams_AreSubstitutedIntoRequestUrl()
+    {
+        // Callsmith collection with one brace and one colon param in the same URL.
+        var transport = new CapturingTransport();
+        var registry = new TransportRegistry();
+        registry.Register(transport);
+
+        var sut = new RequestTabViewModel(
+            registry,
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/mixed.callsmith",
+            Name = "mixed",
+            Method = HttpMethod.Get,
+            Url = "https://api.example.com/users/{userId}/orders/:orderId",
+            PathParams = new Dictionary<string, string>
+            {
+                ["userId"] = "10",
+                ["orderId"] = "20",
+            },
+        });
+
+        await sut.SendCommand.ExecuteAsync(null);
+
+        transport.LastRequest.Should().NotBeNull();
+        transport.LastRequest!.Url.Should().Be("https://api.example.com/users/10/orders/20");
+    }
+
+    [Fact]
     public async Task Send_RecordsHistoryWithSelectedEnvironmentIdNameAndColor()
     {
         var transport = new CapturingTransport();

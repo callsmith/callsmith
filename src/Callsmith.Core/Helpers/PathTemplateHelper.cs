@@ -20,6 +20,7 @@ public static partial class PathTemplateHelper
 
     /// <summary>
     /// Extracts distinct placeholder names from the URL path template in first-seen order.
+    /// Only matches brace-style placeholders (<c>{id}</c>).
     /// Query string and fragment are ignored.
     /// </summary>
     public static IReadOnlyList<string> ExtractPathParamNames(string urlTemplate)
@@ -42,9 +43,42 @@ public static partial class PathTemplateHelper
     }
 
     /// <summary>
+    /// Extracts distinct placeholder names from the URL path template recognising both
+    /// brace syntax (<c>{id}</c>) and colon syntax (<c>:id</c>), in URL order.
+    /// Used by Callsmith collections, which support both syntaxes interchangeably.
+    /// Query string and fragment are ignored.
+    /// </summary>
+    public static IReadOnlyList<string> ExtractPathParamNamesBoth(string urlTemplate)
+    {
+        if (string.IsNullOrWhiteSpace(urlTemplate))
+            return [];
+
+        var pathPart = StripQueryAndFragment(urlTemplate);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var names = new List<string>();
+
+        // Merge matches from both patterns and walk them in URL order.
+        var allMatches = PathParamPattern().Matches(pathPart).Cast<Match>()
+            .Concat(ColonPathParamPattern().Matches(pathPart).Cast<Match>())
+            .OrderBy(m => m.Index);
+
+        foreach (var match in allMatches)
+        {
+            var name = match.Groups[1].Value;
+            if (seen.Add(name))
+                names.Add(name);
+        }
+
+        return names;
+    }
+
+    /// <summary>
     /// Replaces placeholders in the URL path using the provided values.
+    /// Recognises both brace syntax (<c>{id}</c>) and colon syntax (<c>:id</c>).
     /// Unknown placeholders are left unchanged.
     /// Query string and fragment are preserved as-is.
+    /// Values that contain <c>{{</c> (unresolved environment tokens) are substituted
+    /// verbatim without URL-encoding so that the tokens remain readable in preview URLs.
     /// </summary>
     public static string ApplyPathParams(
         string urlTemplate,
@@ -76,10 +110,40 @@ public static partial class PathTemplateHelper
             if (!values.TryGetValue(key, out var value))
                 return match.Value;
 
+            // Parity with brace behaviour: leave unresolved {{token}} values un-encoded
+            // so they remain readable in preview URLs.
+            if (value.Contains("{{", StringComparison.Ordinal))
+                return value;
+
             return Uri.EscapeDataString(value);
         });
 
         return replacedPath + suffix;
+    }
+
+    /// <summary>
+    /// Renames a path parameter placeholder in the URL, preserving the syntax form
+    /// (brace <c>{name}</c> or colon <c>:name</c>) in which it appears.
+    /// Works for pure-brace, pure-colon, and mixed URLs.
+    /// Query string and fragment are preserved unchanged.
+    /// </summary>
+    public static string RenamePathParam(string urlTemplate, string oldName, string newName)
+    {
+        if (string.IsNullOrEmpty(urlTemplate) || string.IsNullOrEmpty(oldName))
+            return urlTemplate;
+
+        var pathPart = StripQueryAndFragment(urlTemplate, out var suffix);
+
+        // Replace brace form: {oldName} → {newName}
+        var result = pathPart.Replace($"{{{oldName}}}", $"{{{newName}}}", StringComparison.Ordinal);
+
+        // Replace colon form at path-segment boundaries (same rules as ColonPathParamPattern).
+        result = Regex.Replace(
+            result,
+            $@"(?<=/):{Regex.Escape(oldName)}(?=[/?#]|$)",
+            $":{newName}");
+
+        return result + suffix;
     }
 
     private static string StripQueryAndFragment(string value) =>
