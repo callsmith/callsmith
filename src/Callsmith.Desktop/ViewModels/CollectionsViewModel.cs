@@ -449,6 +449,22 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
         }
     }
 
+    /// <summary>Opens a request node as a permanent (non-transient) tab - used on double-click.</summary>
+    [RelayCommand]
+    public async Task OpenRequestPermanentAsync(CollectionTreeItemViewModel node)
+    {
+        if (node.Request is not CollectionRequest treeRequest) return;
+        try
+        {
+            var request = await _collectionService.LoadRequestAsync(treeRequest.FilePath);
+            Messenger.Send(new RequestSelectedMessage(request, openAsPermanent: true));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load request '{Path}'", treeRequest.FilePath);
+        }
+    }
+
     [RelayCommand]
     public void ViewRequestHistory(CollectionTreeItemViewModel node)
     {

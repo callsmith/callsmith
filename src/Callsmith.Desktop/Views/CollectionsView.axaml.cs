@@ -204,13 +204,17 @@ public partial class CollectionsView : UserControl
 
     private void OnTreeDoubleTapped(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is not CollectionsViewModel vm) return;
-        var tvi = (e.Source as Visual)?.FindAncestorOfType<TreeViewItem>(includeSelf: true);
-        var node = tvi?.DataContext as CollectionTreeItemViewModel;
-        if (node is null || node.IsRoot) return;
+        if ((e.Source as Visual)?.FindAncestorOfType<ToggleButton>(includeSelf: true) is not null) return;
 
-        vm.BeginRenameCommand.Execute(node);
-        e.Handled = true;
+        var tvi = (e.Source as Visual)?.FindAncestorOfType<TreeViewItem>(includeSelf: true);
+        if (tvi?.DataContext is not CollectionTreeItemViewModel node) return;
+
+        if (!node.IsFolder && DataContext is CollectionsViewModel vm)
+        {
+            vm.OpenRequestPermanentCommand.Execute(node);
+            e.Handled = true;
+        }
+        // Folders: let the single-click toggle handler handle expand/collapse naturally.
     }
 
     // -------------------------------------------------------------------------

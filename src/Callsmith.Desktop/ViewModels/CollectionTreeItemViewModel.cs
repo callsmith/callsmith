@@ -68,7 +68,15 @@ public sealed partial class CollectionTreeItemViewModel : ObservableObject
     /// Text shown in the tree tooltip. Returns the description when one is set,
     /// otherwise falls back to the node name so the tooltip is always available.
     /// </summary>
-    public string TooltipText => string.IsNullOrWhiteSpace(Description) ? Name : Description!;
+    private const int TooltipMaxLength = 120;
+    public string TooltipText
+    {
+        get
+        {
+            var text = string.IsNullOrWhiteSpace(Description) ? Name : Description!;
+            return text.Length > TooltipMaxLength ? string.Concat(text.AsSpan(0, TooltipMaxLength), "…") : text;
+        }
+    }
 
     /// <summary>
     /// Abbreviated method label used in the sidebar pill.
