@@ -259,6 +259,22 @@ public sealed class RequestEditorViewModelTransientTabTests
     }
 
     [Fact]
+    public void ReceiveRequestSelected_OpenAsPermanent_ForExistingTransient_PromotesTab()
+    {
+        var sut = BuildSut();
+        var req = MakeRequest(@"/col/a.callsmith", "Alpha");
+
+        sut.Receive(new RequestSelectedMessage(req));
+        sut.Tabs.Should().HaveCount(1);
+        sut.Tabs[0].IsTransient.Should().BeTrue();
+
+        sut.Receive(new RequestSelectedMessage(req, openAsPermanent: true));
+
+        sut.Tabs.Should().HaveCount(1, "opening the same request should focus/promote, not duplicate");
+        sut.Tabs[0].IsTransient.Should().BeFalse("openAsPermanent should promote an existing transient tab");
+    }
+
+    [Fact]
     public void ReceiveRequestSelected_OpenAsPermanent_FocusesExistingTabIfAlreadyOpen()
     {
         var sut = BuildSut();

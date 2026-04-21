@@ -42,5 +42,5 @@ internal sealed class BruBlock
     /// <summary>Returns <c>true</c> for block names whose content is raw text, not key-value lines.</summary>
     internal static bool IsRawBlockName(string name) => name is
         "body:json" or "body:xml" or "body:text" or "body:bytes" or "body:graphql"
-        or "script:pre-request" or "script:post-response" or "tests";
+        or "script:pre-request" or "script:post-response" or "tests" or "docs";
 }

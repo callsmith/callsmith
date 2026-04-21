@@ -65,6 +65,37 @@ public sealed class RequestTabViewModelSaveTests
     }
 
     [Fact]
+    public void ModifiedTabIndicators_DefaultRequestStates_AreFalse()
+    {
+        var sut = BuildSut();
+        sut.LoadRequest(SampleRequest());
+
+        sut.IsHeadersAndParamsModified.Should().BeFalse();
+        sut.IsBodyModified.Should().BeFalse();
+        sut.IsAuthModified.Should().BeFalse();
+        sut.IsInfoModified.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ModifiedTabIndicators_UpdateWhenRequestSectionsChange()
+    {
+        var sut = BuildSut();
+        sut.LoadRequest(SampleRequest());
+
+        sut.Headers.Items.Add(new KeyValueItemViewModel(_ => { }) { Key = "X-Test", Value = "1" });
+        sut.IsHeadersAndParamsModified.Should().BeTrue();
+
+        sut.SelectedBodyType = CollectionRequest.BodyTypes.Json;
+        sut.IsBodyModified.Should().BeTrue();
+
+        sut.AuthType = AuthConfig.AuthTypes.Bearer;
+        sut.IsAuthModified.Should().BeTrue();
+
+        sut.Description = "extra info";
+        sut.IsInfoModified.Should().BeTrue();
+    }
+
+    [Fact]
     public void AfterLoad_WithNonNoneBodyType_HasUnsavedChanges_IsFalse()
     {
         var req = new CollectionRequest

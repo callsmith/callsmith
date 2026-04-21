@@ -291,6 +291,13 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
 
         if (existing is not null)
         {
+            if (message.OpenAsPermanent && existing.IsTransient)
+            {
+                existing.PromoteFromTransient();
+                if (ReferenceEquals(_transientTab, existing))
+                    _transientTab = null;
+            }
+
             ActiveTab = existing;
             return;
         }

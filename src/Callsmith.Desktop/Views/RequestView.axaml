@@ -14,7 +14,7 @@
   <UserControl.Styles>
     <Style Selector="TabControl.request-tabs TabItem">
       <Setter Property="FontSize" Value="14"/>
-      <Setter Property="Padding" Value="13,6"/>
+      <Setter Property="Padding" Value="18,6"/>
       <Setter Property="MinHeight" Value="34"/>
       <Setter Property="Cursor" Value="Hand"/>
     </Style>
@@ -183,7 +183,21 @@
             <!-- Row 0: Params & Headers | Body | Auth -->
             <TabControl Grid.Row="0" Classes="request-tabs" Margin="0" Background="Transparent">
 
-          <TabItem Header="Headers &amp; Params">
+          <TabItem>
+            <TabItem.Header>
+              <!-- Panel measures only the TextBlock, so the active underline spans only
+                   the label. The dot sits in a zero-size Canvas that floats to the right
+                   without affecting the measured (and therefore underlined) width. -->
+              <Panel>
+                <TextBlock Text="Headers &amp; Params"/>
+                <Canvas Width="0" Height="0" HorizontalAlignment="Right" VerticalAlignment="Center">
+                  <Ellipse Canvas.Left="4" Canvas.Top="-3.5"
+                           Width="7" Height="7"
+                           Fill="#4ec9b0"
+                           Opacity="{Binding IsHeadersAndParamsModified, Converter={x:Static conv:BoolToOpacityConverter.Instance}}"/>
+                </Canvas>
+              </Panel>
+            </TabItem.Header>
             <ScrollViewer VerticalScrollBarVisibility="Auto">
               <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*" Margin="0,4">
                 <!-- Headers -->
@@ -221,7 +235,18 @@
             </ScrollViewer>
           </TabItem>
 
-          <TabItem Header="Body">
+          <TabItem>
+            <TabItem.Header>
+              <Panel>
+                <TextBlock Text="Body"/>
+                <Canvas Width="0" Height="0" HorizontalAlignment="Right" VerticalAlignment="Center">
+                  <Ellipse Canvas.Left="4" Canvas.Top="-3.5"
+                           Width="7" Height="7"
+                           Fill="#4ec9b0"
+                           Opacity="{Binding IsBodyModified, Converter={x:Static conv:BoolToOpacityConverter.Instance}}"/>
+                </Canvas>
+              </Panel>
+            </TabItem.Header>
             <Grid RowDefinitions="Auto,*" Margin="0,8">
               <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
                 <ComboBox ItemsSource="{Binding BodyTypes}"
@@ -289,7 +314,18 @@
             </Grid>
           </TabItem>
 
-          <TabItem Header="Auth">
+          <TabItem>
+            <TabItem.Header>
+              <Panel>
+                <TextBlock Text="Auth"/>
+                <Canvas Width="0" Height="0" HorizontalAlignment="Right" VerticalAlignment="Center">
+                  <Ellipse Canvas.Left="4" Canvas.Top="-3.5"
+                           Width="7" Height="7"
+                           Fill="#4ec9b0"
+                           Opacity="{Binding IsAuthModified, Converter={x:Static conv:BoolToOpacityConverter.Instance}}"/>
+                </Canvas>
+              </Panel>
+            </TabItem.Header>
             <ScrollViewer Margin="0,8" VerticalScrollBarVisibility="Auto">
               <StackPanel Spacing="8">
                 <ComboBox ItemsSource="{Binding AuthTypes}" SelectedItem="{Binding AuthType}"
@@ -667,7 +703,18 @@
             </ScrollViewer>
           </TabItem>
 
-          <TabItem Header="Info">
+          <TabItem>
+            <TabItem.Header>
+              <Panel>
+                <TextBlock Text="Info"/>
+                <Canvas Width="0" Height="0" HorizontalAlignment="Right" VerticalAlignment="Center">
+                  <Ellipse Canvas.Left="4" Canvas.Top="-3.5"
+                           Width="7" Height="7"
+                           Fill="#4ec9b0"
+                           Opacity="{Binding IsInfoModified, Converter={x:Static conv:BoolToOpacityConverter.Instance}}"/>
+                </Canvas>
+              </Panel>
+            </TabItem.Header>
             <ScrollViewer Margin="0,8" VerticalScrollBarVisibility="Auto">
               <StackPanel Spacing="6">
                 <TextBlock Text="Description" Foreground="#888" FontSize="11"/>

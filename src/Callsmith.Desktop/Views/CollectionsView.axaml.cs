@@ -18,6 +18,8 @@ public partial class CollectionsView : UserControl
     private Point _dragStartPoint;
     private bool _isDragging;
     private const double DragThreshold = 6.0;
+    private const double FolderDropMiddleBandTopRatio = 0.30;
+    private const double FolderDropMiddleBandBottomRatio = 0.70;
     private int _dropInsertIndex = -1;
 
     public CollectionsView()
@@ -27,13 +29,8 @@ public partial class CollectionsView : UserControl
         CollectionTree.AddHandler(InputElement.TappedEvent, OnTreeTapped, RoutingStrategies.Bubble);
         CollectionTree.AddHandler(InputElement.DoubleTappedEvent, OnTreeDoubleTapped, RoutingStrategies.Bubble);
         CollectionTree.AddHandler(InputElement.PointerPressedEvent, OnTreePointerPressed, RoutingStrategies.Tunnel);
-
-        // Direct covers events sent to CollectionTree when it holds pointer capture;
-        // Bubble covers events that originate from child items during normal movement.
-        // handledEventsToo ensures we receive events even if a child has marked them handled.
-        var moveRelease = RoutingStrategies.Direct | RoutingStrategies.Bubble;
-        CollectionTree.AddHandler(InputElement.PointerMovedEvent, OnTreePointerMoved, moveRelease, handledEventsToo: true);
-        CollectionTree.AddHandler(InputElement.PointerReleasedEvent, OnTreePointerReleased, moveRelease, handledEventsToo: true);
+        CollectionTree.AddHandler(InputElement.PointerMovedEvent, OnTreePointerMoved, RoutingStrategies.Bubble);
+        CollectionTree.AddHandler(InputElement.PointerReleasedEvent, OnTreePointerReleased, RoutingStrategies.Bubble);
         CollectionTree.AddHandler(InputElement.PointerCaptureLostEvent, OnTreePointerCaptureLost, RoutingStrategies.Direct);
     }
 
@@ -207,13 +204,17 @@ public partial class CollectionsView : UserControl
 
     private void OnTreeDoubleTapped(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is not CollectionsViewModel vm) return;
-        var tvi = (e.Source as Visual)?.FindAncestorOfType<TreeViewItem>(includeSelf: true);
-        var node = tvi?.DataContext as CollectionTreeItemViewModel;
-        if (node is null || node.IsRoot) return;
+        if ((e.Source as Visual)?.FindAncestorOfType<ToggleButton>(includeSelf: true) is not null) return;
 
-        vm.BeginRenameCommand.Execute(node);
-        e.Handled = true;
+        var tvi = (e.Source as Visual)?.FindAncestorOfType<TreeViewItem>(includeSelf: true);
+        if (tvi?.DataContext is not CollectionTreeItemViewModel node) return;
+
+        if (!node.IsFolder && DataContext is CollectionsViewModel vm)
+        {
+            vm.OpenRequestPermanentCommand.Execute(node);
+            e.Handled = true;
+        }
+        // Folders: let the single-click toggle handler handle expand/collapse naturally.
     }
 
     // -------------------------------------------------------------------------
@@ -333,30 +334,40 @@ public partial class CollectionsView : UserControl
             // Prevent dropping a folder into one of its own descendants (circular hierarchy).
             if (IsDescendantOf(targetNode, _draggedNode)) return;
 
-            // Allow dropping a folder into a different parent folder.
-            CollectionTreeItemViewModel? destFolder = null;
-            TreeViewItem? destFolderTvi = null;
+            var localPos = e.GetPosition(targetTvi);
+            var midY = targetTvi.Bounds.Height / 2.0;
+            var above = localPos.Y <= midY;
 
-            if ((targetNode.IsFolder || targetNode.IsRoot) && targetNode != _draggedNode.Parent)
+            // When hovering the middle of a folder row, drop into that folder.
+            // Near the top/bottom edge, show insertion line for reordering between siblings.
+            if (targetNode.IsFolder)
             {
-                destFolder = targetNode;
-                destFolderTvi = targetTvi;
-            }
-            else if (!targetNode.IsFolder && targetNode.Parent is not null && targetNode.Parent != _draggedNode.Parent)
-            {
-                destFolder = targetNode.Parent;
-                destFolderTvi = targetTvi.Parent as TreeViewItem;
-            }
+                var topEdge = targetTvi.Bounds.Height * FolderDropMiddleBandTopRatio;
+                var bottomEdge = targetTvi.Bounds.Height * FolderDropMiddleBandBottomRatio;
+                var isMiddleBand = localPos.Y > topEdge && localPos.Y < bottomEdge;
 
-            if (destFolder is not null)
-            {
-                _dropTargetFolder = destFolder;
-                _dropInsertIndex = -1;
-                if (destFolderTvi is not null && FindItemBorder(destFolderTvi) is Border destBorder)
+                if (isMiddleBand)
                 {
-                    destBorder.Classes.Add("drop-target");
-                    _previousDropTargetBorder = destBorder;
+                    _dropTargetFolder = targetNode;
+                    _dropInsertIndex = -1;
+                    if (FindItemBorder(targetTvi) is Border destBorder)
+                    {
+                        destBorder.Classes.Add("drop-target");
+                        _previousDropTargetBorder = destBorder;
+                    }
+                    return;
                 }
+
+                if (targetNode.Parent is not null)
+                {
+                    SetDropInsertionTarget(targetNode.Parent, targetNode, targetTvi, above);
+                    return;
+                }
+            }
+
+            if (!targetNode.IsFolder && targetNode.Parent is not null && targetNode.Parent != _draggedNode.Parent)
+            {
+                SetDropInsertionTarget(targetNode.Parent, targetNode, targetTvi, above);
                 return;
             }
         }
@@ -492,6 +503,18 @@ public partial class CollectionsView : UserControl
         _previousDropIndicator = indicator;
     }
 
+    private void SetDropInsertionTarget(
+        CollectionTreeItemViewModel destinationFolder,
+        CollectionTreeItemViewModel anchorNode,
+        TreeViewItem anchorTreeViewItem,
+        bool above)
+    {
+        _dropTargetFolder = destinationFolder;
+        var targetIndexInParent = destinationFolder.Children.IndexOf(anchorNode);
+        _dropInsertIndex = above ? targetIndexInParent : targetIndexInParent + 1;
+        ShowDropIndicator(anchorTreeViewItem, above);
+    }
+
     private bool TryShowBottomDropTarget(Point currentPos)
     {
         if (_draggedNode is null || _draggedNode.IsFolder) return false;
@@ -529,7 +552,6 @@ public partial class CollectionsView : UserControl
     private void EndDrag(IPointer pointer)
     {
         ClearDropVisuals();
-        if (_draggedNode is null) return;
         _draggedNode = null;
         _dropTargetFolder = null;
         _dropInsertIndex = -1;

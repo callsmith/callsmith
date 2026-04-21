@@ -852,6 +852,7 @@ public sealed class BrunoCollectionService : ICollectionService
         var formParams = BuildFormParams(doc, bodyType);
         var authType = MapBrunoAuthType(bruAuthType);
         var auth = BuildAuth(doc, authType, basicPasswordOverride, bearerTokenOverride);
+        var docs = NormalizeDocsContent(doc.Find("docs")?.RawContent);
 
         // params:path block — load enabled values into PathParams so the UI can edit them.
         var pathParamsBlock = doc.Find("params:path");
@@ -881,6 +882,7 @@ public sealed class BrunoCollectionService : ICollectionService
             Name = name,
             Method = new HttpMethod(httpMethod),
             Url = rawUrl,
+            Description = string.IsNullOrWhiteSpace(docs) ? null : docs,
             Headers = headers,
             PathParams = pathParams,
             QueryParams = queryParams,
@@ -1042,6 +1044,22 @@ public sealed class BrunoCollectionService : ICollectionService
         methodBlock.Items.Add(new BruKv("body", MapCallsmithBodyType(request.BodyType)));
         methodBlock.Items.Add(new BruKv("auth", MapCallsmithAuthType(request.Auth.AuthType)));
         ReplaceVerbBlock(blocks, methodBlock);
+
+        // docs — update in-place or remove when empty
+        if (!string.IsNullOrWhiteSpace(request.Description))
+        {
+            var docsBlock = new BruBlock("docs")
+            {
+                RawContent = HasLeadingWhitespace(request.Description)
+                    ? request.Description
+                    : IndentRawContent(request.Description),
+            };
+            SetOrInsertAfter(blocks, "docs", docsBlock, bruMethod);
+        }
+        else
+        {
+            RemoveBlock(blocks, "docs");
+        }
 
         // params:query — update in-place or remove when empty
         if (request.QueryParams.Count > 0)
@@ -1210,7 +1228,7 @@ public sealed class BrunoCollectionService : ICollectionService
         {
             newBodyBlock = new BruBlock(activeBodyBlockName);
             var raw = request.Body;
-            newBodyBlock.RawContent = raw.StartsWith(' ') || raw.StartsWith('\t')
+            newBodyBlock.RawContent = HasLeadingWhitespace(raw)
                 ? raw
                 : IndentRawContent(raw);
         }
@@ -1234,7 +1252,7 @@ public sealed class BrunoCollectionService : ICollectionService
             if (!request.AllBodyContents.TryGetValue(type, out var inactiveContent)) continue;
 
             var inactiveBlock = new BruBlock(blockName);
-            inactiveBlock.RawContent = inactiveContent.StartsWith(' ') || inactiveContent.StartsWith('\t')
+            inactiveBlock.RawContent = HasLeadingWhitespace(inactiveContent)
                 ? inactiveContent
                 : IndentRawContent(inactiveContent);
             SetOrInsertAfter(blocks, blockName, inactiveBlock, bruMethod);
@@ -1318,6 +1336,37 @@ public sealed class BrunoCollectionService : ICollectionService
     {
         if (string.IsNullOrEmpty(content)) return content;
         return string.Join('\n', content.Split('\n').Select(l => "  " + l.TrimEnd('\r')));
+    }
+
+    private static bool HasLeadingWhitespace(string content) =>
+        content.StartsWith(' ') || content.StartsWith('\t');
+
+    private static string? NormalizeDocsContent(string? content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+            return null;
+
+        var normalized = content
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace("\r", "\n", StringComparison.Ordinal);
+
+        var lines = normalized.Split('\n');
+        var nonEmptyLines = lines
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .ToList();
+
+        if (nonEmptyLines.Count > 0)
+        {
+            var minIndent = nonEmptyLines
+                .Select(line => line.TakeWhile(char.IsWhiteSpace).Count())
+                .Min();
+
+            lines = lines
+                .Select(line => line.Length >= minIndent ? line[minIndent..] : line)
+                .ToArray();
+        }
+
+        return string.Join('\n', lines);
     }
 
     private static string BuildNewRequestContent(string name, int seq)
