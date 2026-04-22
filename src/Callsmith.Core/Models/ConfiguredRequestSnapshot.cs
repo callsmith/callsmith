@@ -62,6 +62,11 @@ public sealed class ConfiguredRequestSnapshot
     public IReadOnlyList<KeyValuePair<string, string>> FormParams { get; init; } = [];
 
     /// <summary>
+    /// File parameters for multipart/form-data bodies.
+    /// </summary>
+    public IReadOnlyList<MultipartFilePart> MultipartFormFiles { get; init; } = [];
+
+    /// <summary>
     /// Binary file body encoded as Base64.
     /// Only populated when <see cref="BodyType"/> is <see cref="CollectionRequest.BodyTypes.File"/>.
     /// </summary>
@@ -106,6 +111,7 @@ public sealed class ConfiguredRequestSnapshot
             BodyType = request.BodyType,
             Body = request.Body,
             FormParams = request.FormParams,
+            MultipartFormFiles = request.MultipartFormFiles,
             FileBodyBase64 = request.FileBodyBase64,
             FileBodyName = request.FileBodyName,
             Auth = request.Auth,

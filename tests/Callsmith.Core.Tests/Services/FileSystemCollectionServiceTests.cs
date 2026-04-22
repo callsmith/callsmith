@@ -1012,6 +1012,43 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
         Convert.FromBase64String(loaded.FileBodyBase64!).Should().Equal(bytes);
     }
 
+    [Fact]
+    public async Task SaveAndLoad_MultipartFileParams_RoundTrip()
+    {
+        var folder = _temp.CreateSubDirectory("col");
+        var filePath = Path.Combine(folder, "multipart-files.callsmith");
+        var original = new CollectionRequest
+        {
+            FilePath = filePath,
+            Name = "multipart-files",
+            Method = HttpMethod.Post,
+            Url = "https://example.com/upload",
+            BodyType = CollectionRequest.BodyTypes.Multipart,
+            FormParams = [new KeyValuePair<string, string>("label", "docs")],
+            MultipartFormFiles =
+            [
+                new MultipartFilePart
+                {
+                    Key = "attachment",
+                    FileName = "a.bin",
+                    FilePath = "/tmp/a.bin",
+                    FileBytes = [0xAB, 0xCD],
+                },
+            ],
+        };
+
+        await _sut.SaveRequestAsync(original);
+        var loaded = await _sut.LoadRequestAsync(filePath);
+
+        loaded.BodyType.Should().Be(CollectionRequest.BodyTypes.Multipart);
+        loaded.FormParams.Should().ContainSingle(p => p.Key == "label" && p.Value == "docs");
+        loaded.MultipartFormFiles.Should().ContainSingle();
+        loaded.MultipartFormFiles[0].Key.Should().Be("attachment");
+        loaded.MultipartFormFiles[0].FileName.Should().Be("a.bin");
+        loaded.MultipartFormFiles[0].FilePath.Should().Be("/tmp/a.bin");
+        loaded.MultipartFormFiles[0].FileBytes.Should().Equal([0xAB, 0xCD]);
+    }
+
     [Theory]
     [InlineData(CollectionRequest.BodyTypes.Yaml, "key: value")]
     [InlineData(CollectionRequest.BodyTypes.Other, "custom payload")]

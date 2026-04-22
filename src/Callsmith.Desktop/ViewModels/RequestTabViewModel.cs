@@ -135,6 +135,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowBodyEditor))]
     [NotifyPropertyChangedFor(nameof(ShowTextBodyEditor))]
     [NotifyPropertyChangedFor(nameof(ShowFormBodyEditor))]
+    [NotifyPropertyChangedFor(nameof(ShowMultipartBodyEditor))]
+    [NotifyPropertyChangedFor(nameof(ShowUrlEncodedFormBodyEditor))]
     [NotifyPropertyChangedFor(nameof(ShowFileBodyEditor))]
     [NotifyPropertyChangedFor(nameof(IsBodyJson))]
     [NotifyPropertyChangedFor(nameof(CanFormatBody))]
@@ -152,7 +154,17 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private string _selectedFilePath = string.Empty;
 
     /// <summary>Callback injected by the view code-behind to open the platform file picker.</summary>
-    public Func<CancellationToken, Task<(byte[] Bytes, string Name, string Path)?>>? OpenFilePickerFunc { get; set; }
+    public Func<CancellationToken, Task<(byte[] Bytes, string Name, string Path)?>>? OpenFilePickerFunc
+    {
+        get => _openFilePickerFunc;
+        set
+        {
+            _openFilePickerFunc = value;
+            MultipartFormParams.OpenFilePickerFunc = value;
+        }
+    }
+
+    private Func<CancellationToken, Task<(byte[] Bytes, string Name, string Path)?>>? _openFilePickerFunc;
 
     /// <summary>Raw bytes of the currently loaded file body. Null when no file has been selected.</summary>
     private byte[]? _fileBodyBytes;
@@ -328,6 +340,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     public KeyValueEditorViewModel QueryParams { get; } = new();
     public KeyValueEditorViewModel PathParams { get; } = new();
     public KeyValueEditorViewModel FormParams { get; } = new();
+    public KeyValueEditorViewModel MultipartFormParams { get; } = new() { ShowValueTypeSelector = true };
 
     // -------------------------------------------------------------------------
     // Segment-editing dialogs (shared by all KV editors and auth fields)
@@ -597,6 +610,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         CollectionRequest.BodyTypes.Other;
     public bool ShowFormBodyEditor => SelectedBodyType is
         CollectionRequest.BodyTypes.Form or CollectionRequest.BodyTypes.Multipart;
+    public bool ShowUrlEncodedFormBodyEditor => SelectedBodyType == CollectionRequest.BodyTypes.Form;
+    public bool ShowMultipartBodyEditor => SelectedBodyType == CollectionRequest.BodyTypes.Multipart;
     public bool ShowFileBodyEditor => SelectedBodyType == CollectionRequest.BodyTypes.File;
     public bool HasFileBodySelected => _fileBodyBytes is not null;
     public bool IsBodyJson => SelectedBodyType == CollectionRequest.BodyTypes.Json;
@@ -801,6 +816,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         PathParams.ShowAddButton = false;
         PathParams.ShowDeleteButton = false;
         PathParams.ShowEnabledToggle = false;
+        MultipartFormParams.OpenFilePickerFunc = OpenFilePickerFunc;
 
         // Note: key-pill editing has been removed from request fields.
         // Headers and query params still support {{var}} references via plain TextBoxes.
@@ -867,6 +883,11 @@ public sealed partial class RequestTabViewModel : ObservableObject
         };
 
         FormParams.Changed += (_, _) =>
+        {
+            if (!_loading && !_saving && _sourceRequest is not null) HasUnsavedChanges = true;
+        };
+
+        MultipartFormParams.Changed += (_, _) =>
         {
             if (!_loading && !_saving && _sourceRequest is not null) HasUnsavedChanges = true;
         };
@@ -966,6 +987,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                              or CollectionRequest.BodyTypes.Other)
                 _bodyContents[req.BodyType] = req.Body ?? string.Empty;
             FormParams.LoadFrom(req.FormParams);
+            MultipartFormParams.LoadMultipartFrom(req.FormParams, req.MultipartFormFiles);
             AuthType = req.Auth.AuthType;
             AuthToken = req.Auth.Token ?? string.Empty;
             AuthTokenField.LoadFromText(AuthToken);
@@ -1028,6 +1050,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             }
 
             FormParams.LoadFrom(parsed.FormParams);
+            MultipartFormParams.LoadMultipartFrom(parsed.FormParams, []);
             _fileBodyBytes = null;
             _fileBodyName = null;
             SelectedFilePath = string.Empty;
@@ -1150,6 +1173,19 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 VariableSubstitutionService.Substitute(p.Value, vars) ?? p.Value))
             .ToList();
 
+        var resolvedMultipartFiles = snapshot.MultipartFormFiles
+            .Where(p => p.IsEnabled)
+            .Where(p => !string.IsNullOrWhiteSpace(p.Key))
+            .Select(p => new MultipartFilePart
+            {
+                Key = VariableSubstitutionService.Substitute(p.Key, vars) ?? p.Key,
+                FileBytes = p.FileBytes,
+                FileName = p.FileName,
+                FilePath = p.FilePath,
+                IsEnabled = true,
+            })
+            .ToList();
+
         // Resolve body.
         var resolvedBody = VariableSubstitutionService.Substitute(snapshot.Body, vars);
 
@@ -1195,6 +1231,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             _fileBodyName = restoredFileName;
             SelectedFilePath = restoredFileName ?? string.Empty;
             FormParams.LoadFrom(resolvedFormParams);
+            MultipartFormParams.LoadMultipartFrom(resolvedFormParams, resolvedMultipartFiles);
             AuthType = AuthConfig.AuthTypes.Inherit;
             AuthToken = string.Empty;
             AuthTokenField.LoadFromText(AuthToken);
@@ -1338,6 +1375,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         QueryParams.SetSuggestions(suggestions);
         PathParams.SetSuggestions(suggestions);
         FormParams.SetSuggestions(suggestions);
+        MultipartFormParams.SetSuggestions(suggestions);
 
         OnPropertyChanged(nameof(PreviewUrl));
         OnPropertyChanged(nameof(PreviewUrlTooltip));
@@ -1435,8 +1473,11 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
         // Body
         string? resolvedBody = null;
+        IReadOnlyList<KeyValuePair<string, string>>? resolvedMultipartParams = null;
+        IReadOnlyList<MultipartFilePart>? resolvedMultipartFiles = null;
         if (SelectedBodyType != CollectionRequest.BodyTypes.None &&
             SelectedBodyType != CollectionRequest.BodyTypes.Form &&
+            SelectedBodyType != CollectionRequest.BodyTypes.Multipart &&
             !string.IsNullOrEmpty(Body))
             resolvedBody = VariableSubstitutionService.Substitute(Body, env) ?? Body;
 
@@ -1452,6 +1493,25 @@ public sealed partial class RequestTabViewModel : ObservableObject
                     formPairs.Select(p =>
                         Uri.EscapeDataString(p.Key) + "=" + Uri.EscapeDataString(p.Value)));
         }
+        else if (SelectedBodyType == CollectionRequest.BodyTypes.Multipart)
+        {
+            resolvedMultipartParams = MultipartFormParams.GetEnabledPairs()
+                .Select(p => new KeyValuePair<string, string>(
+                    VariableSubstitutionService.Substitute(p.Key, env) ?? p.Key,
+                    VariableSubstitutionService.Substitute(p.Value, env) ?? p.Value))
+                .ToList();
+
+            resolvedMultipartFiles = MultipartFormParams.GetEnabledMultipartFileParts()
+                .Select(p => new MultipartFilePart
+                {
+                    Key = VariableSubstitutionService.Substitute(p.Key, env) ?? p.Key,
+                    FileBytes = p.FileBytes,
+                    FileName = p.FileName,
+                    FilePath = p.FilePath,
+                    IsEnabled = true,
+                })
+                .ToList();
+        }
 
         var request = new RequestModel
         {
@@ -1459,6 +1519,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
             Url = requestUrl,
             Headers = headers,
             Body = resolvedBody,
+            MultipartFormParams = resolvedMultipartParams,
+            MultipartFormFiles = resolvedMultipartFiles,
             ContentType = GetContentType(),
         };
 
@@ -1524,7 +1586,12 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 QueryParams = QueryParams.GetEnabledPairs(),
                 BodyType = SelectedBodyType,
                 BodyText = Body,
-                FormParams = FormParams.GetEnabledPairs(),
+                FormParams = SelectedBodyType == CollectionRequest.BodyTypes.Multipart
+                    ? MultipartFormParams.GetEnabledPairs()
+                    : FormParams.GetEnabledPairs(),
+                MultipartFormFiles = SelectedBodyType == CollectionRequest.BodyTypes.Multipart
+                    ? MultipartFormParams.GetEnabledMultipartFileParts()
+                    : [],
                 FileBodyBytes = SelectedBodyType == CollectionRequest.BodyTypes.File ? _fileBodyBytes : null,
                 FileBodyName = SelectedBodyType == CollectionRequest.BodyTypes.File ? _fileBodyName : null,
                 Auth = new AuthConfig
@@ -1817,7 +1884,12 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 : null,
             FileBodyName = SelectedBodyType == CollectionRequest.BodyTypes.File ? _fileBodyName : null,
             AllBodyContents = allBodyContents,
-            FormParams = FormParams.GetEnabledPairs().ToList(),
+            FormParams = SelectedBodyType == CollectionRequest.BodyTypes.Multipart
+                ? MultipartFormParams.GetEnabledPairs().ToList()
+                : FormParams.GetEnabledPairs().ToList(),
+            MultipartFormFiles = SelectedBodyType == CollectionRequest.BodyTypes.Multipart
+                ? MultipartFormParams.GetAllMultipartFileParts()
+                : [],
             Auth = new AuthConfig
             {
                 AuthType = AuthType,
@@ -2208,6 +2280,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
             foreach (var p in Headers.GetAllKv())    { Collect(p.Key); Collect(p.Value); }
             Collect(Body);
             foreach (var p in FormParams.GetAllKv())  { Collect(p.Key); Collect(p.Value); }
+            foreach (var p in MultipartFormParams.GetAllKv()) { Collect(p.Key); Collect(p.Value); }
+            foreach (var p in MultipartFormParams.GetAllMultipartFileParts()) { Collect(p.Key); }
             foreach (var p in PathParams.GetEnabledPairs()) Collect(p.Value);
             CollectAuthFields(new AuthConfig
             {
@@ -2250,9 +2324,14 @@ public sealed partial class RequestTabViewModel : ObservableObject
                     ? Convert.ToBase64String(_fileBodyBytes)
                     : null,
                 FileBodyName = SelectedBodyType == CollectionRequest.BodyTypes.File ? _fileBodyName : null,
-                FormParams = FormParams.GetAllKv()
+                FormParams = (SelectedBodyType == CollectionRequest.BodyTypes.Multipart
+                        ? MultipartFormParams.GetAllKv()
+                        : FormParams.GetAllKv())
                     .Select(kv => new KeyValuePair<string, string>(kv.Key, kv.Value))
                     .ToList(),
+                MultipartFormFiles = SelectedBodyType == CollectionRequest.BodyTypes.Multipart
+                    ? MultipartFormParams.GetAllMultipartFileParts()
+                    : [],
                 Auth = new AuthConfig
                 {
                     AuthType = AuthType,

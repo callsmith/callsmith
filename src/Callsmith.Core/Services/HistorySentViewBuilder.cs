@@ -86,6 +86,7 @@ public static class HistorySentViewBuilder
         string? resolvedBody = null;
         byte[]? resolvedBodyBytes = null;
         IReadOnlyList<KeyValuePair<string, string>>? multipartFormParams = null;
+        IReadOnlyList<MultipartFilePart>? multipartFormFiles = null;
 
         switch (snapshot.BodyType)
         {
@@ -111,6 +112,33 @@ public static class HistorySentViewBuilder
                         Substitute(p.Key, vars) ?? p.Key,
                         Substitute(p.Value, vars) ?? p.Value))
                     .ToList();
+                multipartFormFiles = snapshot.MultipartFormFiles
+                    .Where(f => f.IsEnabled)
+                    .Where(f => !string.IsNullOrWhiteSpace(f.Key))
+                    .Select(f => new MultipartFilePart
+                    {
+                        Key = Substitute(f.Key, vars) ?? f.Key,
+                        FileBytes = f.FileBytes,
+                        FileName = f.FileName,
+                        FilePath = f.FilePath,
+                        IsEnabled = true,
+                    })
+                    .ToList();
+                break;
+
+            case CollectionRequest.BodyTypes.Multipart when snapshot.MultipartFormFiles.Count > 0:
+                multipartFormFiles = snapshot.MultipartFormFiles
+                    .Where(f => f.IsEnabled)
+                    .Where(f => !string.IsNullOrWhiteSpace(f.Key))
+                    .Select(f => new MultipartFilePart
+                    {
+                        Key = Substitute(f.Key, vars) ?? f.Key,
+                        FileBytes = f.FileBytes,
+                        FileName = f.FileName,
+                        FilePath = f.FilePath,
+                        IsEnabled = true,
+                    })
+                    .ToList();
                 break;
 
             case CollectionRequest.BodyTypes.File when snapshot.FileBodyBase64 is not null:
@@ -135,6 +163,7 @@ public static class HistorySentViewBuilder
             Body = resolvedBody,
             BodyBytes = resolvedBodyBytes,
             MultipartFormParams = multipartFormParams,
+            MultipartFormFiles = multipartFormFiles,
             ContentType = contentType,
         };
     }

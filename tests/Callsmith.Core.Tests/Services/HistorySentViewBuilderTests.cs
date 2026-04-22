@@ -137,6 +137,34 @@ public sealed class HistorySentViewBuilderTests
     }
 
     [Fact]
+    public void Build_WithMultipartFiles_ReturnsMultipartFileParts()
+    {
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "POST",
+            Url = "https://example.com",
+            BodyType = CollectionRequest.BodyTypes.Multipart,
+            MultipartFormFiles =
+            [
+                new MultipartFilePart
+                {
+                    Key = "file",
+                    FileBytes = [0x10, 0x20],
+                    FileName = "payload.bin",
+                },
+            ],
+        };
+
+        var model = HistorySentViewBuilder.Build(snapshot, []);
+
+        model.MultipartFormFiles.Should().NotBeNull();
+        model.MultipartFormFiles.Should().ContainSingle();
+        model.MultipartFormFiles![0].Key.Should().Be("file");
+        model.MultipartFormFiles[0].FileName.Should().Be("payload.bin");
+        model.MultipartFormFiles[0].FileBytes.Should().Equal([0x10, 0x20]);
+    }
+
+    [Fact]
     public void Build_WithFileBody_ReturnsBodyBytesAndContentType()
     {
         var bytes = new byte[] { 0x01, 0x02, 0x03 };

@@ -1,4 +1,5 @@
 using Callsmith.Desktop.ViewModels;
+using Callsmith.Core.Models;
 using FluentAssertions;
 
 namespace Callsmith.Desktop.Tests;
@@ -94,5 +95,38 @@ public sealed class KeyValueEditorViewModelTests
         sut.MoveItem(item, 2);
 
         eventFired.Should().BeTrue();
+    }
+
+    [Fact]
+    public void GetEnabledPairs_WhenFileRowsExist_ReturnsOnlyTextRows()
+    {
+        var sut = new KeyValueEditorViewModel { ShowValueTypeSelector = true };
+        var text = new KeyValueItemViewModel(_ => { }) { Key = "name", Value = "alice" };
+        var file = new KeyValueItemViewModel(_ => { }) { Key = "avatar", ValueType = KeyValueItemViewModel.ValueTypes.File };
+        file.LoadFile([0x01], "a.bin", "/tmp/a.bin");
+        sut.Items.Add(text);
+        sut.Items.Add(file);
+
+        var pairs = sut.GetEnabledPairs().ToList();
+
+        pairs.Should().ContainSingle(p => p.Key == "name" && p.Value == "alice");
+    }
+
+    [Fact]
+    public void GetEnabledMultipartFileParts_ReturnsOnlyEnabledFileRows()
+    {
+        var sut = new KeyValueEditorViewModel { ShowValueTypeSelector = true };
+        var file1 = new KeyValueItemViewModel(_ => { }) { Key = "file1", ValueType = KeyValueItemViewModel.ValueTypes.File, IsEnabled = true };
+        file1.LoadFile([0x10], "f1.bin", "/tmp/f1.bin");
+        var file2 = new KeyValueItemViewModel(_ => { }) { Key = "file2", ValueType = KeyValueItemViewModel.ValueTypes.File, IsEnabled = false };
+        file2.LoadFile([0x20], "f2.bin", "/tmp/f2.bin");
+        sut.Items.Add(file1);
+        sut.Items.Add(file2);
+
+        var files = sut.GetEnabledMultipartFileParts();
+
+        files.Should().ContainSingle();
+        files[0].Key.Should().Be("file1");
+        files[0].FileName.Should().Be("f1.bin");
     }
 }

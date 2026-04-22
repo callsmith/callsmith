@@ -261,6 +261,45 @@ public sealed class RequestTabViewModelSaveTests
     }
 
     [Fact]
+    public async Task Save_MultipartBody_PersistsMultipartFileParams()
+    {
+        CollectionRequest? saved = null;
+        var collectionService = Substitute.For<ICollectionService>();
+        collectionService
+            .SaveRequestAsync(Arg.Do<CollectionRequest>(r => saved = r), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        var sut = BuildSut(collectionService);
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = @"c:\tmp\multipart.callsmith",
+            Name = "multipart",
+            Method = HttpMethod.Post,
+            Url = "https://api.example.com/upload",
+            BodyType = CollectionRequest.BodyTypes.Multipart,
+            FormParams = [new KeyValuePair<string, string>("label", "docs")],
+            MultipartFormFiles =
+            [
+                new MultipartFilePart
+                {
+                    Key = "attachment",
+                    FileName = "doc.bin",
+                    FilePath = "/tmp/doc.bin",
+                    FileBytes = [0xAA, 0xBB],
+                },
+            ],
+        });
+
+        await sut.PerformSaveAsync();
+
+        saved.Should().NotBeNull();
+        saved!.FormParams.Should().ContainSingle(p => p.Key == "label" && p.Value == "docs");
+        saved.MultipartFormFiles.Should().ContainSingle();
+        saved.MultipartFormFiles[0].Key.Should().Be("attachment");
+        saved.MultipartFormFiles[0].FileName.Should().Be("doc.bin");
+    }
+
+    [Fact]
     public async Task Save_AfterQueryParamRemoval_ClearsDirtyState()
     {
         var sut = BuildSut();

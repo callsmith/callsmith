@@ -81,6 +81,11 @@ public sealed class CollectionRequest
     public IReadOnlyList<KeyValuePair<string, string>> FormParams { get; init; } = [];
 
     /// <summary>
+    /// File parameters for <c>multipart/form-data</c> bodies.
+    /// </summary>
+    public IReadOnlyList<MultipartFilePart> MultipartFormFiles { get; init; } = [];
+
+    /// <summary>
     /// Binary file body encoded as a Base64 string.
     /// Only populated when <see cref="BodyType"/> is <c>"file"</c>.
     /// </summary>

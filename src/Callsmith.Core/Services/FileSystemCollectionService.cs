@@ -269,6 +269,7 @@ public sealed class FileSystemCollectionService : ICollectionService
             BodyType = existing.BodyType,
             Body = existing.Body,
             FormParams = existing.FormParams,
+            MultipartFormFiles = existing.MultipartFormFiles,
             Auth = existing.Auth,
         };
 
@@ -317,6 +318,7 @@ public sealed class FileSystemCollectionService : ICollectionService
             BodyType = request.BodyType,
             Body = request.Body,
             FormParams = request.FormParams,
+            MultipartFormFiles = request.MultipartFormFiles,
             Auth = request.Auth,
         };
 
@@ -840,6 +842,20 @@ public sealed class FileSystemCollectionService : ICollectionService
                 .ToList()
             : (IReadOnlyList<KeyValuePair<string, string>>)[];
 
+        var multipartFiles = dto.MultipartFileEntries is not null
+            ? dto.MultipartFileEntries
+                .Where(e => e.FileBytes is not null)
+                .Select(e => new MultipartFilePart
+                {
+                    Key = e.Name,
+                    FileBytes = e.FileBytes!,
+                    FileName = e.FileName,
+                    FilePath = e.FilePath,
+                    IsEnabled = e.Enabled,
+                })
+                .ToList()
+            : (IReadOnlyList<MultipartFilePart>)[];
+
         return new CollectionRequest
         {
             RequestId = dto.RequestId,
@@ -856,6 +872,7 @@ public sealed class FileSystemCollectionService : ICollectionService
             FileBodyBase64 = dto.FileBodyBase64,
             FileBodyName = dto.FileBodyName,
             FormParams = formParams,
+            MultipartFormFiles = multipartFiles,
             Auth = new AuthConfig
             {
                 AuthType = dto.AuthType ?? AuthConfig.AuthTypes.Inherit,
@@ -892,6 +909,18 @@ public sealed class FileSystemCollectionService : ICollectionService
             FormParamEntries = request.FormParams.Count > 0
                 ? request.FormParams
                     .Select(kvp => new QueryParamEntryDto { Name = kvp.Key, Value = kvp.Value })
+                    .ToList()
+                : null,
+            MultipartFileEntries = request.MultipartFormFiles.Count > 0
+                ? request.MultipartFormFiles
+                    .Select(p => new MultipartFileEntryDto
+                    {
+                        Name = p.Key,
+                        FileName = p.FileName,
+                        FilePath = p.FilePath,
+                        FileBytes = p.FileBytes,
+                        Enabled = p.IsEnabled,
+                    })
                     .ToList()
                 : null,
             BodyType = request.BodyType == CollectionRequest.BodyTypes.None
@@ -946,6 +975,7 @@ public sealed class FileSystemCollectionService : ICollectionService
         /// <summary>Legacy format (v2): read-only for backwards compatibility.</summary>
         public Dictionary<string, string>? QueryParams { get; set; }
         public List<QueryParamEntryDto>? FormParamEntries { get; set; }
+        public List<MultipartFileEntryDto>? MultipartFileEntries { get; set; }
         public string? BodyType { get; set; }
         public string? Body { get; set; }
         public string? FileBodyBase64 { get; set; }
@@ -971,6 +1001,15 @@ public sealed class FileSystemCollectionService : ICollectionService
         public string Name { get; set; } = string.Empty;
         public string Value { get; set; } = string.Empty;
         /// <summary>Defaults to true for backwards compatibility with files that lack this field.</summary>
+        public bool Enabled { get; set; } = true;
+    }
+
+    private sealed class MultipartFileEntryDto
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? FileName { get; set; }
+        public string? FilePath { get; set; }
+        public byte[]? FileBytes { get; set; }
         public bool Enabled { get; set; } = true;
     }
 

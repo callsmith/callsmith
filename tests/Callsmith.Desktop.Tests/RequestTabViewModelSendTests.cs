@@ -71,6 +71,49 @@ public sealed class RequestTabViewModelSendTests
     }
 
     [Fact]
+    public async Task Send_MultipartBody_IncludesTextAndFileParts()
+    {
+        var transport = new CapturingTransport();
+        var registry = new TransportRegistry();
+        registry.Register(transport);
+
+        var sut = new RequestTabViewModel(
+            registry,
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { });
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/send-multipart.callsmith",
+            Name = "send-multipart",
+            Method = HttpMethod.Post,
+            Url = "https://api.example.com/upload",
+            BodyType = CollectionRequest.BodyTypes.Multipart,
+            FormParams = [new KeyValuePair<string, string>("label", "docs")],
+            MultipartFormFiles =
+            [
+                new MultipartFilePart
+                {
+                    Key = "attachment",
+                    FileName = "doc.bin",
+                    FilePath = "/tmp/doc.bin",
+                    FileBytes = [0xCA, 0xFE],
+                },
+            ],
+            Auth = new AuthConfig { AuthType = AuthConfig.AuthTypes.None },
+        });
+
+        await sut.SendCommand.ExecuteAsync(null);
+
+        transport.LastRequest.Should().NotBeNull();
+        transport.LastRequest!.MultipartFormParams.Should().ContainSingle(p => p.Key == "label" && p.Value == "docs");
+        transport.LastRequest.MultipartFormFiles.Should().ContainSingle();
+        transport.LastRequest.MultipartFormFiles![0].Key.Should().Be("attachment");
+        transport.LastRequest.MultipartFormFiles[0].FileName.Should().Be("doc.bin");
+    }
+
+    [Fact]
     public async Task Send_BrunoColonPathParams_AreSubstitutedIntoRequestUrl()
     {
         var brunoRoot = Path.Combine(Path.GetTempPath(), "BrunoSendPathParam_" + Guid.NewGuid().ToString("N"));

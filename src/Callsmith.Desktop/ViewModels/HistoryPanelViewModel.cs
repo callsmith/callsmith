@@ -1187,6 +1187,19 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                     sb.Append($"{p.Key}={p.Value}");
             }
         }
+        if (cfg.BodyType == CollectionRequest.BodyTypes.Multipart && cfg.MultipartFormFiles.Count > 0)
+        {
+            sb.AppendLine();
+            if (cfg.FormParams.Count == 0)
+                sb.AppendLine("Body:");
+            foreach (var file in cfg.MultipartFormFiles)
+            {
+                var fileLabel = !string.IsNullOrWhiteSpace(file.FileName)
+                    ? file.FileName
+                    : "(binary data)";
+                sb.AppendLine($"{file.Key}=<file:{fileLabel}>");
+            }
+        }
         if (cfg.BodyType == CollectionRequest.BodyTypes.File)
         {
             sb.AppendLine();
@@ -1207,6 +1220,13 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                 : entry.VariableBindings.Where(b => !b.IsSecret).ToList();
             var resolvedRequest = HistorySentViewBuilder.Build(cfg, bindings);
             var rb = new StringBuilder();
+            var vars = HistorySentViewBuilder.BuildVariableMap(bindings);
+            // Re-use BuildVariableMap on the secret-only subset so token normalisation
+            // is consistent with the rest of the code and not duplicated here.
+            var secretTokenNames = HistorySentViewBuilder
+                .BuildVariableMap(entry.VariableBindings.Where(b => b.IsSecret).ToList())
+                .Keys
+                .ToHashSet(StringComparer.Ordinal);
             var displayUrl = resolved 
                 ? resolvedRequest.Url 
                 : MaskAuthInUrl(resolvedRequest.Url, cfg.EffectiveAuth ?? cfg.Auth);
@@ -1224,13 +1244,6 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             if ((cfg.BodyType == CollectionRequest.BodyTypes.Form ||
                  cfg.BodyType == CollectionRequest.BodyTypes.Multipart) && cfg.FormParams.Count > 0)
             {
-                var vars = HistorySentViewBuilder.BuildVariableMap(bindings);
-                // Re-use BuildVariableMap on the secret-only subset so token normalisation
-                // is consistent with the rest of the code and not duplicated here.
-                var secretTokenNames = HistorySentViewBuilder
-                    .BuildVariableMap(entry.VariableBindings.Where(b => b.IsSecret).ToList())
-                    .Keys
-                    .ToHashSet(StringComparer.Ordinal);
                 rb.AppendLine();
                 rb.AppendLine("Body:");
                 var formParams = cfg.FormParams;
@@ -1243,6 +1256,20 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                         rb.AppendLine($"{displayKey}={displayValue}&");
                     else
                         rb.Append($"{displayKey}={displayValue}");
+                }
+            }
+            if (cfg.BodyType == CollectionRequest.BodyTypes.Multipart && cfg.MultipartFormFiles.Count > 0)
+            {
+                rb.AppendLine();
+                if (cfg.FormParams.Count == 0)
+                    rb.AppendLine("Body:");
+                foreach (var file in cfg.MultipartFormFiles)
+                {
+                    var displayKey = FormatFormParamPart(file.Key, vars, secretTokenNames);
+                    var fileLabel = !string.IsNullOrWhiteSpace(file.FileName)
+                        ? file.FileName
+                        : "(binary data)";
+                    rb.AppendLine($"{displayKey}=<file:{fileLabel}>");
                 }
             }
             else if (cfg.BodyType == CollectionRequest.BodyTypes.File)
@@ -1417,4 +1444,3 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         });
     }
 }
-

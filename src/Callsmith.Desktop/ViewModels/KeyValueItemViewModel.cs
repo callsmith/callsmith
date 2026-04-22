@@ -13,6 +13,9 @@ namespace Callsmith.Desktop.ViewModels;
 public sealed partial class KeyValueItemViewModel : ObservableObject
 {
     private readonly Action<KeyValueItemViewModel> _onDelete;
+    private Func<CancellationToken, Task<(byte[] Bytes, string Name, string Path)?>>? _openFilePickerFunc;
+    private byte[]? _selectedFileBytes;
+    private string? _selectedFileName;
 
     [ObservableProperty]
     private string _key = string.Empty;
@@ -32,6 +35,24 @@ public sealed partial class KeyValueItemViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _showEnabledToggle = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsTextValue))]
+    [NotifyPropertyChangedFor(nameof(IsFileValue))]
+    [NotifyPropertyChangedFor(nameof(ShowTextValuePlainInput))]
+    [NotifyPropertyChangedFor(nameof(ShowTextValuePillView))]
+    private string _valueType = ValueTypes.Text;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsTextValue))]
+    [NotifyPropertyChangedFor(nameof(IsFileValue))]
+    [NotifyPropertyChangedFor(nameof(ShowTextValuePlainInput))]
+    [NotifyPropertyChangedFor(nameof(ShowTextValuePillView))]
+    private bool _showValueTypeSelector;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSelectedFile))]
+    private string _selectedFilePath = string.Empty;
 
     /// <summary>
     /// When true, the key column renders as a pill-aware field (used for headers and query params).
@@ -73,6 +94,31 @@ public sealed partial class KeyValueItemViewModel : ObservableObject
     /// <summary>Removes this row from its parent editor when executed.</summary>
     public IRelayCommand DeleteCommand { get; }
 
+    /// <summary>Opens the file picker and assigns a file to this row.</summary>
+    public IAsyncRelayCommand SelectFileCommand { get; }
+
+    public static class ValueTypes
+    {
+        public const string Text = "Text";
+        public const string File = "File";
+    }
+
+    public IReadOnlyList<string> AvailableValueTypes { get; } = [ValueTypes.Text, ValueTypes.File];
+
+    public bool IsTextValue => !ShowValueTypeSelector || ValueType == ValueTypes.Text;
+
+    public bool IsFileValue => ShowValueTypeSelector && ValueType == ValueTypes.File;
+
+    public bool ShowTextValuePlainInput => IsTextValue && ValueField.ShowPlainInput;
+
+    public bool ShowTextValuePillView => IsTextValue && ValueField.HasSegments;
+
+    public bool HasSelectedFile => _selectedFileBytes is not null;
+
+    public byte[]? SelectedFileBytes => _selectedFileBytes;
+
+    public string? SelectedFileName => _selectedFileName;
+
     public KeyValueItemViewModel(
         Action<KeyValueItemViewModel> onDelete,
         Func<DynamicValueSegment?, Task<DynamicValueSegment?>>? editDynamicSegment = null,
@@ -81,6 +127,7 @@ public sealed partial class KeyValueItemViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(onDelete);
         _onDelete = onDelete;
         DeleteCommand = new RelayCommand(() => _onDelete(this));
+        SelectFileCommand = new AsyncRelayCommand(SelectFileAsync);
 
         SegmentedValueFieldViewModel? field = null;
         field = new SegmentedValueFieldViewModel(
@@ -88,6 +135,8 @@ public sealed partial class KeyValueItemViewModel : ObservableObject
             {
                 // Keep the plain Value property in sync with segment content
                 Value = field!.GetInlineText();
+                OnPropertyChanged(nameof(ShowTextValuePlainInput));
+                OnPropertyChanged(nameof(ShowTextValuePillView));
             },
             editDynamicSegment: editDynamicSegment,
             editMockData: editMockData);
@@ -137,5 +186,38 @@ public sealed partial class KeyValueItemViewModel : ObservableObject
     {
         ValueField.SetCallbacks(editDynamicSegment, editMockData);
         KeyField.SetCallbacks(editDynamicSegment, editMockData);
+    }
+
+    public void SetFilePickerCallback(Func<CancellationToken, Task<(byte[] Bytes, string Name, string Path)?>>? callback)
+    {
+        _openFilePickerFunc = callback;
+    }
+
+    public void LoadFile(byte[] bytes, string? fileName, string? filePath)
+    {
+        _selectedFileBytes = bytes;
+        _selectedFileName = fileName;
+        SelectedFilePath = filePath ?? string.Empty;
+    }
+
+    private async Task SelectFileAsync(CancellationToken ct)
+    {
+        if (_openFilePickerFunc is null) return;
+        var result = await _openFilePickerFunc(ct);
+        if (result is null) return;
+        _selectedFileBytes = result.Value.Bytes;
+        _selectedFileName = result.Value.Name;
+        SelectedFilePath = result.Value.Path;
+        OnPropertyChanged(nameof(HasSelectedFile));
+    }
+
+    partial void OnValueTypeChanged(string value)
+    {
+        if (value == ValueTypes.File) return;
+
+        _selectedFileBytes = null;
+        _selectedFileName = null;
+        SelectedFilePath = string.Empty;
+        OnPropertyChanged(nameof(HasSelectedFile));
     }
 }

@@ -102,7 +102,7 @@ public class RequestAssemblyService : IRequestAssemblyService
             env.MockGenerators) ?? requestUrl;
 
         // Resolve body based on body type.
-        var (resolvedBody, multipartFormParams, fileBodyBytes) = Resolvebody(
+        var (resolvedBody, multipartFormParams, multipartFormFiles, fileBodyBytes) = Resolvebody(
             request,
             env.Variables,
             secretNames,
@@ -110,7 +110,7 @@ public class RequestAssemblyService : IRequestAssemblyService
             env.MockGenerators);
 
         // Determine auto-applied headers (e.g., Content-Type for forms).
-        var contentType = DetermineContentType(request.BodyType, resolvedBody, fileBodyBytes, multipartFormParams);
+        var contentType = DetermineContentType(request.BodyType);
         var autoAppliedHeaders = contentType is not null
             ? (IReadOnlyList<RequestKv>)[new RequestKv(WellKnownHeaders.ContentType, contentType)]
             : (IReadOnlyList<RequestKv>)[..Array.Empty<RequestKv>()];
@@ -124,6 +124,7 @@ public class RequestAssemblyService : IRequestAssemblyService
             Body = resolvedBody,
             BodyBytes = fileBodyBytes,
             MultipartFormParams = multipartFormParams,
+            MultipartFormFiles = multipartFormFiles,
             ContentType = contentType,
         };
 
@@ -208,7 +209,11 @@ public class RequestAssemblyService : IRequestAssemblyService
             ?? new AuthConfig { AuthType = AuthConfig.AuthTypes.None };
     }
 
-    private static (string? ResolvedBody, IReadOnlyList<KeyValuePair<string, string>>? MultipartFormParams, byte[]? FileBodyBytes)
+    private static (
+        string? ResolvedBody,
+        IReadOnlyList<KeyValuePair<string, string>>? MultipartFormParams,
+        IReadOnlyList<MultipartFilePart>? MultipartFormFiles,
+        byte[]? FileBodyBytes)
         Resolvebody(
             RequestAssemblyInput request,
             IReadOnlyDictionary<string, string> vars,
@@ -230,7 +235,7 @@ public class RequestAssemblyService : IRequestAssemblyService
                     bindings,
                     mockGenerators) ?? request.BodyText
                 : null;
-            return (resolved, null, null);
+            return (resolved, null, null, null);
         }
 
         // For form bodies, URL-encode the form parameters.
@@ -247,7 +252,7 @@ public class RequestAssemblyService : IRequestAssemblyService
                     formPairs.Select(p =>
                         Uri.EscapeDataString(p.Key) + "=" + Uri.EscapeDataString(p.Value)))
                 : null;
-            return (formBody, null, null);
+            return (formBody, null, null, null);
         }
 
         // For multipart bodies, collect form parameters.
@@ -258,24 +263,32 @@ public class RequestAssemblyService : IRequestAssemblyService
                     VariableSubstitutionService.SubstituteCollecting(p.Key, vars, secretNames, bindings, mockGenerators) ?? p.Key,
                     VariableSubstitutionService.SubstituteCollecting(p.Value, vars, secretNames, bindings, mockGenerators) ?? p.Value))
                 .ToList();
-            return (null, multipartParams, null);
+            var multipartFiles = request.MultipartFormFiles
+                .Where(p => p.IsEnabled)
+                .Where(p => !string.IsNullOrWhiteSpace(p.Key))
+                .Select(p => new MultipartFilePart
+                {
+                    Key = VariableSubstitutionService.SubstituteCollecting(p.Key, vars, secretNames, bindings, mockGenerators) ?? p.Key,
+                    FileBytes = p.FileBytes,
+                    FileName = p.FileName,
+                    FilePath = p.FilePath,
+                    IsEnabled = true,
+                })
+                .ToList();
+            return (null, multipartParams, multipartFiles, null);
         }
 
         // For file bodies, pass bytes directly.
         if (request.BodyType == CollectionRequest.BodyTypes.File)
         {
-            return (null, null, request.FileBodyBytes);
+            return (null, null, null, request.FileBodyBytes);
         }
 
         // No body.
-        return (null, null, null);
+        return (null, null, null, null);
     }
 
-    private static string? DetermineContentType(
-        string bodyType,
-        string? bodyText,
-        byte[]? fileBodyBytes,
-        IReadOnlyList<KeyValuePair<string, string>>? multipartFormParams)
+    private static string? DetermineContentType(string bodyType)
     {
         // Aligns with CollectionRequest.BodyTypes.ToContentType. We intentionally do not
         // force multipart/form-data so MultipartFormDataContent can provide the boundary.
