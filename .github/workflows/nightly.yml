@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   actions: write
 
 concurrency:
@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NIGHTLY_RUN_RETENTION_DAYS: '14'
+  NIGHTLY_RUN_RETENTION_DAYS: '7'
 
 jobs:
   check-branch-activity:
@@ -23,6 +23,7 @@ jobs:
     outputs:
       run_nightly: ${{ steps.check.outputs.run_nightly }}
       branch_name: ${{ steps.check.outputs.branch_name }}
+      nightly_tag: ${{ steps.check.outputs.nightly_tag }}
     steps:
       - name: Check for changes in the last 24 hours
         id: check
@@ -43,6 +44,7 @@ jobs:
               core.info(`No commits found on '${branchName}'. Skipping nightly build.`);
               core.setOutput('run_nightly', 'false');
               core.setOutput('branch_name', branchName);
+              core.setOutput('nightly_tag', '');
               return;
             }
 
@@ -51,12 +53,19 @@ jobs:
             const cutoffTime = Date.now() - (24 * 60 * 60 * 1000);
             const shouldRun = commitDate !== null && Number.isFinite(commitDate.getTime()) && commitDate.getTime() >= cutoffTime;
 
+            const today = new Date().toISOString().slice(0, 10);
+            const nightlyTag = `nightly-${today}`;
+
             core.info(`Default branch: ${branchName}`);
             core.info(`Latest commit: ${commitDateRaw ?? 'unknown'}`);
             core.info(`Nightly build will run: ${shouldRun}`);
+            if (shouldRun) {
+              core.info(`Nightly tag: ${nightlyTag}`);
+            }
 
             core.setOutput('run_nightly', shouldRun ? 'true' : 'false');
             core.setOutput('branch_name', branchName);
+            core.setOutput('nightly_tag', shouldRun ? nightlyTag : '');
 
   build-and-test:
     name: Build & Test (${{ matrix.os }})
@@ -90,31 +99,146 @@ jobs:
       - name: Test
         run: dotnet test --no-build --configuration Release --verbosity normal
 
-  cleanup-old-nightly-runs:
-    name: Cleanup old nightly runs
-    needs: check-branch-activity
-    if: always() && !cancelled()
+  publish:
+    name: Publish ${{ matrix.rid }}
+    needs: [check-branch-activity, build-and-test]
+    if: needs.check-branch-activity.outputs.run_nightly == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - rid: win-x64
+            archive: zip
+          - rid: linux-x64
+            archive: tar.gz
+          - rid: osx-x64
+            archive: tar.gz
+          - rid: osx-arm64
+            archive: tar.gz
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-branch-activity.outputs.branch_name }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish
+        run: |
+          NIGHTLY_TAG="${{ needs.check-branch-activity.outputs.nightly_tag }}"
+          DATE_COMPACT="${NIGHTLY_TAG#nightly-}"
+          DATE_COMPACT="${DATE_COMPACT//-/}"
+          dotnet publish src/Callsmith.Desktop/Callsmith.Desktop.csproj \
+            --configuration Release \
+            --runtime ${{ matrix.rid }} \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:Version="0.0.0-nightly.${DATE_COMPACT}" \
+            -p:InformationalVersion="${NIGHTLY_TAG}" \
+            --output publish/${{ matrix.rid }}
+
+      - name: Archive (zip)
+        if: matrix.archive == 'zip'
+        run: |
+          cd publish/${{ matrix.rid }}
+          zip -r ../../callsmith-${{ needs.check-branch-activity.outputs.nightly_tag }}-${{ matrix.rid }}.zip .
+
+      - name: Archive (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        run: |
+          tar -czf callsmith-${{ needs.check-branch-activity.outputs.nightly_tag }}-${{ matrix.rid }}.tar.gz \
+            -C publish/${{ matrix.rid }} .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: callsmith-${{ matrix.rid }}
+          path: callsmith-${{ needs.check-branch-activity.outputs.nightly_tag }}-${{ matrix.rid }}.*
+
+  release:
+    name: Create nightly prerelease
+    needs: [check-branch-activity, publish]
+    if: needs.check-branch-activity.outputs.run_nightly == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Delete old nightly workflow runs
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create nightly prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.check-branch-activity.outputs.nightly_tag }}
+          name: Nightly ${{ needs.check-branch-activity.outputs.nightly_tag }}
+          prerelease: true
+          files: artifacts/*
+          generate_release_notes: false
+          body: |
+            Automated nightly build from the default branch.
+
+  cleanup-old-nightly:
+    name: Cleanup old nightly releases and runs
+    needs: [check-branch-activity, release]
+    if: always() && needs.check-branch-activity.outputs.run_nightly == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old nightly releases and workflow runs
         uses: actions/github-script@v7
         with:
           script: |
-            const parsedRetentionDays = Number.parseInt(process.env.NIGHTLY_RUN_RETENTION_DAYS ?? '14', 10);
-            const retentionDays = Number.isFinite(parsedRetentionDays) && parsedRetentionDays > 0 ? parsedRetentionDays : 14;
+            const parsedRetentionDays = Number.parseInt(process.env.NIGHTLY_RUN_RETENTION_DAYS ?? '7', 10);
+            const retentionDays = Number.isFinite(parsedRetentionDays) && parsedRetentionDays > 0 ? parsedRetentionDays : 7;
             const cutoffTime = Date.now() - (retentionDays * 24 * 60 * 60 * 1000);
             const { owner, repo } = context.repo;
             const currentRunId = context.runId;
 
-            const currentRun = await github.rest.actions.getWorkflowRun({
-              owner,
-              repo,
-              run_id: currentRunId
-            });
-
-            const workflowId = currentRun.data.workflow_id;
+            // Delete old nightly GitHub releases and their tags
             let page = 1;
-            let deleted = 0;
+            let deletedReleases = 0;
+            while (true) {
+              const releasesResponse = await github.rest.repos.listReleases({
+                owner,
+                repo,
+                per_page: 100,
+                page
+              });
+
+              const releases = releasesResponse.data;
+              if (releases.length === 0) break;
+
+              for (const release of releases) {
+                if (!release.tag_name.startsWith('nightly-')) continue;
+
+                const createdAt = new Date(release.created_at).getTime();
+                if (!Number.isFinite(createdAt) || createdAt >= cutoffTime) continue;
+
+                await github.rest.repos.deleteRelease({ owner, repo, release_id: release.id });
+                deletedReleases += 1;
+
+                try {
+                  await github.rest.git.deleteRef({ owner, repo, ref: `tags/${release.tag_name}` });
+                } catch (e) {
+                  core.warning(`Failed to delete tag '${release.tag_name}': ${e.message}`);
+                }
+              }
+
+              if (releases.length < 100) break;
+              page += 1;
+            }
+
+            core.info(`Deleted ${deletedReleases} nightly release(s) older than ${retentionDays} day(s).`);
+
+            // Delete old nightly workflow runs
+            const currentRun = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: currentRunId });
+            const workflowId = currentRun.data.workflow_id;
+            page = 1;
+            let deletedRuns = 0;
 
             while (true) {
               const runsResponse = await github.rest.actions.listWorkflowRuns({
@@ -126,31 +250,20 @@ jobs:
               });
 
               const runs = runsResponse.data.workflow_runs;
-              if (runs.length === 0) {
-                break;
-              }
+              if (runs.length === 0) break;
 
               for (const run of runs) {
-                if (run.id === currentRunId) {
-                  continue;
-                }
+                if (run.id === currentRunId) continue;
 
                 const createdAt = new Date(run.created_at).getTime();
                 if (Number.isFinite(createdAt) && createdAt < cutoffTime) {
-                  await github.rest.actions.deleteWorkflowRun({
-                    owner,
-                    repo,
-                    run_id: run.id
-                  });
-                  deleted += 1;
+                  await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
+                  deletedRuns += 1;
                 }
               }
 
-              if (runs.length < 100) {
-                break;
-              }
-
+              if (runs.length < 100) break;
               page += 1;
             }
 
-            core.info(`Deleted ${deleted} nightly workflow run(s) older than ${retentionDays} day(s).`);
+            core.info(`Deleted ${deletedRuns} nightly workflow run(s) older than ${retentionDays} day(s).`);
