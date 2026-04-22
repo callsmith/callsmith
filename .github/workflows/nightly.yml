@@ -80,7 +80,8 @@ jobs:
 
       - name: Build
         # --maxcpucount:1 forces sequential project builds, preventing Avalonia's
-        # XAML compiler from being invoked concurrently on the same PDB file.
+        # XAML compiler from being invoked concurrently on the same PDB file
+        # (same workaround used in this repository's primary CI workflow).
         run: dotnet build --no-restore --configuration Release --maxcpucount:1
 
       - name: Test
