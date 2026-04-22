@@ -79,9 +79,9 @@ jobs:
         run: dotnet restore
 
       - name: Build
-        # /maxcpucount:1 forces sequential project builds, preventing Avalonia's
+        # --maxcpucount:1 forces sequential project builds, preventing Avalonia's
         # XAML compiler from being invoked concurrently on the same PDB file.
-        run: dotnet build --no-restore --configuration Release /maxcpucount:1
+        run: dotnet build --no-restore --configuration Release --maxcpucount:1
 
       - name: Test
         run: dotnet test --no-build --configuration Release --verbosity normal
