@@ -13,6 +13,9 @@ concurrency:
   group: nightly-ci
   cancel-in-progress: true
 
+env:
+  NIGHTLY_RUN_RETENTION_DAYS: '14'
+
 jobs:
   check-branch-activity:
     name: Check default branch activity
@@ -97,7 +100,8 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const retentionDays = 14;
+            const parsedRetentionDays = Number.parseInt(process.env.NIGHTLY_RUN_RETENTION_DAYS ?? '14', 10);
+            const retentionDays = Number.isFinite(parsedRetentionDays) && parsedRetentionDays > 0 ? parsedRetentionDays : 14;
             const cutoffTime = Date.now() - (retentionDays * 24 * 60 * 60 * 1000);
             const { owner, repo } = context.repo;
             const currentRunId = context.runId;
