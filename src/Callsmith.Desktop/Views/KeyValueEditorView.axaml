@@ -9,11 +9,11 @@
              x:DataType="vm:KeyValueEditorViewModel"
              Background="Transparent">
 
-  <StackPanel>
+  <StackPanel Margin="0,0,0,0">
 
     <!-- Column headers -->
-    <Grid IsVisible="{Binding Items.Count}"
-          ColumnDefinitions="24,28,*,*,28"
+            <Grid IsVisible="{Binding Items.Count}"
+              ColumnDefinitions="24,28,1*,2*,28"
           Margin="0,4,0,4">
       <TextBlock Grid.Column="2"
                  Text="Key"
@@ -32,12 +32,14 @@
     </Grid>
 
     <!-- Rows + add button (add appears where the new row will be inserted) -->
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+            HorizontalScrollBarVisibility="Disabled"
+            AllowAutoHide="False">
       <StackPanel>
         <ItemsControl x:Name="ItemRows" ItemsSource="{Binding Items}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:KeyValueItemViewModel">
-              <Grid ColumnDefinitions="24,28,*,*,28" Margin="0,2">
+              <Grid ColumnDefinitions="24,28,1*,2*,28" Margin="0,2">
 
                 <!-- Drag handle -->
                 <TextBlock Grid.Column="0"
@@ -322,28 +324,41 @@
                   </Border>
 
                   <!-- File picker (shown when row is in File mode) -->
-                  <StackPanel Grid.Column="1"
-                              Orientation="Horizontal" Spacing="8"
-                              VerticalAlignment="Center"
-                              IsVisible="{Binding IsFileValue}">
-                    <Button Content="Choose File…"
-                            Command="{Binding SelectFileCommand}"
-                            Background="#3c3c3c" Foreground="#d4d4d4"
-                            BorderBrush="#555" BorderThickness="1"
-                            Padding="10,5" CornerRadius="4"/>
-                    <TextBlock Text="{Binding SelectedFilePath}"
-                               Foreground="#888"
-                               FontFamily="Consolas,Menlo,monospace"
-                               FontSize="12"
-                               VerticalAlignment="Center"
-                               TextTrimming="CharacterEllipsis"
-                               IsVisible="{Binding HasSelectedFile}"/>
-                    <TextBlock Text="No file selected"
-                               Foreground="#666"
-                               FontSize="12"
-                               VerticalAlignment="Center"
-                               IsVisible="{Binding !HasSelectedFile}"/>
-                  </StackPanel>
+                    <Grid Grid.Column="1"
+                    ColumnDefinitions="Auto,*"
+                    ColumnSpacing="8"
+                    VerticalAlignment="Center"
+                    ClipToBounds="True"
+                    IsVisible="{Binding IsFileValue}">
+                      <Button Grid.Column="0"
+                        Content="Choose File…"
+                        Command="{Binding SelectFileCommand}"
+                        Background="#3c3c3c" Foreground="#d4d4d4"
+                        BorderBrush="#555" BorderThickness="1"
+                        Padding="10,5" CornerRadius="4"/>
+
+                      <Grid Grid.Column="1"
+                      VerticalAlignment="Center"
+                      ClipToBounds="True">
+                        <TextBlock Text="{Binding SelectedFilePath}"
+                       Foreground="#888"
+                       FontFamily="Consolas,Menlo,monospace"
+                       FontSize="12"
+                       VerticalAlignment="Center"
+                       TextWrapping="NoWrap"
+                       TextTrimming="CharacterEllipsis"
+                       ClipToBounds="True"
+                       IsVisible="{Binding HasSelectedFile}"/>
+                        <TextBlock Text="No file selected"
+                       Foreground="#666"
+                       FontSize="12"
+                       VerticalAlignment="Center"
+                       TextWrapping="NoWrap"
+                       TextTrimming="CharacterEllipsis"
+                       ClipToBounds="True"
+                       IsVisible="{Binding !HasSelectedFile}"/>
+                      </Grid>
+                    </Grid>
                 </Grid>
 
                 <Button Grid.Column="4"

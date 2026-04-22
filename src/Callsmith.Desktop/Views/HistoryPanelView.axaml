@@ -512,7 +512,7 @@
                           Padding="8,3"
                           VerticalAlignment="Center">
                     <Button.Content>
-                      <TextBlock Text="⬇ Download Files" VerticalAlignment="Center"/>
+                      <TextBlock Text="↓ Download Files" VerticalAlignment="Center"/>
                     </Button.Content>
                     <Button.Flyout>
                       <Flyout Placement="BottomEdgeAlignedLeft" x:CompileBindings="False">

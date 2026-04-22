@@ -198,7 +198,9 @@
                 </Canvas>
               </Panel>
             </TabItem.Header>
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          AllowAutoHide="False"
+                          Padding="0,0,12,0">
               <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*" Margin="0,4">
                 <!-- Headers -->
                 <TextBlock Grid.Row="0" Text="HEADERS" Foreground="#888" FontWeight="Bold" FontSize="10"
