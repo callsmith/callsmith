@@ -67,6 +67,15 @@ public sealed class ConfiguredRequestSnapshot
     public IReadOnlyList<MultipartFilePart> MultipartFormFiles { get; init; } = [];
 
     /// <summary>
+    /// Combined ordered list of all multipart body parts (text fields and file fields) in the
+    /// order the user arranged them in the editor.
+    /// When non-empty this is the authoritative source for display order; <see cref="FormParams"/>
+    /// and <see cref="MultipartFormFiles"/> are retained only for backwards-compatibility with
+    /// history entries saved before this field was introduced.
+    /// </summary>
+    public IReadOnlyList<MultipartBodyEntry> MultipartBodyEntries { get; init; } = [];
+
+    /// <summary>
     /// Binary file body encoded as Base64.
     /// Only populated when <see cref="BodyType"/> is <see cref="CollectionRequest.BodyTypes.File"/>.
     /// </summary>

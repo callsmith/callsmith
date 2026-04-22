@@ -152,6 +152,17 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
     private byte[]? _detailFileBodyBytes;
 
     /// <summary>
+    /// Downloadable multipart file parts for the currently selected history entry.
+    /// Non-empty only when the body type is multipart and the snapshot contains file parts.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DetailHasMultipartFiles))]
+    private IReadOnlyList<HistoryMultipartFileViewModel> _detailMultipartFiles = [];
+
+    /// <summary>Whether there are any multipart file parts available for download.</summary>
+    public bool DetailHasMultipartFiles => DetailMultipartFiles.Count > 0;
+
+    /// <summary>
     /// Tooltip text shown on the "Open Request" button when it is disabled.
     /// Returns <see langword="null"/> when the button is enabled (no tooltip needed).
     /// </summary>
@@ -367,6 +378,7 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             DetailHasFileBody = false;
             DetailFileBodyName = string.Empty;
             _detailFileBodyBytes = null;
+            DetailMultipartFiles = [];
         }
     }
 
@@ -713,6 +725,16 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             ? "file"
             : DetailFileBodyName;
         await SaveFileFunc(_detailFileBodyBytes, suggestedName, ct);
+    }
+
+    /// <summary>
+    /// Saves a specific multipart file part from the currently displayed history entry to disk.
+    /// Called by each <see cref="HistoryMultipartFileViewModel.DownloadCommand"/>.
+    /// </summary>
+    private async Task DownloadMultipartFileAsync(byte[] bytes, string suggestedName, CancellationToken ct)
+    {
+        if (SaveFileFunc is null) return;
+        await SaveFileFunc(bytes, suggestedName, ct);
     }
 
     // -------------------------------------------------------------------------
@@ -1086,7 +1108,8 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         IReadOnlyList<ResponseHeaderRowViewModel> ResponseHeaderRows,
         bool HasFileBody,
         string FileBodyName,
-        byte[]? FileBodyBytes);
+        byte[]? FileBodyBytes,
+        IReadOnlyList<MultipartFilePart> MultipartFiles);
 
     /// <summary>
     /// Applies a precomputed <see cref="DetailValues"/> to the observable properties.
@@ -1109,6 +1132,16 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
         DetailHasFileBody = values.HasFileBody;
         DetailFileBodyName = values.FileBodyName;
         _detailFileBodyBytes = values.FileBodyBytes;
+        DetailMultipartFiles = values.MultipartFiles
+            .Select(f =>
+            {
+                var name = !string.IsNullOrWhiteSpace(f.FileName) ? f.FileName : "file";
+                var bytes = f.FileBytes;
+                return new HistoryMultipartFileViewModel(
+                    name,
+                    new AsyncRelayCommand(ct => DownloadMultipartFileAsync(bytes, name, ct)));
+            })
+            .ToList<HistoryMultipartFileViewModel>();
     }
 
     /// <summary>
@@ -1173,8 +1206,61 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             sb.AppendLine("Body:");
             sb.Append(cfg.Body);
         }
-        if ((cfg.BodyType == CollectionRequest.BodyTypes.Form ||
-             cfg.BodyType == CollectionRequest.BodyTypes.Multipart) && cfg.FormParams.Count > 0)
+        // ── Multipart body (ordered) ──────────────────────────────────────────
+        if (cfg.BodyType == CollectionRequest.BodyTypes.Multipart)
+        {
+            var orderedEntries = cfg.MultipartBodyEntries;
+            if (orderedEntries.Count > 0)
+            {
+                // New-style: use the stored insertion order (text and file parts interleaved).
+                sb.AppendLine();
+                sb.AppendLine("Body:");
+                foreach (var entry2 in orderedEntries)
+                {
+                    if (entry2.IsFile)
+                    {
+                        var fileLabel = !string.IsNullOrWhiteSpace(entry2.FileName) ? entry2.FileName : "(binary data)";
+                        sb.AppendLine($"{entry2.Key}=<file:{fileLabel}>");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"{entry2.Key}={entry2.TextValue}");
+                    }
+                }
+            }
+            else
+            {
+                // Legacy fallback: all text parts then all file parts.
+                if (cfg.FormParams.Count > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("Body:");
+                    for (var i = 0; i < cfg.FormParams.Count; i++)
+                    {
+                        var p = cfg.FormParams[i];
+                        if (i < cfg.FormParams.Count - 1)
+                            sb.AppendLine($"{p.Key}={p.Value}&");
+                        else
+                            sb.AppendLine($"{p.Key}={p.Value}");
+                    }
+                }
+                if (cfg.MultipartFormFiles.Count > 0)
+                {
+                    if (cfg.FormParams.Count == 0)
+                    {
+                        sb.AppendLine();
+                        sb.AppendLine("Body:");
+                    }
+                    foreach (var file in cfg.MultipartFormFiles)
+                    {
+                        var fileLabel = !string.IsNullOrWhiteSpace(file.FileName) ? file.FileName : "(binary data)";
+                        sb.AppendLine($"{file.Key}=<file:{fileLabel}>");
+                    }
+                }
+            }
+        }
+        // ── URL-encoded form body ─────────────────────────────────────────────
+        else if (cfg.BodyType == CollectionRequest.BodyTypes.Form && cfg.FormParams.Count > 0)
         {
             sb.AppendLine();
             sb.AppendLine("Body:");
@@ -1187,26 +1273,15 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                     sb.Append($"{p.Key}={p.Value}");
             }
         }
-        if (cfg.BodyType == CollectionRequest.BodyTypes.Multipart && cfg.MultipartFormFiles.Count > 0)
+        // ── File body ─────────────────────────────────────────────────────────
+        else if (cfg.BodyType == CollectionRequest.BodyTypes.File)
         {
             sb.AppendLine();
-            if (cfg.FormParams.Count == 0)
-                sb.AppendLine("Body:");
-            foreach (var file in cfg.MultipartFormFiles)
-            {
-                var fileLabel = !string.IsNullOrWhiteSpace(file.FileName)
-                    ? file.FileName
-                    : "(binary data)";
-                sb.AppendLine($"{file.Key}=<file:{fileLabel}>");
-            }
-        }
-        if (cfg.BodyType == CollectionRequest.BodyTypes.File)
-        {
-            sb.AppendLine();
+            sb.AppendLine("Body:");
             if (!string.IsNullOrEmpty(cfg.FileBodyName))
-                sb.Append($"File: {cfg.FileBodyName}");
+                sb.Append($"<file:{cfg.FileBodyName}>");
             else
-                sb.Append("File: (binary data)");
+                sb.Append("<file:(binary data)>");
         }
 
         var configured = TrimTrailingBlankLines(sb.ToString());
@@ -1241,8 +1316,67 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                     rb.AppendLine($"  {kv.Key}: {displayValue}");
                 }
             }
-            if ((cfg.BodyType == CollectionRequest.BodyTypes.Form ||
-                 cfg.BodyType == CollectionRequest.BodyTypes.Multipart) && cfg.FormParams.Count > 0)
+            // ── Multipart body (ordered) ───────────────────────────────────────
+            if (cfg.BodyType == CollectionRequest.BodyTypes.Multipart)
+            {
+                var orderedEntries = cfg.MultipartBodyEntries;
+                if (orderedEntries.Count > 0)
+                {
+                    rb.AppendLine();
+                    rb.AppendLine("Body:");
+                    foreach (var bodyEntry in orderedEntries)
+                    {
+                        if (bodyEntry.IsFile)
+                        {
+                            var displayKey = FormatFormParamPart(bodyEntry.Key, vars, secretTokenNames);
+                            var fileLabel = !string.IsNullOrWhiteSpace(bodyEntry.FileName) ? bodyEntry.FileName : "(binary data)";
+                            rb.AppendLine($"{displayKey}=<file:{fileLabel}>");
+                        }
+                        else
+                        {
+                            var displayKey = FormatFormParamPart(bodyEntry.Key, vars, secretTokenNames);
+                            var displayValue = FormatFormParamPart(bodyEntry.TextValue ?? string.Empty, vars, secretTokenNames);
+                            rb.AppendLine($"{displayKey}={displayValue}");
+                        }
+                    }
+                }
+                else
+                {
+                    // Legacy fallback
+                    if (cfg.FormParams.Count > 0)
+                    {
+                        rb.AppendLine();
+                        rb.AppendLine("Body:");
+                        var formParams = cfg.FormParams;
+                        for (var i = 0; i < formParams.Count; i++)
+                        {
+                            var p = formParams[i];
+                            var displayKey = FormatFormParamPart(p.Key, vars, secretTokenNames);
+                            var displayValue = FormatFormParamPart(p.Value, vars, secretTokenNames);
+                            if (i < formParams.Count - 1)
+                                rb.AppendLine($"{displayKey}={displayValue}&");
+                            else
+                                rb.AppendLine($"{displayKey}={displayValue}");
+                        }
+                    }
+                    if (cfg.MultipartFormFiles.Count > 0)
+                    {
+                        if (cfg.FormParams.Count == 0)
+                        {
+                            rb.AppendLine();
+                            rb.AppendLine("Body:");
+                        }
+                        foreach (var file in cfg.MultipartFormFiles)
+                        {
+                            var displayKey = FormatFormParamPart(file.Key, vars, secretTokenNames);
+                            var fileLabel = !string.IsNullOrWhiteSpace(file.FileName) ? file.FileName : "(binary data)";
+                            rb.AppendLine($"{displayKey}=<file:{fileLabel}>");
+                        }
+                    }
+                }
+            }
+            // ── URL-encoded form body ─────────────────────────────────────────
+            else if (cfg.BodyType == CollectionRequest.BodyTypes.Form && cfg.FormParams.Count > 0)
             {
                 rb.AppendLine();
                 rb.AppendLine("Body:");
@@ -1258,27 +1392,15 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
                         rb.Append($"{displayKey}={displayValue}");
                 }
             }
-            if (cfg.BodyType == CollectionRequest.BodyTypes.Multipart && cfg.MultipartFormFiles.Count > 0)
-            {
-                rb.AppendLine();
-                if (cfg.FormParams.Count == 0)
-                    rb.AppendLine("Body:");
-                foreach (var file in cfg.MultipartFormFiles)
-                {
-                    var displayKey = FormatFormParamPart(file.Key, vars, secretTokenNames);
-                    var fileLabel = !string.IsNullOrWhiteSpace(file.FileName)
-                        ? file.FileName
-                        : "(binary data)";
-                    rb.AppendLine($"{displayKey}=<file:{fileLabel}>");
-                }
-            }
+            // ── File body ─────────────────────────────────────────────────────
             else if (cfg.BodyType == CollectionRequest.BodyTypes.File)
             {
                 rb.AppendLine();
+                rb.AppendLine("Body:");
                 if (!string.IsNullOrEmpty(cfg.FileBodyName))
-                    rb.Append($"File: {cfg.FileBodyName}");
+                    rb.Append($"<file:{cfg.FileBodyName}>");
                 else
-                    rb.Append("File: (binary data)");
+                    rb.Append("<file:(binary data)>");
             }
             else if (!string.IsNullOrEmpty(resolvedRequest.Body))
             {
@@ -1326,6 +1448,11 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             responseHeaderRows = [];
         }
 
+        // Collect downloadable multipart file parts
+        var multipartFiles = cfg.BodyType == CollectionRequest.BodyTypes.Multipart
+            ? cfg.MultipartFormFiles.Where(f => f.FileBytes.Length > 0).ToList()
+            : (IReadOnlyList<MultipartFilePart>)[];
+
         return new DetailValues(
             SentAtDisplay: sentAtDisplay,
             SentAtToolTip: sentAtToolTip,
@@ -1340,7 +1467,8 @@ public sealed partial class HistoryPanelViewModel : ObservableObject
             FileBodyName: cfg.FileBodyName ?? string.Empty,
             FileBodyBytes: cfg.BodyType == CollectionRequest.BodyTypes.File && cfg.FileBodyBase64 is not null
                 ? Convert.FromBase64String(cfg.FileBodyBase64)
-                : null);
+                : null,
+            MultipartFiles: multipartFiles);
     }
 
     private static string? TryGetContentType(IReadOnlyDictionary<string, string> headers)

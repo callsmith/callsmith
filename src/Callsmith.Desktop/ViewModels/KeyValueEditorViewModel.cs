@@ -167,6 +167,24 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
             .ToList();
 
     /// <summary>
+    /// Returns all multipart rows (enabled and disabled) in their current display order,
+    /// as <see cref="MultipartBodyEntry"/> objects that carry type, value, and file metadata.
+    /// </summary>
+    public IReadOnlyList<MultipartBodyEntry> GetAllMultipartBodyEntries()
+        => Items
+            .Where(i => !string.IsNullOrWhiteSpace(i.Key))
+            .Select(i => new MultipartBodyEntry
+            {
+                Key = i.Key,
+                IsFile = i.IsFileValue,
+                TextValue = i.IsTextValue ? i.Value : null,
+                FileName = i.SelectedFileName,
+                FilePath = i.SelectedFilePath,
+                IsEnabled = !ShowEnabledToggle || i.IsEnabled,
+            })
+            .ToList();
+
+    /// <summary>
     /// Returns all rows (enabled and disabled) that have a non-empty key as <see cref="RequestKv"/>.
     /// Use this when saving, so disabled items are preserved in the persisted request.
     /// </summary>

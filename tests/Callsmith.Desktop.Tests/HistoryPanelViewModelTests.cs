@@ -1159,4 +1159,199 @@ public sealed class HistoryPanelViewModelTests
 
         condition().Should().BeTrue();
     }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Multipart body display (ordered entries, file body consistency)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task SelectingEntry_WithMultipartBody_OrderedEntries_ShowsPartsInInsertionOrder()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var sut = new HistoryPanelViewModel(historyService);
+
+        var entry = new HistoryEntry
+        {
+            Id = 1,
+            Method = "POST",
+            ResolvedUrl = "https://api.example.com/upload",
+            SentAt = DateTimeOffset.UtcNow,
+            ElapsedMs = 10,
+            ConfiguredSnapshot = new ConfiguredRequestSnapshot
+            {
+                Method = "POST",
+                Url = "https://api.example.com/upload",
+                BodyType = CollectionRequest.BodyTypes.Multipart,
+                // Legacy lists: text first, then files
+                FormParams = [new KeyValuePair<string, string>("label", "hello"), new KeyValuePair<string, string>("caption", "world")],
+                MultipartFormFiles =
+                [
+                    new MultipartFilePart { Key = "photo", FileBytes = [1, 2], FileName = "photo.jpg" },
+                    new MultipartFilePart { Key = "doc",   FileBytes = [3, 4], FileName = "doc.pdf" },
+                ],
+                // Ordered entries: label, photo, caption, doc (interleaved)
+                MultipartBodyEntries =
+                [
+                    new MultipartBodyEntry { Key = "label",   IsFile = false, TextValue = "hello" },
+                    new MultipartBodyEntry { Key = "photo",   IsFile = true,  FileName = "photo.jpg" },
+                    new MultipartBodyEntry { Key = "caption", IsFile = false, TextValue = "world" },
+                    new MultipartBodyEntry { Key = "doc",     IsFile = true,  FileName = "doc.pdf" },
+                ],
+                Auth = new AuthConfig(),
+            },
+            VariableBindings = [],
+        };
+
+        sut.SelectedEntry = new HistoryEntryRowViewModel(entry);
+
+        await AssertEventuallyAsync(() => sut.DetailConfigured.Contains("Body:"));
+
+        // The four parts must appear in insertion order
+        var configured = sut.DetailConfigured;
+        var labelPos   = configured.IndexOf("label=hello",   StringComparison.Ordinal);
+        var photoPos   = configured.IndexOf("photo=<file:photo.jpg>", StringComparison.Ordinal);
+        var captionPos = configured.IndexOf("caption=world", StringComparison.Ordinal);
+        var docPos     = configured.IndexOf("doc=<file:doc.pdf>",    StringComparison.Ordinal);
+
+        labelPos.Should().BeLessThan(photoPos, "label must come before photo");
+        photoPos.Should().BeLessThan(captionPos, "photo must come before caption");
+        captionPos.Should().BeLessThan(docPos, "caption must come before doc");
+    }
+
+    [Fact]
+    public async Task SelectingEntry_WithMultipartBody_LegacySnapshot_FallsBackToTwoListBehavior()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var sut = new HistoryPanelViewModel(historyService);
+
+        var entry = new HistoryEntry
+        {
+            Id = 1,
+            Method = "POST",
+            ResolvedUrl = "https://api.example.com/upload",
+            SentAt = DateTimeOffset.UtcNow,
+            ElapsedMs = 10,
+            ConfiguredSnapshot = new ConfiguredRequestSnapshot
+            {
+                Method = "POST",
+                Url = "https://api.example.com/upload",
+                BodyType = CollectionRequest.BodyTypes.Multipart,
+                FormParams = [new KeyValuePair<string, string>("field", "value")],
+                MultipartFormFiles =
+                [
+                    new MultipartFilePart { Key = "attachment", FileBytes = [1, 2], FileName = "file.bin" },
+                ],
+                // No MultipartBodyEntries — legacy snapshot
+                Auth = new AuthConfig(),
+            },
+            VariableBindings = [],
+        };
+
+        sut.SelectedEntry = new HistoryEntryRowViewModel(entry);
+
+        await AssertEventuallyAsync(() => sut.DetailConfigured.Contains("Body:"));
+        sut.DetailConfigured.Should().Contain("field=value");
+        sut.DetailConfigured.Should().Contain("attachment=<file:file.bin>");
+    }
+
+    [Fact]
+    public async Task SelectingEntry_WithFileBody_ShowsBodyHeaderWithFileFormat()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var sut = new HistoryPanelViewModel(historyService);
+
+        var entry = new HistoryEntry
+        {
+            Id = 1,
+            Method = "POST",
+            ResolvedUrl = "https://api.example.com/upload",
+            SentAt = DateTimeOffset.UtcNow,
+            ElapsedMs = 10,
+            ConfiguredSnapshot = new ConfiguredRequestSnapshot
+            {
+                Method = "POST",
+                Url = "https://api.example.com/upload",
+                BodyType = CollectionRequest.BodyTypes.File,
+                FileBodyBase64 = Convert.ToBase64String([1, 2, 3]),
+                FileBodyName = "data.bin",
+                Auth = new AuthConfig(),
+            },
+            VariableBindings = [],
+        };
+
+        sut.SelectedEntry = new HistoryEntryRowViewModel(entry);
+
+        await AssertEventuallyAsync(() => sut.DetailConfigured.Contains("Body:"));
+        // Must use <file:name> format, NOT the old bare "File: name" format
+        sut.DetailConfigured.Should().Contain("Body:");
+        sut.DetailConfigured.Should().Contain("<file:data.bin>");
+        sut.DetailConfigured.Should().NotContain("File: data.bin");
+    }
+
+    [Fact]
+    public async Task SelectingEntry_WithMultipartFileParts_ExposesDetailMultipartFiles()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var sut = new HistoryPanelViewModel(historyService);
+
+        var entry = new HistoryEntry
+        {
+            Id = 1,
+            Method = "POST",
+            ResolvedUrl = "https://api.example.com/upload",
+            SentAt = DateTimeOffset.UtcNow,
+            ElapsedMs = 10,
+            ConfiguredSnapshot = new ConfiguredRequestSnapshot
+            {
+                Method = "POST",
+                Url = "https://api.example.com/upload",
+                BodyType = CollectionRequest.BodyTypes.Multipart,
+                MultipartFormFiles =
+                [
+                    new MultipartFilePart { Key = "file1", FileBytes = [1], FileName = "image.png" },
+                    new MultipartFilePart { Key = "file2", FileBytes = [2], FileName = "report.pdf" },
+                ],
+                Auth = new AuthConfig(),
+            },
+            VariableBindings = [],
+        };
+
+        sut.SelectedEntry = new HistoryEntryRowViewModel(entry);
+
+        await AssertEventuallyAsync(() => sut.DetailHasMultipartFiles);
+        sut.DetailMultipartFiles.Should().HaveCount(2);
+        sut.DetailMultipartFiles[0].DisplayName.Should().Be("image.png");
+        sut.DetailMultipartFiles[1].DisplayName.Should().Be("report.pdf");
+    }
+
+    [Fact]
+    public async Task SelectingEntry_WithNoMultipartFileParts_DetailMultipartFilesIsEmpty()
+    {
+        var historyService = Substitute.For<IHistoryService>();
+        var sut = new HistoryPanelViewModel(historyService);
+
+        var entry = new HistoryEntry
+        {
+            Id = 1,
+            Method = "POST",
+            ResolvedUrl = "https://api.example.com/form",
+            SentAt = DateTimeOffset.UtcNow,
+            ElapsedMs = 10,
+            ConfiguredSnapshot = new ConfiguredRequestSnapshot
+            {
+                Method = "POST",
+                Url = "https://api.example.com/form",
+                BodyType = CollectionRequest.BodyTypes.Multipart,
+                FormParams = [new KeyValuePair<string, string>("key", "value")],
+                Auth = new AuthConfig(),
+            },
+            VariableBindings = [],
+        };
+
+        sut.SelectedEntry = new HistoryEntryRowViewModel(entry);
+
+        await AssertEventuallyAsync(() => sut.DetailConfigured.Contains("Body:"));
+        sut.DetailMultipartFiles.Should().BeEmpty();
+        sut.DetailHasMultipartFiles.Should().BeFalse();
+    }
 }

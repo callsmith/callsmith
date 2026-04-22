@@ -2332,6 +2332,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 MultipartFormFiles = SelectedBodyType == CollectionRequest.BodyTypes.Multipart
                     ? MultipartFormParams.GetAllMultipartFileParts()
                     : [],
+                MultipartBodyEntries = SelectedBodyType == CollectionRequest.BodyTypes.Multipart
+                    ? MultipartFormParams.GetAllMultipartBodyEntries()
+                    : [],
                 Auth = new AuthConfig
                 {
                     AuthType = AuthType,

@@ -173,20 +173,27 @@
                   </Grid>
                 </Border>
 
-                <!-- ── Value column: text OR file (multipart mode) ──────────── -->
-                <StackPanel Grid.Column="3" Spacing="4" Margin="2,0">
-                  <ComboBox ItemsSource="{Binding AvailableValueTypes}"
+                <!-- ── Value column: type selector + text/file content on one line ── -->
+                <Grid Grid.Column="3" ColumnDefinitions="Auto,*" Margin="2,0">
+
+                  <!-- Text/File type selector (only present in multipart mode; collapses otherwise) -->
+                  <ComboBox Grid.Column="0"
+                            ItemsSource="{Binding AvailableValueTypes}"
                             SelectedItem="{Binding ValueType}"
                             IsVisible="{Binding ShowValueTypeSelector}"
-                            MinWidth="90"
-                            MaxWidth="120"
-                            HorizontalAlignment="Left"
+                            MinWidth="72"
+                            MaxWidth="90"
+                            FontSize="11"
+                            Margin="0,0,4,0"
+                            Padding="6,2"
+                            VerticalAlignment="Center"
                             Foreground="#d4d4d4"
                             Background="#3c3c3c"
                             BorderBrush="#555"/>
 
                   <!-- Plain text input (no dynamic segments) -->
-                  <TextBox Text="{Binding ValueField.Text}"
+                  <TextBox Grid.Column="1"
+                           Text="{Binding ValueField.Text}"
                            Watermark="value"
                            FontSize="12"
                            Foreground="#d4d4d4"
@@ -199,7 +206,8 @@
                            controls:EnvVarCompletion.Suggestions="{Binding SuggestionNames}"/>
 
                   <!-- Pill view (active when the value contains dynamic/mock segments) -->
-                  <Border Background="#2d2d30"
+                  <Border Grid.Column="1"
+                          Background="#2d2d30"
                           BorderBrush="#4ec9b0"
                           BorderThickness="1"
                           CornerRadius="3"
@@ -313,7 +321,11 @@
                     </Grid>
                   </Border>
 
-                  <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsFileValue}">
+                  <!-- File picker (shown when row is in File mode) -->
+                  <StackPanel Grid.Column="1"
+                              Orientation="Horizontal" Spacing="8"
+                              VerticalAlignment="Center"
+                              IsVisible="{Binding IsFileValue}">
                     <Button Content="Choose File…"
                             Command="{Binding SelectFileCommand}"
                             Background="#3c3c3c" Foreground="#d4d4d4"
@@ -332,7 +344,7 @@
                                VerticalAlignment="Center"
                                IsVisible="{Binding !HasSelectedFile}"/>
                   </StackPanel>
-                </StackPanel>
+                </Grid>
 
                 <Button Grid.Column="4"
                         Content="×"
