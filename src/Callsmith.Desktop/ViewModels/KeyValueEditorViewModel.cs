@@ -211,10 +211,12 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
 
         foreach (var file in fileItems)
         {
-            var item = CreateItem(file.Key, string.Empty, file.IsEnabled);
-            item.ValueType = KeyValueItemViewModel.ValueTypes.File;
-            item.LoadFile(file.FileBytes, file.FileName, file.FilePath);
-            Items.Add(item);
+            Items.Add(CreateItem(
+                file.Key,
+                string.Empty,
+                file.IsEnabled,
+                KeyValueItemViewModel.ValueTypes.File,
+                file));
         }
     }
 
@@ -296,7 +298,12 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
             item.SuggestionNames = suggestions;
     }
 
-    private KeyValueItemViewModel CreateItem(string key, string value, bool isEnabled = true)
+    private KeyValueItemViewModel CreateItem(
+        string key,
+        string value,
+        bool isEnabled = true,
+        string valueType = KeyValueItemViewModel.ValueTypes.Text,
+        MultipartFilePart? filePart = null)
     {
         var item = new KeyValueItemViewModel(RemoveItem, _editDynamicSegment, _editMockData)
         {
@@ -306,10 +313,13 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
             ShowValueTypeSelector = ShowValueTypeSelector,
             ShowKeyPills = ShowKeyPills,
             SuggestionNames = _suggestions,
+            ValueType = valueType,
         };
         item.SetFilePickerCallback(OpenFilePickerFunc);
         item.LoadKey(key);
         item.LoadValue(value);
+        if (filePart is not null)
+            item.LoadFile(filePart.FileBytes, filePart.FileName, filePart.FilePath);
         return item;
     }
 }

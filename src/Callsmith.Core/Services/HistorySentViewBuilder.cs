@@ -112,33 +112,11 @@ public static class HistorySentViewBuilder
                         Substitute(p.Key, vars) ?? p.Key,
                         Substitute(p.Value, vars) ?? p.Value))
                     .ToList();
-                multipartFormFiles = snapshot.MultipartFormFiles
-                    .Where(f => f.IsEnabled)
-                    .Where(f => !string.IsNullOrWhiteSpace(f.Key))
-                    .Select(f => new MultipartFilePart
-                    {
-                        Key = Substitute(f.Key, vars) ?? f.Key,
-                        FileBytes = f.FileBytes,
-                        FileName = f.FileName,
-                        FilePath = f.FilePath,
-                        IsEnabled = true,
-                    })
-                    .ToList();
+                multipartFormFiles = ResolveMultipartFiles(snapshot.MultipartFormFiles, vars);
                 break;
 
             case CollectionRequest.BodyTypes.Multipart when snapshot.MultipartFormFiles.Count > 0:
-                multipartFormFiles = snapshot.MultipartFormFiles
-                    .Where(f => f.IsEnabled)
-                    .Where(f => !string.IsNullOrWhiteSpace(f.Key))
-                    .Select(f => new MultipartFilePart
-                    {
-                        Key = Substitute(f.Key, vars) ?? f.Key,
-                        FileBytes = f.FileBytes,
-                        FileName = f.FileName,
-                        FilePath = f.FilePath,
-                        IsEnabled = true,
-                    })
-                    .ToList();
+                multipartFormFiles = ResolveMultipartFiles(snapshot.MultipartFormFiles, vars);
                 break;
 
             case CollectionRequest.BodyTypes.File when snapshot.FileBodyBase64 is not null:
@@ -198,6 +176,22 @@ public static class HistorySentViewBuilder
 
     private static string? Substitute(string? template, IReadOnlyDictionary<string, string> vars) =>
         VariableSubstitutionService.Substitute(template, vars);
+
+    private static IReadOnlyList<MultipartFilePart> ResolveMultipartFiles(
+        IReadOnlyList<MultipartFilePart> files,
+        IReadOnlyDictionary<string, string> vars)
+        => files
+            .Where(f => f.IsEnabled)
+            .Where(f => !string.IsNullOrWhiteSpace(f.Key))
+            .Select(f => new MultipartFilePart
+            {
+                Key = Substitute(f.Key, vars) ?? f.Key,
+                FileBytes = f.FileBytes,
+                FileName = f.FileName,
+                FilePath = f.FilePath,
+                IsEnabled = true,
+            })
+            .ToList();
 
     /// <summary>
     /// Applies the auth configuration to <paramref name="headers"/> and <paramref name="url"/>

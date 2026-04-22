@@ -46,6 +46,7 @@ public static class CurlCommandParser
         var headers = new List<RequestKv>();
         var formDataParts = new List<string>();
         var multipartParts = new List<KeyValuePair<string, string>>();
+        var multipartFileParts = new List<MultipartFilePart>();
         var urlQueryParts = new List<string>();
         var hasJsonFlag = false;
         AuthConfig? auth = null;
@@ -213,11 +214,28 @@ public static class CurlCommandParser
                 {
                     var name = value[..eq];
                     var content = value[(eq + 1)..];
-                    // For --form, skip file references (@filename) since we cannot resolve them.
-                    // --form-string always treats the value as a plain string.
                     var isFormString = string.Equals(token, "--form-string", StringComparison.OrdinalIgnoreCase);
                     if (isFormString || !content.StartsWith("@", StringComparison.Ordinal))
+                    {
                         multipartParts.Add(new KeyValuePair<string, string>(name, content));
+                    }
+                    else
+                    {
+                        // --form file reference syntax: key=@/path/to/file[;type=...]
+                        var semicolon = content.IndexOf(';');
+                        var filePath = semicolon >= 0 ? content[1..semicolon] : content[1..];
+                        if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath))
+                        {
+                            var bytes = File.ReadAllBytes(filePath);
+                            multipartFileParts.Add(new MultipartFilePart
+                            {
+                                Key = name,
+                                FileBytes = bytes,
+                                FileName = Path.GetFileName(filePath),
+                                FilePath = filePath,
+                            });
+                        }
+                    }
                 }
                 continue;
             }
@@ -294,8 +312,12 @@ public static class CurlCommandParser
             bodyType = CollectionRequest.BodyTypes.Multipart;
             formParams = multipartParts;
         }
+        else if (multipartFileParts.Count > 0)
+        {
+            bodyType = CollectionRequest.BodyTypes.Multipart;
+        }
 
-        if (!explicitMethod && (formDataParts.Count > 0 || multipartParts.Count > 0) && !dataAsQuery)
+        if (!explicitMethod && (formDataParts.Count > 0 || multipartParts.Count > 0 || multipartFileParts.Count > 0) && !dataAsQuery)
             method = "POST";
 
         parsed = new ParsedCurlRequest
@@ -307,6 +329,7 @@ public static class CurlCommandParser
             BodyType = bodyType,
             Body = body,
             FormParams = formParams,
+            MultipartFormFiles = multipartFileParts,
             Auth = auth ?? new AuthConfig { AuthType = AuthConfig.AuthTypes.None },
         };
 

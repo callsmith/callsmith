@@ -101,11 +101,18 @@ public sealed class KeyValueEditorViewModelTests
     public void GetEnabledPairs_WhenFileRowsExist_ReturnsOnlyTextRows()
     {
         var sut = new KeyValueEditorViewModel { ShowValueTypeSelector = true };
-        var text = new KeyValueItemViewModel(_ => { }) { Key = "name", Value = "alice" };
-        var file = new KeyValueItemViewModel(_ => { }) { Key = "avatar", ValueType = KeyValueItemViewModel.ValueTypes.File };
-        file.LoadFile([0x01], "a.bin", "/tmp/a.bin");
-        sut.Items.Add(text);
-        sut.Items.Add(file);
+        sut.LoadMultipartFrom(
+            [new KeyValuePair<string, string>("name", "alice")],
+            [
+                new MultipartFilePart
+                {
+                    Key = "avatar",
+                    FileBytes = [0x01],
+                    FileName = "a.bin",
+                    FilePath = "/tmp/a.bin",
+                    IsEnabled = true,
+                },
+            ]);
 
         var pairs = sut.GetEnabledPairs().ToList();
 
@@ -116,12 +123,26 @@ public sealed class KeyValueEditorViewModelTests
     public void GetEnabledMultipartFileParts_ReturnsOnlyEnabledFileRows()
     {
         var sut = new KeyValueEditorViewModel { ShowValueTypeSelector = true };
-        var file1 = new KeyValueItemViewModel(_ => { }) { Key = "file1", ValueType = KeyValueItemViewModel.ValueTypes.File, IsEnabled = true };
-        file1.LoadFile([0x10], "f1.bin", "/tmp/f1.bin");
-        var file2 = new KeyValueItemViewModel(_ => { }) { Key = "file2", ValueType = KeyValueItemViewModel.ValueTypes.File, IsEnabled = false };
-        file2.LoadFile([0x20], "f2.bin", "/tmp/f2.bin");
-        sut.Items.Add(file1);
-        sut.Items.Add(file2);
+        sut.LoadMultipartFrom(
+            [],
+            [
+                new MultipartFilePart
+                {
+                    Key = "file1",
+                    FileBytes = [0x10],
+                    FileName = "f1.bin",
+                    FilePath = "/tmp/f1.bin",
+                    IsEnabled = true,
+                },
+                new MultipartFilePart
+                {
+                    Key = "file2",
+                    FileBytes = [0x20],
+                    FileName = "f2.bin",
+                    FilePath = "/tmp/f2.bin",
+                    IsEnabled = false,
+                },
+            ]);
 
         var files = sut.GetEnabledMultipartFileParts();
 

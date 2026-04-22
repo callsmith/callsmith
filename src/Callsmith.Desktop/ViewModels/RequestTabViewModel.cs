@@ -1050,7 +1050,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             }
 
             FormParams.LoadFrom(parsed.FormParams);
-            MultipartFormParams.LoadMultipartFrom(parsed.FormParams, []);
+            MultipartFormParams.LoadMultipartFrom(parsed.FormParams, parsed.MultipartFormFiles);
             _fileBodyBytes = null;
             _fileBodyName = null;
             SelectedFilePath = string.Empty;
