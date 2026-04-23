@@ -35,4 +35,6 @@ jobs:
         run: dotnet build --no-restore --configuration Release /maxcpucount:1
 
       - name: Test
-        run: dotnet test --no-build --configuration Release --verbosity normal
+        # /maxcpucount:1 forces sequential test project execution. Running test
+        # projects concurrently is intermittently hanging after tests complete.
+        run: dotnet test --no-build --configuration Release --verbosity normal /maxcpucount:1
