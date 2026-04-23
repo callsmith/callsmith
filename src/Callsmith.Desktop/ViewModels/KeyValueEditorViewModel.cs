@@ -4,8 +4,6 @@ using Callsmith.Core.Models;
 using Callsmith.Desktop.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using DynamicSegmentCallback = System.Func<Callsmith.Core.Models.DynamicValueSegment?, System.Threading.Tasks.Task<Callsmith.Core.Models.DynamicValueSegment?>>;
-using MockSegmentCallback = System.Func<Callsmith.Core.Models.MockDataSegment?, System.Threading.Tasks.Task<Callsmith.Core.Models.MockDataSegment?>>;
 
 namespace Callsmith.Desktop.ViewModels;
 
@@ -40,35 +38,8 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
     /// </summary>
     [ObservableProperty]
     private Func<CancellationToken, Task<(byte[] Bytes, string Name, string Path)?>>? _openFilePickerFunc;
-    /// <summary>
-    /// Whether the key column renders as a pill-aware field.
-    /// Set to true for headers and query params; false (default) for path params and form body.
-    /// </summary>
-    [ObservableProperty]
-    private bool _showKeyPills = false;
-
     /// <summary>Raised whenever the collection or any item's key/value/enabled state changes.</summary>
     public event EventHandler? Changed;
-
-    // ─── Dialog callbacks for segment editing ────────────────────────────────
-
-    private DynamicSegmentCallback? _editDynamicSegment;
-    private MockSegmentCallback? _editMockData;
-
-    /// <summary>
-    /// Wires up the dialog callbacks used by each row's <see cref="KeyValueItemViewModel.ValueField"/>
-    /// for editing dynamic value segments and mock data segments.
-    /// Call this once from the parent ViewModel after the dialogs are available.
-    /// </summary>
-    public void SetDialogCallbacks(DynamicSegmentCallback editDynamicSegment, MockSegmentCallback editMockData)
-    {
-        _editDynamicSegment = editDynamicSegment;
-        _editMockData = editMockData;
-
-        // Update any already-existing rows (e.g. loaded before callbacks were set).
-        foreach (var item in Items)
-            item.SetDialogCallbacks(editDynamicSegment, editMockData);
-    }
 
     public KeyValueEditorViewModel()
     {
@@ -323,12 +294,6 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
             item.ShowEnabledToggle = value;
     }
 
-    partial void OnShowKeyPillsChanged(bool value)
-    {
-        foreach (var item in Items)
-            item.ShowKeyPills = value;
-    }
-
     partial void OnShowValueTypeSelectorChanged(bool value)
     {
         foreach (var item in Items)
@@ -363,13 +328,12 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
         string valueType = KeyValueItemViewModel.ValueTypes.Text,
         MultipartFilePart? filePart = null)
     {
-        var item = new KeyValueItemViewModel(RemoveItem, _editDynamicSegment, _editMockData)
+        var item = new KeyValueItemViewModel(RemoveItem)
         {
             IsEnabled = isEnabled,
             ShowDeleteButton = ShowDeleteButton,
             ShowEnabledToggle = ShowEnabledToggle,
             ShowValueTypeSelector = ShowValueTypeSelector,
-            ShowKeyPills = ShowKeyPills,
             SuggestionNames = _suggestions,
             ValueType = valueType,
         };
