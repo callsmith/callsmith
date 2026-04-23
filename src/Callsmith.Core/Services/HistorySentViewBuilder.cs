@@ -69,9 +69,11 @@ public static class HistorySentViewBuilder
         }
 
         // 4. Apply auto-applied headers (Content-Type, etc.) — these don't need substitution.
+        //    User-specified headers take priority; skip any auto-applied header that the user
+        //    has already explicitly set (case-insensitive).
         foreach (var h in snapshot.AutoAppliedHeaders.Where(h => h.IsEnabled))
         {
-            if (!string.IsNullOrWhiteSpace(h.Key))
+            if (!string.IsNullOrWhiteSpace(h.Key) && !headers.ContainsKey(h.Key))
                 headers[h.Key] = h.Value;
         }
 
@@ -125,8 +127,11 @@ public static class HistorySentViewBuilder
                 break;
         }
 
-        // 8. Determine Content-Type from the snapshot body type.
-        var contentType = CollectionRequest.BodyTypes.ToContentType(snapshot.BodyType);
+        // 8. Determine Content-Type: prefer an explicit user-specified override, fall back to
+        //    the value derived from the snapshot's body type.
+        var contentType = headers.TryGetValue(WellKnownHeaders.ContentType, out var explicitCt)
+            ? explicitCt
+            : CollectionRequest.BodyTypes.ToContentType(snapshot.BodyType);
 
         return new RequestModel
         {

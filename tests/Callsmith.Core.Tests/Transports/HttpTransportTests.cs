@@ -251,6 +251,31 @@ public sealed class HttpTransportTests
         handler.LastRequest!.Content!.Headers.ContentType?.MediaType.Should().Be("text/plain");
     }
 
+    [Theory]
+    [InlineData("content-type")]
+    [InlineData("CONTENT-TYPE")]
+    [InlineData("Content-Type")]
+    public async Task SendAsync_ExplicitContentTypeHeader_IsCaseInsensitive(string headerKey)
+    {
+        var handler = new StubHandler(HttpStatusCode.OK);
+        var transport = CreateTransport(handler);
+        var request = new RequestModel
+        {
+            Method = HttpMethod.Post,
+            Url = "https://example.com",
+            Body = "body",
+            ContentType = "application/json",
+            Headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                [headerKey] = "text/csv",
+            },
+        };
+
+        await transport.SendAsync(request);
+
+        handler.LastRequest!.Content!.Headers.ContentType?.MediaType.Should().Be("text/csv");
+    }
+
     [Fact]
     public async Task SendAsync_WithBodyBytes_SendsBinaryBody()
     {

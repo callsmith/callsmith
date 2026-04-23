@@ -350,4 +350,74 @@ public sealed class HistorySentViewBuilderTests
 
         model.Headers.Should().NotContainKey("Authorization");
     }
+
+    // -------------------------------------------------------------------------
+    // Content-Type override
+    // -------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("Content-Type")]
+    [InlineData("content-type")]
+    [InlineData("CONTENT-TYPE")]
+    public void Build_WithExplicitContentTypeHeader_OverridesAutoApplied(string headerKey)
+    {
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "POST",
+            Url = "https://example.com",
+            Headers = [new RequestKv(headerKey, "application/vnd.custom+json")],
+            AutoAppliedHeaders = [new RequestKv("Content-Type", "application/json")],
+            BodyType = CollectionRequest.BodyTypes.Json,
+            Body = """{"key":"val"}""",
+        };
+
+        var model = HistorySentViewBuilder.Build(snapshot, []);
+
+        // The user's explicit Content-Type header must win.
+        model.Headers.Should().ContainKey("Content-Type")
+            .WhoseValue.Should().Be("application/vnd.custom+json");
+        model.ContentType.Should().Be("application/vnd.custom+json");
+    }
+
+    [Theory]
+    [InlineData("Content-Type")]
+    [InlineData("content-type")]
+    [InlineData("CONTENT-TYPE")]
+    public void Build_WithExplicitContentTypeHeader_AutoAppliedDoesNotOverwrite(string headerKey)
+    {
+        // Auto-applied Content-Type must not silently overwrite a user-specified one.
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "POST",
+            Url = "https://example.com",
+            Headers = [new RequestKv(headerKey, "text/csv")],
+            AutoAppliedHeaders = [new RequestKv("Content-Type", "application/json")],
+            BodyType = CollectionRequest.BodyTypes.Json,
+        };
+
+        var model = HistorySentViewBuilder.Build(snapshot, []);
+
+        model.Headers.Should().ContainKey("Content-Type")
+            .WhoseValue.Should().Be("text/csv");
+    }
+
+    [Fact]
+    public void Build_WithoutExplicitContentTypeHeader_AutoAppliedHeaderIsUsed()
+    {
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "POST",
+            Url = "https://example.com",
+            Headers = [],
+            AutoAppliedHeaders = [new RequestKv("Content-Type", "application/json")],
+            BodyType = CollectionRequest.BodyTypes.Json,
+            Body = """{"k":"v"}""",
+        };
+
+        var model = HistorySentViewBuilder.Build(snapshot, []);
+
+        model.Headers.Should().ContainKey("Content-Type")
+            .WhoseValue.Should().Be("application/json");
+        model.ContentType.Should().Be("application/json");
+    }
 }

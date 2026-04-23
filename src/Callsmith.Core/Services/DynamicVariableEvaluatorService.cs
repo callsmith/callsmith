@@ -524,11 +524,14 @@ public sealed class DynamicVariableEvaluatorService : IDynamicVariableEvaluator
 
         // Body
         string? body = null;
-        string? contentType = null;
+        string? autoContentType = null;
         if (req.BodyType != CollectionRequest.BodyTypes.None)
         {
-            (body, contentType) = BuildBody(req, vars);
+            (body, autoContentType) = BuildBody(req, vars);
         }
+
+        // User-specified Content-Type header takes priority over the auto-generated one.
+        var contentType = headers.TryGetValue(WellKnownHeaders.ContentType, out var uct) ? uct : autoContentType;
 
         return new RequestModel
         {
