@@ -32,7 +32,12 @@ public sealed class EnvVarCompletionUiTests
         Dispatcher.UIThread.RunJobs();
 
         textBox.Focus();
-        window.KeyTextInput("{{b");
+        // Set text directly rather than via KeyTextInput to avoid triggering Avalonia's
+        // full text-layout pipeline (GlyphRun.GetDistanceFromCharacterHit), which crashes
+        // on CI Linux runners that have no fonts installed.
+        textBox.Text = "{{b";
+        textBox.CaretIndex = textBox.Text.Length;
+        Dispatcher.UIThread.RunJobs();
 
         var popup = FindPopupList(window);
         popup.Should().NotBeNull();

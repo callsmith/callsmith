@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Net.Http;
 using System.Diagnostics;
+using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Callsmith.Core;
 using Callsmith.Core.Abstractions;
@@ -638,7 +639,7 @@ public sealed class RequestTabViewModelSaveTests
         sut.HasUnsavedChanges.Should().BeFalse();
     }
 
-    [Fact]
+    [AvaloniaFact]
     public async Task LoadRequest_LoadsMostRecentResponseForSelectedEnvironment()
     {
         var requestId = Guid.NewGuid();
@@ -702,7 +703,7 @@ public sealed class RequestTabViewModelSaveTests
             .GetLatestForRequestInEnvironmentAsync(requestId, devEnvId, Arg.Any<CancellationToken>());
     }
 
-    [Fact]
+    [AvaloniaFact]
     public async Task SetEnvironment_ReloadsHistoryForNewEnvironment_AndClearsWhenNoneExists()
     {
         var requestId = Guid.NewGuid();
