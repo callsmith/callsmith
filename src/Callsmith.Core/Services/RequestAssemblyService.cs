@@ -110,9 +110,15 @@ public class RequestAssemblyService : IRequestAssemblyService
             env.MockGenerators);
 
         // Determine auto-applied headers (e.g., Content-Type for forms).
-        var contentType = DetermineContentType(request.BodyType);
-        var autoAppliedHeaders = contentType is not null
-            ? (IReadOnlyList<RequestKv>)[new RequestKv(WellKnownHeaders.ContentType, contentType)]
+        var autoContentType = DetermineContentType(request.BodyType);
+
+        // User-specified Content-Type takes priority over the auto-generated one (case-insensitive).
+        var userContentType = headers.TryGetValue(WellKnownHeaders.ContentType, out var uct) ? uct : null;
+        var effectiveContentType = userContentType ?? autoContentType;
+
+        // Only emit an auto-applied Content-Type entry when the user has not already provided one.
+        var autoAppliedHeaders = autoContentType is not null && userContentType is null
+            ? (IReadOnlyList<RequestKv>)[new RequestKv(WellKnownHeaders.ContentType, autoContentType)]
             : (IReadOnlyList<RequestKv>)[..Array.Empty<RequestKv>()];
 
         // Build the final RequestModel.
@@ -125,7 +131,7 @@ public class RequestAssemblyService : IRequestAssemblyService
             BodyBytes = fileBodyBytes,
             MultipartFormParams = multipartFormParams,
             MultipartFormFiles = multipartFormFiles,
-            ContentType = contentType,
+            ContentType = effectiveContentType,
         };
 
         // Deduplicate variable bindings by token.
