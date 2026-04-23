@@ -246,6 +246,17 @@ public sealed class CollectionImportService : ICollectionImportService
             BodyType = imported.BodyType,
             Body = imported.Body,
             FormParams = imported.FormParams,
+            MultipartBodyEntries = imported.BodyType == CollectionRequest.BodyTypes.Multipart
+                ? imported.FormParams
+                    .Select(kv => new MultipartBodyEntry
+                    {
+                        Key = kv.Key,
+                        IsFile = false,
+                        TextValue = kv.Value,
+                        IsEnabled = true,
+                    })
+                    .ToList()
+                : [],
             PathParams = imported.PathParams,
             QueryParams = imported.QueryParams,
             Auth = imported.Auth,

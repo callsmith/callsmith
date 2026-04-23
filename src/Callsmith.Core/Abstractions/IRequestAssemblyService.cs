@@ -62,6 +62,9 @@ public class RequestAssemblyInput
     /// <summary>Form parameters (used for BodyType = Form or Multipart).</summary>
     public required IEnumerable<KeyValuePair<string, string>> FormParams { get; set; }
 
+    /// <summary>Multipart file parameters (used for BodyType = Multipart).</summary>
+    public IEnumerable<MultipartFilePart> MultipartFormFiles { get; set; } = [];
+
     /// <summary>File body bytes (when BodyType = File).</summary>
     public byte[]? FileBodyBytes { get; set; }
 

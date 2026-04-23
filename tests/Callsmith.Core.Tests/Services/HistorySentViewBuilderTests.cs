@@ -119,10 +119,10 @@ public sealed class HistorySentViewBuilderTests
             Method = "POST",
             Url = "https://example.com",
             BodyType = CollectionRequest.BodyTypes.Multipart,
-            FormParams =
+            MultipartBodyEntries =
             [
-                new KeyValuePair<string, string>("field1", "value1"),
-                new KeyValuePair<string, string>("field2", "value2"),
+                new MultipartBodyEntry { Key = "field1", IsFile = false, TextValue = "value1", IsEnabled = true },
+                new MultipartBodyEntry { Key = "field2", IsFile = false, TextValue = "value2", IsEnabled = true },
             ],
         };
 
@@ -134,6 +134,67 @@ public sealed class HistorySentViewBuilderTests
         model.MultipartFormParams!.Should().Contain(kv => kv.Key == "field2" && kv.Value == "value2");
         model.ContentType.Should().Be("multipart/form-data");
         model.Body.Should().BeNull();
+    }
+
+    [Fact]
+    public void Build_WithMultipartFiles_ReturnsMultipartFileParts()
+    {
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "POST",
+            Url = "https://example.com",
+            BodyType = CollectionRequest.BodyTypes.Multipart,
+            MultipartBodyEntries =
+            [
+                new MultipartBodyEntry { Key = "file", IsFile = true, FileName = "payload.bin", IsEnabled = true },
+            ],
+            MultipartFormFiles =
+            [
+                new MultipartFilePart
+                {
+                    Key = "file",
+                    FileBytes = [0x10, 0x20],
+                    FileName = "payload.bin",
+                },
+            ],
+        };
+
+        var model = HistorySentViewBuilder.Build(snapshot, []);
+
+        model.MultipartFormFiles.Should().NotBeNull();
+        model.MultipartFormFiles.Should().ContainSingle();
+        model.MultipartFormFiles![0].Key.Should().Be("file");
+        model.MultipartFormFiles[0].FileName.Should().Be("payload.bin");
+        model.MultipartFormFiles[0].FileBytes.Should().Equal([0x10, 0x20]);
+    }
+
+    [Fact]
+    public void Build_WithOrderedMultipartEntries_UsesEntryOrder_AndSkipsDisabledEntries()
+    {
+        var snapshot = new ConfiguredRequestSnapshot
+        {
+            Method = "POST",
+            Url = "https://example.com",
+            BodyType = CollectionRequest.BodyTypes.Multipart,
+            MultipartBodyEntries =
+            [
+                new MultipartBodyEntry { Key = "first", IsFile = false, TextValue = "1", IsEnabled = true },
+                new MultipartBodyEntry { Key = "fileA", IsFile = true, FileName = "a.bin", FilePath = "/tmp/a.bin", IsEnabled = true },
+                new MultipartBodyEntry { Key = "disabled", IsFile = false, TextValue = "x", IsEnabled = false },
+                new MultipartBodyEntry { Key = "last", IsFile = false, TextValue = "2", IsEnabled = true },
+            ],
+            MultipartFormFiles =
+            [
+                new MultipartFilePart { Key = "fileA", FileName = "a.bin", FilePath = "/tmp/a.bin", FileBytes = [0xAA] },
+            ],
+        };
+
+        var model = HistorySentViewBuilder.Build(snapshot, []);
+
+        model.MultipartFormParams.Should().Equal(
+            new KeyValuePair<string, string>("first", "1"),
+            new KeyValuePair<string, string>("last", "2"));
+        model.MultipartFormFiles.Should().ContainSingle(f => f.Key == "fileA");
     }
 
     [Fact]

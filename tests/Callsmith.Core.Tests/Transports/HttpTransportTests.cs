@@ -332,6 +332,32 @@ public sealed class HttpTransportTests
             .Should().Contain(p => p.Name == "boundary");
     }
 
+    [Fact]
+    public async Task SendAsync_WithMultipartFiles_SendsMultipartFileContent()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK);
+        var transport = CreateTransport(handler);
+        var request = new RequestModel
+        {
+            Method = HttpMethod.Post,
+            Url = "https://example.com",
+            MultipartFormFiles =
+            [
+                new MultipartFilePart
+                {
+                    Key = "file",
+                    FileBytes = [0xAA, 0xBB, 0xCC],
+                    FileName = "upload.bin",
+                },
+            ],
+        };
+
+        await transport.SendAsync(request);
+
+        handler.LastRequest!.Content.Should().BeOfType<MultipartFormDataContent>();
+        handler.LastRequestBody.Should().Contain("upload.bin");
+    }
+
     // ---------------------------------------------------------------------------
     // SendAsync — cancellation
     // ---------------------------------------------------------------------------

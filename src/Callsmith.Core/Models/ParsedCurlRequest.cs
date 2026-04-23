@@ -12,5 +12,6 @@ public sealed class ParsedCurlRequest
     public string BodyType { get; init; } = CollectionRequest.BodyTypes.None;
     public string? Body { get; init; }
     public IReadOnlyList<KeyValuePair<string, string>> FormParams { get; init; } = [];
+    public IReadOnlyList<MultipartFilePart> MultipartFormFiles { get; init; } = [];
     public AuthConfig Auth { get; init; } = new() { AuthType = AuthConfig.AuthTypes.None };
 }

@@ -1012,6 +1012,115 @@ public sealed class FileSystemCollectionServiceTests : IDisposable
         Convert.FromBase64String(loaded.FileBodyBase64!).Should().Equal(bytes);
     }
 
+    [Fact]
+    public async Task SaveAndLoad_MultipartFileParams_RoundTrip()
+    {
+        var folder = _temp.CreateSubDirectory("col");
+        var filePath = Path.Combine(folder, "multipart-files.callsmith");
+        var original = new CollectionRequest
+        {
+            FilePath = filePath,
+            Name = "multipart-files",
+            Method = HttpMethod.Post,
+            Url = "https://example.com/upload",
+            BodyType = CollectionRequest.BodyTypes.Multipart,
+            FormParams = [new KeyValuePair<string, string>("label", "docs")],
+            MultipartFormFiles =
+            [
+                new MultipartFilePart
+                {
+                    Key = "attachment",
+                    FileName = "a.bin",
+                    FilePath = "/tmp/a.bin",
+                    FileBytes = [0xAB, 0xCD],
+                },
+            ],
+        };
+
+        await _sut.SaveRequestAsync(original);
+        var loaded = await _sut.LoadRequestAsync(filePath);
+
+        loaded.BodyType.Should().Be(CollectionRequest.BodyTypes.Multipart);
+        loaded.FormParams.Should().ContainSingle(p => p.Key == "label" && p.Value == "docs");
+        loaded.MultipartFormFiles.Should().ContainSingle();
+        loaded.MultipartFormFiles[0].Key.Should().Be("attachment");
+        loaded.MultipartFormFiles[0].FileName.Should().Be("a.bin");
+        loaded.MultipartFormFiles[0].FilePath.Should().BeNull();
+        loaded.MultipartFormFiles[0].FileBytes.Should().Equal([0xAB, 0xCD]);
+    }
+
+    [Fact]
+    public async Task SaveRequestAsync_MultipartBody_WritesUnifiedMultipartEntriesWithBase64Payload()
+    {
+        var folder = _temp.CreateSubDirectory("col");
+        var filePath = Path.Combine(folder, "multipart-unified.callsmith");
+        var original = new CollectionRequest
+        {
+            FilePath = filePath,
+            Name = "multipart-unified",
+            Method = HttpMethod.Post,
+            Url = "https://example.com/upload",
+            BodyType = CollectionRequest.BodyTypes.Multipart,
+            MultipartBodyEntries =
+            [
+                new MultipartBodyEntry { Key = "label", IsFile = false, TextValue = "docs", IsEnabled = true },
+                new MultipartBodyEntry { Key = "attachment", IsFile = true, FileName = "a.bin", FilePath = "/tmp/a.bin", IsEnabled = true },
+            ],
+            MultipartFormFiles =
+            [
+                new MultipartFilePart
+                {
+                    Key = "attachment",
+                    FileName = "a.bin",
+                    FilePath = "/tmp/a.bin",
+                    FileBytes = [0xAB, 0xCD],
+                    IsEnabled = true,
+                },
+            ],
+        };
+
+        await _sut.SaveRequestAsync(original);
+        var json = await File.ReadAllTextAsync(filePath);
+
+        json.Should().Contain("\"multipartFileEntries\"");
+        json.Should().Contain("\"fileBase64\"");
+        json.Should().NotContain("\"fileBodyBase64\"");
+        json.Should().NotContain("\"fileBytes\"");
+        json.Should().NotContain("\"filePath\"");
+        json.Should().NotContain("\"formParamEntries\"");
+    }
+
+    [Fact]
+    public async Task LoadRequestAsync_MultipartUnifiedEntries_PreservesOrder_AndSkipsDisabledTextFromFormParams()
+    {
+        var folder = _temp.CreateSubDirectory("col");
+        var filePath = Path.Combine(folder, "multipart-order.callsmith");
+        var fileBase64 = Convert.ToBase64String([0x01, 0x02]);
+
+        var json = $$"""
+            {
+              "method": "POST",
+              "url": "https://example.com/upload",
+              "bodyType": "multipart",
+              "multipartFileEntries": [
+                { "name": "title", "value": "docs", "isFile": false, "enabled": true },
+                { "name": "attachment", "isFile": true, "fileName": "doc.bin", "fileBase64": "{{fileBase64}}", "enabled": true },
+                { "name": "disabledText", "value": "skip", "isFile": false, "enabled": false }
+              ]
+            }
+            """;
+        await File.WriteAllTextAsync(filePath, json);
+
+        var loaded = await _sut.LoadRequestAsync(filePath);
+
+        loaded.MultipartBodyEntries.Select(e => e.Key).Should().Equal(["title", "attachment", "disabledText"]);
+        loaded.MultipartBodyEntries.Select(e => e.IsEnabled).Should().Equal([true, true, false]);
+        loaded.FormParams.Should().ContainSingle(p => p.Key == "title" && p.Value == "docs");
+        loaded.FormParams.Should().NotContain(p => p.Key == "disabledText");
+        loaded.MultipartFormFiles.Should().ContainSingle();
+        loaded.MultipartFormFiles[0].FileBytes.Should().Equal([0x01, 0x02]);
+    }
+
     [Theory]
     [InlineData(CollectionRequest.BodyTypes.Yaml, "key: value")]
     [InlineData(CollectionRequest.BodyTypes.Other, "custom payload")]

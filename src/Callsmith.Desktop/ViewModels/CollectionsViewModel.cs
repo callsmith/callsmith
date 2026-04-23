@@ -559,6 +559,8 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
                             PathParams = requestNode.Request.PathParams,
                             Auth = requestNode.Request.Auth,
                             FormParams = requestNode.Request.FormParams,
+                            MultipartFormFiles = requestNode.Request.MultipartFormFiles,
+                            MultipartBodyEntries = requestNode.Request.MultipartBodyEntries,
                         };
                         requestNode.UpdateRequest(updatedRequest);
                         
@@ -885,6 +887,8 @@ public sealed partial class CollectionsViewModel : ObservableRecipient,
                     PathParams = oldRequest.PathParams,
                     Auth = oldRequest.Auth,
                     FormParams = oldRequest.FormParams,
+                    MultipartFormFiles = oldRequest.MultipartFormFiles,
+                    MultipartBodyEntries = oldRequest.MultipartBodyEntries,
                 };
                 Messenger.Send(new RequestRenamedMessage(oldRequest.FilePath, updatedRequest));
             }

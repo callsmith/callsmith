@@ -291,6 +291,35 @@ public sealed class CurlCommandParserTests
     }
 
     [Fact]
+    public void TryParse_WithFormFlag_ParsesFileReferencesWhenFileExists()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "curl-form-file-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var filePath = Path.Combine(root, "photo.jpg");
+        File.WriteAllBytes(filePath, [0x01, 0x02, 0x03]);
+
+        try
+        {
+            var command = $"""curl -F "file=@{filePath}" -F "caption=hello" https://api.example.com/upload """;
+
+            var ok = CurlCommandParser.TryParse(command, out var parsed);
+
+            ok.Should().BeTrue();
+            parsed.Should().NotBeNull();
+            parsed!.BodyType.Should().Be(CollectionRequest.BodyTypes.Multipart);
+            parsed.FormParams.Should().ContainSingle(p => p.Key == "caption" && p.Value == "hello");
+            parsed.MultipartFormFiles.Should().ContainSingle();
+            parsed.MultipartFormFiles[0].Key.Should().Be("file");
+            parsed.MultipartFormFiles[0].FileName.Should().Be("photo.jpg");
+            parsed.MultipartFormFiles[0].FileBytes.Should().Equal([0x01, 0x02, 0x03]);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void TryParse_WithUrlQueryAndExistingQueryParam_CombinesBoth()
     {
         var command = """curl "https://api.example.com/search?existing=1" --url-query "added=2" """;

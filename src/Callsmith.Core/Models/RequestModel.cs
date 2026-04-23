@@ -33,6 +33,11 @@ public sealed class RequestModel
     public IReadOnlyList<KeyValuePair<string, string>>? MultipartFormParams { get; init; }
 
     /// <summary>
+    /// File parts for multipart/form-data bodies.
+    /// </summary>
+    public IReadOnlyList<MultipartFilePart>? MultipartFormFiles { get; init; }
+
+    /// <summary>
     /// Content-Type of the body (e.g. "application/json"). Null when <see cref="Body"/> is null.
     /// </summary>
     public string? ContentType { get; init; }

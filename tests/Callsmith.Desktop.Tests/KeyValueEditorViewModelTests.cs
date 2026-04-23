@@ -1,4 +1,5 @@
 using Callsmith.Desktop.ViewModels;
+using Callsmith.Core.Models;
 using FluentAssertions;
 
 namespace Callsmith.Desktop.Tests;
@@ -94,5 +95,91 @@ public sealed class KeyValueEditorViewModelTests
         sut.MoveItem(item, 2);
 
         eventFired.Should().BeTrue();
+    }
+
+    [Fact]
+    public void GetEnabledPairs_WhenFileRowsExist_ReturnsOnlyTextRows()
+    {
+        var sut = new KeyValueEditorViewModel { ShowValueTypeSelector = true };
+        sut.LoadMultipartFrom(
+            [new KeyValuePair<string, string>("name", "alice")],
+            [
+                new MultipartFilePart
+                {
+                    Key = "avatar",
+                    FileBytes = [0x01],
+                    FileName = "a.bin",
+                    FilePath = "/tmp/a.bin",
+                    IsEnabled = true,
+                },
+            ]);
+
+        var pairs = sut.GetEnabledPairs().ToList();
+
+        pairs.Should().ContainSingle(p => p.Key == "name" && p.Value == "alice");
+    }
+
+    [Fact]
+    public void GetEnabledMultipartFileParts_ReturnsOnlyEnabledFileRows()
+    {
+        var sut = new KeyValueEditorViewModel { ShowValueTypeSelector = true };
+        sut.LoadMultipartFrom(
+            Array.Empty<KeyValuePair<string, string>>(),
+            [
+                new MultipartFilePart
+                {
+                    Key = "file1",
+                    FileBytes = [0x10],
+                    FileName = "f1.bin",
+                    FilePath = "/tmp/f1.bin",
+                    IsEnabled = true,
+                },
+                new MultipartFilePart
+                {
+                    Key = "file2",
+                    FileBytes = [0x20],
+                    FileName = "f2.bin",
+                    FilePath = "/tmp/f2.bin",
+                    IsEnabled = false,
+                },
+            ]);
+
+        var files = sut.GetEnabledMultipartFileParts();
+
+        files.Should().ContainSingle();
+        files[0].Key.Should().Be("file1");
+        files[0].FileName.Should().Be("f1.bin");
+    }
+
+    [Fact]
+    public void LoadMultipartFrom_WithoutPersistedPath_UsesFileNameForDisplay()
+    {
+        var sut = new KeyValueEditorViewModel { ShowValueTypeSelector = true };
+        sut.LoadMultipartFrom(
+            [
+                new MultipartBodyEntry
+                {
+                    Key = "attachment",
+                    IsFile = true,
+                    FileName = "file1.txt",
+                    IsEnabled = true,
+                },
+            ],
+            [
+                new MultipartFilePart
+                {
+                    Key = "attachment",
+                    FileBytes = [0x01, 0x02],
+                    FileName = "file1.txt",
+                    FilePath = null,
+                    IsEnabled = true,
+                },
+            ]);
+
+        sut.Items.Should().ContainSingle();
+        var fileRow = sut.Items[0];
+        fileRow.IsFileValue.Should().BeTrue();
+        fileRow.HasSelectedFile.Should().BeTrue();
+        fileRow.SelectedFilePath.Should().Be("file1.txt");
     }
 }

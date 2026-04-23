@@ -9,11 +9,11 @@
              x:DataType="vm:KeyValueEditorViewModel"
              Background="Transparent">
 
-  <StackPanel>
+  <StackPanel Margin="0,0,0,0">
 
     <!-- Column headers -->
-    <Grid IsVisible="{Binding Items.Count}"
-          ColumnDefinitions="24,28,*,*,28"
+            <Grid IsVisible="{Binding Items.Count}"
+              ColumnDefinitions="24,28,1*,2*,28"
           Margin="0,4,0,4">
       <TextBlock Grid.Column="2"
                  Text="Key"
@@ -32,12 +32,14 @@
     </Grid>
 
     <!-- Rows + add button (add appears where the new row will be inserted) -->
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+            HorizontalScrollBarVisibility="Disabled"
+            AllowAutoHide="False">
       <StackPanel>
         <ItemsControl x:Name="ItemRows" ItemsSource="{Binding Items}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:KeyValueItemViewModel">
-              <Grid ColumnDefinitions="24,28,*,*,28" Margin="0,2">
+              <Grid ColumnDefinitions="24,28,1*,2*,28" Margin="0,2">
 
                 <!-- Drag handle -->
                 <TextBlock Grid.Column="0"
@@ -173,139 +175,191 @@
                   </Grid>
                 </Border>
 
-                <!-- ── Value column: plain input OR pill view ──────────────── -->
+                <!-- ── Value column: type selector + text/file content on one line ── -->
+                <Grid Grid.Column="3" ColumnDefinitions="Auto,*" Margin="2,0">
 
-                <!-- Plain text input (no dynamic segments) -->
-                <TextBox Grid.Column="3"
-                         Text="{Binding ValueField.Text}"
-                         Watermark="value"
-                         FontSize="12"
-                         Foreground="#d4d4d4"
-                         Background="#2d2d30"
-                         BorderBrush="#444"
-                         Padding="6,4"
-                         Margin="2,0"
-                         VerticalContentAlignment="Center"
-                         FontFamily="Consolas,Menlo,monospace"
-                         IsVisible="{Binding ValueField.ShowPlainInput}"
-                         controls:EnvVarCompletion.Suggestions="{Binding SuggestionNames}"/>
+                  <!-- Text/File type selector (only present in multipart mode; collapses otherwise) -->
+                  <ComboBox Grid.Column="0"
+                            ItemsSource="{Binding AvailableValueTypes}"
+                            SelectedItem="{Binding ValueType}"
+                            IsVisible="{Binding ShowValueTypeSelector}"
+                            MinWidth="72"
+                            MaxWidth="90"
+                            FontSize="11"
+                            Margin="0,0,4,0"
+                            Padding="6,2"
+                            VerticalAlignment="Center"
+                            Foreground="#d4d4d4"
+                            Background="#3c3c3c"
+                            BorderBrush="#555"/>
 
-                <!-- Pill view (active when the value contains dynamic/mock segments) -->
-                <Border Grid.Column="3"
-                        Background="#2d2d30"
-                        BorderBrush="#4ec9b0"
-                        BorderThickness="1"
-                        CornerRadius="3"
-                        Padding="4,2"
-                        Margin="2,0"
-                        MinHeight="28"
-                        IsVisible="{Binding ValueField.HasSegments}">
-                  <Grid ColumnDefinitions="Auto,*">
+                  <!-- Plain text input (no dynamic segments) -->
+                  <TextBox Grid.Column="1"
+                           Text="{Binding ValueField.Text}"
+                           Watermark="value"
+                           FontSize="12"
+                           Foreground="#d4d4d4"
+                           Background="#2d2d30"
+                           BorderBrush="#444"
+                           Padding="6,4"
+                           VerticalContentAlignment="Center"
+                           FontFamily="Consolas,Menlo,monospace"
+                           IsVisible="{Binding ShowTextValuePlainInput}"
+                           controls:EnvVarCompletion.Suggestions="{Binding SuggestionNames}"/>
 
-                    <ItemsControl Grid.Column="0" ItemsSource="{Binding ValueField.DisplaySegments}">
-                      <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                          <WrapPanel Orientation="Horizontal"/>
-                        </ItemsPanelTemplate>
-                      </ItemsControl.ItemsPanel>
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:SegmentedValueFieldViewModel+SegmentDisplayItem">
-                          <StackPanel Orientation="Horizontal">
+                  <!-- Pill view (active when the value contains dynamic/mock segments) -->
+                  <Border Grid.Column="1"
+                          Background="#2d2d30"
+                          BorderBrush="#4ec9b0"
+                          BorderThickness="1"
+                          CornerRadius="3"
+                          Padding="4,2"
+                          MinHeight="28"
+                          IsVisible="{Binding ShowTextValuePillView}">
+                    <Grid ColumnDefinitions="Auto,*">
 
-                            <!-- Static text segment — inline editable -->
-                            <TextBox Text="{Binding StaticText, Mode=TwoWay}"
-                                     IsVisible="{Binding IsStatic}"
-                                     Foreground="#cccccc"
-                                     FontFamily="Consolas,Menlo,monospace"
-                                     FontSize="11"
-                                     VerticalAlignment="Center"
-                                     VerticalContentAlignment="Center"
-                                     Margin="2,1"
-                                     Background="Transparent"
-                                     BorderThickness="0"
-                                     Padding="2,1"
-                                     MinWidth="20"
-                                     Watermark="…"
-                                     controls:EnvVarCompletion.Suggestions="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).SuggestionNames}">
-                              <TextBox.Styles>
-                                <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
-                                  <Setter Property="BorderThickness" Value="0"/>
-                                  <Setter Property="Background" Value="Transparent"/>
-                                </Style>
-                              </TextBox.Styles>
-                            </TextBox>
+                      <ItemsControl Grid.Column="0" ItemsSource="{Binding ValueField.DisplaySegments}">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                          </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:SegmentedValueFieldViewModel+SegmentDisplayItem">
+                            <StackPanel Orientation="Horizontal">
 
-                            <!-- Dynamic reference pill -->
-                            <Border Background="#1a3a2a"
-                                    BorderBrush="#2a6a4a"
-                                    BorderThickness="1"
-                                    CornerRadius="10"
-                                    Padding="6,2,2,2"
-                                    Margin="2,2"
-                                    IsVisible="{Binding IsDynamic}"
-                                    VerticalAlignment="Center">
-                              <StackPanel Orientation="Horizontal" Spacing="4">
-                                <Button Content="{Binding PillLabel}"
-                                        Command="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).ValueField.EditDynamicSegmentCommand}"
-                                        CommandParameter="{Binding DynamicSegment}"
-                                        Background="Transparent"
-                                        Foreground="#4ec9b0"
-                                        BorderThickness="0"
-                                        Padding="0"
-                                        FontFamily="Consolas,Menlo,monospace"
-                                        FontSize="11"
-                                        ToolTip.Tip="Click to edit dynamic reference"/>
-                                <Button Content="×"
-                                        Command="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).ValueField.RemoveSegmentCommand}"
-                                        CommandParameter="{Binding RawSegment}"
-                                        Background="Transparent"
-                                        Foreground="#888"
-                                        BorderThickness="0"
-                                        Padding="2,0"
-                                        FontSize="12"
-                                        ToolTip.Tip="Remove this dynamic reference"/>
-                              </StackPanel>
-                            </Border>
+                              <!-- Static text segment — inline editable -->
+                              <TextBox Text="{Binding StaticText, Mode=TwoWay}"
+                                       IsVisible="{Binding IsStatic}"
+                                       Foreground="#cccccc"
+                                       FontFamily="Consolas,Menlo,monospace"
+                                       FontSize="11"
+                                       VerticalAlignment="Center"
+                                       VerticalContentAlignment="Center"
+                                       Margin="2,1"
+                                       Background="Transparent"
+                                       BorderThickness="0"
+                                       Padding="2,1"
+                                       MinWidth="20"
+                                       Watermark="…"
+                                       controls:EnvVarCompletion.Suggestions="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).SuggestionNames}">
+                                <TextBox.Styles>
+                                  <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+                                    <Setter Property="BorderThickness" Value="0"/>
+                                    <Setter Property="Background" Value="Transparent"/>
+                                  </Style>
+                                </TextBox.Styles>
+                              </TextBox>
 
-                            <!-- Mock data pill -->
-                            <Border Background="#2a1a3a"
-                                    BorderBrush="#6a2a9a"
-                                    BorderThickness="1"
-                                    CornerRadius="10"
-                                    Padding="6,2,2,2"
-                                    Margin="2,2"
-                                    IsVisible="{Binding IsMockData}"
-                                    VerticalAlignment="Center">
-                              <StackPanel Orientation="Horizontal" Spacing="4">
-                                <Button Content="{Binding PillLabel}"
-                                        Command="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).ValueField.EditMockSegmentCommand}"
-                                        CommandParameter="{Binding MockDataSegment}"
-                                        Background="Transparent"
-                                        Foreground="#c586c0"
-                                        BorderThickness="0"
-                                        Padding="0"
-                                        FontFamily="Consolas,Menlo,monospace"
-                                        FontSize="11"
-                                        ToolTip.Tip="Click to change mock data generator"/>
-                                <Button Content="×"
-                                        Command="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).ValueField.RemoveSegmentCommand}"
-                                        CommandParameter="{Binding RawSegment}"
-                                        Background="Transparent"
-                                        Foreground="#888"
-                                        BorderThickness="0"
-                                        Padding="2,0"
-                                        FontSize="12"
-                                        ToolTip.Tip="Remove this mock data generator"/>
-                              </StackPanel>
-                            </Border>
+                              <!-- Dynamic reference pill -->
+                              <Border Background="#1a3a2a"
+                                      BorderBrush="#2a6a4a"
+                                      BorderThickness="1"
+                                      CornerRadius="10"
+                                      Padding="6,2,2,2"
+                                      Margin="2,2"
+                                      IsVisible="{Binding IsDynamic}"
+                                      VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                  <Button Content="{Binding PillLabel}"
+                                          Command="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).ValueField.EditDynamicSegmentCommand}"
+                                          CommandParameter="{Binding DynamicSegment}"
+                                          Background="Transparent"
+                                          Foreground="#4ec9b0"
+                                          BorderThickness="0"
+                                          Padding="0"
+                                          FontFamily="Consolas,Menlo,monospace"
+                                          FontSize="11"
+                                          ToolTip.Tip="Click to edit dynamic reference"/>
+                                  <Button Content="×"
+                                          Command="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).ValueField.RemoveSegmentCommand}"
+                                          CommandParameter="{Binding RawSegment}"
+                                          Background="Transparent"
+                                          Foreground="#888"
+                                          BorderThickness="0"
+                                          Padding="2,0"
+                                          FontSize="12"
+                                          ToolTip.Tip="Remove this dynamic reference"/>
+                                </StackPanel>
+                              </Border>
 
-                          </StackPanel>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                              <!-- Mock data pill -->
+                              <Border Background="#2a1a3a"
+                                      BorderBrush="#6a2a9a"
+                                      BorderThickness="1"
+                                      CornerRadius="10"
+                                      Padding="6,2,2,2"
+                                      Margin="2,2"
+                                      IsVisible="{Binding IsMockData}"
+                                      VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                  <Button Content="{Binding PillLabel}"
+                                          Command="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).ValueField.EditMockSegmentCommand}"
+                                          CommandParameter="{Binding MockDataSegment}"
+                                          Background="Transparent"
+                                          Foreground="#c586c0"
+                                          BorderThickness="0"
+                                          Padding="0"
+                                          FontFamily="Consolas,Menlo,monospace"
+                                          FontSize="11"
+                                          ToolTip.Tip="Click to change mock data generator"/>
+                                  <Button Content="×"
+                                          Command="{Binding $parent[ItemsControl].((vm:KeyValueItemViewModel)DataContext).ValueField.RemoveSegmentCommand}"
+                                          CommandParameter="{Binding RawSegment}"
+                                          Background="Transparent"
+                                          Foreground="#888"
+                                          BorderThickness="0"
+                                          Padding="2,0"
+                                          FontSize="12"
+                                          ToolTip.Tip="Remove this mock data generator"/>
+                                </StackPanel>
+                              </Border>
 
-                  </Grid>
-                </Border>
+                            </StackPanel>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+
+                    </Grid>
+                  </Border>
+
+                  <!-- File picker (shown when row is in File mode) -->
+                    <Grid Grid.Column="1"
+                    ColumnDefinitions="Auto,*"
+                    ColumnSpacing="8"
+                    VerticalAlignment="Center"
+                    ClipToBounds="True"
+                    IsVisible="{Binding IsFileValue}">
+                      <Button Grid.Column="0"
+                        Content="Choose File…"
+                        Command="{Binding SelectFileCommand}"
+                        Background="#3c3c3c" Foreground="#d4d4d4"
+                        BorderBrush="#555" BorderThickness="1"
+                        Padding="10,5" CornerRadius="4"/>
+
+                      <Grid Grid.Column="1"
+                      VerticalAlignment="Center"
+                      ClipToBounds="True">
+                        <TextBlock Text="{Binding SelectedFilePath}"
+                       Foreground="#888"
+                       FontFamily="Consolas,Menlo,monospace"
+                       FontSize="12"
+                       VerticalAlignment="Center"
+                       TextWrapping="NoWrap"
+                       TextTrimming="CharacterEllipsis"
+                       ClipToBounds="True"
+                       IsVisible="{Binding HasSelectedFile}"/>
+                        <TextBlock Text="No file selected"
+                       Foreground="#666"
+                       FontSize="12"
+                       VerticalAlignment="Center"
+                       TextWrapping="NoWrap"
+                       TextTrimming="CharacterEllipsis"
+                       ClipToBounds="True"
+                       IsVisible="{Binding !HasSelectedFile}"/>
+                      </Grid>
+                    </Grid>
+                </Grid>
 
                 <Button Grid.Column="4"
                         Content="×"

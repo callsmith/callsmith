@@ -207,6 +207,45 @@ public class RequestAssemblyServiceTests
     }
 
     [Fact]
+    public async Task AssembleAsync_WithMultipartFiles_CollectsMultipartFiles()
+    {
+        var globalEnv = new EnvironmentModel { FilePath = "", EnvironmentId = Guid.NewGuid(), Name = "Global", Variables = [] };
+        var mergedEnv = new ResolvedEnvironment { Variables = new Dictionary<string, string>() };
+        _mergeServiceMock.MergeAsync(Arg.Any<string>(), Arg.Any<EnvironmentModel>(), Arg.Any<EnvironmentModel>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(mergedEnv);
+
+        var input = new RequestAssemblyInput
+        {
+            Method = "POST",
+            Url = "https://api.example.com/upload",
+            Headers = [],
+            PathParams = [],
+            QueryParams = [],
+            BodyType = CollectionRequest.BodyTypes.Multipart,
+            FormParams = [],
+            MultipartFormFiles =
+            [
+                new MultipartFilePart
+                {
+                    Key = "attachment",
+                    FileBytes = [0x01, 0x02],
+                    FileName = "a.bin",
+                    FilePath = "/tmp/a.bin",
+                },
+            ],
+            Auth = new AuthConfig { AuthType = AuthConfig.AuthTypes.None },
+        };
+
+        var assembled = await _service.AssembleAsync(input, globalEnv, null, "/collection", "", CancellationToken.None);
+
+        assembled.RequestModel.MultipartFormFiles.Should().NotBeNull();
+        assembled.RequestModel.MultipartFormFiles.Should().ContainSingle();
+        assembled.RequestModel.MultipartFormFiles![0].Key.Should().Be("attachment");
+        assembled.RequestModel.MultipartFormFiles[0].FileName.Should().Be("a.bin");
+        assembled.RequestModel.MultipartFormFiles[0].FileBytes.Should().Equal([0x01, 0x02]);
+    }
+
+    [Fact]
     public async Task AssembleAsync_WithFileBody_PassesFileBytesDirectly()
     {
         // Arrange

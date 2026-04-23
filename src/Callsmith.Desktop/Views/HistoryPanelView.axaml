@@ -500,6 +500,46 @@
                           BorderBrush="#555"
                           Padding="8,3"
                           VerticalAlignment="Center"/>
+
+                  <!-- Download multipart file parts (flyout when >1 file) -->
+                  <Button IsVisible="{Binding DetailHasMultipartFiles}"
+                          ToolTip.Tip="Save a multipart file attachment to disk"
+                          FontSize="11"
+                          Background="Transparent"
+                          Foreground="#4ec9b0"
+                          BorderThickness="1"
+                          BorderBrush="#555"
+                          Padding="8,3"
+                          VerticalAlignment="Center">
+                    <Button.Content>
+                      <TextBlock Text="↓ Download Files" VerticalAlignment="Center"/>
+                    </Button.Content>
+                    <Button.Flyout>
+                      <Flyout Placement="BottomEdgeAlignedLeft" x:CompileBindings="False">
+                        <ItemsControl ItemsSource="{Binding DetailMultipartFiles}">
+                          <ItemsControl.Styles>
+                            <Style Selector="ItemsControl > ContentPresenter">
+                              <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                            </Style>
+                          </ItemsControl.Styles>
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:HistoryMultipartFileViewModel">
+                              <Button Content="{Binding DisplayName}"
+                                      Command="{Binding DownloadCommand}"
+                                      Background="Transparent"
+                                      Foreground="#d4d4d4"
+                                      BorderThickness="0"
+                                      Padding="8,6"
+                                      HorizontalAlignment="Stretch"
+                                      HorizontalContentAlignment="Left"
+                                      FontSize="12"
+                                      FontFamily="Consolas,Menlo,monospace"/>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </Flyout>
+                    </Button.Flyout>
+                  </Button>
                 </StackPanel>
                 <Border Background="#252526"
                         CornerRadius="4"

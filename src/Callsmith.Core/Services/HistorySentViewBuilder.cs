@@ -86,6 +86,7 @@ public static class HistorySentViewBuilder
         string? resolvedBody = null;
         byte[]? resolvedBodyBytes = null;
         IReadOnlyList<KeyValuePair<string, string>>? multipartFormParams = null;
+        IReadOnlyList<MultipartFilePart>? multipartFormFiles = null;
 
         switch (snapshot.BodyType)
         {
@@ -105,13 +106,13 @@ public static class HistorySentViewBuilder
                 break;
             }
 
-            case CollectionRequest.BodyTypes.Multipart when snapshot.FormParams.Count > 0:
-                multipartFormParams = snapshot.FormParams
-                    .Select(p => new KeyValuePair<string, string>(
-                        Substitute(p.Key, vars) ?? p.Key,
-                        Substitute(p.Value, vars) ?? p.Value))
-                    .ToList();
+            case CollectionRequest.BodyTypes.Multipart:
+            {
+                var (resolvedParams, resolvedFiles) = ResolveMultipartEntries(snapshot.MultipartBodyEntries, snapshot.MultipartFormFiles, vars);
+                multipartFormParams = resolvedParams;
+                multipartFormFiles = resolvedFiles;
                 break;
+            }
 
             case CollectionRequest.BodyTypes.File when snapshot.FileBodyBase64 is not null:
                 resolvedBodyBytes = Convert.FromBase64String(snapshot.FileBodyBase64);
@@ -135,6 +136,7 @@ public static class HistorySentViewBuilder
             Body = resolvedBody,
             BodyBytes = resolvedBodyBytes,
             MultipartFormParams = multipartFormParams,
+            MultipartFormFiles = multipartFormFiles,
             ContentType = contentType,
         };
     }
@@ -169,6 +171,67 @@ public static class HistorySentViewBuilder
 
     private static string? Substitute(string? template, IReadOnlyDictionary<string, string> vars) =>
         VariableSubstitutionService.Substitute(template, vars);
+
+    private static IReadOnlyList<MultipartFilePart> ResolveMultipartFiles(
+        IReadOnlyList<MultipartFilePart> files,
+        IReadOnlyDictionary<string, string> vars)
+        => files
+            .Where(f => f.IsEnabled)
+            .Where(f => !string.IsNullOrWhiteSpace(f.Key))
+            .Select(f => new MultipartFilePart
+            {
+                Key = Substitute(f.Key, vars) ?? f.Key,
+                FileBytes = f.FileBytes,
+                FileName = f.FileName,
+                FilePath = f.FilePath,
+                IsEnabled = true,
+            })
+            .ToList();
+
+    private static (
+        IReadOnlyList<KeyValuePair<string, string>> Params,
+        IReadOnlyList<MultipartFilePart> Files)
+        ResolveMultipartEntries(
+            IReadOnlyList<MultipartBodyEntry> entries,
+            IReadOnlyList<MultipartFilePart> files,
+            IReadOnlyDictionary<string, string> vars)
+    {
+        var resolvedParams = new List<KeyValuePair<string, string>>();
+        var resolvedFiles = new List<MultipartFilePart>();
+
+        var fileBuckets = files
+            .Where(f => f.IsEnabled)
+            .Where(f => !string.IsNullOrWhiteSpace(f.Key))
+            .GroupBy(f => (f.Key, f.FileName, f.FilePath))
+            .ToDictionary(g => g.Key, g => new Queue<MultipartFilePart>(g));
+
+        foreach (var entry in entries.Where(e => e.IsEnabled).Where(e => !string.IsNullOrWhiteSpace(e.Key)))
+        {
+            if (!entry.IsFile)
+            {
+                resolvedParams.Add(new KeyValuePair<string, string>(
+                    Substitute(entry.Key, vars) ?? entry.Key,
+                    Substitute(entry.TextValue, vars) ?? entry.TextValue ?? string.Empty));
+                continue;
+            }
+
+            var matchKey = (entry.Key, entry.FileName, entry.FilePath);
+            if (!fileBuckets.TryGetValue(matchKey, out var bucket) || bucket.Count == 0)
+                continue;
+
+            var file = bucket.Dequeue();
+            resolvedFiles.Add(new MultipartFilePart
+            {
+                Key = Substitute(file.Key, vars) ?? file.Key,
+                FileBytes = file.FileBytes,
+                FileName = file.FileName,
+                FilePath = file.FilePath,
+                IsEnabled = true,
+            });
+        }
+
+        return (resolvedParams, resolvedFiles);
+    }
 
     /// <summary>
     /// Applies the auth configuration to <paramref name="headers"/> and <paramref name="url"/>

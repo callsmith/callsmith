@@ -155,11 +155,25 @@ public sealed class HttpTransport : ITransport, IDisposable
             if (request.ContentType is not null)
                 message.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(request.ContentType);
         }
-        else if (request.MultipartFormParams is { Count: > 0 })
+        else if (request.MultipartFormParams is { Count: > 0 } ||
+                 request.MultipartFormFiles is { Count: > 0 })
         {
             var multipart = new MultipartFormDataContent();
-            foreach (var (key, value) in request.MultipartFormParams)
-                multipart.Add(new StringContent(value), key);
+            if (request.MultipartFormParams is not null)
+            {
+                foreach (var (key, value) in request.MultipartFormParams)
+                    multipart.Add(new StringContent(value), key);
+            }
+
+            if (request.MultipartFormFiles is not null)
+            {
+                foreach (var file in request.MultipartFormFiles.Where(f => !string.IsNullOrWhiteSpace(f.Key)))
+                {
+                    var content = new ByteArrayContent(file.FileBytes);
+                    multipart.Add(content, file.Key, string.IsNullOrWhiteSpace(file.FileName) ? "file" : file.FileName);
+                }
+            }
+
             message.Content = multipart;
             // Content-Type (including the required boundary parameter) is set automatically.
         }

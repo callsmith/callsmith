@@ -845,6 +845,13 @@ public sealed class HistoryRepository : IHistoryService
             Append(builder, part.Value);
         }
 
+        foreach (var file in snapshot.MultipartFormFiles)
+        {
+            Append(builder, file.Key);
+            Append(builder, file.FileName);
+            Append(builder, file.FilePath);
+        }
+
         Append(builder, snapshot.Auth.AuthType);
         Append(builder, snapshot.Auth.Username);
         Append(builder, snapshot.Auth.ApiKeyName);

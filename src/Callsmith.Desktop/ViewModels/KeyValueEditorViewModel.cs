@@ -28,6 +28,18 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
     /// <summary>Whether row enabled/disabled checkboxes are shown.</summary>
     [ObservableProperty]
     private bool _showEnabledToggle = true;
+
+    /// <summary>
+    /// When true, the value column supports a Text/File selector for multipart form values.
+    /// </summary>
+    [ObservableProperty]
+    private bool _showValueTypeSelector = false;
+
+    /// <summary>
+    /// Callback injected by the parent ViewModel to open the platform file picker.
+    /// </summary>
+    [ObservableProperty]
+    private Func<CancellationToken, Task<(byte[] Bytes, string Name, string Path)?>>? _openFilePickerFunc;
     /// <summary>
     /// Whether the key column renders as a pill-aware field.
     /// Set to true for headers and query params; false (default) for path params and form body.
@@ -132,8 +144,45 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
     public IEnumerable<KeyValuePair<string, string>> GetEnabledPairs()
         => Items
             .Where(i => !string.IsNullOrWhiteSpace(i.Key))
+            .Where(i => i.IsTextValue)
             .Where(i => !ShowEnabledToggle || i.IsEnabled)
             .Select(i => new KeyValuePair<string, string>(i.Key, i.Value));
+
+    /// <summary>
+    /// Returns all enabled file rows that have a non-empty key and selected file data.
+    /// </summary>
+    public IReadOnlyList<MultipartFilePart> GetEnabledMultipartFileParts()
+        => Items
+            .Where(i => !string.IsNullOrWhiteSpace(i.Key))
+            .Where(i => i.IsFileValue && i.SelectedFileBytes is not null)
+            .Where(i => !ShowEnabledToggle || i.IsEnabled)
+            .Select(i => new MultipartFilePart
+            {
+                Key = i.Key,
+                FileBytes = i.SelectedFileBytes!,
+                FileName = i.SelectedFileName,
+                FilePath = i.SelectedFilePath,
+                IsEnabled = !ShowEnabledToggle || i.IsEnabled,
+            })
+            .ToList();
+
+    /// <summary>
+    /// Returns all multipart rows (enabled and disabled) in their current display order,
+    /// as <see cref="MultipartBodyEntry"/> objects that carry type, value, and file metadata.
+    /// </summary>
+    public IReadOnlyList<MultipartBodyEntry> GetAllMultipartBodyEntries()
+        => Items
+            .Where(i => !string.IsNullOrWhiteSpace(i.Key))
+            .Select(i => new MultipartBodyEntry
+            {
+                Key = i.Key,
+                IsFile = i.IsFileValue,
+                TextValue = i.IsTextValue ? i.Value : null,
+                FileName = i.SelectedFileName,
+                FilePath = i.SelectedFilePath,
+                IsEnabled = !ShowEnabledToggle || i.IsEnabled,
+            })
+            .ToList();
 
     /// <summary>
     /// Returns all rows (enabled and disabled) that have a non-empty key as <see cref="RequestKv"/>.
@@ -142,8 +191,92 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
     public IReadOnlyList<RequestKv> GetAllKv()
         => Items
             .Where(i => !string.IsNullOrWhiteSpace(i.Key))
+            .Where(i => i.IsTextValue)
             .Select(i => new RequestKv(i.Key, i.Value, !ShowEnabledToggle || i.IsEnabled))
             .ToList();
+
+    /// <summary>
+    /// Returns all file rows (enabled and disabled) that have non-empty keys and selected file data.
+    /// </summary>
+    public IReadOnlyList<MultipartFilePart> GetAllMultipartFileParts()
+        => Items
+            .Where(i => !string.IsNullOrWhiteSpace(i.Key))
+            .Where(i => i.IsFileValue && i.SelectedFileBytes is not null)
+            .Select(i => new MultipartFilePart
+            {
+                Key = i.Key,
+                FileBytes = i.SelectedFileBytes!,
+                FileName = i.SelectedFileName,
+                FilePath = i.SelectedFilePath,
+                IsEnabled = !ShowEnabledToggle || i.IsEnabled,
+            })
+            .ToList();
+
+    /// <summary>
+    /// Replaces all items with a combined multipart list (text + file rows).
+    /// </summary>
+    public void LoadMultipartFrom(
+        IReadOnlyList<KeyValuePair<string, string>> textItems,
+        IReadOnlyList<MultipartFilePart> fileItems)
+    {
+        foreach (var item in Items)
+            item.PropertyChanged -= OnItemPropertyChanged;
+
+        Items.Clear();
+
+        foreach (var (k, v) in textItems)
+            Items.Add(CreateItem(k, v));
+
+        foreach (var file in fileItems)
+        {
+            Items.Add(CreateItem(
+                file.Key,
+                string.Empty,
+                file.IsEnabled,
+                KeyValueItemViewModel.ValueTypes.File,
+                file));
+        }
+    }
+
+    /// <summary>
+    /// Replaces all items with an ordered multipart list (text + file rows), preserving enabled state.
+    /// File bytes are resolved from <paramref name="fileItems"/>.
+    /// </summary>
+    public void LoadMultipartFrom(
+        IReadOnlyList<MultipartBodyEntry> entries,
+        IReadOnlyList<MultipartFilePart> fileItems)
+    {
+        foreach (var item in Items)
+            item.PropertyChanged -= OnItemPropertyChanged;
+
+        Items.Clear();
+
+        var fileBuckets = fileItems
+            .GroupBy(f => (f.Key, f.FileName, f.FilePath))
+            .ToDictionary(g => g.Key, g => new Queue<MultipartFilePart>(g));
+
+        foreach (var entry in entries)
+        {
+            if (entry.IsFile)
+            {
+                MultipartFilePart? matchedFile = null;
+                var matchKey = (entry.Key, entry.FileName, entry.FilePath);
+                if (fileBuckets.TryGetValue(matchKey, out var bucket) && bucket.Count > 0)
+                    matchedFile = bucket.Dequeue();
+
+                Items.Add(CreateItem(
+                    entry.Key,
+                    string.Empty,
+                    entry.IsEnabled,
+                    KeyValueItemViewModel.ValueTypes.File,
+                    matchedFile));
+            }
+            else
+            {
+                Items.Add(CreateItem(entry.Key, entry.TextValue ?? string.Empty, entry.IsEnabled));
+            }
+        }
+    }
 
     private void OnItemsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
@@ -166,7 +299,9 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
         if (e.PropertyName is
             nameof(KeyValueItemViewModel.Key) or
             nameof(KeyValueItemViewModel.Value) or
-            nameof(KeyValueItemViewModel.IsEnabled))
+            nameof(KeyValueItemViewModel.IsEnabled) or
+            nameof(KeyValueItemViewModel.ValueType) or
+            nameof(KeyValueItemViewModel.SelectedFilePath))
             Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -194,6 +329,18 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
             item.ShowKeyPills = value;
     }
 
+    partial void OnShowValueTypeSelectorChanged(bool value)
+    {
+        foreach (var item in Items)
+            item.ShowValueTypeSelector = value;
+    }
+
+    partial void OnOpenFilePickerFuncChanged(Func<CancellationToken, Task<(byte[] Bytes, string Name, string Path)?>>? value)
+    {
+        foreach (var item in Items)
+            item.SetFilePickerCallback(value);
+    }
+
     // ─── Environment variable suggestions ───────────────────────────────────
 
     private IReadOnlyList<EnvVarSuggestion> _suggestions = [];
@@ -209,18 +356,28 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
             item.SuggestionNames = suggestions;
     }
 
-    private KeyValueItemViewModel CreateItem(string key, string value, bool isEnabled = true)
+    private KeyValueItemViewModel CreateItem(
+        string key,
+        string value,
+        bool isEnabled = true,
+        string valueType = KeyValueItemViewModel.ValueTypes.Text,
+        MultipartFilePart? filePart = null)
     {
         var item = new KeyValueItemViewModel(RemoveItem, _editDynamicSegment, _editMockData)
         {
             IsEnabled = isEnabled,
             ShowDeleteButton = ShowDeleteButton,
             ShowEnabledToggle = ShowEnabledToggle,
+            ShowValueTypeSelector = ShowValueTypeSelector,
             ShowKeyPills = ShowKeyPills,
             SuggestionNames = _suggestions,
+            ValueType = valueType,
         };
+        item.SetFilePickerCallback(OpenFilePickerFunc);
         item.LoadKey(key);
         item.LoadValue(value);
+        if (filePart is not null)
+            item.LoadFile(filePart.FileBytes, filePart.FileName, filePart.FilePath);
         return item;
     }
 }
