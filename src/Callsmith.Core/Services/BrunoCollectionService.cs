@@ -850,6 +850,17 @@ public sealed class BrunoCollectionService : ICollectionService
         var body = BuildBody(doc, bodyType);
         var allBodyContents = BuildAllBodyContents(doc);
         var formParams = BuildFormParams(doc, bodyType);
+        var multipartBodyEntries = bodyType == CollectionRequest.BodyTypes.Multipart
+            ? formParams
+                .Select(kv => new MultipartBodyEntry
+                {
+                    Key = kv.Key,
+                    IsFile = false,
+                    TextValue = kv.Value,
+                    IsEnabled = true,
+                })
+                .ToList()
+            : [];
         var authType = MapBrunoAuthType(bruAuthType);
         var auth = BuildAuth(doc, authType, basicPasswordOverride, bearerTokenOverride);
         var docs = NormalizeDocsContent(doc.Find("docs")?.RawContent);
@@ -890,6 +901,7 @@ public sealed class BrunoCollectionService : ICollectionService
             Body = body,
             AllBodyContents = allBodyContents,
             FormParams = formParams,
+            MultipartBodyEntries = multipartBodyEntries,
             Auth = auth,
         };
     }

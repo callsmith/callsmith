@@ -86,6 +86,12 @@ public sealed class CollectionRequest
     public IReadOnlyList<MultipartFilePart> MultipartFormFiles { get; init; } = [];
 
     /// <summary>
+    /// Combined ordered multipart entries (text and file) as arranged in the editor.
+    /// When non-empty this is the authoritative source for multipart ordering and enabled state.
+    /// </summary>
+    public IReadOnlyList<MultipartBodyEntry> MultipartBodyEntries { get; init; } = [];
+
+    /// <summary>
     /// Binary file body encoded as a Base64 string.
     /// Only populated when <see cref="BodyType"/> is <c>"file"</c>.
     /// </summary>

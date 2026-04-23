@@ -238,6 +238,46 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Replaces all items with an ordered multipart list (text + file rows), preserving enabled state.
+    /// File bytes are resolved from <paramref name="fileItems"/>.
+    /// </summary>
+    public void LoadMultipartFrom(
+        IReadOnlyList<MultipartBodyEntry> entries,
+        IReadOnlyList<MultipartFilePart> fileItems)
+    {
+        foreach (var item in Items)
+            item.PropertyChanged -= OnItemPropertyChanged;
+
+        Items.Clear();
+
+        var fileBuckets = fileItems
+            .GroupBy(f => (f.Key, f.FileName, f.FilePath))
+            .ToDictionary(g => g.Key, g => new Queue<MultipartFilePart>(g));
+
+        foreach (var entry in entries)
+        {
+            if (entry.IsFile)
+            {
+                MultipartFilePart? matchedFile = null;
+                var matchKey = (entry.Key, entry.FileName, entry.FilePath);
+                if (fileBuckets.TryGetValue(matchKey, out var bucket) && bucket.Count > 0)
+                    matchedFile = bucket.Dequeue();
+
+                Items.Add(CreateItem(
+                    entry.Key,
+                    string.Empty,
+                    entry.IsEnabled,
+                    KeyValueItemViewModel.ValueTypes.File,
+                    matchedFile));
+            }
+            else
+            {
+                Items.Add(CreateItem(entry.Key, entry.TextValue ?? string.Empty, entry.IsEnabled));
+            }
+        }
+    }
+
     private void OnItemsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (e.OldItems is not null)

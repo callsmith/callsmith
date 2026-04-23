@@ -124,7 +124,7 @@ public sealed class KeyValueEditorViewModelTests
     {
         var sut = new KeyValueEditorViewModel { ShowValueTypeSelector = true };
         sut.LoadMultipartFrom(
-            [],
+            Array.Empty<KeyValuePair<string, string>>(),
             [
                 new MultipartFilePart
                 {
@@ -149,5 +149,37 @@ public sealed class KeyValueEditorViewModelTests
         files.Should().ContainSingle();
         files[0].Key.Should().Be("file1");
         files[0].FileName.Should().Be("f1.bin");
+    }
+
+    [Fact]
+    public void LoadMultipartFrom_WithoutPersistedPath_UsesFileNameForDisplay()
+    {
+        var sut = new KeyValueEditorViewModel { ShowValueTypeSelector = true };
+        sut.LoadMultipartFrom(
+            [
+                new MultipartBodyEntry
+                {
+                    Key = "attachment",
+                    IsFile = true,
+                    FileName = "file1.txt",
+                    IsEnabled = true,
+                },
+            ],
+            [
+                new MultipartFilePart
+                {
+                    Key = "attachment",
+                    FileBytes = [0x01, 0x02],
+                    FileName = "file1.txt",
+                    FilePath = null,
+                    IsEnabled = true,
+                },
+            ]);
+
+        sut.Items.Should().ContainSingle();
+        var fileRow = sut.Items[0];
+        fileRow.IsFileValue.Should().BeTrue();
+        fileRow.HasSelectedFile.Should().BeTrue();
+        fileRow.SelectedFilePath.Should().Be("file1.txt");
     }
 }

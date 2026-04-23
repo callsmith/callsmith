@@ -101,6 +101,11 @@ public sealed class RequestTabViewModelSendTests
                     FileBytes = [0xCA, 0xFE],
                 },
             ],
+            MultipartBodyEntries =
+            [
+                new MultipartBodyEntry { Key = "label", IsFile = false, TextValue = "docs", IsEnabled = true },
+                new MultipartBodyEntry { Key = "attachment", IsFile = true, FileName = "doc.bin", FilePath = "/tmp/doc.bin", IsEnabled = true },
+            ],
             Auth = new AuthConfig { AuthType = AuthConfig.AuthTypes.None },
         });
 
@@ -111,6 +116,95 @@ public sealed class RequestTabViewModelSendTests
         transport.LastRequest.MultipartFormFiles.Should().ContainSingle();
         transport.LastRequest.MultipartFormFiles![0].Key.Should().Be("attachment");
         transport.LastRequest.MultipartFormFiles[0].FileName.Should().Be("doc.bin");
+    }
+
+    [Fact]
+    public async Task Send_MultipartBody_DisabledEntries_AreNotSent_AndNotRecordedInHistory()
+    {
+        var transport = new CapturingTransport();
+        var registry = new TransportRegistry();
+        registry.Register(transport);
+
+        var historyService = Substitute.For<IHistoryService>();
+        HistoryEntry? recorded = null;
+        historyService
+            .RecordAsync(Arg.Do<HistoryEntry>(e => recorded = e), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        var sut = new RequestTabViewModel(
+            registry,
+            Substitute.For<ICollectionService>(),
+            new WeakReferenceMessenger(),
+            _ => { },
+            null,
+            historyService);
+
+        sut.LoadRequest(new CollectionRequest
+        {
+            FilePath = "c:/tmp/send-disabled-multipart.callsmith",
+            RequestId = Guid.NewGuid(),
+            Name = "send-disabled-multipart",
+            Method = HttpMethod.Post,
+            Url = "https://api.example.com/upload",
+            BodyType = CollectionRequest.BodyTypes.Multipart,
+            FormParams =
+            [
+                new KeyValuePair<string, string>("enabledText", "keep"),
+                new KeyValuePair<string, string>("disabledText", "drop"),
+            ],
+            MultipartFormFiles =
+            [
+                new MultipartFilePart
+                {
+                    Key = "enabledFile",
+                    FileName = "keep.bin",
+                    FilePath = "/tmp/keep.bin",
+                    FileBytes = [0xCA, 0xFE],
+                    IsEnabled = true,
+                },
+                new MultipartFilePart
+                {
+                    Key = "disabledFile",
+                    FileName = "drop.bin",
+                    FilePath = "/tmp/drop.bin",
+                    FileBytes = [0xBA, 0xAD],
+                    IsEnabled = true,
+                },
+            ],
+            MultipartBodyEntries =
+            [
+                new MultipartBodyEntry { Key = "enabledText", IsFile = false, TextValue = "keep", IsEnabled = true },
+                new MultipartBodyEntry { Key = "disabledText", IsFile = false, TextValue = "drop", IsEnabled = false },
+                new MultipartBodyEntry { Key = "enabledFile", IsFile = true, FileName = "keep.bin", FilePath = "/tmp/keep.bin", IsEnabled = true },
+                new MultipartBodyEntry { Key = "disabledFile", IsFile = true, FileName = "drop.bin", FilePath = "/tmp/drop.bin", IsEnabled = false },
+            ],
+            Auth = new AuthConfig { AuthType = AuthConfig.AuthTypes.None },
+        });
+
+        var disabledTextItem = sut.MultipartFormParams.Items.Single(i => i.Key == "disabledText" && i.IsTextValue);
+        disabledTextItem.IsEnabled = false;
+        var disabledFileItem = sut.MultipartFormParams.Items.Single(i => i.Key == "disabledFile" && i.IsFileValue);
+        disabledFileItem.IsEnabled = false;
+
+        await sut.SendCommand.ExecuteAsync(null);
+
+        transport.LastRequest.Should().NotBeNull();
+        transport.LastRequest!.MultipartFormParams.Should().ContainSingle(p => p.Key == "enabledText" && p.Value == "keep");
+        transport.LastRequest.MultipartFormParams.Should().NotContain(p => p.Key == "disabledText");
+        transport.LastRequest.MultipartFormFiles.Should().ContainSingle(f => f.Key == "enabledFile");
+        transport.LastRequest.MultipartFormFiles.Should().NotContain(f => f.Key == "disabledFile");
+
+        await AssertEventuallyAsync(async () =>
+        {
+            await historyService.Received(1).RecordAsync(Arg.Any<HistoryEntry>(), Arg.Any<CancellationToken>());
+        });
+
+        recorded.Should().NotBeNull();
+        recorded!.ConfiguredSnapshot.FormParams.Should().ContainSingle(p => p.Key == "enabledText" && p.Value == "keep");
+        recorded.ConfiguredSnapshot.FormParams.Should().NotContain(p => p.Key == "disabledText");
+        recorded.ConfiguredSnapshot.MultipartFormFiles.Should().ContainSingle(f => f.Key == "enabledFile");
+        recorded.ConfiguredSnapshot.MultipartFormFiles.Should().NotContain(f => f.Key == "disabledFile");
+        recorded.ConfiguredSnapshot.MultipartBodyEntries.Should().OnlyContain(e => e.IsEnabled);
     }
 
     [Fact]

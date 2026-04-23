@@ -197,7 +197,7 @@ public sealed partial class KeyValueItemViewModel : ObservableObject
     {
         _selectedFileBytes = bytes;
         _selectedFileName = fileName;
-        SelectedFilePath = filePath ?? string.Empty;
+        SelectedFilePath = filePath ?? fileName ?? string.Empty;
     }
 
     private async Task SelectFileAsync(CancellationToken ct)

@@ -987,7 +987,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
                              or CollectionRequest.BodyTypes.Other)
                 _bodyContents[req.BodyType] = req.Body ?? string.Empty;
             FormParams.LoadFrom(req.FormParams);
-            MultipartFormParams.LoadMultipartFrom(req.FormParams, req.MultipartFormFiles);
+            MultipartFormParams.LoadMultipartFrom(req.MultipartBodyEntries, req.MultipartFormFiles);
             AuthType = req.Auth.AuthType;
             AuthToken = req.Auth.Token ?? string.Empty;
             AuthTokenField.LoadFromText(AuthToken);
@@ -1186,6 +1186,21 @@ public sealed partial class RequestTabViewModel : ObservableObject
             })
             .ToList();
 
+        var resolvedMultipartEntries = snapshot.MultipartBodyEntries
+            .Where(e => e.IsEnabled)
+            .Select(e => new MultipartBodyEntry
+            {
+                Key = VariableSubstitutionService.Substitute(e.Key, vars) ?? e.Key,
+                IsFile = e.IsFile,
+                TextValue = e.IsFile
+                    ? null
+                    : VariableSubstitutionService.Substitute(e.TextValue, vars) ?? e.TextValue,
+                FileName = e.FileName,
+                FilePath = e.FilePath,
+                IsEnabled = true,
+            })
+            .ToList();
+
         // Resolve body.
         var resolvedBody = VariableSubstitutionService.Substitute(snapshot.Body, vars);
 
@@ -1231,7 +1246,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             _fileBodyName = restoredFileName;
             SelectedFilePath = restoredFileName ?? string.Empty;
             FormParams.LoadFrom(resolvedFormParams);
-            MultipartFormParams.LoadMultipartFrom(resolvedFormParams, resolvedMultipartFiles);
+            MultipartFormParams.LoadMultipartFrom(resolvedMultipartEntries, resolvedMultipartFiles);
             AuthType = AuthConfig.AuthTypes.Inherit;
             AuthToken = string.Empty;
             AuthTokenField.LoadFromText(AuthToken);
@@ -1890,6 +1905,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
             MultipartFormFiles = SelectedBodyType == CollectionRequest.BodyTypes.Multipart
                 ? MultipartFormParams.GetAllMultipartFileParts()
                 : [],
+            MultipartBodyEntries = SelectedBodyType == CollectionRequest.BodyTypes.Multipart
+                ? MultipartFormParams.GetAllMultipartBodyEntries()
+                : [],
             Auth = new AuthConfig
             {
                 AuthType = AuthType,
@@ -2325,15 +2343,15 @@ public sealed partial class RequestTabViewModel : ObservableObject
                     : null,
                 FileBodyName = SelectedBodyType == CollectionRequest.BodyTypes.File ? _fileBodyName : null,
                 FormParams = (SelectedBodyType == CollectionRequest.BodyTypes.Multipart
-                        ? MultipartFormParams.GetAllKv()
-                        : FormParams.GetAllKv())
+                        ? MultipartFormParams.GetEnabledPairs().Select(kv => new RequestKv(kv.Key, kv.Value, IsEnabled: true)).ToList()
+                        : FormParams.GetEnabledPairs().Select(kv => new RequestKv(kv.Key, kv.Value, IsEnabled: true)).ToList())
                     .Select(kv => new KeyValuePair<string, string>(kv.Key, kv.Value))
                     .ToList(),
                 MultipartFormFiles = SelectedBodyType == CollectionRequest.BodyTypes.Multipart
-                    ? MultipartFormParams.GetAllMultipartFileParts()
+                    ? MultipartFormParams.GetEnabledMultipartFileParts()
                     : [],
                 MultipartBodyEntries = SelectedBodyType == CollectionRequest.BodyTypes.Multipart
-                    ? MultipartFormParams.GetAllMultipartBodyEntries()
+                    ? MultipartFormParams.GetAllMultipartBodyEntries().Where(e => e.IsEnabled).ToList()
                     : [],
                 Auth = new AuthConfig
                 {
