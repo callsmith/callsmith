@@ -300,7 +300,10 @@ public sealed class CurlCommandParserTests
 
         try
         {
-            var command = $"""curl -F "file=@{filePath}" -F "caption=hello" https://api.example.com/upload """;
+            // Use forward slashes so that backslashes in Windows paths are not interpreted
+            // as escape characters by the tokenizer (which follows POSIX shell quoting rules
+            // inside double-quoted strings).  Windows File.Exists accepts forward slashes.
+            var command = $"""curl -F "file=@{filePath.Replace('\\', '/')}" -F "caption=hello" https://api.example.com/upload """;
 
             var ok = CurlCommandParser.TryParse(command, out var parsed);
 

@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Net.Http;
 using System.Diagnostics;
+using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Callsmith.Core;
 using Callsmith.Core.Abstractions;
@@ -277,7 +278,13 @@ public sealed class RequestTabViewModelSaveTests
             Method = HttpMethod.Post,
             Url = "https://api.example.com/upload",
             BodyType = CollectionRequest.BodyTypes.Multipart,
-            FormParams = [new KeyValuePair<string, string>("label", "docs")],
+            // MultipartBodyEntries is the authoritative source for multipart content order.
+            // MultipartFormFiles supplies the file bytes matched by (Key, FileName, FilePath).
+            MultipartBodyEntries =
+            [
+                new MultipartBodyEntry { Key = "label", IsFile = false, TextValue = "docs", IsEnabled = true },
+                new MultipartBodyEntry { Key = "attachment", IsFile = true, FileName = "doc.bin", FilePath = "/tmp/doc.bin", IsEnabled = true },
+            ],
             MultipartFormFiles =
             [
                 new MultipartFilePart
@@ -632,7 +639,7 @@ public sealed class RequestTabViewModelSaveTests
         sut.HasUnsavedChanges.Should().BeFalse();
     }
 
-    [Fact]
+    [AvaloniaFact]
     public async Task LoadRequest_LoadsMostRecentResponseForSelectedEnvironment()
     {
         var requestId = Guid.NewGuid();
@@ -696,7 +703,7 @@ public sealed class RequestTabViewModelSaveTests
             .GetLatestForRequestInEnvironmentAsync(requestId, devEnvId, Arg.Any<CancellationToken>());
     }
 
-    [Fact]
+    [AvaloniaFact]
     public async Task SetEnvironment_ReloadsHistoryForNewEnvironment_AndClearsWhenNoneExists()
     {
         var requestId = Guid.NewGuid();
