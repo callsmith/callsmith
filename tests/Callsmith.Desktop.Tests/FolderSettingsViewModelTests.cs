@@ -201,7 +201,7 @@ public sealed class FolderSettingsViewModelTests
     }
 
     [Fact]
-    public async Task OnFolderSettingsDialogClosed_ClearsPendingAndUpdatesNodeAuth()
+    public void OnFolderSettingsDialogClosed_ClearsPendingAndUpdatesNodeAuth()
     {
         var cs = Substitute.For<ICollectionService>();
         var sut = BuildCollectionsSut(cs);
