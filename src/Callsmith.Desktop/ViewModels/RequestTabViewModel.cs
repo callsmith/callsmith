@@ -4,7 +4,6 @@ using Avalonia.Threading;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Bruno;
 using Callsmith.Core.Helpers;
-using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
 using Callsmith.Desktop.Controls;
@@ -197,21 +196,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
     [ObservableProperty]
     private bool _isHeadersAndParamsModified;
 
-    /// <summary>Segmented field for the bearer token (supports pill rendering of dynamic tokens).</summary>
-    public SegmentedValueFieldViewModel AuthTokenField { get; }
-
-    /// <summary>Segmented field for the basic auth username.</summary>
-    public SegmentedValueFieldViewModel AuthUsernameField { get; }
-
-    /// <summary>Segmented field for the basic auth password.</summary>
-    public SegmentedValueFieldViewModel AuthPasswordField { get; }
-
-    /// <summary>Segmented field for the API key name.</summary>
-    public SegmentedValueFieldViewModel AuthApiKeyNameField { get; }
-
-    /// <summary>Segmented field for the API key value (supports pill rendering of dynamic tokens).</summary>
-    public SegmentedValueFieldViewModel AuthApiKeyValueField { get; }
-
     // -------------------------------------------------------------------------
     // Save state
     // -------------------------------------------------------------------------
@@ -343,25 +327,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
     public KeyValueEditorViewModel MultipartFormParams { get; } = new() { ShowValueTypeSelector = true };
 
     // -------------------------------------------------------------------------
-    // Segment-editing dialogs (shared by all KV editors and auth fields)
-    // -------------------------------------------------------------------------
-
-    private TaskCompletionSource<DynamicValueSegment?>? _pendingDynamicConfigTcs;
-    private TaskCompletionSource<MockDataSegment?>?     _pendingMockDataConfigTcs;
-
-    /// <summary>
-    /// Set just before <see cref="ShowDynamicValueConfig"/> becomes true.
-    /// The view code-behind shows the dialog and calls <see cref="OnDynamicConfigDialogClosed"/> when done.
-    /// </summary>
-    public DynamicValueConfigViewModel? PendingDynamicConfig { get; private set; }
-
-    /// <summary>Set just before <see cref="ShowMockDataConfig"/> becomes true.</summary>
-    public MockDataConfigViewModel? PendingMockDataConfig { get; private set; }
-
-    [ObservableProperty] private bool _showDynamicValueConfig;
-    [ObservableProperty] private bool _showMockDataConfig;
-
-    // -------------------------------------------------------------------------
     // Layout mode
     // -------------------------------------------------------------------------
 
@@ -428,75 +393,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
     /// <summary>Resolved values of all secret environment variables for the cURL dialog. Set alongside <see cref="CurlRequestSnapshot"/>.</summary>
     internal IReadOnlySet<string> CurlSecretValues { get; private set; } = new HashSet<string>();
-
-    /// <summary>
-    /// Opens the dynamic value configuration dialog. Returns the configured segment or null.
-    /// Used as the callback wired into every KV editor row's <see cref="SegmentedValueFieldViewModel"/>.
-    /// </summary>
-    internal Task<DynamicValueSegment?> OpenDynamicValueConfigAsync(DynamicValueSegment? existing)
-    {
-        // This method is only reachable when _dynamicEvaluator is not null
-        // (callbacks are only wired when the evaluator is available).
-        if (_dynamicEvaluator is null)
-            return Task.FromResult<DynamicValueSegment?>(null);
-
-        _pendingDynamicConfigTcs?.TrySetResult(null);
-
-        var staticVars = _mergeService.BuildStaticMerge(_globalEnvironment, _activeEnvironment);
-
-        PendingDynamicConfig = new DynamicValueConfigViewModel(
-            _dynamicEvaluator,
-            CollectionRootPath,
-            string.Empty,            // no env context in this scope
-            AvailableRequestNames,
-            [],                      // env variables not needed here
-            staticVars,
-            existing);
-
-        _pendingDynamicConfigTcs = new TaskCompletionSource<DynamicValueSegment?>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        ShowDynamicValueConfig = true;
-        return _pendingDynamicConfigTcs.Task;
-    }
-
-    /// <summary>Called by the view's code-behind when the dynamic value dialog closes.</summary>
-    internal void OnDynamicConfigDialogClosed()
-    {
-        ShowDynamicValueConfig = false;
-        var result = PendingDynamicConfig?.IsConfirmed == true
-            ? PendingDynamicConfig.ResultSegment
-            : null;
-        _pendingDynamicConfigTcs?.TrySetResult(result);
-        _pendingDynamicConfigTcs = null;
-        PendingDynamicConfig = null;
-    }
-
-    /// <summary>Opens the mock data picker dialog. Returns the configured segment or null.</summary>
-    internal Task<MockDataSegment?> OpenMockDataConfigAsync(MockDataSegment? existing)
-    {
-        _pendingMockDataConfigTcs?.TrySetResult(null);
-
-        PendingMockDataConfig = new MockDataConfigViewModel(existing);
-
-        _pendingMockDataConfigTcs = new TaskCompletionSource<MockDataSegment?>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        ShowMockDataConfig = true;
-        return _pendingMockDataConfigTcs.Task;
-    }
-
-    /// <summary>Called by the view's code-behind when the mock data dialog closes.</summary>
-    internal void OnMockDataConfigDialogClosed()
-    {
-        ShowMockDataConfig = false;
-        var result = PendingMockDataConfig?.IsConfirmed == true
-            ? PendingMockDataConfig.ResultSegment
-            : null;
-        _pendingMockDataConfigTcs?.TrySetResult(result);
-        _pendingMockDataConfigTcs = null;
-        PendingMockDataConfig = null;
-    }
 
     // -------------------------------------------------------------------------
     // Environment variable completions
@@ -787,39 +683,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _historyService = historyService;
         _environmentService = environmentService;
 
-        // Initialize auth segment fields — sync back to plain string properties.
-        SegmentedValueFieldViewModel? authTokenField = null;
-        authTokenField = new SegmentedValueFieldViewModel(
-            onChanged: () => { AuthToken = authTokenField!.GetInlineText(); });
-        AuthTokenField = authTokenField;
-
-        SegmentedValueFieldViewModel? authUsernameField = null;
-        authUsernameField = new SegmentedValueFieldViewModel(
-            onChanged: () => { AuthUsername = authUsernameField!.GetInlineText(); });
-        AuthUsernameField = authUsernameField;
-
-        SegmentedValueFieldViewModel? authPasswordField = null;
-        authPasswordField = new SegmentedValueFieldViewModel(
-            onChanged: () => { AuthPassword = authPasswordField!.GetInlineText(); });
-        AuthPasswordField = authPasswordField;
-
-        SegmentedValueFieldViewModel? authApiKeyNameField = null;
-        authApiKeyNameField = new SegmentedValueFieldViewModel(
-            onChanged: () => { AuthApiKeyName = authApiKeyNameField!.GetInlineText(); });
-        AuthApiKeyNameField = authApiKeyNameField;
-
-        SegmentedValueFieldViewModel? authApiKeyValueField = null;
-        authApiKeyValueField = new SegmentedValueFieldViewModel(
-            onChanged: () => { AuthApiKeyValue = authApiKeyValueField!.GetInlineText(); });
-        AuthApiKeyValueField = authApiKeyValueField;
-
         PathParams.ShowAddButton = false;
         PathParams.ShowDeleteButton = false;
         PathParams.ShowEnabledToggle = false;
         MultipartFormParams.OpenFilePickerFunc = OpenFilePickerFunc;
-
-        // Note: key-pill editing has been removed from request fields.
-        // Headers and query params still support {{var}} references via plain TextBoxes.
 
         // Dirty tracking — only fires for deliberate user edits to existing requests.
         // The _saving guard prevents reactive URL/param sync that occurs during PerformSaveAsync
@@ -848,7 +715,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(FormattedResponseBody) or nameof(FormattedResponseHeaders) or
                 nameof(ResponseHeaderRows) or nameof(HasResponseHeaders) or nameof(IsBodyJson) or
                 nameof(BodyLanguage) or nameof(ResponseLanguage) or
-                nameof(ShowDynamicValueConfig) or nameof(ShowMockDataConfig) or
                 nameof(ShowCurlDialog) or
                 nameof(IsHorizontalLayout) or
                 nameof(HorizontalSplitterPosition) or
@@ -990,15 +856,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
             MultipartFormParams.LoadMultipartFrom(req.MultipartBodyEntries, req.MultipartFormFiles);
             AuthType = req.Auth.AuthType;
             AuthToken = req.Auth.Token ?? string.Empty;
-            AuthTokenField.LoadFromText(AuthToken);
             AuthUsername = req.Auth.Username ?? string.Empty;
-            AuthUsernameField.LoadFromText(AuthUsername);
             AuthPassword = req.Auth.Password ?? string.Empty;
-            AuthPasswordField.LoadFromText(AuthPassword);
             AuthApiKeyName = req.Auth.ApiKeyName ?? string.Empty;
-            AuthApiKeyNameField.LoadFromText(AuthApiKeyName);
             AuthApiKeyValue = req.Auth.ApiKeyValue ?? string.Empty;
-            AuthApiKeyValueField.LoadFromText(AuthApiKeyValue);
             AuthApiKeyIn = req.Auth.ApiKeyIn;
             Description = req.Description;
             Response = null;
@@ -1057,15 +918,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
             AuthType = parsed.Auth.AuthType;
             AuthToken = parsed.Auth.Token ?? string.Empty;
-            AuthTokenField.LoadFromText(AuthToken);
             AuthUsername = parsed.Auth.Username ?? string.Empty;
-            AuthUsernameField.LoadFromText(AuthUsername);
             AuthPassword = parsed.Auth.Password ?? string.Empty;
-            AuthPasswordField.LoadFromText(AuthPassword);
             AuthApiKeyName = parsed.Auth.ApiKeyName ?? string.Empty;
-            AuthApiKeyNameField.LoadFromText(AuthApiKeyName);
             AuthApiKeyValue = parsed.Auth.ApiKeyValue ?? string.Empty;
-            AuthApiKeyValueField.LoadFromText(AuthApiKeyValue);
             AuthApiKeyIn = parsed.Auth.ApiKeyIn;
 
             Description = null;
@@ -1249,15 +1105,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
             MultipartFormParams.LoadMultipartFrom(resolvedMultipartEntries, resolvedMultipartFiles);
             AuthType = AuthConfig.AuthTypes.Inherit;
             AuthToken = string.Empty;
-            AuthTokenField.LoadFromText(AuthToken);
             AuthUsername = string.Empty;
-            AuthUsernameField.LoadFromText(AuthUsername);
             AuthPassword = string.Empty;
-            AuthPasswordField.LoadFromText(AuthPassword);
             AuthApiKeyName = string.Empty;
-            AuthApiKeyNameField.LoadFromText(AuthApiKeyName);
             AuthApiKeyValue = string.Empty;
-            AuthApiKeyValueField.LoadFromText(AuthApiKeyValue);
             AuthApiKeyIn = AuthConfig.ApiKeyLocations.Header;
             Response = null;
             IsResponseFromHistory = false;

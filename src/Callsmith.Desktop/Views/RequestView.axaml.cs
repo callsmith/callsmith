@@ -107,26 +107,6 @@ public partial class RequestView : UserControl
                 var dialog = new SaveAsDialog { DataContext = _trackedVm };
                 await dialog.ShowDialog(owner);
             }
-            else if (e.PropertyName == nameof(RequestTabViewModel.ShowDynamicValueConfig))
-            {
-                if (!_trackedVm.ShowDynamicValueConfig) return;
-                if (_trackedVm.PendingDynamicConfig is null) return;
-                var owner = TopLevel.GetTopLevel(this) as Window;
-                if (owner is null) return;
-                var dialog = new DynamicValueConfigDialog { DataContext = _trackedVm.PendingDynamicConfig };
-                await dialog.ShowDialog(owner);
-                _trackedVm.OnDynamicConfigDialogClosed();
-            }
-            else if (e.PropertyName == nameof(RequestTabViewModel.ShowMockDataConfig))
-            {
-                if (!_trackedVm.ShowMockDataConfig) return;
-                if (_trackedVm.PendingMockDataConfig is null) return;
-                var owner = TopLevel.GetTopLevel(this) as Window;
-                if (owner is null) return;
-                var dialog = new MockDataConfigDialog { DataContext = _trackedVm.PendingMockDataConfig };
-                await dialog.ShowDialog(owner);
-                _trackedVm.OnMockDataConfigDialogClosed();
-            }
             else if (e.PropertyName == nameof(RequestTabViewModel.ShowCurlDialog))
             {
                 if (!_trackedVm.ShowCurlDialog) return;
