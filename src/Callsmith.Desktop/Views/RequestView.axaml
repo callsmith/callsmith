@@ -199,9 +199,8 @@
               </Panel>
             </TabItem.Header>
             <ScrollViewer VerticalScrollBarVisibility="Auto"
-                          AllowAutoHide="False"
-                          Padding="0,0,12,0">
-              <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*" Margin="0,4">
+                          AllowAutoHide="False">
+              <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,*" Margin="0,4,12,0">
                 <!-- Headers -->
                 <TextBlock Grid.Row="0" Text="HEADERS" Foreground="#888" FontWeight="Bold" FontSize="10"
                            LetterSpacing="1" Margin="0,1,0,4" VerticalAlignment="Bottom"/>
