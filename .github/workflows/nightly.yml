@@ -67,43 +67,9 @@ jobs:
             core.setOutput('branch_name', branchName);
             core.setOutput('nightly_tag', shouldRun ? nightlyTag : '');
 
-  build-and-test:
-    name: Build & Test (${{ matrix.os }})
-    needs: check-branch-activity
-    if: needs.check-branch-activity.outputs.run_nightly == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.check-branch-activity.outputs.branch_name }}
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Build
-        # --maxcpucount:1 forces sequential project builds, preventing Avalonia's
-        # XAML compiler from being invoked concurrently on the same PDB file
-        # (same workaround used in this repository's primary CI workflow).
-        run: dotnet build --no-restore --configuration Release --maxcpucount:1
-
-      - name: Test
-        # /maxcpucount:1 forces sequential test project execution. Running test
-        # projects concurrently is intermittently hanging after tests complete.
-        run: dotnet test --no-build --configuration Release --verbosity normal /maxcpucount:1
-
   publish:
     name: Publish ${{ matrix.rid }}
-    needs: [check-branch-activity, build-and-test]
+    needs: [check-branch-activity]
     if: needs.check-branch-activity.outputs.run_nightly == 'true'
     runs-on: ubuntu-latest
     strategy:
