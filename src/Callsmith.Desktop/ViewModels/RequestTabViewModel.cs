@@ -594,9 +594,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
     public bool IsAuthBasic  => AuthType == AuthConfig.AuthTypes.Basic;
     public bool IsAuthApiKey => AuthType == AuthConfig.AuthTypes.ApiKey;
     public bool IsBodyModified => SelectedBodyType != CollectionRequest.BodyTypes.None;
-    public bool IsAuthModified =>
-        AuthType != AuthConfig.AuthTypes.Inherit &&
-        AuthType != AuthConfig.AuthTypes.None;
+    public bool IsAuthModified => AuthType != AuthConfig.AuthTypes.Inherit;
     public bool IsInfoModified => !string.IsNullOrWhiteSpace(Description);
 
     // -------------------------------------------------------------------------
