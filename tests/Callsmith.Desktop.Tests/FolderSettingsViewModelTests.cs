@@ -204,12 +204,10 @@ public sealed class FolderSettingsViewModelTests
     public async Task OnFolderSettingsDialogClosed_ClearsPendingAndUpdatesNodeAuth()
     {
         var cs = Substitute.For<ICollectionService>();
-        cs.LoadFolderAuthAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-          .Returns(new AuthConfig { AuthType = AuthConfig.AuthTypes.Inherit });
         var sut = BuildCollectionsSut(cs);
 
         var node = MakeFolderNode();
-        await ((IAsyncRelayCommand<CollectionTreeItemViewModel>)sut.OpenFolderSettingsCommand).ExecuteAsync(node);
+        sut.PendingFolderSettings = new FolderSettingsViewModel(node, cs);
 
         var dialog = sut.PendingFolderSettings!;
         dialog.AuthType = AuthConfig.AuthTypes.Bearer;
