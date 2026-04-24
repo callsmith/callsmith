@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NIGHTLY_RUN_RETENTION_DAYS: '7'
+  NIGHTLY_RUN_RETENTION_DAYS: '2'
 
 jobs:
   check-branch-activity:
@@ -143,7 +143,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.check-branch-activity.outputs.nightly_tag }}
-          name: Nightly ${{ needs.check-branch-activity.outputs.nightly_tag }}
+          name: ${{ needs.check-branch-activity.outputs.nightly_tag }}
           prerelease: true
           files: artifacts/*
           generate_release_notes: false
