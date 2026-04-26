@@ -47,10 +47,6 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     private TaskCompletionSource<EnvironmentVariable?>? _pendingResponseBodyTcs;
     private CancellationTokenSource? _dynPreviewCts;
     private bool _syncingGlobalPreviewSelection;
-    // Guard: true while LoadEnvironmentsAsync is restoring saved state from disk.
-    // Prevents changes driven by the load (e.g. restoring GlobalPreviewEnvironmentName)
-    // from marking environments dirty before the user has touched anything.
-    private bool _loadingEnvironments;
     private const string MaskedSecretValue = "\u2022\u2022\u2022\u2022\u2022";
 
     // ─── Observable state ────────────────────────────────────────────────────
@@ -769,9 +765,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             }
         }
 
-        // Only mark dirty if this is a user change, not a programmatic restore during load.
-        if (!_loadingEnvironments)
-            globalEnv.IsDirty = true;
+        globalEnv.SetGlobalPreviewEnvironmentName(value?.Name);
 
         // Re-run the global env preview with the newly selected context env.
         if (SelectedEnvironment == globalEnv)
@@ -1134,18 +1128,11 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
                 Environments.Add(CreateListItem(model));
 
             // Restore the saved global preview environment selection without dirtying anything.
-            _loadingEnvironments = true;
-            try
-            {
+                // Restore the saved global preview environment selection.
                 if (globalModel.GlobalPreviewEnvironmentName is { } savedName)
                     SelectedGlobalPreviewEnvironment = Environments
                         .FirstOrDefault(e => !e.IsGlobal
                             && string.Equals(e.Name, savedName, StringComparison.OrdinalIgnoreCase));
-            }
-            finally
-            {
-                _loadingEnvironments = false;
-            }
 
             // If the editor was opened while environments were loading, apply the explicit
             // open-time selection now.

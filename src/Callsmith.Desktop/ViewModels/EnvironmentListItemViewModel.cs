@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Callsmith.Core.Helpers;
 using Callsmith.Core.Bruno;
 using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
@@ -40,6 +41,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     private IReadOnlyDictionary<string, MockDataEntry> _globalMockGenerators
         = new Dictionary<string, MockDataEntry>();
     private IReadOnlyList<EnvVarSuggestion> _suggestions = [];
+    private string? _globalPreviewEnvironmentName;
 
     // ─── Observable state ────────────────────────────────────────────────────
 
@@ -124,6 +126,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         _onCancelRename = onCancelRename;
         IsGlobal = isGlobal;
         _collectionFolderPath = collectionFolderPath;
+        _globalPreviewEnvironmentName = model.GlobalPreviewEnvironmentName;
 
         LoadVariables(model.Variables);
     }
@@ -200,7 +203,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
             Name = string.Empty,
             Value = string.Empty,
         }));
-        IsDirty = true;
+        RecomputeDirtyState();
     }
 
     /// <summary>
@@ -219,13 +222,12 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
 
     // ─── Internal helpers ────────────────────────────────────────────────────
 
-    partial void OnColorChanged(string? value) => IsDirty = true;
+    partial void OnColorChanged(string? value) => RecomputeDirtyState();
 
     [RelayCommand]
     private void ClearColor()
     {
         Color = null;
-        IsDirty = true;
     }
 
 
@@ -236,6 +238,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     internal void ApplyRename(EnvironmentModel renamedModel)
     {
         _model = renamedModel;
+        _globalPreviewEnvironmentName = renamedModel.GlobalPreviewEnvironmentName;
         Name = renamedModel.Name;
     }
 
@@ -244,8 +247,9 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     /// </summary>
     internal void Revert()
     {
-        Color = _model.Color;            // may transiently set IsDirty = true
-        LoadVariables(_model.Variables); // resets IsDirty = false
+        _globalPreviewEnvironmentName = _model.GlobalPreviewEnvironmentName;
+        Color = _model.Color;
+        LoadVariables(_model.Variables);
     }
 
     /// <summary>
@@ -255,21 +259,36 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     internal void MarkSaved(EnvironmentModel savedModel)
     {
         _model = savedModel;
+        _globalPreviewEnvironmentName = savedModel.GlobalPreviewEnvironmentName;
         IsDirty = false;
+    }
+
+    internal void SetGlobalPreviewEnvironmentName(string? value)
+    {
+        _globalPreviewEnvironmentName = value;
+        RecomputeDirtyState();
     }
 
     /// <summary>
     /// Builds a new <see cref="EnvironmentModel"/> from the current variable rows.
     /// Used to produce the value that will be saved to disk.
     /// </summary>
-    internal EnvironmentModel BuildModel()
+    internal EnvironmentModel BuildModel(bool includeBlankVariables = false)
     {
-        var variables = Variables
-            .Where(v => !string.IsNullOrWhiteSpace(v.Name))
+        var variableRows = includeBlankVariables
+            ? Variables.AsEnumerable()
+            : Variables.Where(v => !string.IsNullOrWhiteSpace(v.Name));
+
+        var variables = variableRows
             .Select(v => v.BuildModel())
             .ToList();
 
-        return _model with { Variables = variables, Color = Color };
+        return _model with
+        {
+            Variables = variables,
+            Color = Color,
+            GlobalPreviewEnvironmentName = _globalPreviewEnvironmentName,
+        };
     }
 
     internal void SetSuggestions(IReadOnlyList<EnvVarSuggestion> suggestions)
@@ -731,10 +750,17 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
 
     private static string NormalizeVariableName(string value) => value.Trim();
 
+    private void RecomputeDirtyState()
+    {
+        IsDirty = !EnvironmentModelEqualityComparer.Instance.Equals(
+            BuildModel(includeBlankVariables: true),
+            _model);
+    }
+
     /// <summary>Marks the environment dirty and refreshes all variable previews.</summary>
     private void OnAnyVariableChanged()
     {
-        IsDirty = true;
+        RecomputeDirtyState();
         foreach (var v in Variables)
             v.NotifyPreviewChanged();
         VariablesChanged?.Invoke(this, EventArgs.Empty);

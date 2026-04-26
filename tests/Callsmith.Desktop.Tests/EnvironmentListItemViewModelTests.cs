@@ -34,6 +34,48 @@ public sealed class EnvironmentListItemViewModelTests
     }
 
     [Fact]
+    public void AddThenRemoveBlankVariable_ReturnsEnvironmentToCleanState()
+    {
+        var vm = CreateEnvironmentVm("mock-var");
+
+        vm.AddVariableCommand.Execute(null);
+        vm.IsDirty.Should().BeTrue();
+
+        var added = vm.Variables.Last();
+        added.DeleteCommand.Execute(null);
+
+        vm.IsDirty.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ChangingVariableBackToOriginalValue_ClearsDirtyState()
+    {
+        var vm = CreateEnvironmentVm("mock-var");
+        var testVar = vm.Variables.Single(v => v.Name == "test");
+
+        testVar.Value = "temporary";
+        vm.IsDirty.Should().BeTrue();
+
+        testVar.Value = "{{mock-var}}";
+
+        vm.IsDirty.Should().BeFalse();
+    }
+
+    [Fact]
+    public void MoveVariableThenMoveItBack_ReturnsEnvironmentToCleanState()
+    {
+        var vm = CreateEnvironmentVm("mock-var");
+        var first = vm.Variables[0];
+
+        vm.MoveVariable(first, 1);
+        vm.IsDirty.Should().BeTrue();
+
+        vm.MoveVariable(first, 0);
+
+        vm.IsDirty.Should().BeFalse();
+    }
+
+    [Fact]
     public void MockDataFieldChange_UpdatesReferencedStaticPreviewToNewGeneratorType()
     {
         var vm = CreateEnvironmentVm("mock-var");

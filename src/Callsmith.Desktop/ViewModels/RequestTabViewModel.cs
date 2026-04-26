@@ -719,18 +719,18 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(HorizontalSplitterPosition) or
                 nameof(VerticalSplitterPosition))
                 return;
-            HasUnsavedChanges = true;
+            RecomputeDirtyState();
         };
 
         Headers.Changed += (_, _) =>
         {
-            if (!_loading && !_saving && _sourceRequest is not null) HasUnsavedChanges = true;
+            RecomputeDirtyState();
             RefreshHeadersAndParamsModifiedState();
         };
 
         QueryParams.Changed += (_, _) =>
         {
-            if (!_loading && !_saving && _sourceRequest is not null) HasUnsavedChanges = true;
+            RecomputeDirtyState();
             OnPropertyChanged(nameof(PreviewUrl));
             OnPropertyChanged(nameof(PreviewUrlTooltip));
             RefreshHeadersAndParamsModifiedState();
@@ -738,7 +738,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
         PathParams.Changed += (_, _) =>
         {
-            if (!_loading && !_saving && _sourceRequest is not null) HasUnsavedChanges = true;
+            RecomputeDirtyState();
             RebuildUrlFromPathParamNames();
             OnPropertyChanged(nameof(PreviewUrl));
             OnPropertyChanged(nameof(HasUnresolvedPathParams));
@@ -749,12 +749,12 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
         FormParams.Changed += (_, _) =>
         {
-            if (!_loading && !_saving && _sourceRequest is not null) HasUnsavedChanges = true;
+            RecomputeDirtyState();
         };
 
         MultipartFormParams.Changed += (_, _) =>
         {
-            if (!_loading && !_saving && _sourceRequest is not null) HasUnsavedChanges = true;
+            RecomputeDirtyState();
         };
 
         RefreshHeadersAndParamsModifiedState();
@@ -931,8 +931,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             _loading = false;
         }
 
-        if (_sourceRequest is not null)
-            HasUnsavedChanges = true;
+        RecomputeDirtyState();
 
         OnPropertyChanged(nameof(HasFileBodySelected));
         OnPropertyChanged(nameof(PreviewUrl));
@@ -1282,8 +1281,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _fileBodyName = result.Value.Name;
         SelectedFilePath = result.Value.Path;
         OnPropertyChanged(nameof(HasFileBodySelected));
-        if (_sourceRequest is not null && !_loading && !_saving)
-            HasUnsavedChanges = true;
+        RecomputeDirtyState();
     }
 
     [RelayCommand]
@@ -1714,9 +1712,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
     // Shared save logic
     // -------------------------------------------------------------------------
 
-    internal async Task<bool> PerformSaveAsync(CancellationToken ct = default)
+    private CollectionRequest? BuildRequestState(bool includeBlankRows, bool assignMissingRequestId = false)
     {
-        if (_sourceRequest is null) return false;
+        if (_sourceRequest is null)
+            return null;
 
         // Snapshot the per-type body contents dictionary, making sure the active body
         // type reflects the current editor content.
@@ -1731,17 +1730,77 @@ public sealed partial class RequestTabViewModel : ObservableObject
             allBodyContents[SelectedBodyType] = Body;
         }
 
-        var updated = new CollectionRequest
+        IReadOnlyList<RequestKv> headers = includeBlankRows
+            ? Headers.Items
+                .Where(item => item.IsTextValue)
+                .Select(item => new RequestKv(item.Key, item.Value, !Headers.ShowEnabledToggle || item.IsEnabled))
+                .ToList()
+            : Headers.GetAllKv();
+
+        IReadOnlyList<RequestKv> queryParams = includeBlankRows
+            ? QueryParams.Items
+                .Where(item => item.IsTextValue)
+                .Select(item => new RequestKv(item.Key, item.Value, !QueryParams.ShowEnabledToggle || item.IsEnabled))
+                .ToList()
+            : QueryParams.GetAllKv();
+
+        IReadOnlyList<KeyValuePair<string, string>> formParams = SelectedBodyType == CollectionRequest.BodyTypes.Multipart
+            ? includeBlankRows
+                ? MultipartFormParams.Items
+                    .Where(item => item.IsTextValue)
+                    .Select(item => new KeyValuePair<string, string>(item.Key, item.Value))
+                    .ToList()
+                : MultipartFormParams.GetEnabledPairs().ToList()
+            : includeBlankRows
+                ? FormParams.Items
+                    .Where(item => item.IsTextValue)
+                    .Select(item => new KeyValuePair<string, string>(item.Key, item.Value))
+                    .ToList()
+                : FormParams.GetEnabledPairs().ToList();
+
+        IReadOnlyList<MultipartFilePart> multipartFiles = SelectedBodyType == CollectionRequest.BodyTypes.Multipart
+            ? includeBlankRows
+                ? MultipartFormParams.Items
+                    .Where(item => item.IsFileValue && item.SelectedFileBytes is not null)
+                    .Select(item => new MultipartFilePart
+                    {
+                        Key = item.Key,
+                        FileBytes = item.SelectedFileBytes!,
+                        FileName = item.SelectedFileName,
+                        FilePath = item.SelectedFilePath,
+                        IsEnabled = !MultipartFormParams.ShowEnabledToggle || item.IsEnabled,
+                    })
+                    .ToList()
+                : MultipartFormParams.GetAllMultipartFileParts()
+            : [];
+
+        IReadOnlyList<MultipartBodyEntry> multipartEntries = SelectedBodyType == CollectionRequest.BodyTypes.Multipart
+            ? includeBlankRows
+                ? MultipartFormParams.Items
+                    .Select(item => new MultipartBodyEntry
+                    {
+                        Key = item.Key,
+                        IsFile = item.IsFileValue,
+                        TextValue = item.IsTextValue ? item.Value : null,
+                        FileName = item.SelectedFileName,
+                        FilePath = item.SelectedFilePath,
+                        IsEnabled = !MultipartFormParams.ShowEnabledToggle || item.IsEnabled,
+                    })
+                    .ToList()
+                : MultipartFormParams.GetAllMultipartBodyEntries()
+            : [];
+
+        return new CollectionRequest
         {
             FilePath = _sourceRequest.FilePath,
             Name = RequestName,
             Method = new HttpMethod(SelectedMethod),
             Url = Url,
-            RequestId = _sourceRequest.RequestId ?? Guid.NewGuid(),
+            RequestId = assignMissingRequestId ? _sourceRequest.RequestId ?? Guid.NewGuid() : _sourceRequest.RequestId,
             Description = string.IsNullOrWhiteSpace(Description) ? null : Description,
-            Headers = Headers.GetAllKv(),
+            Headers = headers,
             PathParams = PathParams.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
-            QueryParams = QueryParams.GetAllKv(),
+            QueryParams = queryParams,
             BodyType = SelectedBodyType,
             Body = string.IsNullOrEmpty(Body) ? null : Body,
             FileBodyBase64 = SelectedBodyType == CollectionRequest.BodyTypes.File && _fileBodyBytes is not null
@@ -1749,15 +1808,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 : null,
             FileBodyName = SelectedBodyType == CollectionRequest.BodyTypes.File ? _fileBodyName : null,
             AllBodyContents = allBodyContents,
-            FormParams = SelectedBodyType == CollectionRequest.BodyTypes.Multipart
-                ? MultipartFormParams.GetEnabledPairs().ToList()
-                : FormParams.GetEnabledPairs().ToList(),
-            MultipartFormFiles = SelectedBodyType == CollectionRequest.BodyTypes.Multipart
-                ? MultipartFormParams.GetAllMultipartFileParts()
-                : [],
-            MultipartBodyEntries = SelectedBodyType == CollectionRequest.BodyTypes.Multipart
-                ? MultipartFormParams.GetAllMultipartBodyEntries()
-                : [],
+            FormParams = formParams,
+            MultipartFormFiles = multipartFiles,
+            MultipartBodyEntries = multipartEntries,
             Auth = new AuthConfig
             {
                 AuthType = AuthType,
@@ -1769,6 +1822,25 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 ApiKeyIn = AuthApiKeyIn,
             },
         };
+    }
+
+    private void RecomputeDirtyState()
+    {
+        if (_loading || _saving || _sourceRequest is null)
+            return;
+
+        var current = BuildRequestState(includeBlankRows: true);
+        if (current is null)
+            return;
+
+        HasUnsavedChanges = !CollectionRequestEqualityComparer.Instance.Equals(current, _sourceRequest);
+    }
+
+    internal async Task<bool> PerformSaveAsync(CancellationToken ct = default)
+    {
+        if (_sourceRequest is null) return false;
+        var updated = BuildRequestState(includeBlankRows: false, assignMissingRequestId: true);
+        if (updated is null) return false;
 
         _saving = true;
         try

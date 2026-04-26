@@ -148,6 +148,20 @@ public sealed class RequestTabViewModelSaveTests
     }
 
     [Fact]
+    public void ChangingUrlBackToPersistedValue_ClearsDirtyState()
+    {
+        var sut = BuildSut();
+        sut.LoadRequest(SampleRequest());
+
+        sut.Url = "https://api.example.com/posts";
+        sut.HasUnsavedChanges.Should().BeTrue();
+
+        sut.Url = "https://api.example.com/users";
+
+        sut.HasUnsavedChanges.Should().BeFalse();
+    }
+
+    [Fact]
     public void ChangingMethod_MarksTabDirty()
     {
         var sut = BuildSut();
@@ -217,6 +231,84 @@ public sealed class RequestTabViewModelSaveTests
         sut.LoadRequest(SampleRequest());
         sut.Headers.Items.Add(new KeyValueItemViewModel(_ => { }) { Key = "X-Api-Key", Value = "secret" });
         sut.HasUnsavedChanges.Should().BeTrue();
+    }
+
+    [Fact]
+    public void AddingThenRemovingHeader_ReturnsTabToCleanState()
+    {
+        var sut = BuildSut();
+        sut.LoadRequest(SampleRequest());
+
+        var added = new KeyValueItemViewModel(_ => { }) { Key = "X-Api-Key", Value = "secret" };
+        sut.Headers.Items.Add(added);
+        sut.HasUnsavedChanges.Should().BeTrue();
+
+        sut.Headers.Items.Remove(added);
+
+        sut.HasUnsavedChanges.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ReorderingHeaders_RemainsDirtyInStrictMode()
+    {
+        var sut = BuildSut();
+        sut.LoadRequest(SampleRequest(headers: [new RequestKv("X-One", "1"), new RequestKv("X-Two", "2")]));
+
+        sut.Headers.MoveItem(sut.Headers.Items[0], 1);
+
+        sut.HasUnsavedChanges.Should().BeTrue();
+    }
+
+    [Fact]
+    public void TogglingHeaderEnabledThenRestoring_ClearsDirtyState()
+    {
+        var sut = BuildSut();
+        sut.LoadRequest(SampleRequest(headers: [new RequestKv("X-One", "1", true)]));
+
+        sut.Headers.Items[0].IsEnabled = false;
+        sut.HasUnsavedChanges.Should().BeTrue();
+
+        sut.Headers.Items[0].IsEnabled = true;
+
+        sut.HasUnsavedChanges.Should().BeFalse();
+    }
+
+    [Fact]
+    public void TogglingQueryParamEnabledThenRestoring_ClearsDirtyState()
+    {
+        var sut = BuildSut();
+        sut.LoadRequest(SampleRequest(queryParams: [new RequestKv("page", "1", true)]));
+
+        sut.QueryParams.Items[0].IsEnabled = false;
+        sut.HasUnsavedChanges.Should().BeTrue();
+
+        sut.QueryParams.Items[0].IsEnabled = true;
+
+        sut.HasUnsavedChanges.Should().BeFalse();
+    }
+
+    [Fact]
+    public void SwitchingBodyTypeAwayAndBackToOriginal_ClearsDirtyState()
+    {
+        var req = new CollectionRequest
+        {
+            FilePath = @"c:\tmp\sample.callsmith",
+            Name = "sample",
+            Method = HttpMethod.Post,
+            Url = "https://api.example.com",
+            BodyType = CollectionRequest.BodyTypes.Json,
+            Body = "{\"key\":\"value\"}",
+        };
+
+        var sut = BuildSut();
+        sut.LoadRequest(req);
+
+        sut.SelectedBodyType = CollectionRequest.BodyTypes.Xml;
+        sut.HasUnsavedChanges.Should().BeTrue();
+
+        sut.SelectedBodyType = CollectionRequest.BodyTypes.Json;
+
+        sut.HasUnsavedChanges.Should().BeFalse();
     }
 
     // -------------------------------------------------------------------------
