@@ -111,13 +111,12 @@ Session-scoped interface:
 
 ## Step 4 — Snapshot Capture with Debounce
 
-The debounce strategy is a **1.5-second coarse-grained capture**. This groups rapid keystrokes into a single undo step while still giving the user fine enough control.
+The debounce strategy is a **1-second coarse-grained capture**. This groups rapid keystrokes into a single undo step while still giving the user fine enough control.
 
 ### Per `RequestTabViewModel`
 
 1. Add a private field `_undoBaseline: CollectionRequest?` — initialized from `_sourceRequest` when the tab loads (and reset after each undo/redo or debounce flush).
-2. Add a `DispatcherTimer _undoDebounceTimer` (1500 ms, one-shot).
-3. In `RecomputeDirtyState()` (already called on every property change):
+2. Add a `DispatcherTimer _undoDebounceTimer` (1000 ms, one-shot).
    - If `_loading` or `_saving`, do nothing.
    - If `_undoBaseline == null`, return (tab not yet ready).
    - Restart the debounce timer.
@@ -135,7 +134,7 @@ The debounce strategy is a **1.5-second coarse-grained capture**. This groups ra
 ### Per `EnvironmentListItemViewModel`
 
 1. Add `_undoBaseline: EnvironmentModel?` — initialized in the constructor from the loaded `_model`.
-2. Add a `DispatcherTimer _undoDebounceTimer` (1500 ms, one-shot).
+2. Add a `DispatcherTimer _undoDebounceTimer` (1000 ms, one-shot).
 3. In `OnAnyVariableChanged()` (already called on every variable change):
    - Restart the debounce timer.
 4. When the timer fires:
@@ -201,7 +200,7 @@ Specifically:
 
 ### UX tradeoff (deliberate)
 
-Disabling control-level undo means that edits made **within the 1.5-second debounce window** are
+Disabling control-level undo means that edits made **within the 1-second debounce window** are
 not yet undoable: no snapshot has been committed yet, and the TextBox/SyntaxEditor has no local
 history either. If the user presses Ctrl+Z immediately after typing a single character, nothing
 happens until the debounce fires and the first snapshot is committed. This is an accepted
@@ -287,6 +286,23 @@ In `MainWindow.axaml`, add top-level `KeyBindings` to the Window:
 These bindings respect `CanExecute` automatically (Avalonia disables them when CanExecute is
 false). They only fire reliably because control-level undo stacks are disabled (see Step 4a).
 
+### Key-repeat behavior
+
+Holding Ctrl+Z (or Ctrl+Y / Ctrl+Shift+Z) down uses the **OS key-repeat mechanism** to fire
+multiple `KeyDown` events. Each repeated event re-invokes `UndoCommand` / `RedoCommand` exactly
+as a fresh press would, so the standard platform key-repeat schedule applies automatically:
+
+- **First press** — undoes (or redoes) one action immediately.
+- **Initial delay** — the OS waits ~500 ms before starting repeat (varies by platform/user setting).
+- **Repeat rate** — after the initial delay, the OS fires repeat events rapidly (typically every
+  30–50 ms), each one executing another undo/redo step.
+
+No additional implementation is required in the app — Avalonia forwards repeated `KeyDown` events
+to the active `KeyBinding`, which calls the bound `ICommand.Execute`. As long as `CanExecute` is
+true the command fires on every event in the repeat stream. Navigation/animation side effects
+(tab switching) during rapid-fire repeat are expected and accepted; the `PerformUndo()` path is
+fast enough that visual glitches should not occur in practice.
+
 ---
 
 ## Step 8 — DI Registration
@@ -320,10 +336,11 @@ In `App.axaml.cs`, `ConfigureServices()`:
 
 All outstanding questions have been resolved:
 
-1. **Debounce interval** — **1.5 seconds** is confirmed. No change needed.
+1. **Debounce interval** — **1 second** (reduced from the original 1.5 s). Provides a slightly tighter undo granularity while still grouping rapid keystrokes into one step.
 2. **Undo scope for new/unsaved tabs** — Closed tabs **must be re-opened** by undo. If a user opened a New Request, made edits, then accidentally closed the tab, pressing Ctrl+Z should reopen it at the `Before` snapshot state. The dispatch layer handles this by always re-opening the file (new or saved) when the tab is not found in the current tab list (see Step 5).
 3. **Stack depth limit** — A maximum of **200 undo entries** is imposed in `UndoRedoService`. The oldest entry is silently dropped when the limit is exceeded (see Step 2).
 4. **Ctrl+Y vs Ctrl+Shift+Z** — **Both gestures** are bound to `RedoCommand` (confirmed).
 5. **Folder settings** — `FolderSettingsViewModel` (folder-level auth/description) is **not in scope** (confirmed).
 6. **Visual indicator** — **No toast or status message** will be shown on undo/redo at this time.
-7. **Control-level undo stacks** — **Disabled globally.** `TextBox.UndoLimit=0` via a single application-level style in `App.axaml`; `SyntaxEditor.Document.UndoStack.SizeLimit=0` set in the constructor and on every `DocumentProperty` change. This ensures Ctrl+Z is never consumed by a child control and always reaches the Window-level `UndoCommand`. The accepted tradeoff is that edits within the 1.5-second debounce window are not undoable until the first snapshot commits (see Step 4a).
+7. **Control-level undo stacks** — **Disabled globally.** `TextBox.UndoLimit=0` via a single application-level style in `App.axaml`; `SyntaxEditor.Document.UndoStack.SizeLimit=0` set in the constructor and on every `DocumentProperty` change. This ensures Ctrl+Z is never consumed by a child control and always reaches the Window-level `UndoCommand`. The accepted tradeoff is that edits within the 1-second debounce window are not undoable until the first snapshot commits (see Step 4a).
+8. **Key-repeat undo/redo** — No special implementation required. Holding Ctrl+Z or Ctrl+Y fires repeated OS `KeyDown` events; Avalonia forwards each to the bound command, producing the standard "first press → short pause → rapid stream" behavior automatically (see Step 7).
