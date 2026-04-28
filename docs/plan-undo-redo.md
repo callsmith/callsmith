@@ -79,6 +79,7 @@ Session-scoped interface:
 
 - Two `Stack<IUndoableAction>` fields: `_undoStack`, `_redoStack`
 - `Push` clears `_redoStack`, then pushes onto `_undoStack`; fires `StackChanged`
+  - **Stack depth cap:** the undo stack is limited to **200 entries**. When the limit is reached, the oldest entry (bottom of the stack) is discarded before pushing the new one. This bounds memory usage while giving ample undo depth for normal use.
 - `Undo` pops `_undoStack`, pushes to `_redoStack`, fires `StackChanged`, returns the action
 - `Redo` pops `_redoStack`, pushes to `_undoStack`, fires `StackChanged`, returns the action
 - Properties derive from stack counts; service has no dependency on Domain types
@@ -163,8 +164,10 @@ The debounce strategy is a **1.5-second coarse-grained capture**. This groups ra
 2. Dispatch on `action.ContextType`:
 
    **Request tab (`RequestTabMementoAction`, apply `Before` snapshot):**
-   a. Flush any pending debounce timer on the matching tab.
-   b. Navigate to the request tab: check `RequestEditor.Tabs` for one matching `action.FilePath`; if not found, send a `RequestSelectedMessage` to re-open it.
+   a. Flush any pending debounce timer on the matching tab (if the tab is currently open).
+   b. Navigate to the request tab: check `RequestEditor.Tabs` for one matching `action.FilePath`.
+      - If the tab is open, activate it.
+      - If the tab is **not** open (including *new/unsaved* tabs that were closed), re-open it by sending a `RequestSelectedMessage` with `action.FilePath`. This ensures that accidentally-closed new requests can be recovered via Ctrl+Z.
    c. Close the environment editor if open (send `CloseEnvironmentEditorMessage`).
    d. Call `tab.ApplySnapshot(action.Before)`.
 
@@ -244,11 +247,13 @@ In `App.axaml.cs`, `ConfigureServices()`:
 
 ---
 
-## Open Questions
+## Decisions
 
-1. **Debounce interval** — 1.5 s is proposed. Should it be shorter (e.g. 800 ms)?
-2. **Undo scope for new/unsaved tabs** — In scope per this plan (tracked by `TabId`). On undo, if the tab was closed, the action is silently dropped. Acceptable?
-3. **Stack depth limit** — No cap currently. Should a max (e.g. 200 entries) be imposed to bound memory?
-4. **Ctrl+Y vs Ctrl+Shift+Z** — Both wired per this plan. Is that correct?
-5. **Folder settings** — `FolderSettingsViewModel` (folder-level auth/description) is excluded. Confirm.
-6. **Visual indicator** — No toast or status message on undo/redo. Should a subtle transient status message (e.g. "Undone: Edit URL") be shown?
+All outstanding questions have been resolved:
+
+1. **Debounce interval** — **1.5 seconds** is confirmed. No change needed.
+2. **Undo scope for new/unsaved tabs** — Closed tabs **must be re-opened** by undo. If a user opened a New Request, made edits, then accidentally closed the tab, pressing Ctrl+Z should reopen it at the `Before` snapshot state. The dispatch layer handles this by always re-opening the file (new or saved) when the tab is not found in the current tab list (see Step 5).
+3. **Stack depth limit** — A maximum of **200 undo entries** is imposed in `UndoRedoService`. The oldest entry is silently dropped when the limit is exceeded (see Step 2).
+4. **Ctrl+Y vs Ctrl+Shift+Z** — **Both gestures** are bound to `RedoCommand` (confirmed).
+5. **Folder settings** — `FolderSettingsViewModel` (folder-level auth/description) is **not in scope** (confirmed).
+6. **Visual indicator** — **No toast or status message** will be shown on undo/redo at this time.
