@@ -46,6 +46,35 @@ public sealed class CollectionRequestEqualityComparerTests
     }
 
     [Fact]
+    public void Equals_WhenPathParamsDifferOnlyByInsertionOrder_ReturnsTrue()
+    {
+        var left = CreateRequest();
+        var right = CreateRequest(
+            pathParams: new Dictionary<string, string>
+            {
+                ["tenant"] = "blue",
+                ["id"] = "42",
+            });
+
+        CollectionRequestEqualityComparer.Instance.Equals(left, right).Should().BeTrue();
+    }
+
+    [Fact]
+    public void GetHashCode_WhenPathParamsDifferOnlyByInsertionOrder_AreEqual()
+    {
+        var left = CreateRequest();
+        var right = CreateRequest(
+            pathParams: new Dictionary<string, string>
+            {
+                ["tenant"] = "blue",
+                ["id"] = "42",
+            });
+
+        CollectionRequestEqualityComparer.Instance.GetHashCode(left)
+            .Should().Be(CollectionRequestEqualityComparer.Instance.GetHashCode(right));
+    }
+
+    [Fact]
     public void Equals_WhenBodyContentsDifferOnlyByDictionaryInsertionOrder_ReturnsTrue()
     {
         var left = CreateRequest();

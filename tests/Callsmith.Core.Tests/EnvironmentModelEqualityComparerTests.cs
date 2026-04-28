@@ -62,6 +62,127 @@ public sealed class EnvironmentModelEqualityComparerTests
         EnvironmentModelEqualityComparer.Instance.Equals(left, right).Should().BeFalse();
     }
 
+    [Fact]
+    public void Equals_WhenVariablesHaveIdenticalSegmentsButDifferentInstances_ReturnsTrue()
+    {
+        var left = CreateModel() with
+        {
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "composite",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.Dynamic,
+                    Segments =
+                    [
+                        new StaticValueSegment { Text = "Bearer " },
+                        new DynamicValueSegment
+                        {
+                            RequestName = "Auth/login",
+                            Path = "$.token",
+                            Matcher = ResponseValueMatcher.JsonPath,
+                            Frequency = DynamicFrequency.IfExpired,
+                            ExpiresAfterSeconds = 900,
+                        },
+                    ],
+                },
+            ],
+        };
+        var right = left with
+        {
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "composite",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.Dynamic,
+                    Segments =
+                    [
+                        new StaticValueSegment { Text = "Bearer " },
+                        new DynamicValueSegment
+                        {
+                            RequestName = "Auth/login",
+                            Path = "$.token",
+                            Matcher = ResponseValueMatcher.JsonPath,
+                            Frequency = DynamicFrequency.IfExpired,
+                            ExpiresAfterSeconds = 900,
+                        },
+                    ],
+                },
+            ],
+        };
+
+        EnvironmentModelEqualityComparer.Instance.Equals(left, right).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Equals_WhenSegmentTextDiffers_ReturnsFalse()
+    {
+        var left = CreateModel() with
+        {
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "composite",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.Dynamic,
+                    Segments = [new StaticValueSegment { Text = "Bearer " }],
+                },
+            ],
+        };
+        var right = left with
+        {
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "composite",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.Dynamic,
+                    Segments = [new StaticValueSegment { Text = "Token " }],
+                },
+            ],
+        };
+
+        EnvironmentModelEqualityComparer.Instance.Equals(left, right).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Equals_WhenMockDataSegmentsMatch_ReturnsTrue()
+    {
+        var left = CreateModel() with
+        {
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "fake-email",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.Dynamic,
+                    Segments = [new MockDataSegment { Category = "Internet", Field = "Email" }],
+                },
+            ],
+        };
+        var right = left with
+        {
+            Variables =
+            [
+                new EnvironmentVariable
+                {
+                    Name = "fake-email",
+                    Value = string.Empty,
+                    VariableType = EnvironmentVariable.VariableTypes.Dynamic,
+                    Segments = [new MockDataSegment { Category = "Internet", Field = "Email" }],
+                },
+            ],
+        };
+
+        EnvironmentModelEqualityComparer.Instance.Equals(left, right).Should().BeTrue();
+    }
+
     private static EnvironmentModel CreateModel() => new()
     {
         FilePath = @"c:\collections\environment\dev.env.callsmith",

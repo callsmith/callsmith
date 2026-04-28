@@ -56,7 +56,29 @@ public sealed class EnvironmentModelEqualityComparer : IEqualityComparer<Environ
     {
         if (ReferenceEquals(x, y)) return true;
         if (x is null || y is null) return false;
-        return EqualSequence(x, y, EqualityComparer<ValueSegment>.Default.Equals);
+        return EqualSequence(x, y, SegmentEquals);
+    }
+
+    private static bool SegmentEquals(ValueSegment x, ValueSegment y)
+    {
+        if (ReferenceEquals(x, y)) return true;
+        if (x.GetType() != y.GetType()) return false;
+
+        return x switch
+        {
+            StaticValueSegment sx => y is StaticValueSegment sy
+                && string.Equals(sx.Text, sy.Text, StringComparison.Ordinal),
+            DynamicValueSegment dx => y is DynamicValueSegment dy
+                && string.Equals(dx.RequestName, dy.RequestName, StringComparison.Ordinal)
+                && string.Equals(dx.Path, dy.Path, StringComparison.Ordinal)
+                && dx.Matcher == dy.Matcher
+                && dx.Frequency == dy.Frequency
+                && dx.ExpiresAfterSeconds == dy.ExpiresAfterSeconds,
+            MockDataSegment mx => y is MockDataSegment my
+                && string.Equals(mx.Category, my.Category, StringComparison.Ordinal)
+                && string.Equals(mx.Field, my.Field, StringComparison.Ordinal),
+            _ => false,
+        };
     }
 
     private static bool EqualSequence<T>(
@@ -94,7 +116,33 @@ public sealed class EnvironmentModelEqualityComparer : IEqualityComparer<Environ
         if (value.Segments is not null)
         {
             foreach (var segment in value.Segments)
-                hash.Add(segment);
+                hash.Add(SegmentHash(segment));
+        }
+        return hash.ToHashCode();
+    }
+
+    private static int SegmentHash(ValueSegment segment)
+    {
+        var hash = new HashCode();
+        switch (segment)
+        {
+            case StaticValueSegment s:
+                hash.Add("static", StringComparer.Ordinal);
+                hash.Add(s.Text, StringComparer.Ordinal);
+                break;
+            case DynamicValueSegment d:
+                hash.Add("dynamic", StringComparer.Ordinal);
+                hash.Add(d.RequestName, StringComparer.Ordinal);
+                hash.Add(d.Path, StringComparer.Ordinal);
+                hash.Add(d.Matcher);
+                hash.Add(d.Frequency);
+                hash.Add(d.ExpiresAfterSeconds);
+                break;
+            case MockDataSegment m:
+                hash.Add("mock", StringComparer.Ordinal);
+                hash.Add(m.Category, StringComparer.Ordinal);
+                hash.Add(m.Field, StringComparer.Ordinal);
+                break;
         }
         return hash.ToHashCode();
     }

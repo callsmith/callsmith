@@ -78,19 +78,16 @@ public sealed class CollectionRequestEqualityComparer : IEqualityComparer<Collec
         if (ReferenceEquals(x, y)) return true;
         if (x.Count != y.Count) return false;
 
-        using var xEnumerator = x.GetEnumerator();
-        using var yEnumerator = y.GetEnumerator();
-        while (xEnumerator.MoveNext())
+        foreach (var pair in x)
         {
-            if (!yEnumerator.MoveNext())
+            if (!y.TryGetValue(pair.Key, out var otherValue))
                 return false;
 
-            if (!string.Equals(xEnumerator.Current.Key, yEnumerator.Current.Key, StringComparison.Ordinal)
-                || !string.Equals(xEnumerator.Current.Value, yEnumerator.Current.Value, StringComparison.Ordinal))
+            if (!string.Equals(pair.Value, otherValue, StringComparison.Ordinal))
                 return false;
         }
 
-        return !yEnumerator.MoveNext();
+        return true;
     }
 
     private static bool EqualBodyContents(
@@ -115,12 +112,19 @@ public sealed class CollectionRequestEqualityComparer : IEqualityComparer<Collec
         return true;
     }
 
+    private static bool FileBytesEqual(byte[] x, byte[] y)
+    {
+        if (ReferenceEquals(x, y)) return true;
+        if (x.Length != y.Length) return false;
+        return x.AsSpan().SequenceEqual(y);
+    }
+
     private static bool MultipartFilePartEquals(MultipartFilePart x, MultipartFilePart y) =>
         string.Equals(x.Key, y.Key, StringComparison.Ordinal)
-        && x.FileBytes.AsSpan().SequenceEqual(y.FileBytes)
         && string.Equals(x.FileName, y.FileName, StringComparison.Ordinal)
         && string.Equals(x.FilePath, y.FilePath, StringComparison.Ordinal)
-        && x.IsEnabled == y.IsEnabled;
+        && x.IsEnabled == y.IsEnabled
+        && FileBytesEqual(x.FileBytes, y.FileBytes);
 
     private static bool MultipartBodyEntryEquals(MultipartBodyEntry x, MultipartBodyEntry y) =>
         string.Equals(x.Key, y.Key, StringComparison.Ordinal)
@@ -164,10 +168,10 @@ public sealed class CollectionRequestEqualityComparer : IEqualityComparer<Collec
 
     private static void AddPathParamsHash(HashCode hash, IReadOnlyDictionary<string, string> values)
     {
-        foreach (var pair in values)
+        foreach (var key in values.Keys.OrderBy(k => k, StringComparer.Ordinal))
         {
-            hash.Add(pair.Key, StringComparer.Ordinal);
-            hash.Add(pair.Value, StringComparer.Ordinal);
+            hash.Add(key, StringComparer.Ordinal);
+            hash.Add(values[key], StringComparer.Ordinal);
         }
     }
 
@@ -207,8 +211,7 @@ public sealed class CollectionRequestEqualityComparer : IEqualityComparer<Collec
     {
         var hash = new HashCode();
         hash.Add(value.Key, StringComparer.Ordinal);
-        foreach (var b in value.FileBytes)
-            hash.Add(b);
+        hash.AddBytes(value.FileBytes);
         hash.Add(value.FileName, StringComparer.Ordinal);
         hash.Add(value.FilePath, StringComparer.Ordinal);
         hash.Add(value.IsEnabled);

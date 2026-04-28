@@ -169,6 +169,13 @@ public sealed partial class RequestTabViewModel : ObservableObject
     /// <summary>Raw bytes of the currently loaded file body. Null when no file has been selected.</summary>
     private byte[]? _fileBodyBytes;
 
+    /// <summary>
+    /// Cached base64 encoding of <see cref="_fileBodyBytes"/>.
+    /// Updated in sync with <see cref="_fileBodyBytes"/> so <c>BuildRequestState</c> does not
+    /// re-encode on every dirty-check.
+    /// </summary>
+    private string? _fileBodyBase64;
+
     /// <summary>Original file name of the currently loaded file body.</summary>
     private string? _fileBodyName;
 
@@ -829,12 +836,14 @@ public sealed partial class RequestTabViewModel : ObservableObject
             if (req.BodyType == CollectionRequest.BodyTypes.File && req.FileBodyBase64 is not null)
             {
                 _fileBodyBytes = Convert.FromBase64String(req.FileBodyBase64);
+                _fileBodyBase64 = req.FileBodyBase64;
                 _fileBodyName = req.FileBodyName;
                 SelectedFilePath = req.FileBodyName ?? string.Empty;
             }
             else
             {
                 _fileBodyBytes = null;
+                _fileBodyBase64 = null;
                 _fileBodyName = null;
                 SelectedFilePath = string.Empty;
             }
@@ -912,6 +921,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             FormParams.LoadFrom(parsed.FormParams);
             MultipartFormParams.LoadMultipartFrom(parsed.FormParams, parsed.MultipartFormFiles);
             _fileBodyBytes = null;
+            _fileBodyBase64 = null;
             _fileBodyName = null;
             SelectedFilePath = string.Empty;
 
@@ -1061,11 +1071,13 @@ public sealed partial class RequestTabViewModel : ObservableObject
         // Restore file body bytes from the history snapshot.
         byte[]? restoredFileBytes = null;
         string? restoredFileName = null;
+        string? restoredFileBase64 = null;
         if (snapshot.BodyType == CollectionRequest.BodyTypes.File
             && snapshot.FileBodyBase64 is not null)
         {
             restoredFileBytes = Convert.FromBase64String(snapshot.FileBodyBase64);
             restoredFileName = snapshot.FileBodyName;
+            restoredFileBase64 = snapshot.FileBodyBase64;
         }
 
         // No source file — this is a brand-new unsaved tab.
@@ -1097,6 +1109,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             SelectedBodyType = snapshot.BodyType;
             Body = resolvedBody ?? string.Empty;
             _fileBodyBytes = restoredFileBytes;
+            _fileBodyBase64 = restoredFileBase64;
             _fileBodyName = restoredFileName;
             SelectedFilePath = restoredFileName ?? string.Empty;
             FormParams.LoadFrom(resolvedFormParams);
@@ -1278,6 +1291,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         var result = await OpenFilePickerFunc(ct);
         if (result is null) return;
         _fileBodyBytes = result.Value.Bytes;
+        _fileBodyBase64 = Convert.ToBase64String(result.Value.Bytes);
         _fileBodyName = result.Value.Name;
         SelectedFilePath = result.Value.Path;
         OnPropertyChanged(nameof(HasFileBodySelected));
@@ -1803,8 +1817,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
             QueryParams = queryParams,
             BodyType = SelectedBodyType,
             Body = string.IsNullOrEmpty(Body) ? null : Body,
-            FileBodyBase64 = SelectedBodyType == CollectionRequest.BodyTypes.File && _fileBodyBytes is not null
-                ? Convert.ToBase64String(_fileBodyBytes)
+            FileBodyBase64 = SelectedBodyType == CollectionRequest.BodyTypes.File
+                ? _fileBodyBase64
                 : null,
             FileBodyName = SelectedBodyType == CollectionRequest.BodyTypes.File ? _fileBodyName : null,
             AllBodyContents = allBodyContents,
@@ -2260,8 +2274,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
                     .ToDictionary(p => p.Key, p => p.Value),
                 BodyType = SelectedBodyType,
                 Body = string.IsNullOrEmpty(Body) ? null : Body,
-                FileBodyBase64 = SelectedBodyType == CollectionRequest.BodyTypes.File && _fileBodyBytes is not null
-                    ? Convert.ToBase64String(_fileBodyBytes)
+                FileBodyBase64 = SelectedBodyType == CollectionRequest.BodyTypes.File
+                    ? _fileBodyBase64
                     : null,
                 FileBodyName = SelectedBodyType == CollectionRequest.BodyTypes.File ? _fileBodyName : null,
                 FormParams = (SelectedBodyType == CollectionRequest.BodyTypes.Multipart
