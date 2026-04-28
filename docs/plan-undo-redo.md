@@ -44,8 +44,11 @@ Callsmith.Desktop
   Actions/
     RequestTabMementoAction.cs      ← new
     EnvironmentMementoAction.cs     ← new
+  Controls/
+    SyntaxEditor.cs           ← disable Document.UndoStack on init and ApplySnapshot
   Views/
     MainWindow.axaml          ← add KeyBindings for Ctrl+Z / Ctrl+Y
+  App.axaml                   ← global TextBox UndoLimit=0 style
   App.axaml.cs                ← register UndoRedoService as singleton
 ```
 
@@ -151,6 +154,71 @@ The debounce strategy is a **1.5-second coarse-grained capture**. This groups ra
 
 ---
 
+## Step 4a — Disable Control-Level Undo Stacks
+
+### Why this is required
+
+Window-level `KeyBindings` are evaluated during the **bubble phase** of `KeyDown`. Both Avalonia
+`TextBox` and AvaloniaEdit `TextEditor` consume Ctrl+Z and mark `e.Handled = true` when their
+own undo stack is non-empty — which means the event **never reaches the Window**, and our global
+`UndoCommand` never fires. The two controls in the app with their own undo stacks are:
+
+- **`TextBox`** — every URL bar, KVP key/value field, name/description field, and environment
+  variable cell.
+- **`SyntaxEditor` (extends `TextEditor`)** — the request body editor. Each `TextDocument` has an
+  `UndoStack` that records fine-grained character-level operations.
+
+### Resolution: disable both stacks
+
+**`TextBox` — global `App.axaml` style:**
+
+Add one application-level style so no `TextBox` anywhere accumulates undo history:
+
+```xml
+<Style Selector="TextBox">
+  <Setter Property="UndoLimit" Value="0"/>
+</Style>
+```
+
+When `UndoLimit` is `0`, no history is recorded, `CanUndo` is always false, the Ctrl+Z keystroke
+is not consumed, and the event bubbles to the Window. This is a single-line change that covers
+every present and future `TextBox` without needing to touch individual AXAML files.
+
+**`SyntaxEditor` — `SyntaxEditor.cs` constructor and `OnPropertyChanged`:**
+
+After the base `TextEditor` is initialized, set `Document.UndoStack.SizeLimit = 0` to prevent
+the AvaloniaEdit document from recording any undo operations. The same reset must also be applied
+whenever the `DocumentProperty` changes (AvaloniaEdit creates a fresh `TextDocument` on property
+change, which would reset the limit), and in `ApplySnapshot()` when the document content is
+replaced programmatically.
+
+Specifically:
+1. In the `SyntaxEditor` constructor, after the base initialization:
+   `Document.UndoStack.SizeLimit = 0;`
+2. In `OnPropertyChanged`, when `change.Property == DocumentProperty`:
+   `Document?.UndoStack.SizeLimit = 0;` (already has a guard block there for folding manager)
+3. In `OnEditorTextChanged`, no change needed — the size limit already prevents accumulation.
+
+### UX tradeoff (deliberate)
+
+Disabling control-level undo means that edits made **within the 1.5-second debounce window** are
+not yet undoable: no snapshot has been committed yet, and the TextBox/SyntaxEditor has no local
+history either. If the user presses Ctrl+Z immediately after typing a single character, nothing
+happens until the debounce fires and the first snapshot is committed. This is an accepted
+coarser-granularity tradeoff; the undo granularity matches the debounce interval, not individual
+keystrokes.
+
+### What was ruled out
+
+- **Tunnel-phase Window handler** (`AddHandler(..., RoutingStrategies.Tunnel)`) — would intercept
+  Ctrl+Z even inside dialogs (e.g., while fixing a typo in a SaveAs dialog TextBox), causing the
+  global undo to fire in contexts where the user expects local text editing. Rejected.
+- **Two-tier coexistence** (let controls undo locally until exhausted, then escalate) — creates
+  an unpredictable experience: pressing Ctrl+Z many times undoes individual characters, then
+  suddenly navigates to a different tab. Rejected.
+
+---
+
 ## Step 5 — Dispatch and Navigation in `MainWindowViewModel`
 
 **New commands:**
@@ -216,7 +284,8 @@ In `MainWindow.axaml`, add top-level `KeyBindings` to the Window:
 </Window.KeyBindings>
 ```
 
-These bindings respect `CanExecute` automatically (Avalonia disables them when CanExecute is false).
+These bindings respect `CanExecute` automatically (Avalonia disables them when CanExecute is
+false). They only fire reliably because control-level undo stacks are disabled (see Step 4a).
 
 ---
 
@@ -257,3 +326,4 @@ All outstanding questions have been resolved:
 4. **Ctrl+Y vs Ctrl+Shift+Z** — **Both gestures** are bound to `RedoCommand` (confirmed).
 5. **Folder settings** — `FolderSettingsViewModel` (folder-level auth/description) is **not in scope** (confirmed).
 6. **Visual indicator** — **No toast or status message** will be shown on undo/redo at this time.
+7. **Control-level undo stacks** — **Disabled globally.** `TextBox.UndoLimit=0` via a single application-level style in `App.axaml`; `SyntaxEditor.Document.UndoStack.SizeLimit=0` set in the constructor and on every `DocumentProperty` change. This ensures Ctrl+Z is never consumed by a child control and always reaches the Window-level `UndoCommand`. The accepted tradeoff is that edits within the 1.5-second debounce window are not undoable until the first snapshot commits (see Step 4a).
