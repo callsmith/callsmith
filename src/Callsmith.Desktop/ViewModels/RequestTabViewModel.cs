@@ -7,6 +7,7 @@ using Callsmith.Core.Helpers;
 using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
+using Callsmith.Desktop.Actions;
 using Callsmith.Desktop.Controls;
 using Callsmith.Desktop.Messages;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -34,9 +35,21 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private Action<RequestTabViewModel>? _requestGlobalCloseGuard;
     private readonly IHistoryService? _historyService;
     private readonly IEnvironmentService? _environmentService;
+    private readonly IUndoRedoService? _undoRedoService;
 
     /// <summary>Source request loaded from disk. Null for brand-new unsaved tabs.</summary>
     private CollectionRequest? _sourceRequest;
+
+    // ── Undo/redo debounce ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Snapshot of the request state at the last undo commit point.
+    /// <see langword="null"/> until the first <see cref="LoadRequest"/> call.
+    /// </summary>
+    private CollectionRequest? _undoBaseline;
+
+    /// <summary>One-shot 1-second timer; fires to flush pending edits into the undo stack.</summary>
+    private readonly DispatcherTimer _undoDebounceTimer = new() { Interval = TimeSpan.FromMilliseconds(1000) };
 
     private EnvironmentModel? _activeEnvironment;
     private EnvironmentModel _globalEnvironment = new() { FilePath = string.Empty, Name = "Global", Variables = [], EnvironmentId = Guid.NewGuid() };
@@ -671,7 +684,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         IEnvironmentService? environmentService = null,
         IEnvironmentMergeService? mergeService = null,
         IEnvironmentVariableSuggestionService? environmentVariableSuggestionService = null,
-        IRequestAssemblyService? requestAssemblyService = null)
+        IRequestAssemblyService? requestAssemblyService = null,
+        IUndoRedoService? undoRedoService = null)
     {
         ArgumentNullException.ThrowIfNull(transportRegistry);
         ArgumentNullException.ThrowIfNull(collectionService);
@@ -688,6 +702,9 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _requestClose = requestClose;
         _historyService = historyService;
         _environmentService = environmentService;
+        _undoRedoService = undoRedoService;
+
+        _undoDebounceTimer.Tick += OnUndoDebounceTimerTick;
 
         PathParams.ShowAddButton = false;
         PathParams.ShowDeleteButton = false;
@@ -881,6 +898,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
             HasUnsavedChanges = false;
             IsNew = false;
         }
+
+        // Establish the undo baseline so that the first user edit after load
+        // can be captured as a before/after snapshot.
+        _undoBaseline = req;
 
         QueueHistoryResponseRefresh();
     }
@@ -1848,6 +1869,78 @@ public sealed partial class RequestTabViewModel : ObservableObject
             return;
 
         HasUnsavedChanges = !CollectionRequestEqualityComparer.Instance.Equals(current, _sourceRequest);
+
+        // Restart the debounce timer so rapid edits coalesce into a single undo entry.
+        if (_undoRedoService is not null && _undoBaseline is not null)
+        {
+            _undoDebounceTimer.Stop();
+            _undoDebounceTimer.Start();
+        }
+    }
+
+    // ── Undo/redo helpers ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Debounce tick handler. Compares the current editor state against <see cref="_undoBaseline"/>;
+    /// if different, pushes a <see cref="RequestTabMementoAction"/> and advances the baseline.
+    /// </summary>
+    private void OnUndoDebounceTimerTick(object? sender, EventArgs e)
+    {
+        _undoDebounceTimer.Stop();
+        CommitUndoSnapshot();
+    }
+
+    /// <summary>
+    /// Immediately stops the debounce timer and commits any pending edit to the undo stack.
+    /// Called before applying an undo/redo action to prevent the in-progress debounce from
+    /// overwriting the just-applied snapshot.
+    /// </summary>
+    internal void FlushUndoDebounce()
+    {
+        if (!_undoDebounceTimer.IsEnabled)
+            return;
+
+        _undoDebounceTimer.Stop();
+        CommitUndoSnapshot();
+    }
+
+    private void CommitUndoSnapshot()
+    {
+        if (_undoRedoService is null || _undoBaseline is null || _sourceRequest is null)
+            return;
+
+        var current = BuildRequestState(includeBlankRows: true);
+        if (current is null)
+            return;
+
+        if (CollectionRequestEqualityComparer.Instance.Equals(current, _undoBaseline))
+            return;
+
+        _undoRedoService.Push(new RequestTabMementoAction
+        {
+            Description = "Edit request",
+            TabId = TabId,
+            FilePath = _sourceRequest.FilePath,
+            Before = _undoBaseline,
+            After = current,
+        });
+
+        _undoBaseline = current;
+    }
+
+    /// <summary>
+    /// Restores the editor to <paramref name="snapshot"/> without pushing a new undo entry.
+    /// Stops any pending debounce timer, applies the snapshot via the existing load path,
+    /// and re-evaluates dirty state.
+    /// </summary>
+    internal void ApplySnapshot(CollectionRequest snapshot)
+    {
+        _undoDebounceTimer.Stop();
+        LoadRequest(snapshot);
+        // _undoBaseline is updated inside LoadRequest; RecomputeDirtyState is called below
+        // to ensure HasUnsavedChanges reflects the relationship between the snapshot and
+        // the persisted on-disk baseline (_sourceRequest, which LoadRequest also updates).
+        RecomputeDirtyState();
     }
 
     internal async Task<bool> PerformSaveAsync(CancellationToken ct = default)

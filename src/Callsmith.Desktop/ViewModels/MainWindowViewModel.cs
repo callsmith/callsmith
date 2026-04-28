@@ -1,4 +1,6 @@
 using Callsmith.Core.Abstractions;
+using Callsmith.Core.Models;
+using Callsmith.Desktop.Actions;
 using Callsmith.Desktop.Messages;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -15,6 +17,7 @@ public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly IMessenger _messenger;
     private readonly IAppPreferencesService? _appPreferencesService;
+    private readonly IUndoRedoService? _undoRedoService;
 
     public CollectionsViewModel Collections { get; }
     public RequestEditorViewModel RequestEditor { get; }
@@ -56,7 +59,8 @@ public partial class MainWindowViewModel : ViewModelBase
         CommandPaletteViewModel commandPalette,
         HistoryPanelViewModel historyPanel,
         IMessenger messenger,
-        IAppPreferencesService? appPreferencesService = null)
+        IAppPreferencesService? appPreferencesService = null,
+        IUndoRedoService? undoRedoService = null)
     {
         ArgumentNullException.ThrowIfNull(collections);
         ArgumentNullException.ThrowIfNull(requestEditor);
@@ -67,6 +71,7 @@ public partial class MainWindowViewModel : ViewModelBase
         ArgumentNullException.ThrowIfNull(messenger);
         _messenger = messenger;
         _appPreferencesService = appPreferencesService;
+        _undoRedoService = undoRedoService;
         Collections = collections;
         RequestEditor = requestEditor;
         Environment = environment;
@@ -102,6 +107,20 @@ public partial class MainWindowViewModel : ViewModelBase
             else
                 recipient.HistoryPanel.OpenGlobal();
         });
+
+        // Clear the undo/redo stack when a new collection is opened.
+        _messenger.Register<MainWindowViewModel, CollectionOpenedMessage>(this,
+            static (recipient, _) => recipient._undoRedoService?.Clear());
+
+        // Refresh undo/redo command CanExecute whenever the stacks change.
+        if (_undoRedoService is not null)
+        {
+            _undoRedoService.StackChanged += (_, _) =>
+            {
+                UndoCommand.NotifyCanExecuteChanged();
+                RedoCommand.NotifyCanExecuteChanged();
+            };
+        }
 
         Collections.TriggerStartupLoad();
 
@@ -241,5 +260,86 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             RequestEditor.ActiveTab?.SendCommand.Execute(null);
         }
+    }
+
+    // ── Undo / Redo ───────────────────────────────────────────────────────────
+
+    /// <summary>Ctrl+Z handler: undoes the most recent tracked edit.</summary>
+    [RelayCommand(CanExecute = nameof(CanUndo))]
+    private void Undo() => PerformUndoRedo(undo: true);
+
+    /// <summary>Ctrl+Y / Ctrl+Shift+Z handler: redoes the most recently undone edit.</summary>
+    [RelayCommand(CanExecute = nameof(CanRedo))]
+    private void Redo() => PerformUndoRedo(undo: false);
+
+    private bool CanUndo() => _undoRedoService?.CanUndo == true;
+    private bool CanRedo() => _undoRedoService?.CanRedo == true;
+
+    private void PerformUndoRedo(bool undo)
+    {
+        if (_undoRedoService is null)
+            return;
+
+        var action = undo ? _undoRedoService.Undo() : _undoRedoService.Redo();
+        if (action is null)
+            return;
+
+        if (action is RequestTabMementoAction requestAction)
+            ApplyRequestTabAction(requestAction, undo);
+        else if (action is EnvironmentMementoAction envAction)
+            ApplyEnvironmentAction(envAction, undo);
+    }
+
+    private void ApplyRequestTabAction(RequestTabMementoAction action, bool undo)
+    {
+        var snapshot = undo ? action.Before : action.After;
+
+        // Find the tab by file path (TabId may differ if the tab was re-opened).
+        var tab = RequestEditor.Tabs.FirstOrDefault(t =>
+            !string.IsNullOrEmpty(action.FilePath) &&
+            string.Equals(t.SourceFilePath, action.FilePath, StringComparison.OrdinalIgnoreCase));
+
+        if (tab is not null)
+        {
+            // Flush any pending debounce on the open tab before overwriting its state.
+            tab.FlushUndoDebounce();
+            RequestEditor.ActiveTab = tab;
+        }
+        else
+        {
+            // Tab is not open; re-open it via the standard navigation path.
+            _messenger.Send(new RequestSelectedMessage(snapshot, openAsPermanent: true));
+            // After the synchronous message dispatch, the new tab is the active tab.
+            tab = RequestEditor.ActiveTab;
+        }
+
+        // Close the environment editor so the request editor is visible.
+        if (Environment.IsEditorOpen)
+            _messenger.Send(new CloseEnvironmentEditorMessage());
+
+        tab?.ApplySnapshot(snapshot);
+    }
+
+    private void ApplyEnvironmentAction(EnvironmentMementoAction action, bool undo)
+    {
+        var snapshot = undo ? action.Before : action.After;
+
+        var envVm = EnvironmentEditor.Environments
+            .FirstOrDefault(e => e.EnvironmentId == action.EnvironmentId);
+
+        if (envVm is null)
+            return;
+
+        // Flush any pending debounce before overwriting.
+        envVm.FlushUndoDebounce();
+
+        // Open the environment editor panel if it is not already visible.
+        if (!Environment.IsEditorOpen)
+            Environment.OpenEditorCommand.Execute(null);
+
+        // Select the specific environment row.
+        EnvironmentEditor.SelectEnvironmentById(action.EnvironmentId);
+
+        envVm.ApplySnapshot(snapshot);
     }
 }

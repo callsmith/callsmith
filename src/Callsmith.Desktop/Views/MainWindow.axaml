@@ -25,6 +25,9 @@
         <KeyBinding Gesture="Ctrl+Shift+H" Command="{Binding OpenGlobalHistoryCommand}"/>
         <KeyBinding Gesture="Alt+R" Command="{Binding RevealActiveRequestCommand}"/>
         <KeyBinding Gesture="Ctrl+Enter" Command="{Binding SendCommand}"/>
+        <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}"/>
+        <KeyBinding Gesture="Ctrl+Y" Command="{Binding RedoCommand}"/>
+        <KeyBinding Gesture="Ctrl+Shift+Z" Command="{Binding RedoCommand}"/>
     </Window.KeyBindings>
 
     <Design.DataContext>

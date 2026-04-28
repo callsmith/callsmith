@@ -125,6 +125,9 @@ public partial class App : Application
         // App preferences
         services.AddSingleton<IAppPreferencesService, FileSystemAppPreferencesService>();
 
+        // Undo/redo (session-scoped; cleared on collection open)
+        services.AddSingleton<IUndoRedoService, UndoRedoService>();
+
         // ViewModels
         services.AddSingleton<CollectionsViewModel>();
         services.AddSingleton<RequestEditorViewModel>();
