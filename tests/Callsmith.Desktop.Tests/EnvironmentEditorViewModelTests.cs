@@ -1903,6 +1903,45 @@ public sealed class EnvironmentEditorViewModelTests
             "restoring GlobalPreviewEnvironmentName from saved state must not mark the global env dirty");
     }
 
+    [Fact]
+    public async Task GlobalEnv_PreviewSelectionChangedThenRestored_ReturnsToCleanState()
+    {
+        var globalModel = new EnvironmentModel
+        {
+            FilePath = GlobalEnvPath,
+            Name = "Global",
+            Variables = [],
+            GlobalPreviewEnvironmentName = "dev",
+            EnvironmentId = Guid.NewGuid(),
+        };
+
+        var service = Substitute.For<IEnvironmentService>();
+        service.LoadGlobalEnvironmentAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+               .Returns(globalModel);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([MakeModel("dev"), MakeModel("staging")]);
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(200);
+
+        var globalEnv = sut.Environments.First(e => e.IsGlobal);
+        var dev = sut.Environments.First(e => !e.IsGlobal && e.Name == "dev");
+        var staging = sut.Environments.First(e => !e.IsGlobal && e.Name == "staging");
+
+        sut.SelectedEnvironment = globalEnv;
+        await Task.Delay(100);
+
+        sut.SelectedGlobalPreviewEnvironment = staging;
+        globalEnv.IsDirty.Should().BeTrue();
+
+        sut.SelectedGlobalPreviewEnvironment = dev;
+
+        globalEnv.IsDirty.Should().BeFalse();
+    }
+
     // ─── Error display when dynamic variable resolution fails ─────────────────
 
     [Fact]
