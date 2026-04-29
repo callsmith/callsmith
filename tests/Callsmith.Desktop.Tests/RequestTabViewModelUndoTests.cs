@@ -14,7 +14,7 @@ namespace Callsmith.Desktop.Tests;
 
 /// <summary>
 /// Verifies that <see cref="RequestTabViewModel"/> correctly integrates with
-/// <see cref="IUndoRedoService"/>: debounce timer, FlushUndoDebounce, and ApplySnapshot.
+/// <see cref="IUndoRedoService"/>: immediate per-change memento push and ApplySnapshot.
 /// </summary>
 public sealed class RequestTabViewModelUndoTests
 {
@@ -58,40 +58,38 @@ public sealed class RequestTabViewModelUndoTests
         undo.CanRedo.Should().BeFalse();
     }
 
-    // ── FlushUndoDebounce ─────────────────────────────────────────────────────
+    // ── Immediate push on edit ────────────────────────────────────────────────
 
     [AvaloniaFact]
-    public void FlushUndoDebounce_AfterEdit_PushesAction()
+    public void Edit_PushesActionImmediately()
     {
         var (tab, undo) = BuildSut();
         tab.LoadRequest(MakeRequest("https://api.example.com/original"));
 
         tab.Url = "https://api.example.com/modified";
-        tab.FlushUndoDebounce();
 
         undo.CanUndo.Should().BeTrue();
     }
 
     [AvaloniaFact]
-    public void FlushUndoDebounce_WhenNothingChanged_DoesNotPush()
+    public void Edit_WhenValueUnchangedFromBaseline_DoesNotPush()
     {
         var (tab, undo) = BuildSut();
-        tab.LoadRequest(MakeRequest());
+        tab.LoadRequest(MakeRequest("https://api.example.com/"));
 
-        tab.FlushUndoDebounce(); // no change from baseline
+        // Set to the same URL — equality check should suppress the push.
+        tab.Url = "https://api.example.com/";
 
         undo.CanUndo.Should().BeFalse();
     }
 
     [AvaloniaFact]
-    public void FlushUndoDebounce_ActionHasCorrectBeforeAndAfter()
+    public void Edit_ActionHasCorrectBeforeAndAfter()
     {
         var (tab, undo) = BuildSut();
-        var original = MakeRequest("https://original.example.com/");
-        tab.LoadRequest(original);
+        tab.LoadRequest(MakeRequest("https://original.example.com/"));
 
         tab.Url = "https://modified.example.com/";
-        tab.FlushUndoDebounce();
 
         var action = (RequestTabMementoAction)undo.Undo()!;
         action.Before.Url.Should().Be("https://original.example.com/");
@@ -99,15 +97,13 @@ public sealed class RequestTabViewModelUndoTests
     }
 
     [AvaloniaFact]
-    public void FlushUndoDebounce_AdvancesBaseline_SecondFlushDoesNotPushDuplicate()
+    public void Edit_AdvancesBaseline_SameValueAgainDoesNotPushDuplicate()
     {
         var (tab, undo) = BuildSut();
         tab.LoadRequest(MakeRequest("https://a.example.com/"));
 
-        tab.Url = "https://b.example.com/";
-        tab.FlushUndoDebounce(); // pushes A→B, baseline becomes B
-
-        tab.FlushUndoDebounce(); // no change from new baseline
+        tab.Url = "https://b.example.com/"; // pushes A→B, baseline becomes B
+        tab.Url = "https://b.example.com/"; // identical to new baseline — no push
 
         undo.CanUndo.Should().BeTrue();
         undo.Undo();
@@ -115,16 +111,13 @@ public sealed class RequestTabViewModelUndoTests
     }
 
     [AvaloniaFact]
-    public void FlushUndoDebounce_MultipleEdits_EachFlushPushesOneEntry()
+    public void MultipleEdits_EachDistinctChangeCreatesEntry()
     {
         var (tab, undo) = BuildSut();
         tab.LoadRequest(MakeRequest("https://a.example.com/"));
 
         tab.Url = "https://b.example.com/";
-        tab.FlushUndoDebounce();
-
         tab.Url = "https://c.example.com/";
-        tab.FlushUndoDebounce();
 
         // Two entries on undo stack.
         undo.Undo()!.Description.Should().Be("Edit request");
@@ -160,23 +153,6 @@ public sealed class RequestTabViewModelUndoTests
     }
 
     [AvaloniaFact]
-    public void ApplySnapshot_StopsAnyPendingDebounce()
-    {
-        var (tab, undo) = BuildSut();
-        tab.LoadRequest(MakeRequest("https://original.example.com/"));
-
-        // Trigger a debounce.
-        tab.Url = "https://intermediate.example.com/";
-        // Now apply snapshot before the debounce fires.
-        var snapshot = MakeRequest("https://reverted.example.com/");
-        tab.ApplySnapshot(snapshot);
-
-        // No debounce should fire after ApplySnapshot; undo stack remains empty.
-        undo.CanUndo.Should().BeFalse();
-        tab.Url.Should().Be("https://reverted.example.com/");
-    }
-
-    [AvaloniaFact]
     public void ApplySnapshot_UpdatesHasUnsavedChanges_WhenSnapshotMatchesSavedState()
     {
         var (tab, _) = BuildSut();
@@ -190,25 +166,5 @@ public sealed class RequestTabViewModelUndoTests
         tab.ApplySnapshot(req);
 
         tab.HasUnsavedChanges.Should().BeFalse();
-    }
-
-    // ── No-op without undoRedoService ─────────────────────────────────────────
-
-    [AvaloniaFact]
-    public void FlushUndoDebounce_WithoutUndoService_IsNoOp()
-    {
-        var cs = Substitute.For<ICollectionService>();
-        var tab = new RequestTabViewModel(
-            new TransportRegistry(),
-            cs,
-            new WeakReferenceMessenger(),
-            _ => { });
-
-        tab.LoadRequest(MakeRequest());
-        tab.Url = "https://modified.example.com/";
-
-        var act = () => tab.FlushUndoDebounce();
-
-        act.Should().NotThrow();
     }
 }

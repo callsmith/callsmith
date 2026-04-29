@@ -301,8 +301,6 @@ public partial class MainWindowViewModel : ViewModelBase
 
         if (tab is not null)
         {
-            // Flush any pending debounce on the open tab before overwriting its state.
-            tab.FlushUndoDebounce();
             RequestEditor.ActiveTab = tab;
         }
         else
@@ -329,9 +327,6 @@ public partial class MainWindowViewModel : ViewModelBase
 
         if (envVm is null)
             return;
-
-        // Flush any pending debounce before overwriting.
-        envVm.FlushUndoDebounce();
 
         // Open the environment editor panel if it is not already visible.
         if (!Environment.IsEditorOpen)

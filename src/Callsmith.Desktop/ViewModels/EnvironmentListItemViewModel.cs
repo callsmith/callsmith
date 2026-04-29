@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using Avalonia.Threading;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Helpers;
 using Callsmith.Core.Bruno;
@@ -29,16 +28,13 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     private readonly string _collectionFolderPath;
     private readonly IUndoRedoService? _undoRedoService;
 
-    // ── Undo/redo debounce ─────────────────────────────────────────────────────
+    // ── Undo/redo ──────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Snapshot of the environment state at the last undo commit point.
     /// <see langword="null"/> until the first <see cref="LoadVariables"/> call completes.
     /// </summary>
     private EnvironmentModel? _undoBaseline;
-
-    /// <summary>One-shot 1-second timer; fires to flush pending edits into the undo stack.</summary>
-    private readonly DispatcherTimer _undoDebounceTimer = new() { Interval = TimeSpan.FromMilliseconds(1000) };
 
     // Pre-evaluated dynamic variable values for the PREVIEW box.
     // Populated asynchronously by EnvironmentEditorViewModel after selection.
@@ -57,6 +53,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         = new Dictionary<string, MockDataEntry>();
     private IReadOnlyList<EnvVarSuggestion> _suggestions = [];
     private string? _globalPreviewEnvironmentName;
+    private bool _loading;
 
     // ─── Observable state ────────────────────────────────────────────────────
 
@@ -144,8 +141,6 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         _collectionFolderPath = collectionFolderPath;
         _globalPreviewEnvironmentName = model.GlobalPreviewEnvironmentName;
         _undoRedoService = undoRedoService;
-
-        _undoDebounceTimer.Tick += OnUndoDebounceTimerTick;
 
         LoadVariables(model.Variables);
     }
@@ -319,9 +314,17 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
 
     private void LoadVariables(IReadOnlyList<EnvironmentVariable> variables)
     {
-        Variables.Clear();
-        foreach (var v in variables)
-            Variables.Add(CreateVariableItem(v));
+        _loading = true;
+        try
+        {
+            Variables.Clear();
+            foreach (var v in variables)
+                Variables.Add(CreateVariableItem(v));
+        }
+        finally
+        {
+            _loading = false;
+        }
         // Reset dirty flag — initial population of rows from disk is not a user change.
         IsDirty = false;
         // Establish undo baseline after the initial load.
@@ -781,44 +784,19 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     /// <summary>Marks the environment dirty and refreshes all variable previews.</summary>
     private void OnAnyVariableChanged()
     {
+        if (_loading) return;
+
         RecomputeDirtyState();
         foreach (var v in Variables)
             v.NotifyPreviewChanged();
         VariablesChanged?.Invoke(this, EventArgs.Empty);
 
-        // Restart the undo debounce so rapid edits coalesce into a single undo entry.
+        // Push an undo entry immediately for each distinct state change.
         if (_undoRedoService is not null && _undoBaseline is not null)
-        {
-            _undoDebounceTimer.Stop();
-            _undoDebounceTimer.Start();
-        }
+            CommitUndoSnapshot();
     }
 
     // ── Undo/redo helpers ──────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Debounce tick handler. Compares the current state against <see cref="_undoBaseline"/>;
-    /// if different, pushes an <see cref="EnvironmentMementoAction"/> and advances the baseline.
-    /// </summary>
-    private void OnUndoDebounceTimerTick(object? sender, EventArgs e)
-    {
-        _undoDebounceTimer.Stop();
-        CommitUndoSnapshot();
-    }
-
-    /// <summary>
-    /// Immediately stops the debounce timer and commits any pending edit to the undo stack.
-    /// Called before applying an undo/redo action to prevent the in-progress debounce from
-    /// overwriting the just-applied snapshot.
-    /// </summary>
-    internal void FlushUndoDebounce()
-    {
-        if (!_undoDebounceTimer.IsEnabled)
-            return;
-
-        _undoDebounceTimer.Stop();
-        CommitUndoSnapshot();
-    }
 
     private void CommitUndoSnapshot()
     {
@@ -843,12 +821,10 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
 
     /// <summary>
     /// Restores the environment to <paramref name="snapshot"/> without pushing a new undo entry.
-    /// Stops any pending debounce timer, applies the snapshot via the existing load path,
-    /// and re-evaluates dirty state.
+    /// Applies the snapshot via the existing load path and re-evaluates dirty state.
     /// </summary>
     internal void ApplySnapshot(EnvironmentModel snapshot)
     {
-        _undoDebounceTimer.Stop();
         Color = snapshot.Color;
         _globalPreviewEnvironmentName = snapshot.GlobalPreviewEnvironmentName;
         LoadVariables(snapshot.Variables);

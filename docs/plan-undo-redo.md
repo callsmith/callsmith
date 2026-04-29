@@ -109,47 +109,46 @@ Session-scoped interface:
 
 ---
 
-## Step 4 — Snapshot Capture with Debounce
+## Step 4 — Immediate Per-Change Snapshot Capture
 
-The debounce strategy is a **1-second coarse-grained capture**. This groups rapid keystrokes into a single undo step while still giving the user fine enough control.
+Each distinct state change pushes a snapshot to the undo stack immediately rather than waiting for
+a debounce timer. The 200-entry cap in `UndoRedoService` bounds memory usage.
 
 ### Per `RequestTabViewModel`
 
-1. Add a private field `_undoBaseline: CollectionRequest?` — initialized from `_sourceRequest` when the tab loads (and reset after each undo/redo or debounce flush).
-2. Add a `DispatcherTimer _undoDebounceTimer` (1000 ms, one-shot).
-   - If `_loading` or `_saving`, do nothing.
-   - If `_undoBaseline == null`, return (tab not yet ready).
-   - Restart the debounce timer.
-4. When the timer fires:
-   - Build the current state snapshot (`BuildRequestState(includeBlankRows: true)`).
-   - Compare against `_undoBaseline` using `CollectionRequestEqualityComparer`.
-   - If different, push a `RequestTabMementoAction` onto the service with `Before = _undoBaseline`, `After = current`.
-   - Update `_undoBaseline = current`.
-5. Add `ApplySnapshot(CollectionRequest snapshot)` method:
-   - Suppresses debounce timer.
-   - Calls the existing load path (same code used when reloading from disk).
-   - Updates `_undoBaseline = snapshot`.
+1. Add a private field `_undoBaseline: CollectionRequest?` — initialized from `_sourceRequest` when
+   the tab loads (and reset after each undo/redo).
+2. In `RecomputeDirtyState()`:
+   - Guard returns early if `_loading`, `_saving`, or `_sourceRequest is null` (existing guards).
+   - After updating `HasUnsavedChanges`, call `CommitUndoSnapshot()` if the service is wired.
+3. `CommitUndoSnapshot()`:
+   - Builds the current state (`BuildRequestState(includeBlankRows: true)`).
+   - Compares against `_undoBaseline` using `CollectionRequestEqualityComparer`.
+   - If different, pushes a `RequestTabMementoAction` with `Before = _undoBaseline`, `After = current`.
+   - Advances `_undoBaseline = current`.
+4. Add `ApplySnapshot(CollectionRequest snapshot)` method:
+   - Calls the existing `LoadRequest` path (which sets `_loading = true`, suppressing any undo
+     commits during the load, then resets `_undoBaseline` at the end).
    - Calls `RecomputeDirtyState()` to re-evaluate `HasUnsavedChanges`.
 
 ### Per `EnvironmentListItemViewModel`
 
 1. Add `_undoBaseline: EnvironmentModel?` — initialized in the constructor from the loaded `_model`.
-2. Add a `DispatcherTimer _undoDebounceTimer` (1000 ms, one-shot).
+2. Add `_loading: bool` guard — set to `true` inside `LoadVariables`, preventing `OnAnyVariableChanged`
+   from firing undo commits during the initial variable row population (each property setter on
+   `EnvironmentVariableItemViewModel` calls back into `OnAnyVariableChanged`).
 3. In `OnAnyVariableChanged()` (already called on every variable change):
-   - Restart the debounce timer.
-4. When the timer fires:
-   - Build `BuildModel(includeBlankVariables: true)` (existing method).
-   - Compare against `_undoBaseline` using `EnvironmentModelEqualityComparer`.
-   - If different, push an `EnvironmentMementoAction`.
-   - Update `_undoBaseline`.
+   - Return early if `_loading`.
+   - Call `CommitUndoSnapshot()` after updating dirty state.
+4. `CommitUndoSnapshot()`:
+   - Builds `BuildModel(includeBlankVariables: true)` (existing method).
+   - Compares against `_undoBaseline` using `EnvironmentModelEqualityComparer`.
+   - If different, pushes an `EnvironmentMementoAction`.
+   - Advances `_undoBaseline`.
 5. Add `ApplySnapshot(EnvironmentModel snapshot)` method:
-   - Calls the existing `LoadVariables(snapshot.Variables)` path; also restores `Color` and `Name` if applicable.
-   - Updates `_undoBaseline = snapshot`.
+   - Calls the existing `LoadVariables(snapshot.Variables)` path (guarded by `_loading`).
+   - Also restores `Color` and `GlobalPreviewEnvironmentName`.
    - Calls `RecomputeDirtyState()` to re-evaluate `IsDirty`.
-
-> **Important:** The undo/redo debounce timer must be stopped and the current in-progress edit must
-> be flushed *before* applying an undo/redo action. Otherwise the in-progress debounce can
-> overwrite a just-applied undo.
 
 ---
 
@@ -198,14 +197,12 @@ Specifically:
    `Document?.UndoStack.SizeLimit = 0;` (already has a guard block there for folding manager)
 3. In `OnEditorTextChanged`, no change needed — the size limit already prevents accumulation.
 
-### UX tradeoff (deliberate)
+### UX note
 
-Disabling control-level undo means that edits made **within the 1-second debounce window** are
-not yet undoable: no snapshot has been committed yet, and the TextBox/SyntaxEditor has no local
-history either. If the user presses Ctrl+Z immediately after typing a single character, nothing
-happens until the debounce fires and the first snapshot is committed. This is an accepted
-coarser-granularity tradeoff; the undo granularity matches the debounce interval, not individual
-keystrokes.
+With control-level undo disabled, Ctrl+Z always reaches the application-level `UndoCommand`. Each
+distinct state change is immediately undoable: pressing Ctrl+Z after typing a single character
+will undo exactly that character change. The 200-entry stack limit means that very long editing
+sessions may lose the oldest entries, but this is an accepted tradeoff.
 
 ### What was ruled out
 
@@ -231,17 +228,15 @@ keystrokes.
 2. Dispatch on `action.ContextType`:
 
    **Request tab (`RequestTabMementoAction`, apply `Before` snapshot):**
-   a. Flush any pending debounce timer on the matching tab (if the tab is currently open).
-   b. Navigate to the request tab: check `RequestEditor.Tabs` for one matching `action.FilePath`.
+   a. Navigate to the request tab: check `RequestEditor.Tabs` for one matching `action.FilePath`.
       - If the tab is open, activate it.
       - If the tab is **not** open (including *new/unsaved* tabs that were closed), re-open it by sending a `RequestSelectedMessage` with `action.FilePath`. This ensures that accidentally-closed new requests can be recovered via Ctrl+Z.
-   c. Close the environment editor if open (send `CloseEnvironmentEditorMessage`).
-   d. Call `tab.ApplySnapshot(action.Before)`.
+   b. Close the environment editor if open (send `CloseEnvironmentEditorMessage`).
+   c. Call `tab.ApplySnapshot(action.Before)`.
 
    **Environment (`EnvironmentMementoAction`, apply `Before` snapshot):**
-   a. Flush any pending debounce timer on the matching environment VM.
-   b. Navigate to the environment editor: send `OpenEnvironmentEditorMessage` (or call `EnvironmentEditor.SelectEnvironmentByIdAsync(action.EnvironmentId)`).
-   c. Call `environmentVm.ApplySnapshot(action.Before)`.
+   a. Navigate to the environment editor: send `OpenEnvironmentEditorMessage` (or call `EnvironmentEditor.SelectEnvironmentByIdAsync(action.EnvironmentId)`).
+   b. Call `environmentVm.ApplySnapshot(action.Before)`.
 
 3. After navigation + apply, `CanUndo`/`CanRedo` refresh automatically via `StackChanged`.
 
@@ -326,8 +321,8 @@ In `App.axaml.cs`, `ConfigureServices()`:
 - `Undo()`/`Redo()` on empty stack returns null without throwing
 
 **`Callsmith.Desktop.Tests`:**
-- `RequestTabViewModelUndoTests`: property change → debounce fires → correct before/after recorded; `ApplySnapshot` restores state and re-evaluates dirty
-- `EnvironmentListItemViewModelUndoTests`: variable change → debounce fires → memento recorded; `ApplySnapshot` restores variables and re-evaluates dirty
+- `RequestTabViewModelUndoTests`: property change → immediate push → correct before/after recorded; `ApplySnapshot` restores state and re-evaluates dirty
+- `EnvironmentListItemViewModelUndoTests`: variable change → immediate push → memento recorded; `ApplySnapshot` restores variables and re-evaluates dirty
 - `MainWindowViewModelUndoRedoDispatchTests`: `UndoCommand` applies correct snapshot and navigates (mocked child VMs)
 
 ---
@@ -336,11 +331,11 @@ In `App.axaml.cs`, `ConfigureServices()`:
 
 All outstanding questions have been resolved:
 
-1. **Debounce interval** — **1 second** (reduced from the original 1.5 s). Provides a slightly tighter undo granularity while still grouping rapid keystrokes into one step.
+1. **Snapshot granularity** — **Immediate per-change pushing.** Each distinct state change (as determined by the equality comparers) creates a separate undo entry. The 200-entry stack cap bounds memory usage. Rapid successive identical values (e.g., setting a property to a value it already has) are suppressed by the equality check in `CommitUndoSnapshot`.
 2. **Undo scope for new/unsaved tabs** — Closed tabs **must be re-opened** by undo. If a user opened a New Request, made edits, then accidentally closed the tab, pressing Ctrl+Z should reopen it at the `Before` snapshot state. The dispatch layer handles this by always re-opening the file (new or saved) when the tab is not found in the current tab list (see Step 5).
 3. **Stack depth limit** — A maximum of **200 undo entries** is imposed in `UndoRedoService`. The oldest entry is silently dropped when the limit is exceeded (see Step 2).
 4. **Ctrl+Y vs Ctrl+Shift+Z** — **Both gestures** are bound to `RedoCommand` (confirmed).
 5. **Folder settings** — `FolderSettingsViewModel` (folder-level auth/description) is **not in scope** (confirmed).
 6. **Visual indicator** — **No toast or status message** will be shown on undo/redo at this time.
-7. **Control-level undo stacks** — **Disabled globally.** `TextBox.UndoLimit=0` via a single application-level style in `App.axaml`; `SyntaxEditor.Document.UndoStack.SizeLimit=0` set in the constructor and on every `DocumentProperty` change. This ensures Ctrl+Z is never consumed by a child control and always reaches the Window-level `UndoCommand`. The accepted tradeoff is that edits within the 1-second debounce window are not undoable until the first snapshot commits (see Step 4a).
+7. **Control-level undo stacks** — **Disabled globally.** `TextBox.UndoLimit=0` via a single application-level style in `App.axaml`; `SyntaxEditor.Document.UndoStack.SizeLimit=0` set in the constructor and on every `DocumentProperty` change. This ensures Ctrl+Z is never consumed by a child control and always reaches the Window-level `UndoCommand`.
 8. **Key-repeat undo/redo** — No special implementation required. Holding Ctrl+Z or Ctrl+Y fires repeated OS `KeyDown` events; Avalonia forwards each to the bound command, producing the standard "first press → short pause → rapid stream" behavior automatically (see Step 7).

@@ -152,8 +152,7 @@ public sealed class MainWindowViewModelUndoRedoDispatchTests
             ? OpenTab(sut, original)
             : sut.RequestEditor.ActiveTab!;
 
-        tab.Url = "https://modified.example.com/";
-        tab.FlushUndoDebounce(); // push original→modified
+        tab.Url = "https://modified.example.com/"; // pushes original→modified immediately
 
         // Execute undo.
         sut.UndoCommand.Execute(null);
@@ -170,8 +169,7 @@ public sealed class MainWindowViewModelUndoRedoDispatchTests
         var original = MakeRequest("https://original.example.com/");
         var tab = OpenTab(sut, original);
 
-        tab.Url = "https://modified.example.com/";
-        tab.FlushUndoDebounce();
+        tab.Url = "https://modified.example.com/"; // pushes immediately
 
         sut.UndoCommand.Execute(null); // restores to original
 

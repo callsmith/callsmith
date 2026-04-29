@@ -9,7 +9,7 @@ namespace Callsmith.Desktop.Tests;
 
 /// <summary>
 /// Verifies that <see cref="EnvironmentListItemViewModel"/> correctly integrates with
-/// <see cref="UndoRedoService"/>: debounce timer, FlushUndoDebounce, and ApplySnapshot.
+/// <see cref="UndoRedoService"/>: immediate per-change memento push and ApplySnapshot.
 /// </summary>
 public sealed class EnvironmentListItemViewModelUndoTests
 {
@@ -55,37 +55,35 @@ public sealed class EnvironmentListItemViewModelUndoTests
         undo.CanRedo.Should().BeFalse();
     }
 
-    // ── FlushUndoDebounce ─────────────────────────────────────────────────────
+    // ── Immediate push on edit ────────────────────────────────────────────────
 
     [AvaloniaFact]
-    public void FlushUndoDebounce_AfterVariableEdit_PushesAction()
+    public void Edit_PushesActionImmediately()
     {
         var (vm, undo) = BuildSut();
 
         vm.Variables[0].Value = "modified";
-        vm.FlushUndoDebounce();
 
         undo.CanUndo.Should().BeTrue();
     }
 
     [AvaloniaFact]
-    public void FlushUndoDebounce_WhenNothingChanged_DoesNotPush()
+    public void Edit_WhenValueUnchangedFromBaseline_DoesNotPush()
     {
-        var (vm, undo) = BuildSut();
+        var (vm, undo) = BuildSut(MakeModel("initial"));
 
-        vm.FlushUndoDebounce(); // no edit from baseline
+        vm.Variables[0].Value = "initial"; // same as baseline
 
         undo.CanUndo.Should().BeFalse();
     }
 
     [AvaloniaFact]
-    public void FlushUndoDebounce_ActionHasCorrectBeforeAndAfter()
+    public void Edit_ActionHasCorrectBeforeAndAfter()
     {
         var model = MakeModel("original-value");
         var (vm, undo) = BuildSut(model);
 
         vm.Variables[0].Value = "new-value";
-        vm.FlushUndoDebounce();
 
         var action = (EnvironmentMementoAction)undo.Undo()!;
         action.Before.Variables[0].Value.Should().Be("original-value");
@@ -93,14 +91,12 @@ public sealed class EnvironmentListItemViewModelUndoTests
     }
 
     [AvaloniaFact]
-    public void FlushUndoDebounce_AdvancesBaseline_SecondFlushDoesNotPushDuplicate()
+    public void Edit_AdvancesBaseline_SameValueAgainDoesNotPushDuplicate()
     {
         var (vm, undo) = BuildSut();
 
-        vm.Variables[0].Value = "v1";
-        vm.FlushUndoDebounce(); // pushes initial→v1
-
-        vm.FlushUndoDebounce(); // no change from new baseline
+        vm.Variables[0].Value = "v1"; // pushes initial→v1
+        vm.Variables[0].Value = "v1"; // identical to new baseline — no push
 
         undo.CanUndo.Should().BeTrue();
         undo.Undo();
@@ -108,15 +104,12 @@ public sealed class EnvironmentListItemViewModelUndoTests
     }
 
     [AvaloniaFact]
-    public void FlushUndoDebounce_MultipleEdits_EachFlushPushesOneEntry()
+    public void MultipleEdits_EachDistinctChangeCreatesEntry()
     {
         var (vm, undo) = BuildSut();
 
         vm.Variables[0].Value = "v1";
-        vm.FlushUndoDebounce();
-
         vm.Variables[0].Value = "v2";
-        vm.FlushUndoDebounce();
 
         undo.Undo();
         undo.Undo();
@@ -149,22 +142,6 @@ public sealed class EnvironmentListItemViewModelUndoTests
     }
 
     [AvaloniaFact]
-    public void ApplySnapshot_StopsAnyPendingDebounce()
-    {
-        var model = MakeModel("initial");
-        var (vm, undo) = BuildSut(model);
-
-        // Trigger debounce.
-        vm.Variables[0].Value = "intermediate";
-
-        // Apply snapshot before debounce fires.
-        vm.ApplySnapshot(model);
-
-        undo.CanUndo.Should().BeFalse();
-        vm.Variables[0].Value.Should().Be("initial");
-    }
-
-    [AvaloniaFact]
     public void ApplySnapshot_RestoresIsDirty_WhenSnapshotMatchesBaseline()
     {
         var model = MakeModel("initial");
@@ -176,22 +153,5 @@ public sealed class EnvironmentListItemViewModelUndoTests
         vm.ApplySnapshot(model);
 
         vm.IsDirty.Should().BeFalse();
-    }
-
-    // ── No-op without undoRedoService ─────────────────────────────────────────
-
-    [AvaloniaFact]
-    public void FlushUndoDebounce_WithoutUndoService_IsNoOp()
-    {
-        var vm = new EnvironmentListItemViewModel(
-            MakeModel(),
-            onRenameCommit: (_, _, _) => Task.CompletedTask,
-            onDeleteRequest: (_, _) => Task.CompletedTask);
-
-        vm.Variables[0].Value = "changed";
-
-        var act = () => vm.FlushUndoDebounce();
-
-        act.Should().NotThrow();
     }
 }
