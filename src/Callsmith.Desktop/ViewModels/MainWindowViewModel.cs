@@ -141,6 +141,17 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Ctrl+Shift+S handler: saves all dirty environments when the environment editor panel is
+    /// open. No-op otherwise.
+    /// </summary>
+    [RelayCommand]
+    private void SaveAll()
+    {
+        if (Environment.IsEditorOpen)
+            EnvironmentEditor.SaveAllEnvironmentsCommand.Execute(null);
+    }
+
+    /// <summary>
     /// Ctrl+P handler: opens the command palette only when the main request editor is active
     /// (i.e. neither the environment editor panel nor the history panel is open).
     /// </summary>

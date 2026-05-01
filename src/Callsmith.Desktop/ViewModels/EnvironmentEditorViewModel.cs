@@ -386,6 +386,55 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         }
     }
 
+    /// <summary>Saves all dirty environments to disk (Ctrl+Shift+S).</summary>
+    [RelayCommand]
+    private async Task SaveAllEnvironmentsAsync(CancellationToken ct)
+    {
+        IsBusy = true;
+        ErrorMessage = string.Empty;
+        try
+        {
+            var dirtyItems = Environments.Where(e => e.IsDirty).ToList();
+            if (dirtyItems.Count == 0) return;
+
+            // Build all models upfront (applying global preview env name for the global env).
+            var entries = dirtyItems.Select(env =>
+            {
+                var model = env.BuildModel();
+                if (env.IsGlobal)
+                    model = model with { GlobalPreviewEnvironmentName = SelectedGlobalPreviewEnvironment?.Name };
+                return (Vm: env, Model: model);
+            }).ToList();
+
+            // Save all environments in a single batch call.
+            // For Callsmith collections this writes secrets in one read-modify-write on the
+            // backing store (instead of once per env), then writes each env file atomically.
+            // For Bruno collections this delegates to sequential per-env saves.
+            await _environmentService
+                .SaveEnvironmentsAsync(entries.Select(e => e.Model).ToList(), ct)
+                .ConfigureAwait(true);
+
+            // Update dirty state and notify subscribers.
+            foreach (var (vm, model) in entries)
+            {
+                vm.MarkSaved(model);
+                if (vm.IsGlobal)
+                    Messenger.Send(new GlobalEnvironmentChangedMessage(model));
+                else
+                    Messenger.Send(new EnvironmentSavedMessage(model));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save all environments");
+            ErrorMessage = "Failed to save all environments. Check logs for details.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     // ─── Message handlers ────────────────────────────────────────────────────
 
     /// <inheritdoc/>

@@ -122,6 +122,52 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
     }
 
     /// <inheritdoc/>
+    public async Task SaveEnvironmentsAsync(
+        IReadOnlyList<EnvironmentModel> environments, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(environments);
+        if (environments.Count == 0) return;
+
+        // Collect all secrets for all environments and write them in a single
+        // bulk operation — one read-modify-write on the secrets file regardless of
+        // how many environments are being saved.
+        var allSecrets = new Dictionary<string, IReadOnlyDictionary<string, string>>(
+            environments.Count, StringComparer.Ordinal);
+
+        foreach (var env in environments)
+        {
+            var secretVars = env.Variables.Where(v => v.IsSecret).ToList();
+            if (secretVars.Count == 0) continue;
+
+            var envName = Path.GetFileNameWithoutExtension(env.FilePath);
+            var bulk = new Dictionary<string, string>(secretVars.Count, StringComparer.Ordinal);
+            foreach (var v in secretVars)
+                bulk[v.Name] = v.Value;
+            allSecrets[envName] = bulk;
+        }
+
+        if (allSecrets.Count > 0)
+        {
+            var collectionPath = GetCollectionFolderPath(environments[0].FilePath);
+            await _secrets
+                .SetCollectionSecretsAsync(collectionPath, allSecrets, ct)
+                .ConfigureAwait(false);
+        }
+
+        // Write each environment's JSON file. Secrets are already persisted above so
+        // we write the DTO directly rather than going through SaveEnvironmentAsync
+        // (which would call PersistSecretsAsync a second time).
+        foreach (var environment in environments)
+        {
+            var directory = Path.GetDirectoryName(environment.FilePath)!;
+            Directory.CreateDirectory(directory);
+            var dto = ModelToDto(environment);
+            await WriteAtomicAsync(environment.FilePath, dto, ct).ConfigureAwait(false);
+            _logger.LogDebug("Saved environment '{Name}' → {Path}", environment.Name, environment.FilePath);
+        }
+    }
+
+    /// <inheritdoc/>
     public async Task SaveEnvironmentAsync(EnvironmentModel environment, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(environment);
@@ -135,9 +181,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         // The serialised file stores an empty value for secrets — only the name (presence)
         // is recorded so that the file is safe to check in to version control.
         var dto = ModelToDto(environment);
-
-        await using var stream = File.Open(environment.FilePath, FileMode.Create, FileAccess.Write);
-        await JsonSerializer.SerializeAsync(stream, dto, CallsmithJsonOptions.Default, ct).ConfigureAwait(false);
+        await WriteAtomicAsync(environment.FilePath, dto, ct).ConfigureAwait(false);
 
         _logger.LogDebug("Saved environment '{Name}' → {Path}", environment.Name, environment.FilePath);
     }
@@ -374,11 +418,38 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         var collectionPath = GetCollectionFolderPath(environment.FilePath);
         var envName = Path.GetFileNameWithoutExtension(environment.FilePath);
 
+        // Collect all secrets into a dictionary with explicit overwrite semantics so
+        // that duplicate variable names (last one wins) do not throw, matching the
+        // original per-variable loop behaviour.
+        var bulk = new Dictionary<string, string>(secretVars.Count, StringComparer.Ordinal);
         foreach (var v in secretVars)
+            bulk[v.Name] = v.Value;
+        await _secrets
+            .SetEnvironmentSecretsAsync(collectionPath, envName, bulk, ct)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Writes <paramref name="dto"/> to <paramref name="filePath"/> using an atomic
+    /// temp-file-then-rename strategy to avoid transient file-lock <see cref="IOException"/>s
+    /// from AV scanners or cloud-sync clients. The write targets a unique GUID-suffixed
+    /// temporary file; the final rename is instantaneous on the same volume, so there is
+    /// no window during which the destination file is partially written or locked.
+    /// </summary>
+    private static async Task WriteAtomicAsync(
+        string filePath, EnvironmentDto dto, CancellationToken ct)
+    {
+        var tempPath = filePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
         {
-            await _secrets
-                .SetSecretAsync(collectionPath, envName, v.Name, v.Value, ct)
-                .ConfigureAwait(false);
+            await using (var stream = File.Open(tempPath, FileMode.Create, FileAccess.Write))
+                await JsonSerializer.SerializeAsync(stream, dto, CallsmithJsonOptions.Default, ct).ConfigureAwait(false);
+
+            File.Move(tempPath, filePath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(tempPath)) File.Delete(tempPath);
         }
     }
 

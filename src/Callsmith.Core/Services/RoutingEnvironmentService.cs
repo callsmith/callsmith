@@ -35,6 +35,16 @@ public sealed class RoutingEnvironmentService : IEnvironmentService
     public Task<EnvironmentModel> LoadEnvironmentAsync(string filePath, CancellationToken ct = default) =>
         ServiceForFile(filePath).LoadEnvironmentAsync(filePath, ct);
 
+    public Task SaveEnvironmentsAsync(
+        IReadOnlyList<EnvironmentModel> environments, CancellationToken ct = default)
+    {
+        if (environments.Count == 0) return Task.CompletedTask;
+        // All environments in a single editor session belong to the same collection and
+        // therefore the same service type (Callsmith or Bruno). Routing based on the
+        // first item is safe in this context.
+        return ServiceForFile(environments[0].FilePath).SaveEnvironmentsAsync(environments, ct);
+    }
+
     public Task SaveEnvironmentAsync(EnvironmentModel environment, CancellationToken ct = default) =>
         ServiceForFile(environment.FilePath).SaveEnvironmentAsync(environment, ct);
 

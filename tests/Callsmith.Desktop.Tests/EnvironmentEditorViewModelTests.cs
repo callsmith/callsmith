@@ -2060,4 +2060,103 @@ public sealed class EnvironmentEditorViewModelTests
         accessTokenVar.IsDynamicPreviewError.Should().BeTrue("the evaluator returned access-token in FailedVariables");
         accessTokenVar.HasPreview.Should().BeTrue("the preview row must be visible to display the error");
     }
+
+    // ─── SaveAllEnvironments ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task SaveAllEnvironments_SavesAllDirtyEnvironments()
+    {
+        var dev = MakeModel("dev");
+        var staging = MakeModel("staging");
+
+        var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([dev, staging]);
+        service.SaveEnvironmentsAsync(Arg.Any<IReadOnlyList<EnvironmentModel>>(), Arg.Any<CancellationToken>())
+               .Returns(Task.CompletedTask);
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        // Dirty both non-global environments.
+        var devEnv = sut.Environments.First(e => e.Name == "dev");
+        var stagingEnv = sut.Environments.First(e => e.Name == "staging");
+        devEnv.AddVariableCommand.Execute(null);
+        stagingEnv.AddVariableCommand.Execute(null);
+
+        devEnv.IsDirty.Should().BeTrue();
+        stagingEnv.IsDirty.Should().BeTrue();
+
+        await sut.SaveAllEnvironmentsCommand.ExecuteAsync(null);
+
+        devEnv.IsDirty.Should().BeFalse();
+        stagingEnv.IsDirty.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SaveAllEnvironments_SkipsCleanEnvironments()
+    {
+        var dev = MakeModel("dev");
+        var staging = MakeModel("staging");
+
+        var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([dev, staging]);
+        service.SaveEnvironmentsAsync(Arg.Any<IReadOnlyList<EnvironmentModel>>(), Arg.Any<CancellationToken>())
+               .Returns(Task.CompletedTask);
+
+        var messenger = new WeakReferenceMessenger();
+        var sut = BuildSut(service, messenger);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        // Only dirty dev.
+        var devEnv = sut.Environments.First(e => e.Name == "dev");
+        devEnv.AddVariableCommand.Execute(null);
+
+        await sut.SaveAllEnvironmentsCommand.ExecuteAsync(null);
+
+        // SaveEnvironmentsAsync called with exactly one model — for dev only.
+        await service.Received(1).SaveEnvironmentsAsync(
+            Arg.Is<IReadOnlyList<EnvironmentModel>>(l => l.Count == 1),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SaveAllEnvironments_BroadcastsEnvironmentSavedMessageForEachDirtyEnv()
+    {
+        var dev = MakeModel("dev");
+        var staging = MakeModel("staging");
+
+        var service = Substitute.For<IEnvironmentService>();
+        SetupGlobalEnv(service);
+        service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
+               .Returns([dev, staging]);
+        service.SaveEnvironmentsAsync(Arg.Any<IReadOnlyList<EnvironmentModel>>(), Arg.Any<CancellationToken>())
+               .Returns(Task.CompletedTask);
+
+        var savedNames = new List<string>();
+        var messenger = new WeakReferenceMessenger();
+        messenger.Register<EnvironmentSavedMessage>(new object(), (_, msg) => savedNames.Add(msg.Value.Name));
+
+        var sut = BuildSut(service, messenger);
+
+        messenger.Send(new CollectionOpenedMessage(CollectionPath));
+        await Task.Delay(100);
+
+        var devEnv = sut.Environments.First(e => e.Name == "dev");
+        var stagingEnv = sut.Environments.First(e => e.Name == "staging");
+        devEnv.AddVariableCommand.Execute(null);
+        stagingEnv.AddVariableCommand.Execute(null);
+
+        await sut.SaveAllEnvironmentsCommand.ExecuteAsync(null);
+
+        savedNames.Should().BeEquivalentTo(["dev", "staging"]);
+    }
 }

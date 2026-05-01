@@ -490,5 +490,150 @@ public sealed class FileSystemEnvironmentServiceTests : IDisposable
         v.IsSecret.Should().BeTrue();
         v.Value.Should().BeEmpty("clones must not inherit the source's secret values");
     }
-}
 
+    // ─── SaveEnvironmentsAsync ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task SaveEnvironmentsAsync_WritesAllEnvFiles()
+    {
+        var collection = _temp.CreateSubDirectory("col-batch");
+        var dev = await _sut.CreateEnvironmentAsync(collection, "Dev");
+        var staging = await _sut.CreateEnvironmentAsync(collection, "Staging");
+
+        var updatedDev = dev with
+        {
+            Variables = [new EnvironmentVariable { Name = "BaseUrl", Value = "https://dev.example.com" }],
+        };
+        var updatedStaging = staging with
+        {
+            Variables = [new EnvironmentVariable { Name = "BaseUrl", Value = "https://staging.example.com" }],
+        };
+
+        await _sut.SaveEnvironmentsAsync([updatedDev, updatedStaging]);
+
+        var loadedDev = await _sut.LoadEnvironmentAsync(dev.FilePath);
+        var loadedStaging = await _sut.LoadEnvironmentAsync(staging.FilePath);
+
+        loadedDev.Variables.Should().HaveCount(1);
+        loadedDev.Variables[0].Value.Should().Be("https://dev.example.com");
+
+        loadedStaging.Variables.Should().HaveCount(1);
+        loadedStaging.Variables[0].Value.Should().Be("https://staging.example.com");
+    }
+
+    [Fact]
+    public async Task SaveEnvironmentsAsync_PersistsSecretsViaSingleBulkCall()
+    {
+        var secrets = Substitute.For<ISecretStorageService>();
+        secrets.SetCollectionSecretsAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>>(),
+            Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        var sut = Sut(secrets);
+
+        var collection = _temp.CreateSubDirectory("col-batch-secrets");
+        var envFolder = Path.Combine(collection, FileSystemCollectionService.EnvironmentFolderName);
+        Directory.CreateDirectory(envFolder);
+
+        var devPath = Path.Combine(envFolder, "dev.env.callsmith");
+        var stagingPath = Path.Combine(envFolder, "staging.env.callsmith");
+
+        var dev = new EnvironmentModel
+        {
+            FilePath = devPath,
+            Name = "dev",
+            EnvironmentId = Guid.NewGuid(),
+            Variables = [new EnvironmentVariable { Name = "token", Value = "dev-secret", IsSecret = true }],
+        };
+        var staging = new EnvironmentModel
+        {
+            FilePath = stagingPath,
+            Name = "staging",
+            EnvironmentId = Guid.NewGuid(),
+            Variables = [new EnvironmentVariable { Name = "token", Value = "staging-secret", IsSecret = true }],
+        };
+
+        await sut.SaveEnvironmentsAsync([dev, staging]);
+
+        // SetCollectionSecretsAsync must be called exactly once (not once per env).
+        // Keys are the file stems — Path.GetFileNameWithoutExtension strips only the last
+        // extension, so "dev.env.callsmith" → "dev.env".
+        await secrets.Received(1).SetCollectionSecretsAsync(
+            Arg.Any<string>(),
+            Arg.Is<IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>>(d =>
+                d.ContainsKey("dev.env") && d.ContainsKey("staging.env")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SaveEnvironmentsAsync_WhenNoSecrets_DoesNotCallSetCollectionSecretsAsync()
+    {
+        var secrets = Substitute.For<ISecretStorageService>();
+        var sut = Sut(secrets);
+
+        var collection = _temp.CreateSubDirectory("col-batch-nosecrets");
+        var envFolder = Path.Combine(collection, FileSystemCollectionService.EnvironmentFolderName);
+        Directory.CreateDirectory(envFolder);
+
+        var devPath = Path.Combine(envFolder, "dev.env.callsmith");
+        var dev = new EnvironmentModel
+        {
+            FilePath = devPath,
+            Name = "dev",
+            EnvironmentId = Guid.NewGuid(),
+            Variables = [new EnvironmentVariable { Name = "url", Value = "https://dev.example.com" }],
+        };
+
+        await sut.SaveEnvironmentsAsync([dev]);
+
+        await secrets.DidNotReceive().SetCollectionSecretsAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SaveEnvironmentsAsync_SecretValuesRoundTripCorrectly()
+    {
+        var secretsDir = _temp.CreateSubDirectory("secrets-batch-rt");
+        var secrets = RealSecrets(secretsDir);
+        var sut = Sut(secrets);
+
+        var collection = _temp.CreateSubDirectory("col-batch-rt");
+        var dev = await sut.CreateEnvironmentAsync(collection, "Dev");
+        var staging = await sut.CreateEnvironmentAsync(collection, "Staging");
+
+        var updatedDev = dev with
+        {
+            Variables = [new EnvironmentVariable { Name = "token", Value = "dev-secret", IsSecret = true }],
+        };
+        var updatedStaging = staging with
+        {
+            Variables = [new EnvironmentVariable { Name = "token", Value = "staging-secret", IsSecret = true }],
+        };
+
+        await sut.SaveEnvironmentsAsync([updatedDev, updatedStaging]);
+
+        var loadedDev = await sut.LoadEnvironmentAsync(dev.FilePath);
+        var loadedStaging = await sut.LoadEnvironmentAsync(staging.FilePath);
+
+        loadedDev.Variables[0].Value.Should().Be("dev-secret");
+        loadedStaging.Variables[0].Value.Should().Be("staging-secret");
+    }
+
+    [Fact]
+    public async Task SaveEnvironmentsAsync_EmptyList_IsNoOp()
+    {
+        var secrets = Substitute.For<ISecretStorageService>();
+        var sut = Sut(secrets);
+
+        var act = async () => await sut.SaveEnvironmentsAsync([]);
+
+        await act.Should().NotThrowAsync();
+        await secrets.DidNotReceive().SetCollectionSecretsAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>>(),
+            Arg.Any<CancellationToken>());
+    }
+}

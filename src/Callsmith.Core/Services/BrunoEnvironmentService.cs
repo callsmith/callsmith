@@ -228,6 +228,14 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
     //  Save / Create / Delete / Rename / Clone
     // ─────────────────────────────────────────────────────────────────────────
 
+    public async Task SaveEnvironmentsAsync(
+        IReadOnlyList<EnvironmentModel> environments, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(environments);
+        foreach (var environment in environments)
+            await SaveEnvironmentAsync(environment, ct).ConfigureAwait(false);
+    }
+
     public async Task SaveEnvironmentAsync(EnvironmentModel environment, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(environment);
@@ -576,12 +584,15 @@ public sealed class BrunoEnvironmentService : IEnvironmentService
         var collectionPath = GetCollectionFolderPath(environment.FilePath);
         var envName = Path.GetFileNameWithoutExtension(environment.FilePath);
 
+        // Collect all secrets into a dictionary with explicit overwrite semantics so
+        // that duplicate variable names (last one wins) do not throw, matching the
+        // original per-variable loop behaviour.
+        var bulk = new Dictionary<string, string>(secretVars.Count, StringComparer.Ordinal);
         foreach (var v in secretVars)
-        {
-            await _secrets
-                .SetSecretAsync(collectionPath, envName, v.Name, v.Value, ct)
-                .ConfigureAwait(false);
-        }
+            bulk[v.Name] = v.Value;
+        await _secrets
+            .SetEnvironmentSecretsAsync(collectionPath, envName, bulk, ct)
+            .ConfigureAwait(false);
     }
 
     // ─── Global environment ──────────────────────────────────────────────────
