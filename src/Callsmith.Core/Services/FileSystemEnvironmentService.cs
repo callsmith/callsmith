@@ -167,7 +167,9 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
             Directory.CreateDirectory(directory);
 
             var dto = ModelToDto(environment);
-            var tempPath = environment.FilePath + ".tmp";
+            // Use a GUID-suffixed temp file so concurrent processes saving the same
+            // collection cannot collide on the temp path.
+            var tempPath = environment.FilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
             {
                 await using (var stream = File.Open(tempPath, FileMode.Create, FileAccess.Write))

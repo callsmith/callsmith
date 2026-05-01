@@ -39,6 +39,9 @@ public sealed class RoutingEnvironmentService : IEnvironmentService
         IReadOnlyList<EnvironmentModel> environments, CancellationToken ct = default)
     {
         if (environments.Count == 0) return Task.CompletedTask;
+        // All environments in a single editor session belong to the same collection and
+        // therefore the same service type (Callsmith or Bruno). Routing based on the
+        // first item is safe in this context.
         return ServiceForFile(environments[0].FilePath).SaveEnvironmentsAsync(environments, ct);
     }
 
