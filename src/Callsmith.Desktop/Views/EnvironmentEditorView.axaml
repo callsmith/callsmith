@@ -118,10 +118,9 @@
                   <Grid ColumnDefinitions="*,Auto"
                         Margin="0">
 
-                    <!-- Display mode: name label + hover actions -->
+                    <!-- Display mode: name label + dirty dot (always shown in the list) -->
                     <Grid Grid.Column="0"
-                          ColumnDefinitions="Auto,*,Auto,Auto"
-                          IsVisible="{Binding !IsRenaming}">
+                          ColumnDefinitions="Auto,*,Auto,Auto">
 
                       <!-- Drag handle — hidden for global env (always pinned) -->
                       <TextBlock Grid.Column="0"
@@ -186,49 +185,6 @@
                               VerticalAlignment="Center"
                               IsVisible="{Binding IsDirty}"
                               ToolTip.Tip="Unsaved changes"/>
-                    </Grid>
-
-                    <!-- Rename mode: text box + confirm / cancel -->
-                    <Grid Grid.Column="0"
-                          ColumnDefinitions="*,Auto,Auto"
-                          IsVisible="{Binding IsRenaming}"
-                          Margin="4,4">
-
-                      <StackPanel Grid.Column="0">
-                        <TextBox Text="{Binding PendingName}"
-                                 FontSize="12"
-                                 Padding="6,3"
-                                 Background="#3c3c3c"
-                                 Foreground="#d4d4d4"
-                                 BorderBrush="#555"
-                                 x:Name="RenameBox"/>
-                        <TextBlock Text="{Binding RenameError}"
-                                   Foreground="#f48771"
-                                   FontSize="10"
-                                   IsVisible="{Binding RenameError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                   Margin="2,2,0,0"/>
-                      </StackPanel>
-
-                      <Button Grid.Column="1"
-                              Content="✓"
-                              Command="{Binding CommitRenameCommand}"
-                              Background="Transparent"
-                              Foreground="#4ec9b0"
-                              BorderThickness="0"
-                              Padding="6,3"
-                              FontSize="13"
-                              ToolTip.Tip="Confirm rename"
-                              Margin="4,0,0,0"/>
-
-                      <Button Grid.Column="2"
-                              Content="✕"
-                              Command="{Binding CancelRenameCommand}"
-                              Background="Transparent"
-                              Foreground="#888"
-                              BorderThickness="0"
-                              Padding="4,3"
-                              FontSize="11"
-                              ToolTip.Tip="Cancel rename"/>
                     </Grid>
 
                   </Grid>
@@ -323,33 +279,71 @@
                        Source="/Assets/bruno.png"
                        ToolTip.Tip="Bruno Environment"
                        RenderOptions.BitmapInterpolationMode="MediumQuality"/>
-                <TextBlock Text="{Binding SelectedEnvironment.Name, FallbackValue='No environment selected'}"
-                           Foreground="#d4d4d4"
-                           FontSize="13"
-                           FontWeight="SemiBold"
-                           VerticalAlignment="Center"/>
-                <!-- Rename button — only shown when a non-global environment is selected -->
-                <Button Content="✎"
-                        Command="{Binding SelectedEnvironment.BeginRenameCommand}"
-                        IsVisible="{Binding SelectedEnvironment.IsGlobal, Converter={x:Static BoolConverters.Not}, FallbackValue=False}"
-                        Background="Transparent"
-                        Foreground="#888"
-                        BorderThickness="0"
-                        Padding="4,2"
-                        FontSize="12"
-                        VerticalAlignment="Center"
-                        ToolTip.Tip="Rename environment"/>
-                <!-- Dirty indicator -->
-                <Border Background="#6a4f00"
-                        CornerRadius="3"
-                        Padding="6,2"
-                        IsVisible="{Binding SelectedEnvironment.IsDirty, FallbackValue=False}">
-                  <TextBlock Text="UNSAVED"
-                             Foreground="#ffc107"
-                             FontSize="10"
+
+                <!-- View mode: name label + pencil (hidden while renaming) -->
+                <StackPanel Orientation="Horizontal"
+                            Spacing="6"
+                            VerticalAlignment="Center"
+                            IsVisible="{Binding SelectedEnvironment.IsRenaming, Converter={x:Static BoolConverters.Not}, FallbackValue=True}">
+                  <TextBlock Text="{Binding SelectedEnvironment.Name, FallbackValue='No environment selected'}"
+                             Foreground="#d4d4d4"
+                             FontSize="13"
                              FontWeight="SemiBold"
-                             LetterSpacing="1"/>
-                </Border>
+                             VerticalAlignment="Center"/>
+                  <!-- Rename button — only shown for non-global environments -->
+                  <Button Content="✎"
+                          Command="{Binding SelectedEnvironment.BeginRenameCommand}"
+                          IsVisible="{Binding SelectedEnvironment.IsGlobal, Converter={x:Static BoolConverters.Not}, FallbackValue=False}"
+                          Background="Transparent"
+                          Foreground="#888"
+                          BorderThickness="0"
+                          Padding="4,2"
+                          FontSize="12"
+                          VerticalAlignment="Center"
+                          ToolTip.Tip="Rename environment"/>
+                </StackPanel>
+
+                <!-- Rename mode: inline text input + confirm/cancel (shown only while renaming) -->
+                <StackPanel Orientation="Horizontal"
+                            Spacing="4"
+                            VerticalAlignment="Center"
+                            IsVisible="{Binding SelectedEnvironment.IsRenaming, FallbackValue=False}">
+                  <StackPanel Spacing="2">
+                    <TextBox Text="{Binding SelectedEnvironment.PendingName, Mode=TwoWay}"
+                             FontSize="13"
+                             FontWeight="SemiBold"
+                             MinWidth="160"
+                             Padding="6,3"
+                             Background="#3c3c3c"
+                             Foreground="#d4d4d4"
+                             BorderBrush="#555"
+                             VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding SelectedEnvironment.RenameError}"
+                               Foreground="#f48771"
+                               FontSize="10"
+                               IsVisible="{Binding SelectedEnvironment.RenameError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               Margin="2,0,0,0"/>
+                  </StackPanel>
+                  <Button Content="✓"
+                          Command="{Binding SelectedEnvironment.CommitRenameCommand}"
+                          Background="Transparent"
+                          Foreground="#4ec9b0"
+                          BorderThickness="0"
+                          Padding="6,3"
+                          FontSize="13"
+                          VerticalAlignment="Center"
+                          ToolTip.Tip="Confirm rename"
+                          Margin="4,0,0,0"/>
+                  <Button Content="✕"
+                          Command="{Binding SelectedEnvironment.CancelRenameCommand}"
+                          Background="Transparent"
+                          Foreground="#888"
+                          BorderThickness="0"
+                          Padding="4,3"
+                          FontSize="11"
+                          VerticalAlignment="Center"
+                          ToolTip.Tip="Cancel rename"/>
+                </StackPanel>
               </StackPanel>
 
               <!-- Save / Revert buttons -->
