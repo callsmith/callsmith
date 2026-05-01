@@ -22,9 +22,9 @@ public interface IEnvironmentService
     /// <summary>
     /// Saves a list of environments in a batch. All secrets are written in a single
     /// read-modify-write operation on the backing store (rather than once per environment),
-    /// then each environment's JSON file is written in sequence. This avoids the M
-    /// sequential read-modify-write cycles on the secrets file that M individual
-    /// <see cref="SaveEnvironmentAsync"/> calls would cause, which can trigger
+    /// then each environment's JSON file is written in sequence. This avoids one
+    /// sequential read-modify-write cycle on the secrets file per environment that
+    /// separate <see cref="SaveEnvironmentAsync"/> calls would cause, which can trigger
     /// <see cref="System.IO.IOException"/> on Windows under OS or AV file-lock contention.
     /// </summary>
     Task SaveEnvironmentsAsync(

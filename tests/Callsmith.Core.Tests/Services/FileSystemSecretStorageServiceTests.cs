@@ -189,6 +189,133 @@ public sealed class FileSystemSecretStorageServiceTests : IDisposable
         await act.Should().NotThrowAsync();
     }
 
+    // ─── SetEnvironmentSecretsAsync ──────────────────────────────────────────
+
+    [Fact]
+    public async Task SetEnvironmentSecretsAsync_WritesAllSecretsForEnvironment()
+    {
+        var sut = Sut();
+
+        await sut.SetEnvironmentSecretsAsync("/col", "Dev",
+            new Dictionary<string, string> { ["token"] = "abc", ["password"] = "xyz" });
+
+        (await sut.GetSecretAsync("/col", "Dev", "token")).Should().Be("abc");
+        (await sut.GetSecretAsync("/col", "Dev", "password")).Should().Be("xyz");
+    }
+
+    [Fact]
+    public async Task SetEnvironmentSecretsAsync_OverwritesExistingKeys()
+    {
+        var sut = Sut();
+        await sut.SetSecretAsync("/col", "Dev", "token", "old-value");
+
+        await sut.SetEnvironmentSecretsAsync("/col", "Dev",
+            new Dictionary<string, string> { ["token"] = "new-value" });
+
+        (await sut.GetSecretAsync("/col", "Dev", "token")).Should().Be("new-value");
+    }
+
+    [Fact]
+    public async Task SetEnvironmentSecretsAsync_LeavesUnspecifiedKeysUntouched()
+    {
+        var sut = Sut();
+        await sut.SetSecretAsync("/col", "Dev", "existing-key", "existing-value");
+
+        await sut.SetEnvironmentSecretsAsync("/col", "Dev",
+            new Dictionary<string, string> { ["new-key"] = "new-value" });
+
+        // Existing key must still be present.
+        (await sut.GetSecretAsync("/col", "Dev", "existing-key")).Should().Be("existing-value");
+        (await sut.GetSecretAsync("/col", "Dev", "new-key")).Should().Be("new-value");
+    }
+
+    [Fact]
+    public async Task SetEnvironmentSecretsAsync_DoesNotAffectOtherEnvironments()
+    {
+        var sut = Sut();
+        await sut.SetSecretAsync("/col", "Prod", "token", "prod-token");
+
+        await sut.SetEnvironmentSecretsAsync("/col", "Dev",
+            new Dictionary<string, string> { ["token"] = "dev-token" });
+
+        (await sut.GetSecretAsync("/col", "Prod", "token")).Should().Be("prod-token");
+    }
+
+    [Fact]
+    public async Task SetEnvironmentSecretsAsync_EmptyDictionary_IsNoOp()
+    {
+        var sut = Sut();
+        await sut.SetSecretAsync("/col", "Dev", "token", "value");
+
+        await sut.SetEnvironmentSecretsAsync("/col", "Dev", new Dictionary<string, string>());
+
+        (await sut.GetSecretAsync("/col", "Dev", "token")).Should().Be("value");
+    }
+
+    // ─── SetCollectionSecretsAsync ───────────────────────────────────────────
+
+    [Fact]
+    public async Task SetCollectionSecretsAsync_WritesSecretsForMultipleEnvironments()
+    {
+        var sut = Sut();
+
+        await sut.SetCollectionSecretsAsync("/col",
+            new Dictionary<string, IReadOnlyDictionary<string, string>>
+            {
+                ["Dev"] = new Dictionary<string, string> { ["token"] = "dev-token" },
+                ["Prod"] = new Dictionary<string, string> { ["token"] = "prod-token" },
+            });
+
+        (await sut.GetSecretAsync("/col", "Dev", "token")).Should().Be("dev-token");
+        (await sut.GetSecretAsync("/col", "Prod", "token")).Should().Be("prod-token");
+    }
+
+    [Fact]
+    public async Task SetCollectionSecretsAsync_OverwritesExistingKeys()
+    {
+        var sut = Sut();
+        await sut.SetSecretAsync("/col", "Dev", "token", "old-value");
+
+        await sut.SetCollectionSecretsAsync("/col",
+            new Dictionary<string, IReadOnlyDictionary<string, string>>
+            {
+                ["Dev"] = new Dictionary<string, string> { ["token"] = "new-value" },
+            });
+
+        (await sut.GetSecretAsync("/col", "Dev", "token")).Should().Be("new-value");
+    }
+
+    [Fact]
+    public async Task SetCollectionSecretsAsync_LeavesUnspecifiedEnvsAndKeysUntouched()
+    {
+        var sut = Sut();
+        await sut.SetSecretAsync("/col", "Dev", "existing-key", "dev-existing");
+        await sut.SetSecretAsync("/col", "Prod", "token", "prod-token");
+
+        // Only update Dev's new-key; existing-key in Dev and Prod are not touched.
+        await sut.SetCollectionSecretsAsync("/col",
+            new Dictionary<string, IReadOnlyDictionary<string, string>>
+            {
+                ["Dev"] = new Dictionary<string, string> { ["new-key"] = "dev-new" },
+            });
+
+        (await sut.GetSecretAsync("/col", "Dev", "existing-key")).Should().Be("dev-existing");
+        (await sut.GetSecretAsync("/col", "Dev", "new-key")).Should().Be("dev-new");
+        (await sut.GetSecretAsync("/col", "Prod", "token")).Should().Be("prod-token");
+    }
+
+    [Fact]
+    public async Task SetCollectionSecretsAsync_EmptyDictionary_IsNoOp()
+    {
+        var sut = Sut();
+        await sut.SetSecretAsync("/col", "Dev", "token", "value");
+
+        await sut.SetCollectionSecretsAsync("/col",
+            new Dictionary<string, IReadOnlyDictionary<string, string>>());
+
+        (await sut.GetSecretAsync("/col", "Dev", "token")).Should().Be("value");
+    }
+
     // ─── Persistence ─────────────────────────────────────────────────────────
 
     [Fact]

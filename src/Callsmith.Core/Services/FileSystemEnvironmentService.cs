@@ -157,31 +157,12 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         // Write each environment's JSON file. Secrets are already persisted above so
         // we write the DTO directly rather than going through SaveEnvironmentAsync
         // (which would call PersistSecretsAsync a second time).
-        // Use an atomic write (temp file → rename) so that transient file locks from
-        // AV scanners or cloud-sync clients do not cause IOException: the write targets
-        // a unique temporary file and the final rename is instantaneous on the same
-        // volume, preventing any window where the destination is locked mid-write.
         foreach (var environment in environments)
         {
             var directory = Path.GetDirectoryName(environment.FilePath)!;
             Directory.CreateDirectory(directory);
-
             var dto = ModelToDto(environment);
-            // Use a GUID-suffixed temp file so concurrent processes saving the same
-            // collection cannot collide on the temp path.
-            var tempPath = environment.FilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            try
-            {
-                await using (var stream = File.Open(tempPath, FileMode.Create, FileAccess.Write))
-                    await JsonSerializer.SerializeAsync(stream, dto, CallsmithJsonOptions.Default, ct).ConfigureAwait(false);
-
-                File.Move(tempPath, environment.FilePath, overwrite: true);
-            }
-            finally
-            {
-                if (File.Exists(tempPath)) File.Delete(tempPath);
-            }
-
+            await WriteAtomicAsync(environment.FilePath, dto, ct).ConfigureAwait(false);
             _logger.LogDebug("Saved environment '{Name}' → {Path}", environment.Name, environment.FilePath);
         }
     }
@@ -200,9 +181,7 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         // The serialised file stores an empty value for secrets — only the name (presence)
         // is recorded so that the file is safe to check in to version control.
         var dto = ModelToDto(environment);
-
-        await using var stream = File.Open(environment.FilePath, FileMode.Create, FileAccess.Write);
-        await JsonSerializer.SerializeAsync(stream, dto, CallsmithJsonOptions.Default, ct).ConfigureAwait(false);
+        await WriteAtomicAsync(environment.FilePath, dto, ct).ConfigureAwait(false);
 
         _logger.LogDebug("Saved environment '{Name}' → {Path}", environment.Name, environment.FilePath);
     }
@@ -448,6 +427,30 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         await _secrets
             .SetEnvironmentSecretsAsync(collectionPath, envName, bulk, ct)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Writes <paramref name="dto"/> to <paramref name="filePath"/> using an atomic
+    /// temp-file-then-rename strategy to avoid transient file-lock <see cref="IOException"/>s
+    /// from AV scanners or cloud-sync clients. The write targets a unique GUID-suffixed
+    /// temporary file; the final rename is instantaneous on the same volume, so there is
+    /// no window during which the destination file is partially written or locked.
+    /// </summary>
+    private static async Task WriteAtomicAsync(
+        string filePath, EnvironmentDto dto, CancellationToken ct)
+    {
+        var tempPath = filePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await using (var stream = File.Open(tempPath, FileMode.Create, FileAccess.Write))
+                await JsonSerializer.SerializeAsync(stream, dto, CallsmithJsonOptions.Default, ct).ConfigureAwait(false);
+
+            File.Move(tempPath, filePath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(tempPath)) File.Delete(tempPath);
+        }
     }
 
     private static string SanitizeFileName(string name)
