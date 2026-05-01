@@ -144,6 +144,30 @@ public sealed class FileSystemSecretStorageService : ISecretStorageService
     }
 
     /// <inheritdoc/>
+    public async Task SetEnvironmentSecretsAsync(
+        string collectionFolderPath,
+        string environmentName,
+        IReadOnlyDictionary<string, string> secrets,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(collectionFolderPath);
+        ArgumentNullException.ThrowIfNull(environmentName);
+        ArgumentNullException.ThrowIfNull(secrets);
+
+        if (secrets.Count == 0) return;
+
+        var data = await LoadAllAsync(collectionFolderPath, ct).ConfigureAwait(false);
+        if (!data.TryGetValue(environmentName, out var envSecrets))
+        {
+            envSecrets = new Dictionary<string, string>(StringComparer.Ordinal);
+            data[environmentName] = envSecrets;
+        }
+        foreach (var kv in secrets)
+            envSecrets[kv.Key] = kv.Value;
+        await SaveAllAsync(collectionFolderPath, data, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
     public async Task RenameEnvironmentSecretsAsync(
         string collectionFolderPath,
         string oldEnvironmentName,

@@ -60,6 +60,19 @@ public interface ISecretStorageService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Replaces all stored secrets for <paramref name="environmentName"/> in a single
+    /// read-modify-write operation. Prefer this over calling
+    /// <see cref="SetSecretAsync"/> in a loop to avoid repeated file I/O on the same
+    /// backing store (which can cause <see cref="System.IO.IOException"/> on Windows
+    /// when the OS briefly locks the file between consecutive open/close cycles).
+    /// </summary>
+    Task SetEnvironmentSecretsAsync(
+        string collectionFolderPath,
+        string environmentName,
+        IReadOnlyDictionary<string, string> secrets,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Migrates all stored secrets from <paramref name="oldEnvironmentName"/> to
     /// <paramref name="newEnvironmentName"/> (e.g. when an environment is renamed).
     /// </summary>
