@@ -60,6 +60,20 @@ public interface ISecretStorageService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Updates or adds secrets for multiple environments in a single read-modify-write
+    /// operation on the backing store. Existing secrets for environments or keys not
+    /// present in <paramref name="allSecrets"/> are left unchanged. Prefer this over
+    /// calling <see cref="SetEnvironmentSecretsAsync"/> in a loop when updating secrets
+    /// for multiple environments in one operation — it avoids the repeated file I/O cycles
+    /// that can cause <see cref="System.IO.IOException"/> on Windows under OS or AV
+    /// file-lock contention.
+    /// </summary>
+    Task SetCollectionSecretsAsync(
+        string collectionFolderPath,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> allSecrets,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Updates or adds all secrets in <paramref name="secrets"/> for
     /// <paramref name="environmentName"/> in a single read-modify-write operation.
     /// Existing secrets for keys not present in <paramref name="secrets"/> are left

@@ -394,26 +394,34 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         ErrorMessage = string.Empty;
         try
         {
-            foreach (var env in Environments.Where(e => e.IsDirty).ToList())
+            var dirtyItems = Environments.Where(e => e.IsDirty).ToList();
+            if (dirtyItems.Count == 0) return;
+
+            // Build all models upfront (applying global preview env name for the global env).
+            var entries = dirtyItems.Select(env =>
             {
                 var model = env.BuildModel();
-
                 if (env.IsGlobal)
-                {
-                    var modelWithPreview = model with
-                    {
-                        GlobalPreviewEnvironmentName = SelectedGlobalPreviewEnvironment?.Name,
-                    };
-                    await _environmentService.SaveGlobalEnvironmentAsync(modelWithPreview, ct).ConfigureAwait(true);
-                    env.MarkSaved(modelWithPreview);
-                    Messenger.Send(new GlobalEnvironmentChangedMessage(modelWithPreview));
-                }
+                    model = model with { GlobalPreviewEnvironmentName = SelectedGlobalPreviewEnvironment?.Name };
+                return (Vm: env, Model: model);
+            }).ToList();
+
+            // Save all environments in a single batch call.
+            // For Callsmith collections this writes secrets in one read-modify-write on the
+            // backing store (instead of once per env), then writes each env file atomically.
+            // For Bruno collections this delegates to sequential per-env saves.
+            await _environmentService
+                .SaveEnvironmentsAsync(entries.Select(e => e.Model).ToList(), ct)
+                .ConfigureAwait(true);
+
+            // Update dirty state and notify subscribers.
+            foreach (var (vm, model) in entries)
+            {
+                vm.MarkSaved(model);
+                if (vm.IsGlobal)
+                    Messenger.Send(new GlobalEnvironmentChangedMessage(model));
                 else
-                {
-                    await _environmentService.SaveEnvironmentAsync(model, ct).ConfigureAwait(true);
-                    env.MarkSaved(model);
                     Messenger.Send(new EnvironmentSavedMessage(model));
-                }
             }
         }
         catch (Exception ex)

@@ -2073,7 +2073,7 @@ public sealed class EnvironmentEditorViewModelTests
         SetupGlobalEnv(service);
         service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
                .Returns([dev, staging]);
-        service.SaveEnvironmentAsync(Arg.Any<EnvironmentModel>(), Arg.Any<CancellationToken>())
+        service.SaveEnvironmentsAsync(Arg.Any<IReadOnlyList<EnvironmentModel>>(), Arg.Any<CancellationToken>())
                .Returns(Task.CompletedTask);
 
         var messenger = new WeakReferenceMessenger();
@@ -2107,7 +2107,7 @@ public sealed class EnvironmentEditorViewModelTests
         SetupGlobalEnv(service);
         service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
                .Returns([dev, staging]);
-        service.SaveEnvironmentAsync(Arg.Any<EnvironmentModel>(), Arg.Any<CancellationToken>())
+        service.SaveEnvironmentsAsync(Arg.Any<IReadOnlyList<EnvironmentModel>>(), Arg.Any<CancellationToken>())
                .Returns(Task.CompletedTask);
 
         var messenger = new WeakReferenceMessenger();
@@ -2122,8 +2122,10 @@ public sealed class EnvironmentEditorViewModelTests
 
         await sut.SaveAllEnvironmentsCommand.ExecuteAsync(null);
 
-        // SaveEnvironmentAsync called exactly once — for dev only.
-        await service.Received(1).SaveEnvironmentAsync(Arg.Any<EnvironmentModel>(), Arg.Any<CancellationToken>());
+        // SaveEnvironmentsAsync called with exactly one model — for dev only.
+        await service.Received(1).SaveEnvironmentsAsync(
+            Arg.Is<IReadOnlyList<EnvironmentModel>>(l => l.Count == 1),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -2136,7 +2138,7 @@ public sealed class EnvironmentEditorViewModelTests
         SetupGlobalEnv(service);
         service.ListEnvironmentsAsync(CollectionPath, Arg.Any<CancellationToken>())
                .Returns([dev, staging]);
-        service.SaveEnvironmentAsync(Arg.Any<EnvironmentModel>(), Arg.Any<CancellationToken>())
+        service.SaveEnvironmentsAsync(Arg.Any<IReadOnlyList<EnvironmentModel>>(), Arg.Any<CancellationToken>())
                .Returns(Task.CompletedTask);
 
         var savedNames = new List<string>();

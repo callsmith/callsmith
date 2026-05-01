@@ -122,6 +122,69 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
     }
 
     /// <inheritdoc/>
+    public async Task SaveEnvironmentsAsync(
+        IReadOnlyList<EnvironmentModel> environments, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(environments);
+        if (environments.Count == 0) return;
+
+        // Collect all secrets for all environments and write them in a single
+        // bulk operation — one read-modify-write on the secrets file regardless of
+        // how many environments are being saved.
+        var allSecrets = new Dictionary<string, IReadOnlyDictionary<string, string>>(
+            environments.Count, StringComparer.Ordinal);
+
+        foreach (var env in environments)
+        {
+            var secretVars = env.Variables.Where(v => v.IsSecret).ToList();
+            if (secretVars.Count == 0) continue;
+
+            var envName = Path.GetFileNameWithoutExtension(env.FilePath);
+            var bulk = new Dictionary<string, string>(secretVars.Count, StringComparer.Ordinal);
+            foreach (var v in secretVars)
+                bulk[v.Name] = v.Value;
+            allSecrets[envName] = bulk;
+        }
+
+        if (allSecrets.Count > 0)
+        {
+            var collectionPath = GetCollectionFolderPath(environments[0].FilePath);
+            await _secrets
+                .SetCollectionSecretsAsync(collectionPath, allSecrets, ct)
+                .ConfigureAwait(false);
+        }
+
+        // Write each environment's JSON file. Secrets are already persisted above so
+        // we write the DTO directly rather than going through SaveEnvironmentAsync
+        // (which would call PersistSecretsAsync a second time).
+        // Use an atomic write (temp file → rename) so that transient file locks from
+        // AV scanners or cloud-sync clients do not cause IOException: the write targets
+        // a unique temporary file and the final rename is instantaneous on the same
+        // volume, preventing any window where the destination is locked mid-write.
+        foreach (var environment in environments)
+        {
+            var directory = Path.GetDirectoryName(environment.FilePath)!;
+            Directory.CreateDirectory(directory);
+
+            var dto = ModelToDto(environment);
+            var tempPath = environment.FilePath + ".tmp";
+            try
+            {
+                await using (var stream = File.Open(tempPath, FileMode.Create, FileAccess.Write))
+                    await JsonSerializer.SerializeAsync(stream, dto, CallsmithJsonOptions.Default, ct).ConfigureAwait(false);
+
+                File.Move(tempPath, environment.FilePath, overwrite: true);
+            }
+            finally
+            {
+                if (File.Exists(tempPath)) File.Delete(tempPath);
+            }
+
+            _logger.LogDebug("Saved environment '{Name}' → {Path}", environment.Name, environment.FilePath);
+        }
+    }
+
+    /// <inheritdoc/>
     public async Task SaveEnvironmentAsync(EnvironmentModel environment, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(environment);

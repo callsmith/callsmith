@@ -35,6 +35,13 @@ public sealed class RoutingEnvironmentService : IEnvironmentService
     public Task<EnvironmentModel> LoadEnvironmentAsync(string filePath, CancellationToken ct = default) =>
         ServiceForFile(filePath).LoadEnvironmentAsync(filePath, ct);
 
+    public Task SaveEnvironmentsAsync(
+        IReadOnlyList<EnvironmentModel> environments, CancellationToken ct = default)
+    {
+        if (environments.Count == 0) return Task.CompletedTask;
+        return ServiceForFile(environments[0].FilePath).SaveEnvironmentsAsync(environments, ct);
+    }
+
     public Task SaveEnvironmentAsync(EnvironmentModel environment, CancellationToken ct = default) =>
         ServiceForFile(environment.FilePath).SaveEnvironmentAsync(environment, ct);
 

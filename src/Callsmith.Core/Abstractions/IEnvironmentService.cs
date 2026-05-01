@@ -20,6 +20,17 @@ public interface IEnvironmentService
     Task<EnvironmentModel> LoadEnvironmentAsync(string filePath, CancellationToken ct = default);
 
     /// <summary>
+    /// Saves a list of environments in a batch. All secrets are written in a single
+    /// read-modify-write operation on the backing store (rather than once per environment),
+    /// then each environment's JSON file is written in sequence. This avoids the M
+    /// sequential read-modify-write cycles on the secrets file that M individual
+    /// <see cref="SaveEnvironmentAsync"/> calls would cause, which can trigger
+    /// <see cref="System.IO.IOException"/> on Windows under OS or AV file-lock contention.
+    /// </summary>
+    Task SaveEnvironmentsAsync(
+        IReadOnlyList<EnvironmentModel> environments, CancellationToken ct = default);
+
+    /// <summary>
     /// Saves an environment to disk. If the file already exists it is overwritten.
     /// Creates the <c>environment/</c> directory if it does not exist.
     /// </summary>
