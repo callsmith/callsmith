@@ -177,19 +177,15 @@
                                    LetterSpacing="1"/>
                       </Border>
 
-                      <!-- Row action buttons — rename only (hidden for global) -->
-                      <Button Grid.Column="3"
-                              Content="✎"
-                              Command="{Binding BeginRenameCommand}"
-                              Background="Transparent"
-                              Foreground="#888"
-                              BorderThickness="0"
-                              Padding="4,2"
-                              Margin="0,0,4,0"
-                              FontSize="12"
+                      <!-- Row action buttons — dirty dot replaces pencil (hidden for global) -->
+                      <Border Grid.Column="3"
+                              Width="8" Height="8"
+                              CornerRadius="4"
+                              Background="#ffc107"
+                              Margin="0,0,8,0"
                               VerticalAlignment="Center"
-                              IsVisible="{Binding !IsGlobal}"
-                              ToolTip.Tip="Rename"/>
+                              IsVisible="{Binding IsDirty}"
+                              ToolTip.Tip="Unsaved changes"/>
                     </Grid>
 
                     <!-- Rename mode: text box + confirm / cancel -->
@@ -332,6 +328,17 @@
                            FontSize="13"
                            FontWeight="SemiBold"
                            VerticalAlignment="Center"/>
+                <!-- Rename button — only shown when a non-global environment is selected -->
+                <Button Content="✎"
+                        Command="{Binding SelectedEnvironment.BeginRenameCommand}"
+                        IsVisible="{Binding SelectedEnvironment.IsGlobal, Converter={x:Static BoolConverters.Not}, FallbackValue=False}"
+                        Background="Transparent"
+                        Foreground="#888"
+                        BorderThickness="0"
+                        Padding="4,2"
+                        FontSize="12"
+                        VerticalAlignment="Center"
+                        ToolTip.Tip="Rename environment"/>
                 <!-- Dirty indicator -->
                 <Border Background="#6a4f00"
                         CornerRadius="3"

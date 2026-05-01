@@ -386,6 +386,47 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         }
     }
 
+    /// <summary>Saves all dirty environments to disk (Ctrl+Shift+S).</summary>
+    [RelayCommand]
+    private async Task SaveAllEnvironmentsAsync(CancellationToken ct)
+    {
+        IsBusy = true;
+        ErrorMessage = string.Empty;
+        try
+        {
+            foreach (var env in Environments.Where(e => e.IsDirty).ToList())
+            {
+                var model = env.BuildModel();
+
+                if (env.IsGlobal)
+                {
+                    var modelWithPreview = model with
+                    {
+                        GlobalPreviewEnvironmentName = SelectedGlobalPreviewEnvironment?.Name,
+                    };
+                    await _environmentService.SaveGlobalEnvironmentAsync(modelWithPreview, ct).ConfigureAwait(true);
+                    env.MarkSaved(modelWithPreview);
+                    Messenger.Send(new GlobalEnvironmentChangedMessage(modelWithPreview));
+                }
+                else
+                {
+                    await _environmentService.SaveEnvironmentAsync(model, ct).ConfigureAwait(true);
+                    env.MarkSaved(model);
+                    Messenger.Send(new EnvironmentSavedMessage(model));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save all environments");
+            ErrorMessage = "Failed to save all environments. Check logs for details.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     // ─── Message handlers ────────────────────────────────────────────────────
 
     /// <inheritdoc/>
