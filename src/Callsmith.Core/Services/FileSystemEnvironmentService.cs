@@ -374,10 +374,12 @@ public sealed class FileSystemEnvironmentService : IEnvironmentService
         var collectionPath = GetCollectionFolderPath(environment.FilePath);
         var envName = Path.GetFileNameWithoutExtension(environment.FilePath);
 
-        // Use the bulk method to write all secrets in a single read-modify-write
-        // cycle, avoiding repeated open/close on the same file that can cause
-        // IOException on Windows under OS or AV file-lock contention.
-        var bulk = secretVars.ToDictionary(v => v.Name, v => v.Value, StringComparer.Ordinal);
+        // Collect all secrets into a dictionary with explicit overwrite semantics so
+        // that duplicate variable names (last one wins) do not throw, matching the
+        // original per-variable loop behaviour.
+        var bulk = new Dictionary<string, string>(secretVars.Count, StringComparer.Ordinal);
+        foreach (var v in secretVars)
+            bulk[v.Name] = v.Value;
         await _secrets
             .SetEnvironmentSecretsAsync(collectionPath, envName, bulk, ct)
             .ConfigureAwait(false);
