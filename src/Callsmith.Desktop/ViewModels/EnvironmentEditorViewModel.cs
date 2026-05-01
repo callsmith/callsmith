@@ -38,6 +38,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
     private readonly IEnvironmentMergeService _mergeService;
     private readonly IEnvironmentVariableSuggestionService _environmentVariableSuggestionService;
     private readonly ILogger<EnvironmentEditorViewModel> _logger;
+    private readonly IUndoRedoService? _undoRedoService;
 
     private string? _collectionFolderPath;
     private bool _hasPendingOpenEditorSelection;
@@ -142,7 +143,8 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         IMessenger messenger,
         ILogger<EnvironmentEditorViewModel> logger,
         IEnvironmentVariableSuggestionService? environmentVariableSuggestionService = null,
-        IEnvironmentMergeService? mergeService = null)
+        IEnvironmentMergeService? mergeService = null,
+        IUndoRedoService? undoRedoService = null)
         : base(messenger)
     {
         ArgumentNullException.ThrowIfNull(environmentService);
@@ -155,6 +157,7 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
         _mergeService = mergeService ?? new EnvironmentMergeService(dynamicEvaluator);
         _environmentVariableSuggestionService = environmentVariableSuggestionService ?? new EnvironmentVariableSuggestionService();
         _logger = logger;
+        _undoRedoService = undoRedoService;
         IsActive = true;
 
         // Re-expose GlobalPreviewEnvironments whenever the Environments list changes
@@ -755,6 +758,18 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
 
     // ─── Private helpers ─────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Selects the environment with the given <paramref name="environmentId"/> in the editor list.
+    /// Does nothing when no matching environment is found.
+    /// Called by <see cref="MainWindowViewModel"/> during undo/redo navigation.
+    /// </summary>
+    internal void SelectEnvironmentById(Guid environmentId)
+    {
+        var env = Environments.FirstOrDefault(e => e.EnvironmentId == environmentId);
+        if (env is not null)
+            SelectedEnvironment = env;
+    }
+
     private bool HasSelectedEnvironment => SelectedEnvironment is not null;
     private bool HasSelectedDeletableEnvironment => SelectedEnvironment is { IsGlobal: false };
 
@@ -1238,7 +1253,8 @@ public sealed partial class EnvironmentEditorViewModel : ObservableRecipient,
             onDeleteRequest: (i, ct) => { BeginDelete(i); return Task.CompletedTask; },
             onCloneRequest: (i, ct) => CloneImmediateAsync(i, ct),
             isGlobal: isGlobal,
-            collectionFolderPath: _collectionFolderPath ?? "");
+            collectionFolderPath: _collectionFolderPath ?? "",
+            undoRedoService: _undoRedoService);
 
         item.VariablesChanged += OnEnvironmentVariablesChanged;
 

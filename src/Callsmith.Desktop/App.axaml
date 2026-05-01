@@ -46,5 +46,10 @@
             <Setter Property="BorderBrush" Value="#8CB5E6"/>
             <Setter Property="Foreground" Value="#F3F8FF"/>
         </Style>
+        <!-- Disable the built-in TextBox undo history so Ctrl+Z is routed exclusively
+             to the application-level UndoRedoService via the MainWindow key binding. -->
+        <Style Selector="TextBox">
+            <Setter Property="UndoLimit" Value="0"/>
+        </Style>
     </Application.Styles>
 </Application>

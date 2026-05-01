@@ -7,6 +7,7 @@ using Callsmith.Core.Helpers;
 using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
 using Callsmith.Core.Services;
+using Callsmith.Desktop.Actions;
 using Callsmith.Desktop.Controls;
 using Callsmith.Desktop.Messages;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -34,9 +35,18 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private Action<RequestTabViewModel>? _requestGlobalCloseGuard;
     private readonly IHistoryService? _historyService;
     private readonly IEnvironmentService? _environmentService;
+    private readonly IUndoRedoService? _undoRedoService;
 
     /// <summary>Source request loaded from disk. Null for brand-new unsaved tabs.</summary>
     private CollectionRequest? _sourceRequest;
+
+    // ── Undo/redo ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Snapshot of the request state at the last undo commit point.
+    /// <see langword="null"/> until the first <see cref="LoadRequest"/> call.
+    /// </summary>
+    private CollectionRequest? _undoBaseline;
 
     private EnvironmentModel? _activeEnvironment;
     private EnvironmentModel _globalEnvironment = new() { FilePath = string.Empty, Name = "Global", Variables = [], EnvironmentId = Guid.NewGuid() };
@@ -671,7 +681,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         IEnvironmentService? environmentService = null,
         IEnvironmentMergeService? mergeService = null,
         IEnvironmentVariableSuggestionService? environmentVariableSuggestionService = null,
-        IRequestAssemblyService? requestAssemblyService = null)
+        IRequestAssemblyService? requestAssemblyService = null,
+        IUndoRedoService? undoRedoService = null)
     {
         ArgumentNullException.ThrowIfNull(transportRegistry);
         ArgumentNullException.ThrowIfNull(collectionService);
@@ -688,6 +699,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _requestClose = requestClose;
         _historyService = historyService;
         _environmentService = environmentService;
+        _undoRedoService = undoRedoService;
 
         PathParams.ShowAddButton = false;
         PathParams.ShowDeleteButton = false;
@@ -881,6 +893,10 @@ public sealed partial class RequestTabViewModel : ObservableObject
             HasUnsavedChanges = false;
             IsNew = false;
         }
+
+        // Establish the undo baseline so that the first user edit after load
+        // can be captured as a before/after snapshot.
+        _undoBaseline = req;
 
         QueueHistoryResponseRefresh();
     }
@@ -1848,6 +1864,49 @@ public sealed partial class RequestTabViewModel : ObservableObject
             return;
 
         HasUnsavedChanges = !CollectionRequestEqualityComparer.Instance.Equals(current, _sourceRequest);
+
+        // Push an undo entry immediately for each distinct state change.
+        if (_undoRedoService is not null && _undoBaseline is not null)
+            CommitUndoSnapshot();
+    }
+
+    // ── Undo/redo helpers ──────────────────────────────────────────────────────
+
+    private void CommitUndoSnapshot()
+    {
+        if (_undoRedoService is null || _undoBaseline is null || _sourceRequest is null)
+            return;
+
+        var current = BuildRequestState(includeBlankRows: true);
+        if (current is null)
+            return;
+
+        if (CollectionRequestEqualityComparer.Instance.Equals(current, _undoBaseline))
+            return;
+
+        _undoRedoService.Push(new RequestTabMementoAction
+        {
+            Description = "Edit request",
+            TabId = TabId,
+            FilePath = _sourceRequest.FilePath,
+            Before = _undoBaseline,
+            After = current,
+        });
+
+        _undoBaseline = current;
+    }
+
+    /// <summary>
+    /// Restores the editor to <paramref name="snapshot"/> without pushing a new undo entry.
+    /// Applies the snapshot via the existing load path and re-evaluates dirty state.
+    /// </summary>
+    internal void ApplySnapshot(CollectionRequest snapshot)
+    {
+        LoadRequest(snapshot);
+        // _undoBaseline is updated inside LoadRequest; RecomputeDirtyState is called below
+        // to ensure HasUnsavedChanges reflects the relationship between the snapshot and
+        // the persisted on-disk baseline (_sourceRequest, which LoadRequest also updates).
+        RecomputeDirtyState();
     }
 
     internal async Task<bool> PerformSaveAsync(CancellationToken ct = default)

@@ -103,6 +103,10 @@ public sealed class SyntaxEditor : TextEditor
         _isInitialized = true;
         InstallFoldingManagerIfPossible();
         UpdateFoldings();
+
+        // Disable the AvaloniaEdit internal undo stack so Ctrl+Z is handled exclusively
+        // by the application-level UndoRedoService instead of the text editor.
+        Document.UndoStack.SizeLimit = 0;
     }
 
     public new string Text
@@ -148,6 +152,9 @@ public sealed class SyntaxEditor : TextEditor
 
             if (_foldingManager is not null)
                 FoldingManager.Uninstall(_foldingManager);
+
+            // Ensure the new document's undo stack is also disabled.
+            Document.UndoStack.SizeLimit = 0;
 
             InstallFoldingManagerIfPossible();
             UpdateFoldings();

@@ -34,6 +34,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private readonly IHistoryService? _historyService;
     private readonly IEnvironmentService? _environmentService;
     private readonly ILogger<RequestEditorViewModel> _logger;
+    private readonly IUndoRedoService? _undoRedoService;
 
     private EnvironmentModel? _activeEnvironment;
     private EnvironmentModel _globalEnvironment = new() { FilePath = string.Empty, Name = "Global", Variables = [], EnvironmentId = Guid.NewGuid() };
@@ -105,7 +106,8 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         ILogger<RequestEditorViewModel> logger,
         IEnvironmentService? environmentService = null,
         IHistoryService? historyService = null,
-        IAppPreferencesService? appPreferencesService = null)
+        IAppPreferencesService? appPreferencesService = null,
+        IUndoRedoService? undoRedoService = null)
         : base(messenger)
     {
         ArgumentNullException.ThrowIfNull(transportRegistry);
@@ -123,6 +125,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         _historyService = historyService;
         _environmentService = environmentService;
         _logger = logger;
+        _undoRedoService = undoRedoService;
         IsActive = true;
 
         Tabs.CollectionChanged += (_, _) =>
@@ -443,7 +446,8 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             _dynamicEvaluator,
             _historyService,
             _environmentService,
-            _mergeService);
+            _mergeService,
+            undoRedoService: _undoRedoService);
 
         tab.SetGlobalCloseGuardHandler(ShowGlobalCloseWithoutSavingDialog);
 

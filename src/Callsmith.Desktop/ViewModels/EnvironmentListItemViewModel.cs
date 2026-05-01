@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
+using Callsmith.Core.Abstractions;
 using Callsmith.Core.Helpers;
 using Callsmith.Core.Bruno;
 using Callsmith.Core.MockData;
 using Callsmith.Core.Models;
+using Callsmith.Desktop.Actions;
 using Callsmith.Desktop.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -24,6 +26,15 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     private readonly Func<EnvironmentListItemViewModel, CancellationToken, Task>? _onCloneRequest;
     private readonly Action? _onCancelRename;
     private readonly string _collectionFolderPath;
+    private readonly IUndoRedoService? _undoRedoService;
+
+    // ── Undo/redo ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Snapshot of the environment state at the last undo commit point.
+    /// <see langword="null"/> until the first <see cref="LoadVariables"/> call completes.
+    /// </summary>
+    private EnvironmentModel? _undoBaseline;
 
     // Pre-evaluated dynamic variable values for the PREVIEW box.
     // Populated asynchronously by EnvironmentEditorViewModel after selection.
@@ -42,6 +53,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         = new Dictionary<string, MockDataEntry>();
     private IReadOnlyList<EnvVarSuggestion> _suggestions = [];
     private string? _globalPreviewEnvironmentName;
+    private bool _loading;
 
     // ─── Observable state ────────────────────────────────────────────────────
 
@@ -111,7 +123,8 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         Func<EnvironmentListItemViewModel, CancellationToken, Task>? onCloneRequest = null,
         Action? onCancelRename = null,
         bool isGlobal = false,
-        string collectionFolderPath = "")
+        string collectionFolderPath = "",
+        IUndoRedoService? undoRedoService = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(onRenameCommit);
@@ -127,6 +140,7 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
         IsGlobal = isGlobal;
         _collectionFolderPath = collectionFolderPath;
         _globalPreviewEnvironmentName = model.GlobalPreviewEnvironmentName;
+        _undoRedoService = undoRedoService;
 
         LoadVariables(model.Variables);
     }
@@ -300,11 +314,21 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
 
     private void LoadVariables(IReadOnlyList<EnvironmentVariable> variables)
     {
-        Variables.Clear();
-        foreach (var v in variables)
-            Variables.Add(CreateVariableItem(v));
+        _loading = true;
+        try
+        {
+            Variables.Clear();
+            foreach (var v in variables)
+                Variables.Add(CreateVariableItem(v));
+        }
+        finally
+        {
+            _loading = false;
+        }
         // Reset dirty flag — initial population of rows from disk is not a user change.
         IsDirty = false;
+        // Establish undo baseline after the initial load.
+        _undoBaseline = BuildModel(includeBlankVariables: true);
     }
 
     private EnvironmentVariableItemViewModel CreateVariableItem(EnvironmentVariable variable)
@@ -760,10 +784,51 @@ public sealed partial class EnvironmentListItemViewModel : ObservableObject
     /// <summary>Marks the environment dirty and refreshes all variable previews.</summary>
     private void OnAnyVariableChanged()
     {
+        if (_loading) return;
+
         RecomputeDirtyState();
         foreach (var v in Variables)
             v.NotifyPreviewChanged();
         VariablesChanged?.Invoke(this, EventArgs.Empty);
-    }
-}
 
+        // Push an undo entry immediately for each distinct state change.
+        if (_undoRedoService is not null && _undoBaseline is not null)
+            CommitUndoSnapshot();
+    }
+
+    // ── Undo/redo helpers ──────────────────────────────────────────────────────
+
+    private void CommitUndoSnapshot()
+    {
+        if (_undoRedoService is null || _undoBaseline is null)
+            return;
+
+        var current = BuildModel(includeBlankVariables: true);
+        if (EnvironmentModelEqualityComparer.Instance.Equals(current, _undoBaseline))
+            return;
+
+        _undoRedoService.Push(new EnvironmentMementoAction
+        {
+            Description = "Edit variable",
+            EnvironmentId = _model.EnvironmentId,
+            FilePath = _model.FilePath,
+            Before = _undoBaseline,
+            After = current,
+        });
+
+        _undoBaseline = current;
+    }
+
+    /// <summary>
+    /// Restores the environment to <paramref name="snapshot"/> without pushing a new undo entry.
+    /// Applies the snapshot via the existing load path and re-evaluates dirty state.
+    /// </summary>
+    internal void ApplySnapshot(EnvironmentModel snapshot)
+    {
+        Color = snapshot.Color;
+        _globalPreviewEnvironmentName = snapshot.GlobalPreviewEnvironmentName;
+        LoadVariables(snapshot.Variables);
+        RecomputeDirtyState();
+    }
+
+}
