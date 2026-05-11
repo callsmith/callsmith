@@ -20,10 +20,36 @@ public sealed class CollectionPreferences
     public IReadOnlyList<string>? OpenTabPaths { get; init; }
 
     /// <summary>
+    /// Full persisted state for open tabs in left-to-right display order.
+    /// Includes unsaved tab drafts so they can be restored after app restart.
+    /// Null falls back to the legacy <see cref="OpenTabPaths"/> behavior.
+    /// </summary>
+    public IReadOnlyList<OpenRequestTabState>? OpenTabs { get; init; }
+
+    /// <summary>
+    /// Full persisted state for open tabs in left-to-right display order.
+    /// Includes unsaved tab drafts so they can be restored after app restart.
+    /// Null falls back to the legacy <see cref="OpenTabPaths"/> behavior.
+    /// </summary>
+    public IReadOnlyList<OpenRequestTabState>? OpenTabs { get; init; }
+
+    /// <summary>
     /// Relative path of the tab that was active when the collection was last closed.
     /// Null when there was no active saved tab.
     /// </summary>
     public string? ActiveTabPath { get; init; }
+
+    /// <summary>
+    /// Zero-based index of the active tab within <see cref="OpenTabs"/>.
+    /// Null falls back to the legacy <see cref="ActiveTabPath"/> behavior.
+    /// </summary>
+    public int? ActiveTabIndex { get; init; }
+
+    /// <summary>
+    /// Zero-based index of the active tab within <see cref="OpenTabs"/>.
+    /// Null falls back to the legacy <see cref="ActiveTabPath"/> behavior.
+    /// </summary>
+    public int? ActiveTabIndex { get; init; }
 
     /// <summary>
     /// Relative paths (from the collection folder root) of folders that are expanded

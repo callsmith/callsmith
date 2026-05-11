@@ -9,11 +9,13 @@ namespace Callsmith.Desktop.Views;
 public partial class MainWindow : Window
 {
     private MainWindowViewModel? _trackedVm;
+    private bool _allowCloseAfterPersist;
 
     public MainWindow()
     {
         InitializeComponent();
         SidebarSplitter.AddHandler(PointerReleasedEvent, OnSidebarSplitterPointerReleased, handledEventsToo: true);
+        Closing += OnWindowClosing;
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -63,5 +65,23 @@ public partial class MainWindow : Window
             if (total > 0)
                 vm.OnRequestTreeSplitterMoved(left / total);
         });
+    }
+
+    private async void OnWindowClosing(object? sender, WindowClosingEventArgs e)
+    {
+        if (_allowCloseAfterPersist || _trackedVm is null)
+            return;
+
+        e.Cancel = true;
+
+        try
+        {
+            await _trackedVm.PersistSessionAsync();
+        }
+        finally
+        {
+            _allowCloseAfterPersist = true;
+            Close();
+        }
     }
 }
