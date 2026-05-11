@@ -283,8 +283,8 @@ public sealed partial class EnvironmentViewModel : ObservableRecipient,
             await _preferencesService.UpdateAsync(_collectionFolderPath, current => new()
             {
                 LastActiveEnvironmentFile = relativeFilePath,
-                OpenTabPaths = current.OpenTabPaths,
-                ActiveTabPath = current.ActiveTabPath,
+                OpenTabs = current.OpenTabs,
+                ActiveTabIndex = current.ActiveTabIndex,
                 ExpandedFolderPaths = current.ExpandedFolderPaths,
             }).ConfigureAwait(false);
         }

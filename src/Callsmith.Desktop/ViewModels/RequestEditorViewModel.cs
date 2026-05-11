@@ -640,7 +640,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
                 var ap = _appPreferencesService is not null
                     ? await _appPreferencesService.LoadAsync().ConfigureAwait(false)
                     : null;
-                var tabs = new List<(string? relPath, CollectionRequest? sourceRequest, CollectionRequest? draftRequest)>();
+                var tabs = new List<(CollectionRequest? sourceRequest, CollectionRequest? draftRequest)>();
 
                 if (p.OpenTabs is { Count: > 0 })
                 {
@@ -664,24 +664,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
                             }
                         }
 
-                        tabs.Add((openTab.SourceFilePath, sourceRequest, openTab.DraftRequest));
-                    }
-                }
-                else if (p.OpenTabPaths is { Count: > 0 })
-                {
-                    foreach (var relPath in p.OpenTabPaths)
-                    {
-                        var absPath = Path.GetFullPath(Path.Combine(collectionPath, relPath));
-                        if (!File.Exists(absPath)) continue;
-                        try
-                        {
-                            var req = await _collectionService.LoadRequestAsync(absPath).ConfigureAwait(false);
-                            tabs.Add((relPath, req, null));
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "Could not restore tab for '{Path}'", absPath);
-                        }
+                        tabs.Add((sourceRequest, openTab.DraftRequest));
                     }
                 }
 
@@ -703,7 +686,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
 
                 for (var index = 0; index < tabsToRestore.Count; index++)
                 {
-                    var (relPath, sourceRequest, draftRequest) = tabsToRestore[index];
+                    var (sourceRequest, draftRequest) = tabsToRestore[index];
                     RequestTabViewModel? tab = null;
 
                     if (draftRequest is not null)
@@ -723,11 +706,6 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
 
                     if (prefs.ActiveTabIndex is int activeTabIndex &&
                         activeTabIndex == index)
-                    {
-                        tabToActivate = tab;
-                    }
-                    else if (prefs.ActiveTabPath is not null &&
-                        string.Equals(relPath, prefs.ActiveTabPath, StringComparison.OrdinalIgnoreCase))
                     {
                         tabToActivate = tab;
                     }
@@ -826,23 +804,12 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
                 })
                 .ToList();
 
-            var tabPaths = openTabs
-                .Where(t => !string.IsNullOrEmpty(t.SourceFilePath))
-                .Select(t => t.SourceFilePath!)
-                .ToList();
-
-            var activePath = ActiveTab is { IsNew: false } active && !string.IsNullOrEmpty(active.SourceFilePath)
-                ? Path.GetRelativePath(collectionPath, active.SourceFilePath)
-                : null;
-
             var activeTabIndex = ActiveTab is null ? (int?)null : Tabs.IndexOf(ActiveTab);
 
             await _preferencesService.UpdateAsync(collectionPath, current => new()
             {
                 LastActiveEnvironmentFile = current.LastActiveEnvironmentFile,
-                OpenTabPaths = tabPaths.Count > 0 ? tabPaths.AsReadOnly() : null,
                 OpenTabs = openTabs.Count > 0 ? openTabs.AsReadOnly() : null,
-                ActiveTabPath = activePath,
                 ActiveTabIndex = activeTabIndex is >= 0 ? activeTabIndex : null,
                 ExpandedFolderPaths = current.ExpandedFolderPaths,
             }, ct).ConfigureAwait(false);
