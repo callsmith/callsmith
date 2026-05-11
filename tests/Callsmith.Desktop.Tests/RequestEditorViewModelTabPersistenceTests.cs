@@ -69,8 +69,8 @@ public sealed class RequestEditorViewModelTabPersistenceTests
             storedPreferences.OpenTabs![0].SourceFilePath.Should().BeNull();
             storedPreferences.OpenTabs[0].DraftRequest.Should().NotBeNull();
             storedPreferences.OpenTabs[0].DraftRequest!.Name.Should().Be("Draft request");
-            storedPreferences.OpenTabs[0].DraftRequest.Url.Should().Be("https://example.com/draft");
-            storedPreferences.OpenTabs[0].DraftRequest.Body.Should().Be("{\"draft\":true}");
+            storedPreferences.OpenTabs[0].DraftRequest!.Url.Should().Be("https://example.com/draft");
+            storedPreferences.OpenTabs[0].DraftRequest!.Body.Should().Be("{\"draft\":true}");
 
             storedPreferences.OpenTabs[1].SourceFilePath.Should().Be("saved.callsmith");
             storedPreferences.OpenTabs[1].DraftRequest.Should().NotBeNull();

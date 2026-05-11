@@ -804,7 +804,6 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         if (string.IsNullOrEmpty(_collectionPath)) return;
         try
         {
-            CancelPendingTabPersistence();
             var collectionPath = _collectionPath;
 
             var openTabs = Tabs
