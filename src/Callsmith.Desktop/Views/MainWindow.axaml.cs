@@ -76,7 +76,13 @@ public partial class MainWindow : Window
 
         try
         {
-            await _trackedVm.PersistSessionAsync();
+            try
+            {
+                await _trackedVm.PersistSessionAsync();
+            }
+            catch
+            {
+            }
         }
         finally
         {
