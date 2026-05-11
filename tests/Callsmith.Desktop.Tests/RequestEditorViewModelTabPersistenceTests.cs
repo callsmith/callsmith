@@ -78,7 +78,7 @@ public sealed class RequestEditorViewModelTabPersistenceTests
         }
         finally
         {
-            Directory.Delete(collectionPath, recursive: true);
+            TryDeleteDirectory(collectionPath);
         }
     }
 
@@ -159,7 +159,7 @@ public sealed class RequestEditorViewModelTabPersistenceTests
         }
         finally
         {
-            Directory.Delete(collectionPath, recursive: true);
+            TryDeleteDirectory(collectionPath);
         }
     }
 
@@ -211,6 +211,21 @@ public sealed class RequestEditorViewModelTabPersistenceTests
                 throw new TimeoutException("Condition was not met in time.");
 
             await Task.Delay(25);
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, recursive: true);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
     }
 }
