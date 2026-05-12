@@ -137,6 +137,7 @@ public sealed class HttpTransport : ITransport, IDisposable
                 Headers = headers,
                 Body = bodyString,
                 BodyBytes = decodedBodyBytes,
+                BodySizeBytes = bodyBytes.LongLength,
                 FinalUrl = finalUrl,
                 Elapsed = stopwatch.Elapsed,
             };

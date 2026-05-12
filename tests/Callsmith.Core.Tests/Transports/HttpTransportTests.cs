@@ -148,6 +148,7 @@ public sealed class HttpTransportTests
 
         response.Body.Should().Be(body);
         response.BodyBytes.Should().Equal(bodyBytes);
+        response.BodySizeBytes.Should().Be(encodedBytes.Length);
     }
 
     // ---------------------------------------------------------------------------

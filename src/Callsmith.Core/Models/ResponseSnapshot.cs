@@ -57,6 +57,7 @@ public sealed class ResponseSnapshot
             Headers = Headers,
             Body = Body,
             BodyBytes = System.Text.Encoding.UTF8.GetBytes(Body ?? string.Empty),
+            BodySizeBytes = BodySizeBytes,
             FinalUrl = FinalUrl,
             Elapsed = TimeSpan.FromMilliseconds(ElapsedMs),
         };
