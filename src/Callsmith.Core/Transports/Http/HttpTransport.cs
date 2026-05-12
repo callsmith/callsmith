@@ -142,6 +142,11 @@ public sealed class HttpTransport : ITransport, IDisposable
         }
     }
 
+    /// <summary>
+    /// Decodes response bytes according to the <c>Content-Encoding</c> header values.
+    /// Encodings are removed in reverse order to mirror HTTP encoding application.
+    /// Returns the original bytes when no supported decoding path is available.
+    /// </summary>
     private byte[] DecodeContentEncoding(HttpResponseMessage response, byte[] bodyBytes)
     {
         var encodings = response.Content.Headers.ContentEncoding;
@@ -184,6 +189,9 @@ public sealed class HttpTransport : ITransport, IDisposable
         return decoded;
     }
 
+    /// <summary>
+    /// Decompresses a byte array using the provided decompression stream factory.
+    /// </summary>
     private static byte[] Decompress(byte[] bytes, Func<MemoryStream, Stream> streamFactory)
     {
         using var input = new MemoryStream(bytes);
