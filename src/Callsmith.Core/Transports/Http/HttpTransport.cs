@@ -96,7 +96,7 @@ public sealed class HttpTransport : ITransport, IDisposable
             stopwatch.Stop();
 
             var bodyBytes = await httpResponse.Content.ReadAsByteArrayAsync(ct);
-            var decodedBodyBytes = DecodeContentEncoding(httpResponse, bodyBytes);
+            var decodedBodyBytes = await DecodeContentEncodingAsync(httpResponse, bodyBytes, ct);
             var charset = httpResponse.Content.Headers.ContentType?.CharSet;
             Encoding encoding;
             if (charset is not null)
@@ -147,7 +147,10 @@ public sealed class HttpTransport : ITransport, IDisposable
     /// Encodings are removed in reverse order to mirror HTTP encoding application.
     /// Returns the original bytes when no supported decoding path is available.
     /// </summary>
-    private byte[] DecodeContentEncoding(HttpResponseMessage response, byte[] bodyBytes)
+    private async Task<byte[]> DecodeContentEncodingAsync(
+        HttpResponseMessage response,
+        byte[] bodyBytes,
+        CancellationToken ct)
     {
         var encodings = response.Content.Headers.ContentEncoding;
         if (encodings.Count == 0)
@@ -170,9 +173,9 @@ public sealed class HttpTransport : ITransport, IDisposable
             {
                 decoded = contentEncoding.ToLowerInvariant() switch
                 {
-                    "gzip" => Decompress(decoded, bytes => new GZipStream(bytes, CompressionMode.Decompress, leaveOpen: false)),
-                    "deflate" => Decompress(decoded, bytes => new DeflateStream(bytes, CompressionMode.Decompress, leaveOpen: false)),
-                    "br" => Decompress(decoded, bytes => new BrotliStream(bytes, CompressionMode.Decompress, leaveOpen: false)),
+                    "gzip" => await DecompressAsync(decoded, bytes => new GZipStream(bytes, CompressionMode.Decompress, leaveOpen: false), ct),
+                    "deflate" => await DecompressAsync(decoded, bytes => new DeflateStream(bytes, CompressionMode.Decompress, leaveOpen: false), ct),
+                    "br" => await DecompressAsync(decoded, bytes => new BrotliStream(bytes, CompressionMode.Decompress, leaveOpen: false), ct),
                     _ => throw new NotSupportedException($"Unsupported content encoding '{contentEncoding}'."),
                 };
             }
@@ -192,12 +195,15 @@ public sealed class HttpTransport : ITransport, IDisposable
     /// <summary>
     /// Decompresses a byte array using the provided decompression stream factory.
     /// </summary>
-    private static byte[] Decompress(byte[] bytes, Func<MemoryStream, Stream> streamFactory)
+    private static async Task<byte[]> DecompressAsync(
+        byte[] bytes,
+        Func<MemoryStream, Stream> streamFactory,
+        CancellationToken ct)
     {
         using var input = new MemoryStream(bytes);
         using var compressed = streamFactory(input);
         using var output = new MemoryStream();
-        compressed.CopyTo(output);
+        await compressed.CopyToAsync(output, ct);
         return output.ToArray();
     }
 
