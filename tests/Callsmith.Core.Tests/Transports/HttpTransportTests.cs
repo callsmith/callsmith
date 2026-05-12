@@ -151,6 +151,22 @@ public sealed class HttpTransportTests
         response.BodySizeBytes.Should().Be(encodedBytes.Length);
     }
 
+    [Fact]
+    public async Task SendAsync_WithStackedContentEncoding_DecodesInReverseOrder()
+    {
+        const string body = """{"message":"héllo"}""";
+        var bodyBytes = Encoding.UTF8.GetBytes(body);
+        var gzipThenBrBytes = Encode(Encode(bodyBytes, "gzip"), "br");
+        var handler = new EncodedContentHandler(HttpStatusCode.OK, gzipThenBrBytes, "gzip, br", "application/json; charset=utf-8");
+        var transport = CreateTransport(handler);
+
+        var response = await transport.SendAsync(GetRequest());
+
+        response.Body.Should().Be(body);
+        response.BodyBytes.Should().Equal(bodyBytes);
+        response.BodySizeBytes.Should().Be(gzipThenBrBytes.Length);
+    }
+
     // ---------------------------------------------------------------------------
     // SendAsync — response headers
     // ---------------------------------------------------------------------------
