@@ -15,7 +15,7 @@ namespace Callsmith.Desktop.Tests;
 
 public sealed class MainWindowTests
 {
-    private const string FakeCollectionPath = @"C:\collections\my-api";
+    private static readonly string FakeCollectionPath = Path.Combine("collections", "my-api");
 
     [AvaloniaFact]
     public async Task Close_WhenSessionPersistenceIsAlreadyInProgress_DoesNotStartSecondPersist()
@@ -29,8 +29,8 @@ public sealed class MainWindowTests
         var transportRegistry = Substitute.For<ITransportRegistry>();
         var environmentService = Substitute.For<IEnvironmentService>();
         var dynamicEvaluator = Substitute.For<IDynamicVariableEvaluator>();
-        var persistStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releasePersist = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var persistOperationStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var persistOperationGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var persistCallCount = 0;
 
         preferencesService.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -41,8 +41,8 @@ public sealed class MainWindowTests
             {
                 if (Interlocked.Increment(ref persistCallCount) == 1)
                 {
-                    persistStarted.TrySetResult();
-                    await releasePersist.Task;
+                    persistOperationStarted.TrySetResult();
+                    await persistOperationGate.Task;
                 }
             });
 
@@ -83,14 +83,14 @@ public sealed class MainWindowTests
         await Dispatcher.UIThread.InvokeAsync(() => { });
 
         window.Close();
-        await persistStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await persistOperationStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         window.Close();
         Dispatcher.UIThread.RunJobs();
 
         persistCallCount.Should().Be(1);
 
-        releasePersist.TrySetResult();
+        persistOperationGate.TrySetResult();
         await Dispatcher.UIThread.InvokeAsync(() => { });
     }
 }
