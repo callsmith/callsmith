@@ -28,6 +28,13 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
     private bool _showEnabledToggle = true;
 
     /// <summary>
+    /// Header checkbox state for row enabled toggles.
+    /// true: all enabled, false: all disabled, null: mixed state.
+    /// </summary>
+    [ObservableProperty]
+    private bool? _allItemsEnabled;
+
+    /// <summary>
     /// When true, the value column supports a Text/File selector for multipart form values.
     /// </summary>
     [ObservableProperty]
@@ -259,11 +266,15 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
             foreach (KeyValueItemViewModel item in e.NewItems)
                 item.PropertyChanged += OnItemPropertyChanged;
 
+        RecomputeAllItemsEnabled();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnItemPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(KeyValueItemViewModel.IsEnabled))
+            RecomputeAllItemsEnabled();
+
         // Only data-changing properties should raise Changed (and therefore mark a tab dirty).
         // Suggestion and configuration properties (SuggestionNames, ShowDeleteButton, etc.)
         // are display concerns and must not be treated as user edits.
@@ -292,6 +303,8 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
 
         foreach (var item in Items)
             item.ShowEnabledToggle = value;
+
+        RecomputeAllItemsEnabled();
     }
 
     partial void OnShowValueTypeSelectorChanged(bool value)
@@ -304,6 +317,41 @@ public sealed partial class KeyValueEditorViewModel : ObservableObject
     {
         foreach (var item in Items)
             item.SetFilePickerCallback(value);
+    }
+
+    private bool _isSyncingAllItemsEnabled;
+
+    partial void OnAllItemsEnabledChanged(bool? value)
+    {
+        if (_isSyncingAllItemsEnabled || value is null)
+            return;
+
+        foreach (var item in Items)
+            item.IsEnabled = value.Value;
+    }
+
+    private void RecomputeAllItemsEnabled()
+    {
+        bool? nextState = null;
+        if (ShowEnabledToggle && Items.Count > 0)
+        {
+            var enabledCount = Items.Count(i => i.IsEnabled);
+            nextState = enabledCount == 0
+                ? false
+                : enabledCount == Items.Count
+                    ? true
+                    : null;
+        }
+
+        _isSyncingAllItemsEnabled = true;
+        try
+        {
+            AllItemsEnabled = nextState;
+        }
+        finally
+        {
+            _isSyncingAllItemsEnabled = false;
+        }
     }
 
     // ─── Environment variable suggestions ───────────────────────────────────
