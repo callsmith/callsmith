@@ -508,7 +508,7 @@ public sealed class HttpTransportTests
     private static byte[] Encode(byte[] bytes, string encoding)
     {
         using var output = new MemoryStream();
-        using (var stream = encoding switch
+        using (Stream stream = encoding switch
                {
                    "gzip" => new GZipStream(output, CompressionMode.Compress, leaveOpen: true),
                    "deflate" => new DeflateStream(output, CompressionMode.Compress, leaveOpen: true),
