@@ -6,6 +6,8 @@ namespace Callsmith.Core.Models;
 /// </summary>
 public sealed class ResponseModel
 {
+    private readonly long? _bodySizeBytes;
+
     /// <summary>HTTP status code (e.g. 200, 404, 500).</summary>
     public required int StatusCode { get; init; }
 
@@ -28,6 +30,14 @@ public sealed class ResponseModel
     /// <summary>Total elapsed time from sending the request to receiving the full response.</summary>
     public required TimeSpan Elapsed { get; init; }
 
-    /// <summary>Size of the response body in bytes.</summary>
-    public long BodySizeBytes => BodyBytes.Length;
+    /// <summary>
+    /// Size of the response body in bytes as reported by the transport.
+    /// For HTTP responses, this is the on-wire byte count received from the server,
+    /// which can differ from <see cref="BodyBytes"/> length when content encoding is decoded.
+    /// </summary>
+    public long BodySizeBytes
+    {
+        get => _bodySizeBytes ?? BodyBytes.Length;
+        init => _bodySizeBytes = value;
+    }
 }

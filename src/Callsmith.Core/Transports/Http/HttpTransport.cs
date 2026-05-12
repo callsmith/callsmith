@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using System.IO;
+using System.IO.Compression;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -6,6 +9,7 @@ using Callsmith.Core.Abstractions;
 using Callsmith.Core.Helpers;
 using Callsmith.Core.Models;
 using Microsoft.Extensions.Logging;
+using ZstdSharp;
 
 namespace Callsmith.Core.Transports.Http;
 
@@ -36,11 +40,13 @@ public sealed class HttpTransport : ITransport, IDisposable
         {
             AllowAutoRedirect = true,
             MaxAutomaticRedirections = 10,
+            AutomaticDecompression = DecompressionMethods.None,
         });
 
         _noRedirectsClient = new HttpClient(new HttpClientHandler
         {
             AllowAutoRedirect = false,
+            AutomaticDecompression = DecompressionMethods.None,
         });
     }
 
@@ -91,6 +97,7 @@ public sealed class HttpTransport : ITransport, IDisposable
             stopwatch.Stop();
 
             var bodyBytes = await httpResponse.Content.ReadAsByteArrayAsync(ct);
+            var decodedBodyBytes = await DecodeContentEncodingAsync(httpResponse, bodyBytes, ct);
             var charset = httpResponse.Content.Headers.ContentType?.CharSet;
             Encoding encoding;
             if (charset is not null)
@@ -113,7 +120,7 @@ public sealed class HttpTransport : ITransport, IDisposable
             {
                 encoding = Encoding.UTF8;
             }
-            var bodyString = encoding.GetString(bodyBytes);
+            var bodyString = encoding.GetString(decodedBodyBytes);
             var headers = ReadHeaders(httpResponse);
             var finalUrl = httpResponse.RequestMessage?.RequestUri?.ToString() ?? request.Url;
 
@@ -129,11 +136,79 @@ public sealed class HttpTransport : ITransport, IDisposable
                 ReasonPhrase = httpResponse.ReasonPhrase ?? string.Empty,
                 Headers = headers,
                 Body = bodyString,
-                BodyBytes = bodyBytes,
+                BodyBytes = decodedBodyBytes,
+                BodySizeBytes = bodyBytes.LongLength,
                 FinalUrl = finalUrl,
                 Elapsed = stopwatch.Elapsed,
             };
         }
+    }
+
+    /// <summary>
+    /// Decodes response bytes according to the <c>Content-Encoding</c> header values.
+    /// Encodings are removed in reverse order to mirror HTTP encoding application.
+    /// Returns the original bytes when no supported decoding path is available.
+    /// </summary>
+    private async Task<byte[]> DecodeContentEncodingAsync(
+        HttpResponseMessage response,
+        byte[] bodyBytes,
+        CancellationToken ct)
+    {
+        var encodings = response.Content.Headers.ContentEncoding;
+        if (encodings.Count == 0)
+            return bodyBytes;
+
+        var encodingStack = encodings
+            .SelectMany(value => value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            .ToArray();
+        if (encodingStack.Length == 0)
+            return bodyBytes;
+
+        var decoded = bodyBytes;
+        for (var i = encodingStack.Length - 1; i >= 0; i--)
+        {
+            var contentEncoding = encodingStack[i];
+            if (contentEncoding.Equals("identity", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            try
+            {
+                decoded = contentEncoding.ToLowerInvariant() switch
+                {
+                    "gzip" or "x-gzip" => await DecompressAsync(decoded, bytes => new GZipStream(bytes, CompressionMode.Decompress, leaveOpen: false), ct),
+                    "deflate" or "x-deflate" => await DecompressAsync(decoded, bytes => new DeflateStream(bytes, CompressionMode.Decompress, leaveOpen: false), ct),
+                    "br" => await DecompressAsync(decoded, bytes => new BrotliStream(bytes, CompressionMode.Decompress, leaveOpen: false), ct),
+                    "zlib" => await DecompressAsync(decoded, bytes => new ZLibStream(bytes, CompressionMode.Decompress, leaveOpen: false), ct),
+                    "zstd" or "x-zstd" => await DecompressAsync(decoded, bytes => new DecompressionStream(bytes, leaveOpen: false), ct),
+                    _ => throw new NotSupportedException($"Unsupported content encoding '{contentEncoding}'."),
+                };
+            }
+            catch (Exception ex) when (ex is InvalidDataException or NotSupportedException)
+            {
+                _logger.LogDebug(
+                    ex,
+                    "Unable to decode response body with content-encoding '{ContentEncoding}'. Returning raw bytes.",
+                    contentEncoding);
+                return bodyBytes;
+            }
+        }
+
+        return decoded;
+    }
+
+    /// <summary>
+    /// Decompresses a byte array using the provided decompression stream factory.
+    /// </summary>
+    private static async Task<byte[]> DecompressAsync(
+        byte[] bytes,
+        Func<MemoryStream, Stream> streamFactory,
+        CancellationToken ct)
+    {
+        using var input = new MemoryStream(bytes);
+        using var compressed = streamFactory(input);
+        using var output = new MemoryStream();
+        await compressed.CopyToAsync(output, ct);
+        return output.ToArray();
     }
 
     private static HttpRequestMessage BuildHttpRequest(RequestModel request)

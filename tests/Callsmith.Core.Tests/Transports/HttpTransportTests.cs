@@ -1,10 +1,14 @@
+using System.IO;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
+using System.Text;
 using Callsmith.Core.Helpers;
 using Callsmith.Core.Models;
 using Callsmith.Core.Transports.Http;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using ZstdSharp;
 
 namespace Callsmith.Core.Tests.Transports;
 
@@ -119,6 +123,48 @@ public sealed class HttpTransportTests
         // Assert — body decoded via UTF-8 fallback
         response.Body.Should().Be(body);
         response.StatusCode.Should().Be(200);
+    }
+
+    [Theory]
+    [InlineData("gzip")]
+    [InlineData("x-gzip")]
+    [InlineData("deflate")]
+    [InlineData("x-deflate")]
+    [InlineData("br")]
+    [InlineData("zlib")]
+    [InlineData("zstd")]
+    [InlineData("x-zstd")]
+    public async Task SendAsync_WithSupportedContentEncoding_DecodesResponseBody(string encoding)
+    {
+        const string body = """{"message":"héllo"}""";
+        var bodyBytes = Encoding.UTF8.GetBytes(body);
+        var encodedBytes = Encode(bodyBytes, encoding);
+        encodedBytes.Should().NotBeEmpty();
+        encodedBytes.Should().NotEqual(bodyBytes);
+        var handler = new EncodedContentHandler(HttpStatusCode.OK, encodedBytes, encoding, "application/json; charset=utf-8");
+        var transport = CreateTransport(handler);
+
+        var response = await transport.SendAsync(GetRequest());
+
+        response.Body.Should().Be(body);
+        response.BodyBytes.Should().Equal(bodyBytes);
+        response.BodySizeBytes.Should().Be(encodedBytes.Length);
+    }
+
+    [Fact]
+    public async Task SendAsync_WithStackedContentEncoding_DecodesInReverseOrder()
+    {
+        const string body = """{"message":"héllo"}""";
+        var bodyBytes = Encoding.UTF8.GetBytes(body);
+        var gzipThenBrBytes = Encode(Encode(bodyBytes, "gzip"), "br");
+        var handler = new EncodedContentHandler(HttpStatusCode.OK, gzipThenBrBytes, "gzip, br", "application/json; charset=utf-8");
+        var transport = CreateTransport(handler);
+
+        var response = await transport.SendAsync(GetRequest());
+
+        response.Body.Should().Be(body);
+        response.BodyBytes.Should().Equal(bodyBytes);
+        response.BodySizeBytes.Should().Be(gzipThenBrBytes.Length);
     }
 
     // ---------------------------------------------------------------------------
@@ -465,5 +511,46 @@ public sealed class HttpTransportTests
             var response = new HttpResponseMessage(statusCode) { Content = content };
             return Task.FromResult(response);
         }
+    }
+
+    private sealed class EncodedContentHandler(
+        HttpStatusCode statusCode,
+        byte[] bodyBytes,
+        string contentEncoding,
+        string contentType) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken ct)
+        {
+            var content = new ByteArrayContent(bodyBytes);
+            content.Headers.TryAddWithoutValidation("Content-Type", contentType);
+            content.Headers.TryAddWithoutValidation("Content-Encoding", contentEncoding);
+            var response = new HttpResponseMessage(statusCode) { Content = content };
+            return Task.FromResult(response);
+        }
+    }
+
+    private static byte[] Encode(byte[] bytes, string encoding)
+    {
+        if (encoding is "zstd" or "x-zstd")
+        {
+            using var compressor = new Compressor();
+            return compressor.Wrap(bytes).ToArray();
+        }
+
+        using var output = new MemoryStream();
+        using (Stream stream = encoding switch
+        {
+            "gzip" or "x-gzip" => new GZipStream(output, CompressionMode.Compress, leaveOpen: true),
+            "deflate" or "x-deflate" => new DeflateStream(output, CompressionMode.Compress, leaveOpen: true),
+            "br" => new BrotliStream(output, CompressionMode.Compress, leaveOpen: true),
+            "zlib" => new ZLibStream(output, CompressionMode.Compress, leaveOpen: true),
+            _ => throw new NotSupportedException($"Unsupported test encoding '{encoding}'."),
+        })
+        {
+            stream.Write(bytes, 0, bytes.Length);
+        }
+
+        return output.ToArray();
     }
 }

@@ -35,8 +35,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private readonly IHistoryService? _historyService;
     private readonly IEnvironmentService? _environmentService;
 
-    internal event EventHandler? SessionStateChanged;
-
     /// <summary>Source request loaded from disk. Null for brand-new unsaved tabs.</summary>
     private CollectionRequest? _sourceRequest;
 
@@ -730,14 +728,12 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 return;
             if (_sourceRequest is not null)
                 RecomputeDirtyState();
-            NotifySessionStateChanged();
         };
 
         Headers.Changed += (_, _) =>
         {
             RecomputeDirtyState();
             RefreshHeadersAndParamsModifiedState();
-            NotifySessionStateChanged();
         };
 
         QueryParams.Changed += (_, _) =>
@@ -746,7 +742,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
             OnPropertyChanged(nameof(PreviewUrl));
             OnPropertyChanged(nameof(PreviewUrlTooltip));
             RefreshHeadersAndParamsModifiedState();
-            NotifySessionStateChanged();
         };
 
         PathParams.Changed += (_, _) =>
@@ -758,19 +753,16 @@ public sealed partial class RequestTabViewModel : ObservableObject
             OnPropertyChanged(nameof(PreviewUrlForeground));
             OnPropertyChanged(nameof(PreviewUrlTooltip));
             RefreshHeadersAndParamsModifiedState();
-            NotifySessionStateChanged();
         };
 
         FormParams.Changed += (_, _) =>
         {
             RecomputeDirtyState();
-            NotifySessionStateChanged();
         };
 
         MultipartFormParams.Changed += (_, _) =>
         {
             RecomputeDirtyState();
-            NotifySessionStateChanged();
         };
 
         RefreshHeadersAndParamsModifiedState();
@@ -835,7 +827,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
         }
 
         QueueHistoryResponseRefresh();
-        NotifySessionStateChanged();
     }
 
     internal void RestorePersistedState(CollectionRequest currentState, CollectionRequest? sourceRequest)
@@ -923,7 +914,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
         OnPropertyChanged(nameof(PreviewUrlForeground));
         OnPropertyChanged(nameof(PreviewUrlTooltip));
         PromoteFromTransient();
-        NotifySessionStateChanged();
     }
 
     /// <summary>
@@ -1110,8 +1100,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
             HasUnsavedChanges = false;
             IsNew = true;
         }
-
-        NotifySessionStateChanged();
     }
 
     /// <summary>
@@ -1977,8 +1965,6 @@ public sealed partial class RequestTabViewModel : ObservableObject
         // Any unsaved change promotes a transient tab to a permanent one.
         if (value) PromoteFromTransient();
     }
-
-    private void NotifySessionStateChanged() => SessionStateChanged?.Invoke(this, EventArgs.Empty);
 
     partial void OnUrlChanged(string value)
     {

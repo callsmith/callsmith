@@ -39,14 +39,10 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private EnvironmentModel? _activeEnvironment;
     private EnvironmentModel _globalEnvironment = new() { FilePath = string.Empty, Name = "Global", Variables = [], EnvironmentId = Guid.NewGuid() };
     private string _collectionPath = string.Empty;
-    private bool _restoringTabs;
     private bool _appPrefsLoaded;
     private bool _isHorizontalLayout = true;
     private double? _requestEditorHorizontalSplitterFraction;
     private double? _requestEditorVerticalSplitterFraction;
-    private CancellationTokenSource? _persistTabsCts;
-
-    private static readonly TimeSpan PersistTabsDelay = TimeSpan.FromMilliseconds(250);
 
     // -------------------------------------------------------------------------
     // Observable state
@@ -63,8 +59,6 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         if (oldValue is not null) oldValue.IsActive = false;
         if (newValue is not null) newValue.IsActive = true;
         Messenger.Send(new ActiveTabChangedMessage(newValue?.SourceFilePath ?? string.Empty));
-        if (!_restoringTabs)
-            SchedulePersistTabs();
     }
 
     [ObservableProperty]
@@ -355,13 +349,9 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
 
     public void Receive(CollectionOpenedMessage message)
     {
-        CancelPendingTabPersistence();
-
-        // Clear tabs from the previous collection without triggering persistence.
-        _restoringTabs = true;
+        // Clear tabs from the previous collection.
         Tabs.Clear();
         ActiveTab = null;
-        _restoringTabs = false;
 
         _collectionPath = message.Value;
         _ = UpdateAvailableFoldersAsync(message.Value);
@@ -384,7 +374,6 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         if (tab is not null)
         {
             tab.UpdateSourceRequest(message.Renamed);
-            SchedulePersistTabs();
         }
     }
 
@@ -394,7 +383,6 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     /// </summary>
     public void Receive(RequestSavedMessage message)
     {
-        SchedulePersistTabs();
     }
 
     /// <summary>
@@ -495,7 +483,6 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
 
     internal Task PersistSessionAsync(CancellationToken ct = default)
     {
-        CancelPendingTabPersistence();
         return PersistTabsAsync(ct);
     }
 
@@ -671,52 +658,44 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
                 return (p, ap, tabs);
             }).ConfigureAwait(true); // resume on UI thread to manipulate Tabs
 
-            _restoringTabs = true;
-            try
+            if (!_appPrefsLoaded)
             {
-                if (!_appPrefsLoaded)
+                _appPrefsLoaded = true;
+                _isHorizontalLayout = appPrefs?.IsHorizontalRequestEditorLayout ?? true;
+                _requestEditorHorizontalSplitterFraction = appPrefs?.RequestEditorHorizontalSplitterFraction;
+                _requestEditorVerticalSplitterFraction = appPrefs?.RequestEditorVerticalSplitterFraction;
+            }
+
+            RequestTabViewModel? tabToActivate = null;
+
+            for (var index = 0; index < tabsToRestore.Count; index++)
+            {
+                var (sourceRequest, draftRequest) = tabsToRestore[index];
+                RequestTabViewModel? tab = null;
+
+                if (draftRequest is not null)
                 {
-                    _appPrefsLoaded = true;
-                    _isHorizontalLayout = appPrefs?.IsHorizontalRequestEditorLayout ?? true;
-                    _requestEditorHorizontalSplitterFraction = appPrefs?.RequestEditorHorizontalSplitterFraction;
-                    _requestEditorVerticalSplitterFraction = appPrefs?.RequestEditorVerticalSplitterFraction;
+                    tab = BuildTab(request: null);
+                    tab.RestorePersistedState(draftRequest, sourceRequest);
+                }
+                else if (sourceRequest is not null)
+                {
+                    tab = BuildTab(sourceRequest);
                 }
 
-                RequestTabViewModel? tabToActivate = null;
+                if (tab is null)
+                    continue;
 
-                for (var index = 0; index < tabsToRestore.Count; index++)
+                Tabs.Add(tab);
+
+                if (prefs.ActiveTabIndex is int activeTabIndex &&
+                    activeTabIndex == index)
                 {
-                    var (sourceRequest, draftRequest) = tabsToRestore[index];
-                    RequestTabViewModel? tab = null;
-
-                    if (draftRequest is not null)
-                    {
-                        tab = BuildTab(request: null);
-                        tab.RestorePersistedState(draftRequest, sourceRequest);
-                    }
-                    else if (sourceRequest is not null)
-                    {
-                        tab = BuildTab(sourceRequest);
-                    }
-
-                    if (tab is null)
-                        continue;
-
-                    Tabs.Add(tab);
-
-                    if (prefs.ActiveTabIndex is int activeTabIndex &&
-                        activeTabIndex == index)
-                    {
-                        tabToActivate = tab;
-                    }
+                    tabToActivate = tab;
                 }
+            }
 
-                ActiveTab = tabToActivate ?? Tabs.FirstOrDefault();
-            }
-            finally
-            {
-                _restoringTabs = false;
-            }
+            ActiveTab = tabToActivate ?? Tabs.FirstOrDefault();
         }
         catch (Exception ex)
         {
@@ -726,55 +705,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
 
     private void OnTabsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        if (e.OldItems is not null)
-        {
-            foreach (var tab in e.OldItems.OfType<RequestTabViewModel>())
-                tab.SessionStateChanged -= OnTabSessionStateChanged;
-        }
-
-        if (e.NewItems is not null)
-        {
-            foreach (var tab in e.NewItems.OfType<RequestTabViewModel>())
-                tab.SessionStateChanged += OnTabSessionStateChanged;
-        }
-
         OnPropertyChanged(nameof(HasTabs));
-        if (!_restoringTabs)
-            SchedulePersistTabs();
-    }
-
-    private void OnTabSessionStateChanged(object? sender, EventArgs e) => SchedulePersistTabs();
-
-    private void SchedulePersistTabs()
-    {
-        if (_restoringTabs || string.IsNullOrEmpty(_collectionPath))
-            return;
-
-        var cts = new CancellationTokenSource();
-        var previous = Interlocked.Exchange(ref _persistTabsCts, cts);
-        previous?.Cancel();
-        previous?.Dispose();
-
-        _ = PersistTabsAfterDelayAsync(cts.Token);
-    }
-
-    private async Task PersistTabsAfterDelayAsync(CancellationToken ct)
-    {
-        try
-        {
-            await Task.Delay(PersistTabsDelay, ct).ConfigureAwait(false);
-            await PersistTabsAsync(ct).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-    }
-
-    private void CancelPendingTabPersistence()
-    {
-        var cts = Interlocked.Exchange(ref _persistTabsCts, null);
-        cts?.Cancel();
-        cts?.Dispose();
     }
 
     private async Task PersistTabsAsync(CancellationToken ct = default)
