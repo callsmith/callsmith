@@ -182,4 +182,58 @@ public sealed class KeyValueEditorViewModelTests
         fileRow.HasSelectedFile.Should().BeTrue();
         fileRow.SelectedFilePath.Should().Be("file1.txt");
     }
+
+    [Fact]
+    public void AllItemsEnabled_WhenMixedRows_IsIndeterminate()
+    {
+        var sut = BuildSut(("a", "1"), ("b", "2"));
+        sut.Items[0].IsEnabled = true;
+        sut.Items[1].IsEnabled = false;
+
+        sut.AllItemsEnabled.Should().BeNull();
+    }
+
+    [Fact]
+    public void AllItemsEnabled_WhenSetTrue_EnablesAllRows()
+    {
+        var sut = BuildSut(("a", "1"), ("b", "2"));
+        sut.Items[0].IsEnabled = false;
+        sut.Items[1].IsEnabled = false;
+
+        sut.AllItemsEnabled = true;
+
+        sut.Items.Should().OnlyContain(i => i.IsEnabled);
+        sut.AllItemsEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void AllItemsEnabled_WhenSetFalse_DisablesAllRows()
+    {
+        var sut = BuildSut(("a", "1"), ("b", "2"));
+        sut.Items[0].IsEnabled = true;
+        sut.Items[1].IsEnabled = true;
+
+        sut.AllItemsEnabled = false;
+
+        sut.Items.Should().OnlyContain(i => !i.IsEnabled);
+        sut.AllItemsEnabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void AllItemsEnabled_WhenRowsBecomeUniform_UpdatesState()
+    {
+        var sut = BuildSut(("a", "1"), ("b", "2"));
+        sut.Items[0].IsEnabled = true;
+        sut.Items[1].IsEnabled = false;
+        sut.AllItemsEnabled.Should().BeNull();
+
+        sut.Items[1].IsEnabled = true;
+        sut.AllItemsEnabled.Should().BeTrue();
+
+        sut.Items[0].IsEnabled = false;
+        sut.AllItemsEnabled.Should().BeNull();
+
+        sut.Items[1].IsEnabled = false;
+        sut.AllItemsEnabled.Should().BeFalse();
+    }
 }
