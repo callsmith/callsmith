@@ -127,6 +127,9 @@ public partial class MainWindowViewModel : ViewModelBase
             _ = _appPreferencesService.UpdateAsync(p => p with { RequestTreeSplitterFraction = fraction });
     }
 
+    internal Task PersistSessionAsync(CancellationToken ct = default) =>
+        RequestEditor.PersistSessionAsync(ct);
+
     /// <summary>
     /// Ctrl+S handler: saves the current environment editor content when the editor panel is open,
     /// or saves the active request tab otherwise.

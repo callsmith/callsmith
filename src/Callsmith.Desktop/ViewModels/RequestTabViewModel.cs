@@ -35,6 +35,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
     private readonly IHistoryService? _historyService;
     private readonly IEnvironmentService? _environmentService;
 
+    internal event EventHandler? SessionStateChanged;
+
     /// <summary>Source request loaded from disk. Null for brand-new unsaved tabs.</summary>
     private CollectionRequest? _sourceRequest;
 
@@ -699,7 +701,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         // from spuriously re-marking the request as dirty after HasUnsavedChanges is cleared.
         PropertyChanged += (_, e) =>
         {
-            if (_loading || _saving || _sourceRequest is null) return;
+            if (_loading || _saving) return;
             if (e.PropertyName is
                 nameof(HasUnsavedChanges) or nameof(IsNew) or nameof(IsActive) or nameof(IsTransient) or nameof(TabTitle) or
                 nameof(TabIsDirty) or nameof(SaveButtonLabel) or nameof(ShowRevertButton) or
@@ -726,13 +728,16 @@ public sealed partial class RequestTabViewModel : ObservableObject
                 nameof(HorizontalSplitterPosition) or
                 nameof(VerticalSplitterPosition))
                 return;
-            RecomputeDirtyState();
+            if (_sourceRequest is not null)
+                RecomputeDirtyState();
+            NotifySessionStateChanged();
         };
 
         Headers.Changed += (_, _) =>
         {
             RecomputeDirtyState();
             RefreshHeadersAndParamsModifiedState();
+            NotifySessionStateChanged();
         };
 
         QueryParams.Changed += (_, _) =>
@@ -741,6 +746,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
             OnPropertyChanged(nameof(PreviewUrl));
             OnPropertyChanged(nameof(PreviewUrlTooltip));
             RefreshHeadersAndParamsModifiedState();
+            NotifySessionStateChanged();
         };
 
         PathParams.Changed += (_, _) =>
@@ -752,16 +758,19 @@ public sealed partial class RequestTabViewModel : ObservableObject
             OnPropertyChanged(nameof(PreviewUrlForeground));
             OnPropertyChanged(nameof(PreviewUrlTooltip));
             RefreshHeadersAndParamsModifiedState();
+            NotifySessionStateChanged();
         };
 
         FormParams.Changed += (_, _) =>
         {
             RecomputeDirtyState();
+            NotifySessionStateChanged();
         };
 
         MultipartFormParams.Changed += (_, _) =>
         {
             RecomputeDirtyState();
+            NotifySessionStateChanged();
         };
 
         RefreshHeadersAndParamsModifiedState();
@@ -789,6 +798,13 @@ public sealed partial class RequestTabViewModel : ObservableObject
         IsTransient = false;
     }
 
+    internal CollectionRequest CreateSessionSnapshot()
+    {
+        var sourceFilePath = _sourceRequest?.FilePath ?? string.Empty;
+        var requestId = _sourceRequest?.RequestId;
+        return BuildRequestStateCore(sourceFilePath, requestId, includeBlankRows: true);
+    }
+
     /// <summary>
     /// If <paramref name="text"/> is a cURL command, replaces the entire request editor
     /// state with parsed values and returns <see langword="true"/>; otherwise returns false.
@@ -809,77 +825,35 @@ public sealed partial class RequestTabViewModel : ObservableObject
         _loading = true;
         try
         {
-            RequestName = req.Name;
-            OnPropertyChanged(nameof(CanOpenRequestHistory));
-            SelectedMethod = req.Method.Method;
-
-            _syncingUrl = true;
-            try
-            {
-                var enabledParams = req.QueryParams
-                    .Where(p => p.IsEnabled)
-                    .Select(p => new KeyValuePair<string, string>(p.Key, p.Value))
-                    .ToList();
-                Url = req.Url;
-                QueryParams.LoadFrom(req.QueryParams);
-                SyncPathParamsWithUrl(Url, req.PathParams);
-            }
-            finally
-            {
-                _syncingUrl = false;
-            }
-
-            Headers.LoadFrom(req.Headers);
-            SelectedBodyType = req.BodyType;
-            Body = req.Body ?? string.Empty;
-            // Restore file body if present.
-            if (req.BodyType == CollectionRequest.BodyTypes.File && req.FileBodyBase64 is not null)
-            {
-                _fileBodyBytes = Convert.FromBase64String(req.FileBodyBase64);
-                _fileBodyBase64 = req.FileBodyBase64;
-                _fileBodyName = req.FileBodyName;
-                SelectedFilePath = req.FileBodyName ?? string.Empty;
-            }
-            else
-            {
-                _fileBodyBytes = null;
-                _fileBodyBase64 = null;
-                _fileBodyName = null;
-                SelectedFilePath = string.Empty;
-            }
-            // Seed the per-type dictionary so switching body types immediately shows the
-            // correct editor content without needing a tab reload.
-            _bodyContents.Clear();
-            foreach (var (type, content) in req.AllBodyContents)
-                _bodyContents[type] = content;
-            // Ensure the active type is up-to-date (AllBodyContents may have been built before
-            // the ViewModel edits; this is the authoritative current value).
-            if (req.BodyType is CollectionRequest.BodyTypes.Json
-                             or CollectionRequest.BodyTypes.Text
-                             or CollectionRequest.BodyTypes.Xml
-                             or CollectionRequest.BodyTypes.Yaml
-                             or CollectionRequest.BodyTypes.Other)
-                _bodyContents[req.BodyType] = req.Body ?? string.Empty;
-            FormParams.LoadFrom(req.FormParams);
-            MultipartFormParams.LoadMultipartFrom(req.MultipartBodyEntries, req.MultipartFormFiles);
-            AuthType = req.Auth.AuthType;
-            AuthToken = req.Auth.Token ?? string.Empty;
-            AuthUsername = req.Auth.Username ?? string.Empty;
-            AuthPassword = req.Auth.Password ?? string.Empty;
-            AuthApiKeyName = req.Auth.ApiKeyName ?? string.Empty;
-            AuthApiKeyValue = req.Auth.ApiKeyValue ?? string.Empty;
-            AuthApiKeyIn = req.Auth.ApiKeyIn;
-            Description = req.Description;
-            Response = null;
-            IsResponseFromHistory = false;
-            HistoryResponseDate = null;
-            ErrorMessage = null;
+            ApplyRequestState(req);
         }
         finally
         {
             _loading = false;
             HasUnsavedChanges = false;
             IsNew = false;
+        }
+
+        QueueHistoryResponseRefresh();
+        NotifySessionStateChanged();
+    }
+
+    internal void RestorePersistedState(CollectionRequest currentState, CollectionRequest? sourceRequest)
+    {
+        ArgumentNullException.ThrowIfNull(currentState);
+
+        _sourceRequest = sourceRequest;
+        _loading = true;
+        try
+        {
+            ApplyRequestState(currentState);
+        }
+        finally
+        {
+            _loading = false;
+            HasUnsavedChanges = sourceRequest is not null &&
+                !CollectionRequestEqualityComparer.Instance.Equals(currentState, sourceRequest);
+            IsNew = sourceRequest is null;
         }
 
         QueueHistoryResponseRefresh();
@@ -949,6 +923,7 @@ public sealed partial class RequestTabViewModel : ObservableObject
         OnPropertyChanged(nameof(PreviewUrlForeground));
         OnPropertyChanged(nameof(PreviewUrlTooltip));
         PromoteFromTransient();
+        NotifySessionStateChanged();
     }
 
     /// <summary>
@@ -1135,6 +1110,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
             HasUnsavedChanges = false;
             IsNew = true;
         }
+
+        NotifySessionStateChanged();
     }
 
     /// <summary>
@@ -1726,11 +1703,85 @@ public sealed partial class RequestTabViewModel : ObservableObject
     // Shared save logic
     // -------------------------------------------------------------------------
 
+    private void ApplyRequestState(CollectionRequest req)
+    {
+        RequestName = req.Name;
+        OnPropertyChanged(nameof(CanOpenRequestHistory));
+        SelectedMethod = req.Method.Method;
+
+        _syncingUrl = true;
+        try
+        {
+            Url = req.Url;
+            QueryParams.LoadFrom(req.QueryParams);
+            SyncPathParamsWithUrl(Url, req.PathParams);
+        }
+        finally
+        {
+            _syncingUrl = false;
+        }
+
+        Headers.LoadFrom(req.Headers);
+        SelectedBodyType = req.BodyType;
+        Body = req.Body ?? string.Empty;
+        if (req.BodyType == CollectionRequest.BodyTypes.File && req.FileBodyBase64 is not null)
+        {
+            _fileBodyBytes = Convert.FromBase64String(req.FileBodyBase64);
+            _fileBodyBase64 = req.FileBodyBase64;
+            _fileBodyName = req.FileBodyName;
+            SelectedFilePath = req.FileBodyName ?? string.Empty;
+        }
+        else
+        {
+            _fileBodyBytes = null;
+            _fileBodyBase64 = null;
+            _fileBodyName = null;
+            SelectedFilePath = string.Empty;
+        }
+
+        _bodyContents.Clear();
+        foreach (var (type, content) in req.AllBodyContents)
+            _bodyContents[type] = content;
+
+        if (req.BodyType is CollectionRequest.BodyTypes.Json
+                         or CollectionRequest.BodyTypes.Text
+                         or CollectionRequest.BodyTypes.Xml
+                         or CollectionRequest.BodyTypes.Yaml
+                         or CollectionRequest.BodyTypes.Other)
+        {
+            _bodyContents[req.BodyType] = req.Body ?? string.Empty;
+        }
+
+        FormParams.LoadFrom(req.FormParams);
+        MultipartFormParams.LoadMultipartFrom(req.MultipartBodyEntries, req.MultipartFormFiles);
+        AuthType = req.Auth.AuthType;
+        AuthToken = req.Auth.Token ?? string.Empty;
+        AuthUsername = req.Auth.Username ?? string.Empty;
+        AuthPassword = req.Auth.Password ?? string.Empty;
+        AuthApiKeyName = req.Auth.ApiKeyName ?? string.Empty;
+        AuthApiKeyValue = req.Auth.ApiKeyValue ?? string.Empty;
+        AuthApiKeyIn = req.Auth.ApiKeyIn;
+        Description = req.Description;
+        Response = null;
+        IsResponseFromHistory = false;
+        HistoryResponseDate = null;
+        ErrorMessage = null;
+    }
+
     private CollectionRequest? BuildRequestState(bool includeBlankRows, bool assignMissingRequestId = false)
     {
         if (_sourceRequest is null)
             return null;
 
+        var requestId = assignMissingRequestId
+            ? _sourceRequest.RequestId ?? Guid.NewGuid()
+            : _sourceRequest.RequestId;
+
+        return BuildRequestStateCore(_sourceRequest.FilePath, requestId, includeBlankRows);
+    }
+
+    private CollectionRequest BuildRequestStateCore(string filePath, Guid? requestId, bool includeBlankRows)
+    {
         // Snapshot the per-type body contents dictionary, making sure the active body
         // type reflects the current editor content.
         var allBodyContents = new Dictionary<string, string>(_bodyContents, StringComparer.Ordinal);
@@ -1806,11 +1857,11 @@ public sealed partial class RequestTabViewModel : ObservableObject
 
         return new CollectionRequest
         {
-            FilePath = _sourceRequest.FilePath,
+            FilePath = filePath,
             Name = RequestName,
             Method = new HttpMethod(SelectedMethod),
             Url = Url,
-            RequestId = assignMissingRequestId ? _sourceRequest.RequestId ?? Guid.NewGuid() : _sourceRequest.RequestId,
+            RequestId = requestId,
             Description = string.IsNullOrWhiteSpace(Description) ? null : Description,
             Headers = headers,
             PathParams = PathParams.GetEnabledPairs().ToDictionary(p => p.Key, p => p.Value),
@@ -1926,6 +1977,8 @@ public sealed partial class RequestTabViewModel : ObservableObject
         // Any unsaved change promotes a transient tab to a permanent one.
         if (value) PromoteFromTransient();
     }
+
+    private void NotifySessionStateChanged() => SessionStateChanged?.Invoke(this, EventArgs.Empty);
 
     partial void OnUrlChanged(string value)
     {

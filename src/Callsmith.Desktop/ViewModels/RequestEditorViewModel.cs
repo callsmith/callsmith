@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using Avalonia.Threading;
 using Callsmith.Core.Abstractions;
 using Callsmith.Core.Models;
@@ -43,6 +44,9 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     private bool _isHorizontalLayout = true;
     private double? _requestEditorHorizontalSplitterFraction;
     private double? _requestEditorVerticalSplitterFraction;
+    private CancellationTokenSource? _persistTabsCts;
+
+    private static readonly TimeSpan PersistTabsDelay = TimeSpan.FromMilliseconds(250);
 
     // -------------------------------------------------------------------------
     // Observable state
@@ -60,7 +64,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         if (newValue is not null) newValue.IsActive = true;
         Messenger.Send(new ActiveTabChangedMessage(newValue?.SourceFilePath ?? string.Empty));
         if (!_restoringTabs)
-            _ = PersistTabsAsync();
+            SchedulePersistTabs();
     }
 
     [ObservableProperty]
@@ -125,12 +129,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         _logger = logger;
         IsActive = true;
 
-        Tabs.CollectionChanged += (_, _) =>
-        {
-            OnPropertyChanged(nameof(HasTabs));
-            if (!_restoringTabs)
-                _ = PersistTabsAsync();
-        };
+        Tabs.CollectionChanged += OnTabsCollectionChanged;
     }
 
     // -------------------------------------------------------------------------
@@ -356,6 +355,8 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
 
     public void Receive(CollectionOpenedMessage message)
     {
+        CancelPendingTabPersistence();
+
         // Clear tabs from the previous collection without triggering persistence.
         _restoringTabs = true;
         Tabs.Clear();
@@ -383,7 +384,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         if (tab is not null)
         {
             tab.UpdateSourceRequest(message.Renamed);
-            _ = PersistTabsAsync();
+            SchedulePersistTabs();
         }
     }
 
@@ -393,7 +394,7 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
     /// </summary>
     public void Receive(RequestSavedMessage message)
     {
-        _ = PersistTabsAsync();
+        SchedulePersistTabs();
     }
 
     /// <summary>
@@ -490,6 +491,12 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
             tab.IsNew = true;
 
         return tab;
+    }
+
+    internal Task PersistSessionAsync(CancellationToken ct = default)
+    {
+        CancelPendingTabPersistence();
+        return PersistTabsAsync(ct);
     }
 
     private void ShowGlobalCloseWithoutSavingDialog(RequestTabViewModel tab)
@@ -627,33 +634,41 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         try
         {
             // Load prefs and all referenced request files off the UI thread.
-            var (prefs, appPrefs, requests) = await Task.Run(async () =>
+            var (prefs, appPrefs, tabsToRestore) = await Task.Run(async () =>
             {
                 var p = await _preferencesService.LoadAsync(collectionPath).ConfigureAwait(false);
                 var ap = _appPreferencesService is not null
                     ? await _appPreferencesService.LoadAsync().ConfigureAwait(false)
                     : null;
-                var reqs = new List<(string relPath, CollectionRequest req)>();
+                var tabs = new List<(CollectionRequest? sourceRequest, CollectionRequest? draftRequest)>();
 
-                if (p.OpenTabPaths is { Count: > 0 })
+                if (p.OpenTabs is { Count: > 0 })
                 {
-                    foreach (var relPath in p.OpenTabPaths)
+                    foreach (var openTab in p.OpenTabs)
                     {
-                        var absPath = Path.GetFullPath(Path.Combine(collectionPath, relPath));
-                        if (!File.Exists(absPath)) continue;
-                        try
+                        CollectionRequest? sourceRequest = null;
+
+                        if (!string.IsNullOrEmpty(openTab.SourceFilePath))
                         {
-                            var req = await _collectionService.LoadRequestAsync(absPath).ConfigureAwait(false);
-                            reqs.Add((relPath, req));
+                            var absPath = Path.GetFullPath(Path.Combine(collectionPath, openTab.SourceFilePath));
+                            if (File.Exists(absPath))
+                            {
+                                try
+                                {
+                                    sourceRequest = await _collectionService.LoadRequestAsync(absPath).ConfigureAwait(false);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning(ex, "Could not restore tab source for '{Path}'", absPath);
+                                }
+                            }
                         }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "Could not restore tab for '{Path}'", absPath);
-                        }
+
+                        tabs.Add((sourceRequest, openTab.DraftRequest));
                     }
                 }
 
-                return (p, ap, reqs);
+                return (p, ap, tabs);
             }).ConfigureAwait(true); // resume on UI thread to manipulate Tabs
 
             _restoringTabs = true;
@@ -669,13 +684,28 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
 
                 RequestTabViewModel? tabToActivate = null;
 
-                foreach (var (relPath, request) in requests)
+                for (var index = 0; index < tabsToRestore.Count; index++)
                 {
-                    var tab = BuildTab(request);
+                    var (sourceRequest, draftRequest) = tabsToRestore[index];
+                    RequestTabViewModel? tab = null;
+
+                    if (draftRequest is not null)
+                    {
+                        tab = BuildTab(request: null);
+                        tab.RestorePersistedState(draftRequest, sourceRequest);
+                    }
+                    else if (sourceRequest is not null)
+                    {
+                        tab = BuildTab(sourceRequest);
+                    }
+
+                    if (tab is null)
+                        continue;
+
                     Tabs.Add(tab);
 
-                    if (prefs.ActiveTabPath is not null &&
-                        string.Equals(relPath, prefs.ActiveTabPath, StringComparison.OrdinalIgnoreCase))
+                    if (prefs.ActiveTabIndex is int activeTabIndex &&
+                        activeTabIndex == index)
                     {
                         tabToActivate = tab;
                     }
@@ -694,29 +724,95 @@ public sealed partial class RequestEditorViewModel : ObservableRecipient,
         }
     }
 
-    private async Task PersistTabsAsync()
+    private void OnTabsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems is not null)
+        {
+            foreach (var tab in e.OldItems.OfType<RequestTabViewModel>())
+                tab.SessionStateChanged -= OnTabSessionStateChanged;
+        }
+
+        if (e.NewItems is not null)
+        {
+            foreach (var tab in e.NewItems.OfType<RequestTabViewModel>())
+                tab.SessionStateChanged += OnTabSessionStateChanged;
+        }
+
+        OnPropertyChanged(nameof(HasTabs));
+        if (!_restoringTabs)
+            SchedulePersistTabs();
+    }
+
+    private void OnTabSessionStateChanged(object? sender, EventArgs e) => SchedulePersistTabs();
+
+    private void SchedulePersistTabs()
+    {
+        if (_restoringTabs || string.IsNullOrEmpty(_collectionPath))
+            return;
+
+        var cts = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _persistTabsCts, cts);
+        previous?.Cancel();
+        previous?.Dispose();
+
+        _ = PersistTabsAfterDelayAsync(cts.Token);
+    }
+
+    private async Task PersistTabsAfterDelayAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(PersistTabsDelay, ct).ConfigureAwait(false);
+            await PersistTabsAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void CancelPendingTabPersistence()
+    {
+        var cts = Interlocked.Exchange(ref _persistTabsCts, null);
+        cts?.Cancel();
+        cts?.Dispose();
+    }
+
+    private async Task PersistTabsAsync(CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(_collectionPath)) return;
         try
         {
             var collectionPath = _collectionPath;
 
-            var tabPaths = Tabs
-                .Where(t => !t.IsNew && !string.IsNullOrEmpty(t.SourceFilePath))
-                .Select(t => Path.GetRelativePath(collectionPath, t.SourceFilePath))
+            var openTabs = Tabs
+                .Select(tab =>
+                {
+                    var sourcePath = string.IsNullOrEmpty(tab.SourceFilePath)
+                        ? null
+                        : Path.GetRelativePath(collectionPath, tab.SourceFilePath);
+
+                    return !tab.IsNew && !tab.HasUnsavedChanges
+                        ? new OpenRequestTabState
+                        {
+                            SourceFilePath = sourcePath
+                        }
+                        : new OpenRequestTabState
+                        {
+                            SourceFilePath = sourcePath,
+                            DraftRequest = tab.CreateSessionSnapshot()
+                        };
+                })
                 .ToList();
 
-            var activePath = ActiveTab is { IsNew: false } active && !string.IsNullOrEmpty(active.SourceFilePath)
-                ? Path.GetRelativePath(collectionPath, active.SourceFilePath)
-                : null;
+            var activeTabIndex = ActiveTab is null ? (int?)null : Tabs.IndexOf(ActiveTab);
 
             await _preferencesService.UpdateAsync(collectionPath, current => new()
             {
                 LastActiveEnvironmentFile = current.LastActiveEnvironmentFile,
-                OpenTabPaths = tabPaths.Count > 0 ? tabPaths.AsReadOnly() : null,
-                ActiveTabPath = activePath,
+                OpenTabs = openTabs.Count > 0 ? openTabs.AsReadOnly() : null,
+                ActiveTabIndex = activeTabIndex is >= 0 ? activeTabIndex : null,
                 ExpandedFolderPaths = current.ExpandedFolderPaths,
-            }).ConfigureAwait(false);
+            }, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
