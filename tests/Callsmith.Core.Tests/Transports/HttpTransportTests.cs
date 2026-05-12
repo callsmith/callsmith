@@ -8,6 +8,7 @@ using Callsmith.Core.Models;
 using Callsmith.Core.Transports.Http;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using ZstdSharp;
 
 namespace Callsmith.Core.Tests.Transports;
 
@@ -126,13 +127,19 @@ public sealed class HttpTransportTests
 
     [Theory]
     [InlineData("gzip")]
+    [InlineData("x-gzip")]
     [InlineData("deflate")]
+    [InlineData("x-deflate")]
     [InlineData("br")]
+    [InlineData("zlib")]
+    [InlineData("zstd")]
+    [InlineData("x-zstd")]
     public async Task SendAsync_WithSupportedContentEncoding_DecodesResponseBody(string encoding)
     {
         const string body = """{"message":"héllo"}""";
         var bodyBytes = Encoding.UTF8.GetBytes(body);
         var encodedBytes = Encode(bodyBytes, encoding);
+        encodedBytes.Should().NotBeEmpty();
         var handler = new EncodedContentHandler(HttpStatusCode.OK, encodedBytes, encoding, "application/json; charset=utf-8");
         var transport = CreateTransport(handler);
 
@@ -507,14 +514,21 @@ public sealed class HttpTransportTests
 
     private static byte[] Encode(byte[] bytes, string encoding)
     {
+        if (encoding is "zstd" or "x-zstd")
+        {
+            using var compressor = new Compressor();
+            return compressor.Wrap(bytes).ToArray();
+        }
+
         using var output = new MemoryStream();
         using (Stream stream = encoding switch
-               {
-                   "gzip" => new GZipStream(output, CompressionMode.Compress, leaveOpen: true),
-                   "deflate" => new DeflateStream(output, CompressionMode.Compress, leaveOpen: true),
-                   "br" => new BrotliStream(output, CompressionMode.Compress, leaveOpen: true),
-                   _ => throw new NotSupportedException($"Unsupported test encoding '{encoding}'."),
-               })
+        {
+            "gzip" or "x-gzip" => new GZipStream(output, CompressionMode.Compress, leaveOpen: true),
+            "deflate" or "x-deflate" => new DeflateStream(output, CompressionMode.Compress, leaveOpen: true),
+            "br" => new BrotliStream(output, CompressionMode.Compress, leaveOpen: true),
+            "zlib" => new ZLibStream(output, CompressionMode.Compress, leaveOpen: true),
+            _ => throw new NotSupportedException($"Unsupported test encoding '{encoding}'."),
+        })
         {
             stream.Write(bytes, 0, bytes.Length);
         }

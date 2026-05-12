@@ -9,6 +9,7 @@ using Callsmith.Core.Abstractions;
 using Callsmith.Core.Helpers;
 using Callsmith.Core.Models;
 using Microsoft.Extensions.Logging;
+using ZstdSharp;
 
 namespace Callsmith.Core.Transports.Http;
 
@@ -173,9 +174,11 @@ public sealed class HttpTransport : ITransport, IDisposable
             {
                 decoded = contentEncoding.ToLowerInvariant() switch
                 {
-                    "gzip" => await DecompressAsync(decoded, bytes => new GZipStream(bytes, CompressionMode.Decompress, leaveOpen: false), ct),
-                    "deflate" => await DecompressAsync(decoded, bytes => new DeflateStream(bytes, CompressionMode.Decompress, leaveOpen: false), ct),
+                    "gzip" or "x-gzip" => await DecompressAsync(decoded, bytes => new GZipStream(bytes, CompressionMode.Decompress, leaveOpen: false), ct),
+                    "deflate" or "x-deflate" => await DecompressAsync(decoded, bytes => new DeflateStream(bytes, CompressionMode.Decompress, leaveOpen: false), ct),
                     "br" => await DecompressAsync(decoded, bytes => new BrotliStream(bytes, CompressionMode.Decompress, leaveOpen: false), ct),
+                    "zlib" => await DecompressAsync(decoded, bytes => new ZLibStream(bytes, CompressionMode.Decompress, leaveOpen: false), ct),
+                    "zstd" or "x-zstd" => DecompressZstd(decoded),
                     _ => throw new NotSupportedException($"Unsupported content encoding '{contentEncoding}'."),
                 };
             }
@@ -190,6 +193,12 @@ public sealed class HttpTransport : ITransport, IDisposable
         }
 
         return decoded;
+    }
+
+    private static byte[] DecompressZstd(byte[] bytes)
+    {
+        using var decompressor = new Decompressor();
+        return decompressor.Unwrap(bytes).ToArray();
     }
 
     /// <summary>
