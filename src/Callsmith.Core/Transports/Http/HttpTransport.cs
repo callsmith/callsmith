@@ -178,7 +178,7 @@ public sealed class HttpTransport : ITransport, IDisposable
                     "deflate" or "x-deflate" => await DecompressAsync(decoded, bytes => new DeflateStream(bytes, CompressionMode.Decompress, leaveOpen: false), ct),
                     "br" => await DecompressAsync(decoded, bytes => new BrotliStream(bytes, CompressionMode.Decompress, leaveOpen: false), ct),
                     "zlib" => await DecompressAsync(decoded, bytes => new ZLibStream(bytes, CompressionMode.Decompress, leaveOpen: false), ct),
-                    "zstd" or "x-zstd" => DecompressZstd(decoded),
+                    "zstd" or "x-zstd" => await DecompressZstdAsync(decoded, ct),
                     _ => throw new NotSupportedException($"Unsupported content encoding '{contentEncoding}'."),
                 };
             }
@@ -195,10 +195,13 @@ public sealed class HttpTransport : ITransport, IDisposable
         return decoded;
     }
 
-    private static byte[] DecompressZstd(byte[] bytes)
+    private static Task<byte[]> DecompressZstdAsync(byte[] bytes, CancellationToken ct)
     {
-        using var decompressor = new Decompressor();
-        return decompressor.Unwrap(bytes).ToArray();
+        return Task.Run(() =>
+        {
+            using var decompressor = new Decompressor();
+            return decompressor.Unwrap(bytes).ToArray();
+        }, ct);
     }
 
     /// <summary>
