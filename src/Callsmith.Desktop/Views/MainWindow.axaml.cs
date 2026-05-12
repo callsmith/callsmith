@@ -10,6 +10,7 @@ public partial class MainWindow : Window
 {
     private MainWindowViewModel? _trackedVm;
     private bool _allowCloseAfterPersist;
+    private bool _persistingSessionOnClose;
 
     public MainWindow()
     {
@@ -72,7 +73,14 @@ public partial class MainWindow : Window
         if (_allowCloseAfterPersist || _trackedVm is null)
             return;
 
+        if (_persistingSessionOnClose)
+        {
+            e.Cancel = true;
+            return;
+        }
+
         e.Cancel = true;
+        _persistingSessionOnClose = true;
 
         try
         {
@@ -87,6 +95,7 @@ public partial class MainWindow : Window
         finally
         {
             _allowCloseAfterPersist = true;
+            _persistingSessionOnClose = false;
             Close();
         }
     }
