@@ -140,6 +140,7 @@ public sealed class HttpTransportTests
         var bodyBytes = Encoding.UTF8.GetBytes(body);
         var encodedBytes = Encode(bodyBytes, encoding);
         encodedBytes.Should().NotBeEmpty();
+        encodedBytes.Should().NotEqual(bodyBytes);
         var handler = new EncodedContentHandler(HttpStatusCode.OK, encodedBytes, encoding, "application/json; charset=utf-8");
         var transport = CreateTransport(handler);
 
