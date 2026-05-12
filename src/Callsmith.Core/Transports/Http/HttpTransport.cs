@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using System.IO;
+using System.IO.Compression;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -36,11 +39,13 @@ public sealed class HttpTransport : ITransport, IDisposable
         {
             AllowAutoRedirect = true,
             MaxAutomaticRedirections = 10,
+            AutomaticDecompression = DecompressionMethods.None,
         });
 
         _noRedirectsClient = new HttpClient(new HttpClientHandler
         {
             AllowAutoRedirect = false,
+            AutomaticDecompression = DecompressionMethods.None,
         });
     }
 
@@ -91,6 +96,7 @@ public sealed class HttpTransport : ITransport, IDisposable
             stopwatch.Stop();
 
             var bodyBytes = await httpResponse.Content.ReadAsByteArrayAsync(ct);
+            var decodedBodyBytes = DecodeContentEncoding(httpResponse, bodyBytes);
             var charset = httpResponse.Content.Headers.ContentType?.CharSet;
             Encoding encoding;
             if (charset is not null)
@@ -113,7 +119,7 @@ public sealed class HttpTransport : ITransport, IDisposable
             {
                 encoding = Encoding.UTF8;
             }
-            var bodyString = encoding.GetString(bodyBytes);
+            var bodyString = encoding.GetString(decodedBodyBytes);
             var headers = ReadHeaders(httpResponse);
             var finalUrl = httpResponse.RequestMessage?.RequestUri?.ToString() ?? request.Url;
 
@@ -129,11 +135,62 @@ public sealed class HttpTransport : ITransport, IDisposable
                 ReasonPhrase = httpResponse.ReasonPhrase ?? string.Empty,
                 Headers = headers,
                 Body = bodyString,
-                BodyBytes = bodyBytes,
+                BodyBytes = decodedBodyBytes,
                 FinalUrl = finalUrl,
                 Elapsed = stopwatch.Elapsed,
             };
         }
+    }
+
+    private byte[] DecodeContentEncoding(HttpResponseMessage response, byte[] bodyBytes)
+    {
+        var encodings = response.Content.Headers.ContentEncoding;
+        if (encodings.Count == 0)
+            return bodyBytes;
+
+        var encodingStack = encodings
+            .SelectMany(value => value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            .ToArray();
+        if (encodingStack.Length == 0)
+            return bodyBytes;
+
+        var decoded = bodyBytes;
+        for (var i = encodingStack.Length - 1; i >= 0; i--)
+        {
+            var contentEncoding = encodingStack[i];
+            if (contentEncoding.Equals("identity", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            try
+            {
+                decoded = contentEncoding.ToLowerInvariant() switch
+                {
+                    "gzip" => Decompress(decoded, bytes => new GZipStream(bytes, CompressionMode.Decompress, leaveOpen: false)),
+                    "deflate" => Decompress(decoded, bytes => new DeflateStream(bytes, CompressionMode.Decompress, leaveOpen: false)),
+                    "br" => Decompress(decoded, bytes => new BrotliStream(bytes, CompressionMode.Decompress, leaveOpen: false)),
+                    _ => throw new NotSupportedException($"Unsupported content encoding '{contentEncoding}'."),
+                };
+            }
+            catch (Exception ex) when (ex is InvalidDataException or NotSupportedException)
+            {
+                _logger.LogDebug(
+                    ex,
+                    "Unable to decode response body with content-encoding '{ContentEncoding}'. Returning raw bytes.",
+                    contentEncoding);
+                return bodyBytes;
+            }
+        }
+
+        return decoded;
+    }
+
+    private static byte[] Decompress(byte[] bytes, Func<MemoryStream, Stream> streamFactory)
+    {
+        using var input = new MemoryStream(bytes);
+        using var compressed = streamFactory(input);
+        using var output = new MemoryStream();
+        compressed.CopyTo(output);
+        return output.ToArray();
     }
 
     private static HttpRequestMessage BuildHttpRequest(RequestModel request)
