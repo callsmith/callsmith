@@ -1,0 +1,503 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Callsmith.Desktop.ViewModels"
+             xmlns:conv="using:Callsmith.Desktop.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="700"
+             x:Class="Callsmith.Desktop.Views.SequencesView"
+             x:DataType="vm:SequencesViewModel"
+             Background="#1e1e1e">
+
+  <UserControl.Styles>
+    <Style Selector="Button.icon-btn">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="6,2"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.destructive">
+      <Setter Property="Foreground" Value="#e57373"/>
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Foreground" Value="#4ec9b0"/>
+    </Style>
+    <Style Selector="Button.run-btn">
+      <Setter Property="Background" Value="#1f6e43"/>
+      <Setter Property="Foreground" Value="#d4d4d4"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="CornerRadius" Value="4"/>
+      <Setter Property="Padding" Value="14,5"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.cancel-btn">
+      <Setter Property="Background" Value="#6e3030"/>
+      <Setter Property="Foreground" Value="#d4d4d4"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="CornerRadius" Value="4"/>
+      <Setter Property="Padding" Value="14,5"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="TextBox.editor-field">
+      <Setter Property="Background" Value="#2a2a2a"/>
+      <Setter Property="Foreground" Value="#d4d4d4"/>
+      <Setter Property="BorderBrush" Value="#444"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Padding" Value="6,3"/>
+      <Setter Property="CornerRadius" Value="3"/>
+    </Style>
+    <Style Selector="ComboBox.compact">
+      <Setter Property="Background" Value="#2a2a2a"/>
+      <Setter Property="Foreground" Value="#d4d4d4"/>
+      <Setter Property="BorderBrush" Value="#444"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Padding" Value="6,3"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+
+    <!-- Header -->
+    <Border Grid.Row="0"
+            Background="#252526"
+            BorderBrush="#444"
+            BorderThickness="0,0,0,1"
+            Padding="16,10">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <TextBlock Text="Sequences"
+                     Foreground="#d4d4d4"
+                     FontSize="14"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center"/>
+          <Border Background="#5a1a1a"
+                  CornerRadius="4"
+                  Padding="8,3"
+                  IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding ErrorMessage}"
+                       Foreground="#f48771"
+                       FontSize="12"/>
+          </Border>
+        </StackPanel>
+        <Button Grid.Column="1"
+                Content="&#x2190; Back to Editor"
+                Command="{Binding CloseCommand}"
+                Classes="icon-btn primary"
+                ToolTip.Tip="Return to the request editor"/>
+      </Grid>
+    </Border>
+
+    <!-- Main content: left list + right editor -->
+    <Grid Grid.Row="1" ColumnDefinitions="240,1,*">
+
+      <!-- Left: sequence list -->
+      <DockPanel Grid.Column="0" Background="#252526">
+
+        <!-- New sequence form -->
+        <Border DockPanel.Dock="Top"
+                BorderBrush="#333"
+                BorderThickness="0,0,0,1"
+                Padding="10,8">
+          <StackPanel Spacing="4">
+            <TextBlock Text="NEW SEQUENCE"
+                       Foreground="#888"
+                       FontSize="10"
+                       FontWeight="SemiBold"
+                       LetterSpacing="0.8"
+                       Margin="0,0,0,4"/>
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBox Grid.Column="0"
+                       Text="{Binding NewSequenceName, Mode=TwoWay}"
+                       Watermark="Sequence name"
+                       Classes="editor-field"
+                       Margin="0,0,4,0"/>
+              <Button Grid.Column="1"
+                      Content="+"
+                      Command="{Binding CreateSequenceCommand}"
+                      IsEnabled="{Binding CanCreateNewSequence}"
+                      Classes="icon-btn primary"
+                      ToolTip.Tip="Create new sequence"
+                      FontSize="16"
+                      FontWeight="Bold"
+                      Width="28"
+                      Padding="0"/>
+            </Grid>
+            <TextBlock Text="{Binding CreateError}"
+                       Foreground="#f48771"
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       IsVisible="{Binding CreateError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+          </StackPanel>
+        </Border>
+
+        <!-- Sequence list -->
+        <ListBox ItemsSource="{Binding Sequences}"
+                 SelectedItem="{Binding SelectedSequence, Mode=TwoWay}"
+                 Background="Transparent"
+                 BorderThickness="0"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <ListBox.ItemTemplate>
+            <DataTemplate DataType="vm:SequenceListItemViewModel">
+              <Border Padding="10,6" Background="Transparent">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Grid.Column="0"
+                             Text="{Binding Name}"
+                             Foreground="#cccccc"
+                             FontSize="13"
+                             TextTrimming="CharacterEllipsis"
+                             VerticalAlignment="Center"/>
+                  <Button Grid.Column="1"
+                          Content="&#x2715;"
+                          Command="{Binding $parent[UserControl].((vm:SequencesViewModel)DataContext).DeleteSelectedSequenceCommand}"
+                          Classes="icon-btn destructive"
+                          FontSize="11"
+                          Padding="4,1"
+                          ToolTip.Tip="Delete sequence"
+                          VerticalAlignment="Center"/>
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+
+      </DockPanel>
+
+      <!-- Column separator -->
+      <Rectangle Grid.Column="1" Fill="#333"/>
+
+      <!-- Right: editor or empty state -->
+      <Grid Grid.Column="2">
+
+        <!-- Empty state -->
+        <StackPanel VerticalAlignment="Center"
+                    HorizontalAlignment="Center"
+                    Spacing="10"
+                    IsVisible="{Binding !HasSelectedSequence}">
+          <TextBlock Text="Select or create a sequence"
+                     Foreground="#666"
+                     FontSize="14"
+                     TextAlignment="Center"/>
+          <TextBlock Foreground="#555"
+                     FontSize="12"
+                     TextAlignment="Center"
+                     TextWrapping="Wrap"
+                     MaxWidth="340">
+            Sequences run multiple requests in order.
+            Extracted values can be passed to subsequent steps.
+          </TextBlock>
+        </StackPanel>
+
+        <!-- Sequence editor -->
+        <Grid IsVisible="{Binding $parent[UserControl].((vm:SequencesViewModel)DataContext).HasSelectedSequence}"
+              RowDefinitions="Auto,*,Auto"
+              DataContext="{Binding Editor}">
+
+          <!-- Editor toolbar -->
+          <Border Grid.Row="0"
+                  Background="#2d2d30"
+                  BorderBrush="#333"
+                  BorderThickness="0,0,0,1"
+                  Padding="14,10">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <TextBox Text="{Binding SequenceName, Mode=TwoWay}"
+                         Watermark="Sequence name"
+                         Classes="editor-field"
+                         MinWidth="200"
+                         FontSize="14"
+                         FontWeight="SemiBold"/>
+                <Button Content="Save"
+                        Command="{Binding SaveCommand}"
+                        IsEnabled="{Binding IsDirty}"
+                        Classes="icon-btn primary"
+                        FontSize="12"
+                        ToolTip.Tip="Save sequence"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button Content="&#x25B6;  Run"
+                        Command="{Binding RunCommand}"
+                        Classes="run-btn"
+                        IsVisible="{Binding !IsRunning}"
+                        ToolTip.Tip="Execute all steps"/>
+                <Button Content="&#x25A0;  Cancel"
+                        Command="{Binding CancelRunCommand}"
+                        Classes="cancel-btn"
+                        IsVisible="{Binding IsRunning}"
+                        ToolTip.Tip="Cancel the run"/>
+              </StackPanel>
+            </Grid>
+          </Border>
+
+          <!-- Steps -->
+          <ScrollViewer Grid.Row="1"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+
+              <ItemsControl x:Name="StepRows"
+                            ItemsSource="{Binding Steps}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="vm:SequenceStepViewModel">
+                    <Border BorderBrush="#2e2e2e"
+                            BorderThickness="0,0,0,1"
+                            Padding="14,10">
+                      <StackPanel Spacing="6">
+
+                        <!-- Step header -->
+                        <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+
+                          <StackPanel Grid.Column="0" Orientation="Vertical"
+                                      Margin="0,0,8,0" VerticalAlignment="Center">
+                            <Button Content="&#x25B2;"
+                                    Command="{Binding MoveUpCommand}"
+                                    Classes="icon-btn"
+                                    Foreground="#777"
+                                    FontSize="9"
+                                    Padding="3,0"
+                                    Height="14"
+                                    ToolTip.Tip="Move up"/>
+                            <Button Content="&#x25BC;"
+                                    Command="{Binding MoveDownCommand}"
+                                    Classes="icon-btn"
+                                    Foreground="#777"
+                                    FontSize="9"
+                                    Padding="3,0"
+                                    Height="14"
+                                    ToolTip.Tip="Move down"/>
+                          </StackPanel>
+
+                          <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding RequestName}"
+                                       Foreground="#cccccc"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding RequestFilePath}"
+                                       Foreground="#777"
+                                       FontSize="10"
+                                       TextTrimming="CharacterEllipsis"/>
+                          </StackPanel>
+
+                          <!-- Result badge -->
+                          <Border Grid.Column="2"
+                                  Background="{Binding ResultStatusColor}"
+                                  CornerRadius="3"
+                                  Padding="6,2"
+                                  Margin="8,0"
+                                  VerticalAlignment="Center"
+                                  IsVisible="{Binding HasResult}"
+                                  ToolTip.Tip="{Binding ResultErrorMessage}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                              <TextBlock Text="{Binding ResultStatusDisplay}"
+                                         Foreground="White"
+                                         FontSize="11"
+                                         FontWeight="SemiBold"/>
+                              <TextBlock Text="{Binding ResultElapsedDisplay}"
+                                         Foreground="#ddd"
+                                         FontSize="11"
+                                         IsVisible="{Binding ResultIsSuccess}"/>
+                            </StackPanel>
+                          </Border>
+
+                          <Button Grid.Column="3"
+                                  Content="&#x2715;"
+                                  Command="{Binding RemoveCommand}"
+                                  Classes="icon-btn destructive"
+                                  FontSize="11"
+                                  VerticalAlignment="Center"
+                                  ToolTip.Tip="Remove step"/>
+                        </Grid>
+
+                        <!-- Step error detail -->
+                        <Border Background="#3d1a1a"
+                                CornerRadius="3"
+                                Padding="8,4"
+                                IsVisible="{Binding ResultErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                          <TextBlock Text="{Binding ResultErrorMessage}"
+                                     Foreground="#f48771"
+                                     FontSize="11"
+                                     TextWrapping="Wrap"/>
+                        </Border>
+
+                        <!-- Extracted variables display -->
+                        <Border Background="#1a3d1a"
+                                CornerRadius="3"
+                                Padding="8,4"
+                                IsVisible="{Binding ResultExtractedDisplay, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                          <TextBlock Text="{Binding ResultExtractedDisplay}"
+                                     Foreground="#7ec57e"
+                                     FontSize="11"
+                                     TextWrapping="Wrap"/>
+                        </Border>
+
+                        <!-- Variable extractions editor -->
+                        <Expander Header="Variable Extractions"
+                                  IsExpanded="False"
+                                  FontSize="11"
+                                  Foreground="#888">
+                          <StackPanel Spacing="4" Margin="0,6,0,0">
+                            <ItemsControl ItemsSource="{Binding Extractions}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:VariableExtractionViewModel">
+                                  <Grid ColumnDefinitions="*,130,*,Auto" Margin="0,2">
+                                    <TextBox Grid.Column="0"
+                                             Text="{Binding VariableName, Mode=TwoWay}"
+                                             Watermark="Variable name"
+                                             Classes="editor-field"
+                                             Margin="0,0,4,0"/>
+                                    <ComboBox Grid.Column="1"
+                                              SelectedIndex="{Binding SourceIndex, Mode=TwoWay}"
+                                              Classes="compact"
+                                              Margin="0,0,4,0">
+                                      <ComboBoxItem Content="Response Body"/>
+                                      <ComboBoxItem Content="Response Header"/>
+                                    </ComboBox>
+                                    <TextBox Grid.Column="2"
+                                             Text="{Binding Expression, Mode=TwoWay}"
+                                             Watermark="{Binding ExpressionWatermark}"
+                                             Classes="editor-field"
+                                             Margin="0,0,4,0"/>
+                                    <Button Grid.Column="3"
+                                            Content="&#x2715;"
+                                            Command="{Binding RemoveCommand}"
+                                            Classes="icon-btn destructive"
+                                            FontSize="10"
+                                            Padding="4,1"
+                                            VerticalAlignment="Center"/>
+                                  </Grid>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Content="+ Add Extraction"
+                                    Command="{Binding AddExtractionCommand}"
+                                    Classes="icon-btn primary"
+                                    FontSize="11"/>
+                          </StackPanel>
+                        </Expander>
+
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <!-- No steps placeholder -->
+              <StackPanel IsVisible="{Binding !Steps.Count}"
+                          HorizontalAlignment="Center"
+                          Margin="0,40,0,0"
+                          Spacing="8">
+                <TextBlock Text="No steps yet"
+                           Foreground="#555"
+                           FontSize="13"
+                           TextAlignment="Center"/>
+                <TextBlock Text="Pick a request below and click + Add Step"
+                           Foreground="#444"
+                           FontSize="11"
+                           TextAlignment="Center"/>
+              </StackPanel>
+
+            </StackPanel>
+          </ScrollViewer>
+
+          <!-- Bottom bar: add step + status -->
+          <Border Grid.Row="2"
+                  Background="#252526"
+                  BorderBrush="#333"
+                  BorderThickness="0,1,0,0"
+                  Padding="14,10">
+            <StackPanel Spacing="8">
+
+              <!-- Request picker -->
+              <Grid ColumnDefinitions="*,Auto">
+                <ComboBox Grid.Column="0"
+                          ItemsSource="{Binding AvailableRequests}"
+                          SelectedItem="{Binding SelectedAvailableRequest, Mode=TwoWay}"
+                          PlaceholderText="Select a request to add&#x2026;"
+                          Classes="compact"
+                          Margin="0,0,8,0">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate DataType="vm:AvailableRequest">
+                      <StackPanel Spacing="2">
+                        <TextBlock Text="{Binding Name}"
+                                   Foreground="#cccccc"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding DisplayPath}"
+                                   Foreground="#888"
+                                   FontSize="10"/>
+                      </StackPanel>
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+                <Button Grid.Column="1"
+                        Content="+ Add Step"
+                        Command="{Binding AddSelectedRequestAsStepCommand}"
+                        Classes="icon-btn primary"
+                        FontSize="12"/>
+              </Grid>
+
+              <!-- Run success banner -->
+              <Border CornerRadius="4"
+                      Background="#1a3d1a"
+                      Padding="10,6"
+                      IsVisible="{Binding LastRunSuccess}">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Grid.Column="0"
+                             Text="{Binding RunStatusMessage}"
+                             Foreground="#7ec57e"
+                             FontSize="12"
+                             VerticalAlignment="Center"/>
+                  <TextBlock Grid.Column="1"
+                             Text="{Binding RunDurationDisplay}"
+                             Foreground="#888"
+                             FontSize="11"
+                             Margin="8,0,0,0"
+                             VerticalAlignment="Center"/>
+                </Grid>
+              </Border>
+
+              <!-- Run failure banner -->
+              <Border CornerRadius="4"
+                      Background="#3d1a1a"
+                      Padding="10,6"
+                      IsVisible="{Binding HasRunFailed}">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Grid.Column="0"
+                             Text="{Binding RunStatusMessage}"
+                             Foreground="#f48771"
+                             FontSize="12"
+                             VerticalAlignment="Center"/>
+                  <TextBlock Grid.Column="1"
+                             Text="{Binding RunDurationDisplay}"
+                             Foreground="#888"
+                             FontSize="11"
+                             Margin="8,0,0,0"
+                             VerticalAlignment="Center"/>
+                </Grid>
+              </Border>
+
+              <!-- In-progress indicator -->
+              <Border CornerRadius="4"
+                      Background="#1e2a3a"
+                      Padding="10,6"
+                      IsVisible="{Binding IsRunning}">
+                <TextBlock Text="{Binding RunStatusMessage}"
+                           Foreground="#9cdcfe"
+                           FontSize="12"/>
+              </Border>
+
+            </StackPanel>
+          </Border>
+
+        </Grid>
+
+      </Grid>
+
+    </Grid>
+
+  </Grid>
+
+</UserControl>
