@@ -78,6 +78,27 @@ public class CommandPaletteSearchServiceTests
     }
 
     [Fact]
+    public void Filter_MatchesUrlIgnoringSpacesDashesAndUnderscores()
+    {
+        var request = new CollectionRequest
+        {
+            FilePath = "req.json",
+            Name = "findById",
+            Method = HttpMethod.Get,
+            Url = "https://example.test/api-service/user?id={{id}}",
+        };
+
+        var entries = new[]
+        {
+            new CommandPaletteSearchEntry(request, "findById", "GET"),
+        };
+
+        var matches = _sut.Filter(entries, "apiservice/user");
+
+        matches.Should().HaveCount(1);
+    }
+
+    [Fact]
     public void Filter_WithEmptyQuery_ReturnsAllEntries()
     {
         var requestA = new CollectionRequest

@@ -20,7 +20,7 @@ public sealed class CommandPaletteSearchService : ICommandPaletteSearchService
         if (string.IsNullOrWhiteSpace(query))
             return entries;
 
-        return entries.Where(e => FuzzyMatch(e.Request.Name, query)).ToList();
+        return entries.Where(e => FuzzyMatch(e.Request, query)).ToList();
     }
 
     private static void WalkNode(
@@ -49,11 +49,14 @@ public sealed class CommandPaletteSearchService : ICommandPaletteSearchService
             WalkNode(child, nextPrefix, results);
     }
 
-    private static bool FuzzyMatch(string requestName, string query)
+    private static bool FuzzyMatch(CollectionRequest request, string query)
     {
         var normQuery = Normalize(query);
-        var normName = Normalize(requestName);
-        return normName.Contains(normQuery, StringComparison.OrdinalIgnoreCase);
+        var normName = Normalize(request.Name);
+        var normUrl = Normalize(request.Url);
+        return 
+            normName.Contains(normQuery, StringComparison.OrdinalIgnoreCase) || 
+            normUrl.Contains(normQuery, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string Normalize(string value) =>
