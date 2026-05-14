@@ -199,6 +199,25 @@ public sealed partial class SequenceEditorViewModel : ObservableObject
         MarkStepsChanged();
     }
 
+    /// <summary>
+    /// Reorders <paramref name="step"/> to <paramref name="destinationIndex"/> within
+    /// <see cref="Steps"/>. Intended for drag-and-drop interactions.
+    /// </summary>
+    public void MoveStep(SequenceStepViewModel step, int destinationIndex)
+    {
+        ArgumentNullException.ThrowIfNull(step);
+
+        var currentIndex = Steps.IndexOf(step);
+        if (currentIndex < 0) return;
+
+        // Clamp destination into valid range and ignore no-op moves.
+        destinationIndex = Math.Clamp(destinationIndex, 0, Steps.Count - 1);
+        if (destinationIndex == currentIndex) return;
+
+        Steps.Move(currentIndex, destinationIndex);
+        MarkStepsChanged();
+    }
+
     private void MarkStepsChanged()
     {
         _stepsChangedSinceLastSave = true;

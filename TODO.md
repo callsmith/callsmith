@@ -296,7 +296,7 @@
   - [x] `SequenceEditorViewModel`, `SequencesViewModel`, `SequenceStepViewModel`, `VariableExtractionViewModel`
   - [x] `SequencesView` with left sequence list, right editor, step management, run/cancel UI
   - [x] Sequences button in main toolbar (next to Global History)
-  - [ ] Drag-and-drop step reordering
+  - [x] Drag-and-drop step reordering
   - [ ] Sequence import/export
 
 ---

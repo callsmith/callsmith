@@ -238,7 +238,8 @@
                         VerticalScrollBarVisibility="Auto">
             <StackPanel>
 
-              <ItemsControl ItemsSource="{Binding Steps}">
+              <ItemsControl x:Name="StepRows"
+                            ItemsSource="{Binding Steps}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate DataType="vm:SequenceStepViewModel">
                     <Border BorderBrush="#2e2e2e"
