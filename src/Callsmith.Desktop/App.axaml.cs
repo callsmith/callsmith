@@ -125,6 +125,13 @@ public partial class App : Application
         // App preferences
         services.AddSingleton<IAppPreferencesService, FileSystemAppPreferencesService>();
 
+        // Core -- JSON path evaluation (used by dynamic variables and sequence extractions)
+        services.AddSingleton<IJsonPathService, JsonPathService>();
+
+        // Core -- sequence management and execution
+        services.AddSingleton<ISequenceService, FileSystemSequenceService>();
+        services.AddSingleton<ISequenceRunnerService, SequenceRunnerService>();
+
         // ViewModels
         services.AddSingleton<CollectionsViewModel>();
         services.AddSingleton<RequestEditorViewModel>();
@@ -132,6 +139,8 @@ public partial class App : Application
         services.AddSingleton<EnvironmentEditorViewModel>();
         services.AddSingleton<CommandPaletteViewModel>();
         services.AddSingleton<HistoryPanelViewModel>();
+        services.AddSingleton<SequenceEditorViewModel>();
+        services.AddSingleton<SequencesViewModel>();
         services.AddSingleton<MainWindowViewModel>();
 
         return services;

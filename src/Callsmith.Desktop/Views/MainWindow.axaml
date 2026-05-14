@@ -66,19 +66,30 @@
                     Padding="12,6">
                 <Grid ColumnDefinitions="*,Auto">
                     <views:EnvironmentSelectorView Grid.Column="0" DataContext="{Binding Environment}"/>
-                    <Button Grid.Column="1"
-                            Content="Global History"
-                            Command="{Binding OpenHistoryCommand}"
-                            Background="Transparent"
-                            Foreground="#9cdcfe"
-                            BorderThickness="1"
-                            BorderBrush="#555"
-                            CornerRadius="3"
-                            FontSize="11"
-                            Padding="10,3"
-                            Margin="8,0,0,0"
-                            VerticalAlignment="Center"
-                            ToolTip.Tip="View sent request history (Ctrl+Shift+H)"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                        <Button Content="Sequences"
+                                Command="{Binding OpenSequencesCommand}"
+                                Background="Transparent"
+                                Foreground="#9cdcfe"
+                                BorderThickness="1"
+                                BorderBrush="#555"
+                                CornerRadius="3"
+                                FontSize="11"
+                                Padding="10,3"
+                                VerticalAlignment="Center"
+                                ToolTip.Tip="Open the Sequences panel"/>
+                        <Button Content="Global History"
+                                Command="{Binding OpenHistoryCommand}"
+                                Background="Transparent"
+                                Foreground="#9cdcfe"
+                                BorderThickness="1"
+                                BorderBrush="#555"
+                                CornerRadius="3"
+                                FontSize="11"
+                                Padding="10,3"
+                                VerticalAlignment="Center"
+                                ToolTip.Tip="View sent request history (Ctrl+Shift+H)"/>
+                    </StackPanel>
                 </Grid>
             </Border>
 
@@ -177,6 +188,15 @@
            <Panel Grid.Column="0" Grid.ColumnSpan="3"
                 IsVisible="{Binding HistoryPanel.IsOpen}">
               <views:HistoryPanelView DataContext="{Binding HistoryPanel}"/>
+           </Panel>
+
+           <!-- ================================================================
+               Full-width Sequences panel
+               Spans all columns; shown when SequencesPanel.IsOpen is true.
+               ================================================================ -->
+           <Panel Grid.Column="0" Grid.ColumnSpan="3"
+                  IsVisible="{Binding SequencesPanel.IsOpen}">
+               <views:SequencesView DataContext="{Binding SequencesPanel}"/>
            </Panel>
 
         <!-- ================================================================

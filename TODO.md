@@ -290,6 +290,14 @@
 - [x] Postman collection import (`PostmanCollectionImporter`) — parses Postman v2.1 JSON collections, maps requests, folders, and environments to Callsmith format
 - [ ] OpenAPI / Swagger file import — generates request files on disk from a spec
 - [x] Request chaining in collections — define a sequence of requests, pass values between them
+  - [x] `SequenceModel`, `SequenceStep`, `VariableExtraction` domain models
+  - [x] `ISequenceService` + `FileSystemSequenceService` (`.seq.callsmith` files in `sequences/` subfolder)
+  - [x] `ISequenceRunnerService` + `SequenceRunnerService` (JSONPath + header extraction)
+  - [x] `SequenceEditorViewModel`, `SequencesViewModel`, `SequenceStepViewModel`, `VariableExtractionViewModel`
+  - [x] `SequencesView` with left sequence list, right editor, step management, run/cancel UI
+  - [x] Sequences button in main toolbar (next to Global History)
+  - [ ] Drag-and-drop step reordering
+  - [ ] Sequence import/export
 
 ---
 

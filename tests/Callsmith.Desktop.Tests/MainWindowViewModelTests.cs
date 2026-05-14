@@ -51,9 +51,18 @@ public sealed class MainWindowViewModelTests
         var commandPalette = new CommandPaletteViewModel(collectionService, messenger);
         var historyPanel = new HistoryPanelViewModel(historyService);
 
+        var sequenceEditor = new SequenceEditorViewModel(
+            Substitute.For<ISequenceService>(),
+            Substitute.For<ISequenceRunnerService>(),
+            NullLogger<SequenceEditorViewModel>.Instance);
+        var sequencesPanel = new SequencesViewModel(
+            Substitute.For<ISequenceService>(),
+            collectionService, sequenceEditor, messenger,
+            NullLogger<SequencesViewModel>.Instance);
+
         return new MainWindowViewModel(
             collections, requestEditor, environment, environmentEditor,
-            commandPalette, historyPanel, messenger);
+            commandPalette, historyPanel, sequencesPanel, messenger);
     }
 
     [Fact]
@@ -110,9 +119,18 @@ public sealed class MainWindowViewModelTests
         var commandPalette = new CommandPaletteViewModel(collectionService, messenger);
         var historyPanel = new HistoryPanelViewModel(historyService);
 
+        var sequenceEditor = new SequenceEditorViewModel(
+            Substitute.For<ISequenceService>(),
+            Substitute.For<ISequenceRunnerService>(),
+            NullLogger<SequenceEditorViewModel>.Instance);
+        var sequencesPanel = new SequencesViewModel(
+            Substitute.For<ISequenceService>(),
+            collectionService, sequenceEditor, messenger,
+            NullLogger<SequencesViewModel>.Instance);
+
         _ = new MainWindowViewModel(
             collections, requestEditor, environment, environmentEditor,
-            commandPalette, historyPanel, messenger);
+            commandPalette, historyPanel, sequencesPanel, messenger);
 
         await environmentsLoaded.Task.WaitAsync(TimeSpan.FromSeconds(5));
 

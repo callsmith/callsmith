@@ -22,6 +22,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public EnvironmentEditorViewModel EnvironmentEditor { get; }
     public CommandPaletteViewModel CommandPalette { get; }
     public HistoryPanelViewModel HistoryPanel { get; }
+    public SequencesViewModel SequencesPanel { get; }
 
     /// <summary>
     /// True when the right pane (request editor + response viewer) should be visible.
@@ -55,6 +56,7 @@ public partial class MainWindowViewModel : ViewModelBase
         EnvironmentEditorViewModel environmentEditor,
         CommandPaletteViewModel commandPalette,
         HistoryPanelViewModel historyPanel,
+        SequencesViewModel sequencesPanel,
         IMessenger messenger,
         IAppPreferencesService? appPreferencesService = null)
     {
@@ -64,6 +66,7 @@ public partial class MainWindowViewModel : ViewModelBase
         ArgumentNullException.ThrowIfNull(environmentEditor);
         ArgumentNullException.ThrowIfNull(commandPalette);
         ArgumentNullException.ThrowIfNull(historyPanel);
+        ArgumentNullException.ThrowIfNull(sequencesPanel);
         ArgumentNullException.ThrowIfNull(messenger);
         _messenger = messenger;
         _appPreferencesService = appPreferencesService;
@@ -73,6 +76,7 @@ public partial class MainWindowViewModel : ViewModelBase
         EnvironmentEditor = environmentEditor;
         CommandPalette = commandPalette;
         HistoryPanel = historyPanel;
+        SequencesPanel = sequencesPanel;
 
         // Subscribe to property changes that affect computed properties
         Collections.PropertyChanged += (_, e) =>
@@ -163,6 +167,7 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         if (Environment.IsAnyEditorOpen) return;
         if (HistoryPanel.IsOpen) return;
+        if (SequencesPanel.IsOpen) return;
         CommandPalette.Open(Collections.TreeRoots);
     }
 
@@ -174,6 +179,7 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         if (Environment.IsAnyEditorOpen) return;
         if (HistoryPanel.IsOpen) return;
+        if (SequencesPanel.IsOpen) return;
         if (!Collections.HasCollection) return;
 
         RequestEditor.NewTabCommand.Execute(null);
@@ -187,6 +193,7 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         if (Environment.IsAnyEditorOpen) return;
         if (HistoryPanel.IsOpen) return;
+        if (SequencesPanel.IsOpen) return;
         if (!Collections.HasCollection) return;
 
         if (RequestEditor.ActiveTab?.CloseCommand.CanExecute(null) == true)
@@ -201,6 +208,7 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         if (!Collections.HasCollection) return;
         if (HistoryPanel.IsOpen) return;
+        if (SequencesPanel.IsOpen) return;
         Environment.OpenEditorCommand.Execute(null);
     }
 
@@ -233,11 +241,19 @@ public partial class MainWindowViewModel : ViewModelBase
     private void OpenHistory() => OpenGlobalHistory();
 
     [RelayCommand]
+    private void OpenSequences()
+    {
+        if (!Collections.HasCollection) return;
+        SequencesPanel.Open(Collections.CollectionPath);
+    }
+
+    [RelayCommand]
     private void CollapseAllFolders()
     {
         if (!Collections.HasCollection) return;
         if (Environment.IsAnyEditorOpen) return;
         if (HistoryPanel.IsOpen) return;
+        if (SequencesPanel.IsOpen) return;
 
         if (Collections.CollapseAllFoldersCommand.CanExecute(null))
             Collections.CollapseAllFoldersCommand.Execute(null);
