@@ -57,4 +57,3 @@ public sealed class SequenceEditorViewModelTests
         sut.IsDirty.Should().BeFalse();
     }
 }
-
